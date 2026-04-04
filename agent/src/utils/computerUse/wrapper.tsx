@@ -162,7 +162,7 @@ export function buildSessionContext(): ComputerUseSessionContext {
         }
       };
     }),
-    onScreenshotCaptured: dims => tuc().setAppState(prev => {
+    onScreenshotCaptured: dims => tuc().setAppState((prev: any) => {
       const cu = prev.computerUseMcpState;
       const p = cu?.lastScreenshotDims;
       return p?.width === dims.width && p?.height === dims.height && p?.displayWidth === dims.displayWidth && p?.displayHeight === dims.displayHeight && p?.displayId === dims.displayId && p?.originX === dims.originX && p?.originY === dims.originY ? prev : {

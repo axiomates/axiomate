@@ -1,9 +1,8 @@
 import {
   type ClaudeForChromeContext,
   createClaudeForChromeMcpServer,
-  type Logger,
-  type PermissionMode,
-} from 'computer-use-mcp-axiomate' // TODO: chrome-mcp not yet ported
+} from '@ant/claude-for-chrome-mcp'
+import type { Logger, PermissionMode } from 'computer-use-mcp-axiomate'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { format } from 'util'
 import { shutdownDatadog } from '../../services/analytics/datadog.js'

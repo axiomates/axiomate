@@ -52,7 +52,7 @@ import type { JumpHandle } from './VirtualMessageList.js';
 // and pegs CPU at 100%. Memo on agentDefinitions so a new messages array
 // doesn't invalidate the logo subtree. LogoV2/StatusNotices internally
 // subscribe to useAppState/useSettings for their own updates.
-const LogoHeader = React.memo(function LogoHeader(t0) {
+const LogoHeader = React.memo(function LogoHeader(t0: any) {
   const $ = _c(3);
   const {
     agentDefinitions
@@ -496,7 +496,7 @@ const MessagesImpl = ({
     const compactAwareMessages = verbose || isFullscreenEnvEnabled() ? normalizedMessages : getMessagesAfterCompactBoundary(normalizedMessages, {
       includeSnipped: true
     });
-    const messagesToShowNotTruncated = reorderMessagesInUI(compactAwareMessages.filter((msg_2): msg_2 is Exclude<NormalizedMessage, ProgressMessageType> => msg_2.type !== 'progress')
+    const messagesToShowNotTruncated = reorderMessagesInUI((compactAwareMessages.filter((msg_2): msg_2 is Exclude<NormalizedMessage, ProgressMessageType> => msg_2.type !== 'progress') as any)
     // CC-724: drop attachment messages that AttachmentMessage renders as
     // null (hook_success, hook_additional_context, hook_cancelled, etc.)
     // BEFORE counting/slicing so they don't inflate the "N messages"

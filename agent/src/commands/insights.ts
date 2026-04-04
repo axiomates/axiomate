@@ -120,9 +120,9 @@ const collectFromRemoteHost: (
           }
 
           const projectsDir = join(tempDir, 'projects')
-          let projectDirents: Awaited<ReturnType<typeof readdir>>
+          let projectDirents: import('fs').Dirent[]
           try {
-            projectDirents = await readdir(projectsDir, { withFileTypes: true })
+            projectDirents = await readdir(projectsDir, { withFileTypes: true }) as any
           } catch {
             return result
           }
@@ -146,9 +146,9 @@ const collectFromRemoteHost: (
               }
 
               // Copy session files (skip existing)
-              let files: Awaited<ReturnType<typeof readdir>>
+              let files: import('fs').Dirent[]
               try {
-                files = await readdir(projectPath, { withFileTypes: true })
+                files = await readdir(projectPath, { withFileTypes: true }) as any
               } catch {
                 return
               }
@@ -2755,9 +2755,9 @@ type LiteSessionInfo = {
 async function scanAllSessions(): Promise<LiteSessionInfo[]> {
   const projectsDir = getProjectsDir()
 
-  let dirents: Awaited<ReturnType<typeof readdir>>
+  let dirents: import('fs').Dirent[]
   try {
-    dirents = await readdir(projectsDir, { withFileTypes: true })
+    dirents = await readdir(projectsDir, { withFileTypes: true }) as any
   } catch {
     return []
   }

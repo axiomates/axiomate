@@ -1909,7 +1909,7 @@ export function getAccountInformation() {
  * Result of org validation — either success or a descriptive error.
  */
 export type OrgValidationResult =
-  | { valid: true }
+  | { valid: true; message?: string }
   | { valid: false; message: string }
 
 /**

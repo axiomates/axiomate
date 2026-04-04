@@ -240,7 +240,7 @@ export async function checkQuotaStatus(): Promise<void> {
     const raw = await makeTestQuery()
 
     // Update limits based on the response
-    extractQuotaStatusFromHeaders(raw.headers)
+    extractQuotaStatusFromHeaders(raw.headers as any)
   } catch (error) {
     if (error instanceof APIError) {
       extractQuotaStatusFromError(error)
@@ -496,7 +496,7 @@ export function extractQuotaStatusFromError(error: APIError): void {
     let newLimits = { ...currentLimits }
     if (error.headers) {
       // Process headers (applies mocks from /mock-limits command if active)
-      const headersToUse = processRateLimitHeaders(error.headers)
+      const headersToUse = processRateLimitHeaders(error.headers as any)
       rawUtilization = extractRawUtilization(headersToUse)
       newLimits = computeNewLimitsFromHeaders(headersToUse)
 

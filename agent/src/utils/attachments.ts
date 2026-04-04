@@ -302,6 +302,9 @@ export type FileAttachment = {
   truncated?: boolean
   /** Path relative to CWD at creation time, for stable display */
   displayPath: string
+  /** Optional fields for union compatibility with hook attachment types */
+  hookEvent?: string
+  toolUseID?: string
 }
 
 export type CompactFileReferenceAttachment = {
@@ -437,7 +440,13 @@ export type HookNonBlockingErrorAttachment = {
   durationMs?: number
 }
 
-export type Attachment =
+/** Common optional fields present on some attachment variants but accessed on the union */
+type AttachmentCommon = {
+  hookEvent?: string
+  toolUseID?: string
+}
+
+export type Attachment = (
   /**
    * User at-mentioned the file
    */
@@ -715,6 +724,9 @@ export type Attachment =
       warningCount: number
       sample: string
     }
+  | { type: 'pen_mode_enter' }
+  | { type: 'pen_mode_exit' }
+) & AttachmentCommon
 
 export type TeammateMailboxAttachment = {
   type: 'teammate_mailbox'
@@ -995,11 +1007,11 @@ export async function getAttachments(
 
   clearTimeout(timeoutId)
   // Defensive: a getter leaking [undefined] crashes .map(a => a.type) below.
-  return [
+  return ([
     ...userAttachmentResults.flat(),
     ...threadAttachmentResults.flat(),
     ...mainThreadAttachmentResults.flat(),
-  ].filter(a => a !== undefined && a !== null)
+  ].filter(a => a !== undefined && a !== null)) as any
 }
 
 async function maybe<A>(label: string, f: () => Promise<A[]>): Promise<A[]> {
@@ -2776,8 +2788,8 @@ export function extractAtMentionedFiles(content: string): string[] {
   }
 
   // Extract regular mentions
-  const regularMatchArray = content.match(regularAtMentionRegex) || []
-  regularMatchArray.forEach(match => {
+  const regularMatchArray = (content as string).match(regularAtMentionRegex) || []
+  regularMatchArray.forEach((match: string) => {
     const filename = match.slice(match.indexOf('@') + 1)
     // Don't include if it starts with a quote (already handled as quoted)
     if (!filename.startsWith('"')) {

@@ -420,7 +420,7 @@ export async function copyWorktreeIncludeFiles(
   }
 
   const entries = gitignored.stdout.trim().split('\n').filter(Boolean)
-  const matcher = ignore().add(includeContent)
+  const matcher = (ignore as any)().add(includeContent)
 
   // --directory emits collapsed dirs with a trailing slash; everything else is
   // an individual file.
@@ -1293,7 +1293,7 @@ export async function execIntoTmuxWorktree(args: string[]): Promise<{
       if (!result.existed) {
         // biome-ignore lint/suspicious/noConsole: intentional console output
         console.log(
-          `Created worktree: ${worktreeDir} (based on ${result.baseBranch})`,
+          `Created worktree: ${worktreeDir} (based on ${(result as any).baseBranch})`,
         )
         await performPostCreationSetup(repoRoot, worktreeDir)
       }

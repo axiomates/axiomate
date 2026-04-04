@@ -795,7 +795,7 @@ export function PermissionRuleList(t0) {
   if ($[30] !== changes || $[31] !== onExit || $[32] !== onRetryDenials) {
     t18 = () => {
       const s_1 = denialStateRef.current;
-      const denialsFor = set => Array.from(set).map(idx => s_1.denials[idx]).filter(_temp2);
+      const denialsFor = (set: any) => Array.from(set).map((idx: any) => s_1.denials[idx]).filter(_temp2);
       const retryDenials = denialsFor(s_1.retry);
       if (retryDenials.length > 0) {
         const commands = retryDenials.map(_temp3);
@@ -843,10 +843,11 @@ export function PermissionRuleList(t0) {
       if (!selectedRule) {
         return;
       }
+      const sr = selectedRule as any;
       const {
         options: options_0
-      } = getRulesOptions(selectedRule.ruleBehavior as TabType);
-      const selectedKey = jsonStringify(selectedRule);
+      } = getRulesOptions(sr.ruleBehavior as TabType);
+      const selectedKey = jsonStringify(sr);
       const ruleKeys = options_0.filter(_temp5).map(_temp6);
       const currentIndex = ruleKeys.indexOf(selectedKey);
       let nextFocusKey;
@@ -861,7 +862,7 @@ export function PermissionRuleList(t0) {
       }
       setLastFocusedRuleKey(nextFocusKey);
       deletePermissionRule({
-        rule: selectedRule,
+        rule: sr,
         initialContext: toolPermissionContext,
         setToolPermissionContext(toolPermissionContext_0) {
           setAppState(prev_1 => ({
@@ -870,7 +871,7 @@ export function PermissionRuleList(t0) {
           }));
         }
       });
-      setChanges(prev_2 => [...prev_2, `Deleted ${selectedRule.ruleBehavior} rule ${chalk.bold(permissionRuleValueToString(selectedRule.ruleValue))}`]);
+      setChanges(prev_2 => [...prev_2, `Deleted ${sr.ruleBehavior} rule ${chalk.bold(permissionRuleValueToString(sr.ruleValue))}`]);
       setSelectedRule(undefined);
     };
     $[36] = getRulesOptions;
@@ -955,15 +956,15 @@ export function PermissionRuleList(t0) {
         const permissionUpdate = {
           type: "addDirectories" as const,
           directories: [path_0],
-          destination
+          destination: destination as any
         };
-        const updatedContext = applyPermissionUpdate(toolPermissionContext, permissionUpdate);
+        const updatedContext = applyPermissionUpdate(toolPermissionContext, permissionUpdate as any);
         setAppState(prev_4 => ({
           ...prev_4,
           toolPermissionContext: updatedContext
         }));
         if (remember) {
-          persistPermissionUpdate(permissionUpdate);
+          persistPermissionUpdate(permissionUpdate as any);
         }
         setChanges(prev_5 => [...prev_5, `Added directory ${chalk.bold(path_0)} to workspace${remember ? " and saved to local settings" : " for this session"}`]);
         setIsAddingWorkspaceDirectory(false);

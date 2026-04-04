@@ -1,4 +1,4 @@
-import { BROWSER_TOOLS } from 'computer-use-mcp-axiomate' // TODO: chrome-mcp not yet ported
+import { BROWSER_TOOLS } from '@ant/claude-for-chrome-mcp'
 import { chmod, mkdir, readFile, writeFile } from 'fs/promises'
 import { homedir } from 'os'
 import { join } from 'path'

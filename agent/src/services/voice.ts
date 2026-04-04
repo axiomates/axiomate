@@ -17,14 +17,14 @@ import { getPlatform } from '../utils/platform.js'
 // (post-wake, post-boot). Load happens on first voice keypress — no
 // preload, because there's no way to make dlopen non-blocking and a
 // startup freeze is worse than a first-press delay.
-type AudioNapi = typeof import('audio-capture-napi')
+type AudioNapi = typeof import('audio-capture-axiomate')
 let audioNapi: AudioNapi | null = null
 let audioNapiPromise: Promise<AudioNapi> | null = null
 
 function loadAudioNapi(): Promise<AudioNapi> {
   audioNapiPromise ??= (async () => {
     const t0 = Date.now()
-    const mod = await import('audio-capture-napi')
+    const mod = await import('audio-capture-axiomate')
     // vendor/audio-capture-src/index.ts defers require(...node) until the
     // first function call — trigger it here so timing reflects real cost.
     mod.isNativeAudioAvailable()

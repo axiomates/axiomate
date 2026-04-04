@@ -1,4 +1,4 @@
-import { BROWSER_TOOLS } from 'computer-use-mcp-axiomate' // TODO: chrome-mcp not yet ported
+import { BROWSER_TOOLS } from '@ant/claude-for-chrome-mcp'
 import { BASE_CHROME_PROMPT } from '../../utils/claudeInChrome/prompt.js'
 import { shouldAutoEnableClaudeInChrome } from '../../utils/claudeInChrome/setup.js'
 import { registerBundledSkill } from '../bundledSkills.js'

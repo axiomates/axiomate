@@ -59,7 +59,7 @@ let cachedConfigFiles: string[] = []
 let cachedTrackedDirs: string[] = []
 
 // Cache for .ignore/.rgignore patterns (keyed by repoRoot:cwd)
-let ignorePatternsCache: ReturnType<typeof ignore> | null = null
+let ignorePatternsCache: import('ignore').Ignore | null = null
 let ignorePatternsCacheKey: string | null = null
 
 // Throttle state for background refresh. .git/index mtime triggers an
@@ -202,7 +202,7 @@ async function mergeUntrackedIntoNormalizedCache(
 async function loadRipgrepIgnorePatterns(
   repoRoot: string,
   cwd: string,
-): Promise<ReturnType<typeof ignore> | null> {
+): Promise<import('ignore').Ignore | null> {
   const cacheKey = `${repoRoot}:${cwd}`
 
   // Return cached result if available
@@ -214,7 +214,7 @@ async function loadRipgrepIgnorePatterns(
   const ignoreFiles = ['.ignore', '.rgignore']
   const directories = [...new Set([repoRoot, cwd])]
 
-  const ig = ignore()
+  const ig = (ignore as any)()
   let hasPatterns = false
 
   const paths = directories.flatMap(dir =>

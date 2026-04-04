@@ -153,7 +153,7 @@ export function usePermissionExplainerUI(props) {
 function _temp(v) {
   return !v;
 }
-function ExplanationResult(t0) {
+function ExplanationResult(t0: { promise: Promise<PermissionExplanationType | null> }) {
   const $ = _c(21);
   const {
     promise

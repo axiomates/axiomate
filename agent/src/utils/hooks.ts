@@ -110,7 +110,7 @@ import type {
 import type { StatusLineCommandInput } from '../types/statusLine.js'
 import type { ElicitResult } from '@modelcontextprotocol/sdk/types.js'
 import type { FileSuggestionCommandInput } from '../types/fileSuggestion.js'
-import type { HookResultMessage } from 'src/types/message.js'
+import type { AttachmentMessage, HookResultMessage, ProgressMessage } from 'src/types/message.js'
 import chalk from 'chalk'
 import type {
   HookMatcher,
@@ -336,7 +336,7 @@ export interface HookBlockingError {
 export type ElicitationResponse = ElicitResult
 
 export interface HookResult {
-  message?: HookResultMessage
+  message?: HookResultMessage | AttachmentMessage | ProgressMessage
   systemMessage?: string
   blockingError?: HookBlockingError
   outcome: 'success' | 'blocking' | 'non_blocking_error' | 'cancelled'
@@ -357,7 +357,7 @@ export interface HookResult {
 }
 
 export type AggregatedHookResult = {
-  message?: HookResultMessage
+  message?: HookResultMessage | AttachmentMessage | ProgressMessage
   blockingError?: HookBlockingError
   preventContinuation?: boolean
   stopReason?: string
@@ -2209,7 +2209,7 @@ async function* executeHooks({
             hookName,
             toolUseID,
             hookEvent,
-            content: `Failed to prepare hook input: ${errorMessage(jsonInputRes.error)}`,
+            content: `Failed to prepare hook input: ${errorMessage((jsonInputRes as any).error)}`,
             command: hookCommand,
             durationMs: Date.now() - hookStartMs,
           }),
@@ -2412,7 +2412,7 @@ async function* executeHooks({
 
         if (httpJson) {
           const processed = processHookJSONOutput({
-            json: httpJson,
+            json: httpJson as any,
             command: hook.url,
             hookName,
             toolUseID,

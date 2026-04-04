@@ -145,10 +145,10 @@ function dumpRequest(
 
 export function createDumpPromptsFetch(
   agentIdOrSessionId: string,
-): ClientOptions['fetch'] {
+): any {
   const filePath = getDumpPromptsPath(agentIdOrSessionId)
 
-  return async (input: RequestInfo | URL, init?: RequestInit) => {
+  return async (input: any, init?: any) => {
     const state = dumpState.get(agentIdOrSessionId) ?? {
       initialized: false,
       messageCountSeen: 0,

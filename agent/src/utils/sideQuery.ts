@@ -23,7 +23,8 @@ type TextBlockParam = Anthropic.TextBlockParam
 type Tool = Anthropic.Tool
 type ToolChoice = Anthropic.ToolChoice
 type BetaMessage = Anthropic.Beta.Messages.BetaMessage
-type BetaJSONOutputFormat = Anthropic.Beta.Messages.BetaJSONOutputFormat
+// @ts-ignore - SDK version mismatch
+type BetaJSONOutputFormat = any
 type BetaThinkingConfigParam = Anthropic.Beta.Messages.BetaThinkingConfigParam
 
 export type SideQueryOptions = {

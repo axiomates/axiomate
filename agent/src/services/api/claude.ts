@@ -1832,7 +1832,7 @@ async function* queryModel(
           .withResponse()
         queryCheckpoint('query_response_headers_received')
         streamRequestId = result.request_id
-        streamResponse = result.response
+        streamResponse = result.response as any
         return result.data
       },
       {
@@ -2222,7 +2222,7 @@ async function* queryModel(
             ) {
               research = (part as unknown as Record<string, unknown>).research
               for (const msg of newMessages) {
-                msg.research = research
+                ;(msg as any).research = research
               }
             }
 
@@ -2620,7 +2620,7 @@ async function* queryModel(
       // and CannotRetryError means every retry failed — so grab the failed
       // request's ID from the error header instead.
       const failedRequestId =
-        (errorFromRetry.originalError as APIError).requestID ?? 'unknown'
+        (errorFromRetry.originalError as APIError).request_id ?? 'unknown'
       logForDebugging(
         'Streaming endpoint returned 404, falling back to non-streaming mode',
         { level: 'warn' },
@@ -2712,7 +2712,7 @@ async function* queryModel(
 
         const requestId =
           streamRequestId ||
-          (error instanceof APIError ? error.requestID : undefined) ||
+          (error instanceof APIError ? error.request_id : undefined) ||
           (error instanceof APIError
             ? (error.error as { request_id?: string })?.request_id
             : undefined)
@@ -2768,7 +2768,7 @@ async function* queryModel(
       // Extract requestId from stream, error header, or error body
       const requestId =
         streamRequestId ||
-        (error instanceof APIError ? error.requestID : undefined) ||
+        (error instanceof APIError ? error.request_id : undefined) ||
         (error instanceof APIError
           ? (error.error as { request_id?: string })?.request_id
           : undefined)

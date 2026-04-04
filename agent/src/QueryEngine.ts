@@ -1055,7 +1055,7 @@ export class QueryEngine {
     // return '' and -p mode emit a blank line. Allowlist to assistant|user:
     // isResultSuccessful handles both (user with all tool_result blocks is a
     // valid successful terminal state).
-    const result = messages.findLast(
+    const result: any = messages.findLast(
       m => m.type === 'assistant' || m.type === 'user',
     )
     // Capture for the error_during_execution diagnostic — isResultSuccessful
@@ -1064,7 +1064,7 @@ export class QueryEngine {
     const edeResultType = result?.type ?? 'undefined'
     const edeLastContentType =
       result?.type === 'assistant'
-        ? (last(result.message.content)?.type ?? 'none')
+        ? ((last(result.message.content) as any)?.type ?? 'none')
         : 'n/a'
 
     // Flush buffered transcript writes before yielding result.
@@ -1122,7 +1122,7 @@ export class QueryEngine {
     let isApiError = false
 
     if (result.type === 'assistant') {
-      const lastContent = last(result.message.content)
+      const lastContent: any = last(result.message.content)
       if (
         lastContent?.type === 'text' &&
         !SYNTHETIC_MESSAGES.has(lastContent.text)

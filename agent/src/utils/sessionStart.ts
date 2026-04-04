@@ -139,7 +139,7 @@ export async function processSessionStartHooks(
     forceSyncExecution,
   )) {
     if (hookResult.message) {
-      hookMessages.push(hookResult.message)
+      hookMessages.push(hookResult.message as any)
     }
     if (
       hookResult.additionalContexts &&
@@ -168,7 +168,7 @@ export async function processSessionStartHooks(
       toolUseID: 'SessionStart',
       hookEvent: 'SessionStart',
     })
-    hookMessages.push(contextMessage)
+    hookMessages.push(contextMessage as any)
   }
 
   return hookMessages
@@ -207,7 +207,7 @@ export async function processSetupHooks(
     forceSyncExecution,
   )) {
     if (hookResult.message) {
-      hookMessages.push(hookResult.message)
+      hookMessages.push(hookResult.message as any)
     }
     if (
       hookResult.additionalContexts &&
@@ -225,7 +225,7 @@ export async function processSetupHooks(
       toolUseID: 'Setup',
       hookEvent: 'Setup',
     })
-    hookMessages.push(contextMessage)
+    hookMessages.push(contextMessage as any)
   }
 
   return hookMessages

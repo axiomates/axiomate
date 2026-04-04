@@ -365,7 +365,7 @@ export function areMessageRowPropsEqual(prev: Props, next: Props): boolean {
   // lastThinkingBlockId affects thinking block visibility — but only for
   // messages that HAVE thinking content. Checking unconditionally busts the
   // memo for every scrollback message whenever thinking starts/stops (CC-941).
-  if (prev.lastThinkingBlockId !== next.lastThinkingBlockId && hasThinkingContent(next.message)) {
+  if (prev.lastThinkingBlockId !== next.lastThinkingBlockId && hasThinkingContent(next.message as any)) {
     return false;
   }
 

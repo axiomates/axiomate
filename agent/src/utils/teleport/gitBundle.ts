@@ -34,6 +34,8 @@ export type BundleUploadResult =
       bundleSizeBytes: number
       scope: BundleScope
       hasWip: boolean
+      error?: string
+      failReason?: BundleFailReason
     }
   | { success: false; error: string; failReason?: BundleFailReason }
 
@@ -231,16 +233,17 @@ export async function createAndUploadGitBundle(
     )
 
     if (!bundle.ok) {
-      logForDebugging(`[gitBundle] ${bundle.error}`)
+      const b = bundle as any
+      logForDebugging(`[gitBundle] ${b.error}`)
       logEvent('tengu_ccr_bundle_upload', {
         outcome:
-          bundle.failReason as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+          b.failReason as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
         max_bytes: maxBytes,
       })
       return {
         success: false,
-        error: bundle.error,
-        failReason: bundle.failReason,
+        error: b.error,
+        failReason: b.failReason,
       }
     }
 
@@ -254,7 +257,7 @@ export async function createAndUploadGitBundle(
         outcome:
           'failed' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
       })
-      return { success: false, error: upload.error }
+      return { success: false, error: (upload as any).error }
     }
 
     logForDebugging(

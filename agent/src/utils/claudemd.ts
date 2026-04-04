@@ -1392,7 +1392,7 @@ export async function processConditionedMdRules(
     ) {
       return false
     }
-    return ignore().add(file.globs).ignores(relativePath)
+    return (ignore as any)().add(file.globs).ignores(relativePath)
   })
 }
 

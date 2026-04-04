@@ -54,7 +54,7 @@ export function checkMockRateLimitError(
       { error: { type: 'rate_limit_error', message: headerlessMessage } },
       headerlessMessage,
       // eslint-disable-next-line eslint-plugin-n/no-unsupported-features/node-builtins
-      new globalThis.Headers(),
+      new globalThis.Headers() as any,
     )
   }
 
@@ -103,7 +103,7 @@ export function checkMockRateLimitError(
           string,
           string,
         ][],
-      ),
+      ) as any,
     )
     return error
   }
@@ -123,7 +123,7 @@ export function checkMockRateLimitError(
           string,
           string,
         ][],
-      ),
+      ) as any,
     )
     return error
   }

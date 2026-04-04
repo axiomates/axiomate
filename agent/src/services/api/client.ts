@@ -70,7 +70,7 @@ import {
  * 4. Fallback region (us-east5)
  */
 
-function createStderrLogger(): ClientOptions['logger'] {
+function createStderrLogger(): any {
   return {
     error: (msg, ...args) =>
       // biome-ignore lint/suspicious/noConsole:: intentional console output -- SDK logger must use console
@@ -145,7 +145,7 @@ export async function getAnthropicClient({
     dangerouslyAllowBrowser: true,
     fetchOptions: getProxyFetchOptions({
       forAnthropicAPI: true,
-    }) as ClientOptions['fetchOptions'],
+    }) as any,
     ...(resolvedFetch && {
       fetch: resolvedFetch,
     }),
@@ -159,7 +159,7 @@ export async function getAnthropicClient({
         ? process.env.ANTHROPIC_SMALL_FAST_MODEL_AWS_REGION
         : getAWSRegion()
 
-    const bedrockArgs: ConstructorParameters<typeof AnthropicBedrock>[0] = {
+    const bedrockArgs: any = {
       ...ARGS,
       awsRegion,
       ...(isEnvTruthy(process.env.CLAUDE_CODE_SKIP_BEDROCK_AUTH) && {
@@ -210,7 +210,7 @@ export async function getAnthropicClient({
       }
     }
 
-    const foundryArgs: ConstructorParameters<typeof AnthropicFoundry>[0] = {
+    const foundryArgs: any = {
       ...ARGS,
       ...(azureADTokenProvider && { azureADTokenProvider }),
       ...(isDebugToStdErr() && { logger: createStderrLogger() }),
@@ -287,7 +287,7 @@ export async function getAnthropicClient({
               }),
         })
 
-    const vertexArgs: ConstructorParameters<typeof AnthropicVertex>[0] = {
+    const vertexArgs: any = {
       ...ARGS,
       region: getVertexRegionForModel(model),
       googleAuth,
@@ -298,7 +298,7 @@ export async function getAnthropicClient({
   }
 
   // Determine authentication method based on available tokens
-  const clientConfig: ConstructorParameters<typeof Anthropic>[0] = {
+  const clientConfig: any = {
     apiKey: isClaudeAISubscriber() ? null : apiKey || getAnthropicApiKey(),
     authToken: isClaudeAISubscriber()
       ? getClaudeAIOAuthTokens()?.accessToken
@@ -356,9 +356,9 @@ function getCustomHeaders(): Record<string, string> {
 export const CLIENT_REQUEST_ID_HEADER = 'x-client-request-id'
 
 function buildFetch(
-  fetchOverride: ClientOptions['fetch'],
+  fetchOverride: any,
   source: string | undefined,
-): ClientOptions['fetch'] {
+): any {
   // eslint-disable-next-line eslint-plugin-n/no-unsupported-features/node-builtins
   const inner = fetchOverride ?? globalThis.fetch
   // Only send to the first-party API — Bedrock/Vertex/Foundry don't log it

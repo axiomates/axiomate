@@ -27,6 +27,8 @@ import type {
   HookResultMessage,
   Message,
   PartialCompactDirection,
+  StreamEvent,
+  SystemAPIErrorMessage,
   SystemCompactBoundaryMessage,
   SystemMessage,
   UserMessage,
@@ -171,7 +173,7 @@ export function stripImagesFromMessages(messages: Message[]): Message[] {
             toolHasMedia = true
             return { type: 'text' as const, text: '[image]' }
           }
-          if (item.type === 'document') {
+          if ((item as any).type === 'document') {
             toolHasMedia = true
             return { type: 'text' as const, text: '[document]' }
           }
@@ -1328,7 +1330,7 @@ async function streamCompactSummary({
       let next = await streamIter.next()
 
       while (!next.done) {
-        const event = next.value
+        const event = next.value as StreamEvent | AssistantMessage | SystemAPIErrorMessage
 
         if (
           !hasStartedStreaming &&

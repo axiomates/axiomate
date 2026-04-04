@@ -14,7 +14,7 @@ import { isLocalShellTask } from './guards.js'
 type SetAppStateFn = (updater: (prev: AppState) => AppState) => void
 
 export function killTask(taskId: string, setAppState: SetAppStateFn): void {
-  updateTaskState(taskId, setAppState, task => {
+  updateTaskState(taskId, setAppState, (task: any) => {
     if (task.status !== 'running' || !isLocalShellTask(task)) {
       return task
     }

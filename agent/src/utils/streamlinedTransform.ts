@@ -137,7 +137,7 @@ export function createStreamlinedTransformer(): (
   ): StdoutMessage | null {
     switch (message.type) {
       case 'assistant': {
-        const content = message.message.content
+        const content = (message as any).message.content
         const text = Array.isArray(content)
           ? extractTextContent(content, '\n').trim()
           : ''

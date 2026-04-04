@@ -1009,7 +1009,7 @@ export function activateConditionalSkillsForPaths(
       continue
     }
 
-    const skillIgnore = ignore().add(skill.paths)
+    const skillIgnore = (ignore as any)().add(skill.paths)
     for (const filePath of filePaths) {
       const relativePath = isAbsolute(filePath)
         ? relative(cwd, filePath)

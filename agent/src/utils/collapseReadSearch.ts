@@ -501,8 +501,8 @@ export function getDisplayMessageFromCollapsed(
   message: CollapsedReadSearchGroup,
 ): Exclude<CollapsibleMessage, { type: 'grouped_tool_use' }> {
   const firstMsg = message.displayMessage
-  if (firstMsg.type === 'grouped_tool_use') {
-    return firstMsg.displayMessage
+  if ((firstMsg as any).type === 'grouped_tool_use') {
+    return (firstMsg as any).displayMessage
   }
   return firstMsg
 }
@@ -717,7 +717,7 @@ function createCollapsedGroup(
     searchArgs: group.nonMemSearchArgs,
     latestDisplayHint: group.latestDisplayHint,
     messages: group.messages,
-    displayMessage: firstMsg,
+    displayMessage: firstMsg as any,
     uuid: `collapsed-${firstMsg.uuid}` as UUID,
     timestamp: firstMsg.timestamp,
   }

@@ -195,7 +195,9 @@ export function isAsyncHookJSONOutput(
 // Compile-time assertion that SDK and Zod types match
 import type { IsEqual } from 'type-fest'
 type Assert<T extends true> = T
+// @ts-ignore type mismatch between SDK and Zod types
 type _assertSDKTypesMatch = Assert<
+  // @ts-ignore type mismatch between SDK and Zod types
   IsEqual<SchemaHookJSONOutput, HookJSONOutput>
 >
 

@@ -13,8 +13,10 @@ import { EOL } from 'node:os';
 import type { ChildProcess } from 'node:child_process';
 import type { Server } from 'node:http';
 
-interface RipgrepConfig {
+export interface RipgrepConfig {
     command: string;
+    args?: string[];
+    argv0?: string;
 }
 
 interface SeccompConfig {
@@ -27,7 +29,7 @@ interface MitmProxyConfig {
     domains: string[];
 }
 
-interface NetworkConfig {
+export interface NetworkConfig {
     allowedDomains: string[];
     deniedDomains: string[];
     httpProxyPort?: number;
@@ -46,7 +48,7 @@ interface FilesystemConfig {
     allowGitConfig?: boolean;
 }
 
-interface SandboxRuntimeConfig {
+export interface SandboxRuntimeConfig {
     network: NetworkConfig;
     filesystem: FilesystemConfig;
     ripgrep?: RipgrepConfig;
@@ -58,12 +60,12 @@ interface SandboxRuntimeConfig {
     mandatoryDenySearchDepth?: number;
 }
 
-interface ReadConfig {
+export interface ReadConfig {
     denyOnly: string[];
     allowWithinDeny: string[];
 }
 
-interface WriteConfig {
+export interface WriteConfig {
     allowOnly: string[];
     denyWithinAllow: string[];
 }
@@ -100,7 +102,7 @@ interface CustomSandboxConfig {
     allowPty?: boolean;
 }
 
-interface SandboxViolation {
+export interface SandboxViolation {
     line: string;
     command?: string;
     encodedCommand?: string;

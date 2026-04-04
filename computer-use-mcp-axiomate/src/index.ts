@@ -68,3 +68,6 @@ export {
   validateClickTarget,
 } from "./pixelCompare.js";
 export type { CropRawPatchFn, PixelCompareResult } from "./pixelCompare.js";
+
+/** Permission mode for Chrome bridge integration */
+export type PermissionMode = 'ask' | 'skip_all_permission_checks' | 'follow_a_plan';

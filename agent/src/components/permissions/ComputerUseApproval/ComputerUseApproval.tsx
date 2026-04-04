@@ -1,7 +1,6 @@
 import { c as _c } from "react/compiler-runtime";
-import { getSentinelCategory } from 'computer-use-mcp-axiomate/sentinelApps';
-import type { CuPermissionRequest, CuPermissionResponse } from 'computer-use-mcp-axiomate/types';
-import { DEFAULT_GRANT_FLAGS } from 'computer-use-mcp-axiomate/types';
+import { getSentinelCategory, DEFAULT_GRANT_FLAGS } from 'computer-use-mcp-axiomate';
+import type { CuPermissionRequest, CuPermissionResponse } from 'computer-use-mcp-axiomate';
 import figures from 'figures';
 import * as React from 'react';
 import { useMemo, useState } from 'react';

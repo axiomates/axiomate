@@ -92,7 +92,7 @@ export async function handleUrlSchemeLaunch(): Promise<number | null> {
   }
 
   try {
-    const { waitForUrlEvent } = await import('url-handler-napi')
+    const { waitForUrlEvent } = await import('url-handler-mac-napi-axiomate')
     const url = waitForUrlEvent(5000)
     if (!url) {
       return null

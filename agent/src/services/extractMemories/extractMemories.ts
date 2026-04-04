@@ -490,7 +490,7 @@ export function initExtractMemories(): void {
       if (memoryPaths.length > 0) {
         const msg = createMemorySavedMessage(memoryPaths)
         if (feature('TEAMMEM')) {
-          msg.teamCount = teamCount
+          ;(msg as any).teamCount = teamCount
         }
         appendSystemMessage?.(msg)
       }

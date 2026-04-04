@@ -1234,13 +1234,13 @@ function runHeadlessStreaming(
         crumb.message.content.includes(`<${LOCAL_COMMAND_STDOUT_TAG}>`)
       ) {
         output.enqueue({
-          type: 'user',
+          type: 'user' as const,
           message: crumb.message,
           session_id: getSessionId(),
           parent_tool_use_id: null,
           uuid: crumb.uuid,
           timestamp: crumb.timestamp,
-          isReplay: true,
+          isReplay: true as const,
         } satisfies SDKUserMessageReplay)
       }
     }
@@ -1648,8 +1648,8 @@ function runHeadlessStreaming(
       ) {
         config = {
           type: 'stdio' as const,
-          command: connection.config.command,
-          args: connection.config.args,
+          command: (connection.config as any).command,
+          args: (connection.config as any).args,
         }
       }
       const serverTools =
@@ -1970,12 +1970,12 @@ function runHeadlessStreaming(
             for (const c of batch) {
               if (c.uuid && c.uuid !== command.uuid) {
                 output.enqueue({
-                  type: 'user',
+                  type: 'user' as const,
                   message: { role: 'user', content: c.value },
                   session_id: getSessionId(),
                   parent_tool_use_id: null,
                   uuid: c.uuid,
-                  isReplay: true,
+                  isReplay: true as const,
                 } satisfies SDKUserMessageReplay)
               }
             }

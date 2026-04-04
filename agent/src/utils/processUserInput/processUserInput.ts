@@ -253,10 +253,10 @@ export async function processUserInput({
               ...hookResult.message.attachment,
               content: applyTruncation(hookResult.message.attachment.content),
             },
-          })
+          } as any)
           break
         default:
-          result.messages.push(hookResult.message)
+          result.messages.push(hookResult.message as any)
           break
       }
     }
@@ -555,12 +555,12 @@ async function processUserInputBase(
     const trimmedInput = inputString.trim()
 
     const agentMention = attachmentMessages.find(
-      (m): m is AttachmentMessage<AgentMentionAttachment> =>
+      (m): m is AttachmentMessage =>
         m.attachment.type === 'agent_mention',
     )
 
     if (agentMention) {
-      const agentMentionString = `@agent-${agentMention.attachment.agentType}`
+      const agentMentionString = `@agent-${(agentMention.attachment as any).agentType}`
       const isSubagentOnly = trimmedInput === agentMentionString
       const isPrefix =
         trimmedInput.startsWith(agentMentionString) && !isSubagentOnly

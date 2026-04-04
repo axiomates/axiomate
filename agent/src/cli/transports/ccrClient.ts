@@ -222,7 +222,7 @@ export function clearStreamAccumulatorForMessage(
   }
 }
 
-type RequestResult = { ok: true } | { ok: false; retryAfterMs?: number }
+type RequestResult = { ok: true; retryAfterMs?: number } | { ok: false; retryAfterMs?: number }
 
 type WorkerEvent = {
   payload: EventPayload
@@ -745,7 +745,7 @@ export class CCRClient {
     }
     await this.flushStreamEventBuffer()
     if (message.type === 'assistant') {
-      clearStreamAccumulatorForMessage(this.streamTextAccumulator, message)
+      clearStreamAccumulatorForMessage(this.streamTextAccumulator, message as any)
     }
     await this.eventUploader.enqueue(this.toClientEvent(message))
   }

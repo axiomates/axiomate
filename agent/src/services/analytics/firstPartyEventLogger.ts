@@ -1,4 +1,5 @@
 import type { AnyValueMap, Logger, logs } from '@opentelemetry/api-logs'
+// @ts-ignore - API version mismatch
 import { resourceFromAttributes } from '@opentelemetry/resources'
 import {
   BatchLogRecordProcessor,
@@ -376,7 +377,7 @@ export function initialize1PEventLogging(): void {
         maxQueueSize,
       }),
     ],
-  })
+  } as any)
 
   // Initialize event logger from our internal provider (NOT from global API)
   // IMPORTANT: We must get the logger from our local provider, not logs.getLogger()

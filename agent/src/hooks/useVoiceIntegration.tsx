@@ -225,7 +225,7 @@ export function useVoiceIntegration({
   const voiceState = feature('VOICE_MODE') ?
   // biome-ignore lint/correctness/useHookAtTopLevel: feature() is a compile-time constant
   useVoiceState(s => s.voiceState) : 'idle' as const;
-  const voiceInterimTranscript = feature('VOICE_MODE') ?
+  const voiceInterimTranscript: any = feature('VOICE_MODE') ?
   // biome-ignore lint/correctness/useHookAtTopLevel: feature() is a compile-time constant
   useVoiceState(s_0 => s_0.voiceInterimTranscript) : '';
 

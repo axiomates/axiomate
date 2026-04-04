@@ -53,7 +53,7 @@ export function satisfies(version: string, range: string): boolean {
 
 export function order(a: string, b: string): -1 | 0 | 1 {
   if (typeof Bun !== 'undefined') {
-    return Bun.semver.order(a, b)
+    return Bun.semver.order(a, b) as -1 | 0 | 1
   }
   return getNpmSemver().compare(a, b, { loose: true })
 }

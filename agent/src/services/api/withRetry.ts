@@ -522,7 +522,7 @@ function getRetryAfter(error: unknown): string | null {
       'retry-after'
     ] ||
       // eslint-disable-next-line eslint-plugin-n/no-unsupported-features/node-builtins
-      ((error as APIError).headers as Headers)?.get?.('retry-after')) ??
+      ((error as APIError).headers as any)?.get?.('retry-after')) ??
     null
   )
 }
@@ -729,7 +729,7 @@ function shouldRetry(error: APIError): boolean {
   }
 
   // Note this is not a standard header.
-  const shouldRetryHeader = error.headers?.get('x-should-retry')
+  const shouldRetryHeader = (error.headers as any)?.get('x-should-retry')
 
   // If the server explicitly says whether or not to retry, obey.
   // For Max and Pro users, should-retry is true, but in several hours, so we shouldn't.
@@ -812,7 +812,7 @@ function getRetryAfterMs(error: APIError): number | null {
 }
 
 function getRateLimitResetDelayMs(error: APIError): number | null {
-  const resetHeader = error.headers?.get?.('anthropic-ratelimit-unified-reset')
+  const resetHeader = (error.headers as any)?.get?.('anthropic-ratelimit-unified-reset')
   if (!resetHeader) return null
   const resetUnixSec = Number(resetHeader)
   if (!Number.isFinite(resetUnixSec)) return null

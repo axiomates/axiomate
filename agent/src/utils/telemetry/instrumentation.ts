@@ -3,12 +3,8 @@ import { logs } from '@opentelemetry/api-logs'
 // OTLP/Prometheus exporters are dynamically imported inside the protocol
 // switch statements below. A process uses at most one protocol variant per
 // signal, but static imports would load all 6 (~1.2MB) on every startup.
-import {
-  envDetector,
-  hostDetector,
-  osDetector,
-  resourceFromAttributes,
-} from '@opentelemetry/resources'
+// @ts-ignore - API version mismatch
+import { envDetector, hostDetector, osDetector, resourceFromAttributes } from '@opentelemetry/resources'
 import {
   BatchLogRecordProcessor,
   ConsoleLogRecordExporter,
@@ -394,7 +390,7 @@ async function initializeBetaTracing(
         scheduledDelayMillis: DEFAULT_LOGS_EXPORT_INTERVAL_MS,
       }),
     ],
-  })
+  } as any)
 
   logs.setGlobalLoggerProvider(loggerProvider)
   setLoggerProvider(loggerProvider)
@@ -487,11 +483,11 @@ export async function initializeTelemetry() {
 
   // Use OpenTelemetry detectors
   const osResource = resourceFromAttributes(
-    osDetector.detect().attributes || {},
+    (osDetector.detect() as any).attributes || {},
   )
 
   // Extract only host.arch from hostDetector
-  const hostDetected = hostDetector.detect()
+  const hostDetected = hostDetector.detect() as any
   const hostArchAttributes = hostDetected.attributes?.[SEMRESATTRS_HOST_ARCH]
     ? {
         [SEMRESATTRS_HOST_ARCH]: hostDetected.attributes[SEMRESATTRS_HOST_ARCH],
@@ -500,7 +496,7 @@ export async function initializeTelemetry() {
   const hostArchResource = resourceFromAttributes(hostArchAttributes)
 
   const envResource = resourceFromAttributes(
-    envDetector.detect().attributes || {},
+    (envDetector.detect() as any).attributes || {},
   )
 
   // Merge resources - later resources take precedence
@@ -592,7 +588,7 @@ export async function initializeTelemetry() {
               ),
             }),
         ),
-      })
+      } as any)
 
       // Register the logger provider globally
       logs.setGlobalLoggerProvider(loggerProvider)

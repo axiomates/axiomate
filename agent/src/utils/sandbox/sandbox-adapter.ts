@@ -914,7 +914,7 @@ export interface ISandboxManager {
     abortSignal?: AbortSignal,
   ): Promise<string>
   cleanupAfterCommand(): void
-  getSandboxViolationStore(): SandboxViolationStore
+  getSandboxViolationStore(): InstanceType<typeof SandboxViolationStore>
   annotateStderrWithSandboxFailures(command: string, stderr: string): string
   getLinuxGlobPatternWarnings(): string[]
   refreshConfig(): void

@@ -621,7 +621,7 @@ export function checkPathSafetyForAutoEdit(
   path: string,
   precomputedPathsToCheck?: readonly string[],
 ):
-  | { safe: true }
+  | { safe: true; message?: string; classifierApprovable?: boolean }
   | { safe: false; message: string; classifierApprovable: boolean } {
   // Get all paths to check (original + symlink resolved paths)
   const pathsToCheck =
@@ -986,7 +986,7 @@ export function matchingRuleForInput(
       return adjustedPattern
     })
 
-    const ig = ignore().add(patterns)
+    const ig = (ignore as any)().add(patterns)
 
     // Use cross-platform relative path helper for POSIX-style patterns
     const relativePathStr = relativePath(

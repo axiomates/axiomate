@@ -105,7 +105,7 @@ export async function hasImageInClipboard(): Promise<boolean> {
     // when the module/export is missing. Catch a throw too: it would surface
     // as an unhandled rejection in useClipboardImageHint's setTimeout.
     try {
-      const { getNativeModule } = await import('image-processor-napi')
+      const { getNativeModule } = await import('image-processor-axiomate') as any
       const hasImage = getNativeModule()?.hasClipboardImage
       if (hasImage) {
         return hasImage()
@@ -134,7 +134,7 @@ export async function getImageFromClipboard(): Promise<ImageWithDimensions | nul
     getFeatureValue_CACHED_MAY_BE_STALE('tengu_collage_kaleidoscope', true)
   ) {
     try {
-      const { getNativeModule } = await import('image-processor-napi')
+      const { getNativeModule } = await import('image-processor-axiomate') as any
       const readClipboard = getNativeModule()?.readClipboardImage
       if (!readClipboard) {
         throw new Error('native clipboard reader unavailable')

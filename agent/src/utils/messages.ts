@@ -1027,7 +1027,7 @@ export function reorderMessagesInUI(
 
 function isHookAttachmentMessage(
   message: Message,
-): message is AttachmentMessage<HookAttachment> {
+): message is AttachmentMessage {
   return (
     message.type === 'attachment' &&
     (message.attachment.type === 'hook_blocking_error' ||
@@ -1066,12 +1066,12 @@ function getResolvedHookCount(
   const uniqueHookNames = new Set(
     messages
       .filter(
-        (_): _ is AttachmentMessage<HookAttachmentWithName> =>
+        (_): _ is AttachmentMessage =>
           isHookAttachmentMessage(_) &&
           _.attachment.toolUseID === toolUseID &&
           _.attachment.hookEvent === hookEvent,
       )
-      .map(_ => _.attachment.hookName),
+      .map(_ => (_.attachment as any).hookName),
   )
   return uniqueHookNames.size
 }
@@ -1464,7 +1464,7 @@ export function getToolUseIDs(
   return new Set(
     normalizedMessages
       .filter(
-        (_): _ is NormalizedAssistantMessage<BetaToolUseBlock> =>
+        (_): _ is NormalizedAssistantMessage =>
           _.type === 'assistant' &&
           Array.isArray(_.message.content) &&
           _.message.content[0]?.type === 'tool_use',
@@ -2559,7 +2559,7 @@ function smooshIntoToolResult(
   // results) and matches the legacy smoosh output shape.
   if (allText && (existing === undefined || typeof existing === 'string')) {
     const joined = [
-      (existing ?? '').trim(),
+      ((existing as any) ?? '').trim(),
       ...blocks.map(b => (b as TextBlockParam).text.trim()),
     ]
       .filter(Boolean)

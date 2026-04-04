@@ -60,3 +60,9 @@ export const EXIT_REASONS = [
   'other',
   'bypass_permissions_disabled',
 ] as const
+export type SDKResultSuccess = any;
+export type SDKMessage = any;
+export type SDKResultMessage = any;
+export type SDKSessionInfo = any;
+export type SDKUserMessage = any;
+export type SDKPartialAssistantMessage = any;

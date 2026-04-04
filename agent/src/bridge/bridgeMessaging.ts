@@ -225,7 +225,7 @@ export type ServerControlRequestHandlers = {
   onSetMaxThinkingTokens?: (maxTokens: number | null) => void
   onSetPermissionMode?: (
     mode: PermissionMode,
-  ) => { ok: true } | { ok: false; error: string }
+  ) => { ok: true; error?: string } | { ok: false; error: string }
 }
 
 const OUTBOUND_ONLY_ERROR =
