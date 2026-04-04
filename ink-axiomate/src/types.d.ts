@@ -22,7 +22,7 @@ declare module 'react/compiler-runtime' {
   export function c(size: number): Array<any>
 }
 
-declare module 'react-reconciler' {
+declare module 'react-reconciler-axiomate' {
   import type { ReactNode } from 'react'
   function createReconciler<
     Type = any, Props = any, Container = any, Instance = any, TextInstance = any,
@@ -34,7 +34,7 @@ declare module 'react-reconciler' {
   export type FiberRoot = any
 }
 
-declare module 'react-reconciler/constants.js' {
+declare module 'react-reconciler-axiomate/constants.js' {
   export const ConcurrentRoot: number
   export const LegacyRoot: number
   export const ContinuousEventPriority: number

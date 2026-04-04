@@ -3,8 +3,8 @@ import { closeSync, constants as fsConstants, openSync, readSync, writeSync } fr
 import noop from 'lodash-es/noop.js';
 import throttle from 'lodash-es/throttle.js';
 import React, { type ReactNode } from 'react';
-import type { FiberRoot } from 'react-reconciler';
-import { ConcurrentRoot } from 'react-reconciler/constants.js';
+import type { FiberRoot } from 'react-reconciler-axiomate';
+import { ConcurrentRoot } from 'react-reconciler-axiomate/constants.js';
 import { onExit } from 'signal-exit';
 import { getYogaCounters } from 'yoga-axiomate';
 import { format } from 'util';

@@ -1,0 +1,10 @@
+{
+  "name": "react-reconciler-axiomate",
+  "version": "0.1.0",
+  "description": "React reconciler with useEffectEvent support (from claude-code internal build)",
+  "main": "index.js",
+  "peerDependencies": {
+    "react": "^19.0.0"
+  },
+  "license": "MIT"
+}
