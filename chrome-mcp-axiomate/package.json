@@ -1,0 +1,24 @@
+{
+  "name": "chrome-mcp-axiomate",
+  "version": "0.1.0",
+  "description": "Chrome browser MCP integration (from @ant/claude-for-chrome-mcp)",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.1",
+    "ws": "^8.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.0"
+  }
+}

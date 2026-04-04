@@ -1,7 +1,7 @@
 import {
   type ClaudeForChromeContext,
   createClaudeForChromeMcpServer,
-} from '@ant/claude-for-chrome-mcp'
+} from 'chrome-mcp-axiomate'
 import type { Logger, PermissionMode } from 'computer-use-mcp-axiomate'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { format } from 'util'
@@ -160,7 +160,7 @@ export function createChromeContext(
     // users never see the tools advertised. Three independent gates.
     //
     // Types inlined: AnthropicMessagesRequest/Response live in
-    // @ant/claude-for-chrome-mcp@0.4.0 which isn't published yet. CI installs
+    // chrome-mcp-axiomate@0.4.0 which isn't published yet. CI installs
     // 0.3.0. The callAnthropicMessages field is also 0.4.0-only, but spreading
     // an extra property into ClaudeForChromeContext is fine against either
     // version — 0.3.0 sees an unknown field (allowed in spread), 0.4.0 sees a

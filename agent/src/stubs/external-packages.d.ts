@@ -1,19 +1,6 @@
 // Stub declarations for packages not available on npm.
-
-// @anthropic-ai/claude-agent-sdk — Anthropic internal SDK, not published.
-declare module '@anthropic-ai/claude-agent-sdk' {
-  export const version: string
-  export function createClient(options?: any): any
-  export type AgentSDKClient = any
-  export type PermissionMode = any
-}
-
-// @ant/claude-for-chrome-mcp — Anthropic browser extension MCP.
-declare module '@ant/claude-for-chrome-mcp' {
-  export function createClaudeForChromeMcpServer(options?: any): any
-  export type ClaudeForChromeContext = any
-  export const BROWSER_TOOLS: Array<{ name: string; [key: string]: any }>
-}
+// @anthropic-ai/claude-agent-sdk — removed (PermissionMode now imported from types/permissions.ts)
+// @ant/claude-for-chrome-mcp — removed (forked as chrome-mcp-axiomate workspace package)
 
 // bun:ffi — Bun's FFI module, not available in Node.
 declare module 'bun:ffi' {
