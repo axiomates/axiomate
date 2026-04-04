@@ -331,6 +331,21 @@ function isSupportedPlatform(): boolean {
         // WSL1 doesn't support bubblewrap
         return getWslVersion() !== '1';
     }
+    // Windows: no kernel-level sandbox available without admin or driver install.
+    //
+    // Evaluated and rejected:
+    //   - Job Objects: resource limits only, no filesystem/network isolation
+    //   - Low Integrity Tokens: too coarse (process-level, no per-path control),
+    //     requires persistent icacls ACL changes that must be cleaned up
+    //   - AppContainer: per-path control possible, but requires native Win32 API
+    //     (Rust NAPI or C# helper) — future consideration
+    //   - Sandboxie: full isolation, but requires user to install kernel driver
+    //   - Windows Sandbox: Hyper-V VM, too heavy for per-command use
+    //
+    // Unlike bwrap (Linux) and sandbox-exec (macOS), Windows has no unprivileged
+    // command-line tool that can mount a read-only filesystem overlay per-process
+    // without modifying the host. Until a viable approach is found, Windows relies
+    // on the permission system (user approval) as the sole safety boundary.
     return platform === 'macos';
 }
 function isSandboxingEnabled(): boolean {
