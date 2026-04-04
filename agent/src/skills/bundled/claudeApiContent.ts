@@ -1,32 +1,21 @@
 // Content for the claude-api bundled skill.
-// Each .md file is inlined as a string at build time via Bun's text loader.
+// Originally inlined as strings at build time via Bun's text loader.
+// Under Node we read them from disk at runtime.
 
-import csharpClaudeApi from './claude-api/csharp/claude-api.md'
-import curlExamples from './claude-api/curl/examples.md'
-import goClaudeApi from './claude-api/go/claude-api.md'
-import javaClaudeApi from './claude-api/java/claude-api.md'
-import phpClaudeApi from './claude-api/php/claude-api.md'
-import pythonAgentSdkPatterns from './claude-api/python/agent-sdk/patterns.md'
-import pythonAgentSdkReadme from './claude-api/python/agent-sdk/README.md'
-import pythonClaudeApiBatches from './claude-api/python/claude-api/batches.md'
-import pythonClaudeApiFilesApi from './claude-api/python/claude-api/files-api.md'
-import pythonClaudeApiReadme from './claude-api/python/claude-api/README.md'
-import pythonClaudeApiStreaming from './claude-api/python/claude-api/streaming.md'
-import pythonClaudeApiToolUse from './claude-api/python/claude-api/tool-use.md'
-import rubyClaudeApi from './claude-api/ruby/claude-api.md'
-import skillPrompt from './claude-api/SKILL.md'
-import sharedErrorCodes from './claude-api/shared/error-codes.md'
-import sharedLiveSources from './claude-api/shared/live-sources.md'
-import sharedModels from './claude-api/shared/models.md'
-import sharedPromptCaching from './claude-api/shared/prompt-caching.md'
-import sharedToolUseConcepts from './claude-api/shared/tool-use-concepts.md'
-import typescriptAgentSdkPatterns from './claude-api/typescript/agent-sdk/patterns.md'
-import typescriptAgentSdkReadme from './claude-api/typescript/agent-sdk/README.md'
-import typescriptClaudeApiBatches from './claude-api/typescript/claude-api/batches.md'
-import typescriptClaudeApiFilesApi from './claude-api/typescript/claude-api/files-api.md'
-import typescriptClaudeApiReadme from './claude-api/typescript/claude-api/README.md'
-import typescriptClaudeApiStreaming from './claude-api/typescript/claude-api/streaming.md'
-import typescriptClaudeApiToolUse from './claude-api/typescript/claude-api/tool-use.md'
+import { readFileSync } from 'fs'
+import { dirname, join } from 'path'
+import { fileURLToPath } from 'url'
+
+const __dir = dirname(fileURLToPath(import.meta.url))
+const mdDir = join(__dir, 'claude-api')
+
+function readMd(relativePath: string): string {
+  try {
+    return readFileSync(join(mdDir, relativePath), 'utf-8')
+  } catch {
+    return ''
+  }
+}
 
 // @[MODEL LAUNCH]: Update the model IDs/names below. These are substituted into {{VAR}}
 // placeholders in the .md files at runtime before the skill prompt is sent.
@@ -44,32 +33,32 @@ export const SKILL_MODEL_VARS = {
   PREV_SONNET_ID: 'claude-sonnet-4-5',
 } satisfies Record<string, string>
 
-export const SKILL_PROMPT: string = skillPrompt
+export const SKILL_PROMPT: string = readMd('SKILL.md')
 
 export const SKILL_FILES: Record<string, string> = {
-  'csharp/claude-api.md': csharpClaudeApi,
-  'curl/examples.md': curlExamples,
-  'go/claude-api.md': goClaudeApi,
-  'java/claude-api.md': javaClaudeApi,
-  'php/claude-api.md': phpClaudeApi,
-  'python/agent-sdk/README.md': pythonAgentSdkReadme,
-  'python/agent-sdk/patterns.md': pythonAgentSdkPatterns,
-  'python/claude-api/README.md': pythonClaudeApiReadme,
-  'python/claude-api/batches.md': pythonClaudeApiBatches,
-  'python/claude-api/files-api.md': pythonClaudeApiFilesApi,
-  'python/claude-api/streaming.md': pythonClaudeApiStreaming,
-  'python/claude-api/tool-use.md': pythonClaudeApiToolUse,
-  'ruby/claude-api.md': rubyClaudeApi,
-  'shared/error-codes.md': sharedErrorCodes,
-  'shared/live-sources.md': sharedLiveSources,
-  'shared/models.md': sharedModels,
-  'shared/prompt-caching.md': sharedPromptCaching,
-  'shared/tool-use-concepts.md': sharedToolUseConcepts,
-  'typescript/agent-sdk/README.md': typescriptAgentSdkReadme,
-  'typescript/agent-sdk/patterns.md': typescriptAgentSdkPatterns,
-  'typescript/claude-api/README.md': typescriptClaudeApiReadme,
-  'typescript/claude-api/batches.md': typescriptClaudeApiBatches,
-  'typescript/claude-api/files-api.md': typescriptClaudeApiFilesApi,
-  'typescript/claude-api/streaming.md': typescriptClaudeApiStreaming,
-  'typescript/claude-api/tool-use.md': typescriptClaudeApiToolUse,
+  'csharp/claude-api.md': readMd('csharp/claude-api.md'),
+  'curl/examples.md': readMd('curl/examples.md'),
+  'go/claude-api.md': readMd('go/claude-api.md'),
+  'java/claude-api.md': readMd('java/claude-api.md'),
+  'php/claude-api.md': readMd('php/claude-api.md'),
+  'python/agent-sdk/README.md': readMd('python/agent-sdk/README.md'),
+  'python/agent-sdk/patterns.md': readMd('python/agent-sdk/patterns.md'),
+  'python/claude-api/README.md': readMd('python/claude-api/README.md'),
+  'python/claude-api/batches.md': readMd('python/claude-api/batches.md'),
+  'python/claude-api/files-api.md': readMd('python/claude-api/files-api.md'),
+  'python/claude-api/streaming.md': readMd('python/claude-api/streaming.md'),
+  'python/claude-api/tool-use.md': readMd('python/claude-api/tool-use.md'),
+  'ruby/claude-api.md': readMd('ruby/claude-api.md'),
+  'shared/error-codes.md': readMd('shared/error-codes.md'),
+  'shared/live-sources.md': readMd('shared/live-sources.md'),
+  'shared/models.md': readMd('shared/models.md'),
+  'shared/prompt-caching.md': readMd('shared/prompt-caching.md'),
+  'shared/tool-use-concepts.md': readMd('shared/tool-use-concepts.md'),
+  'typescript/agent-sdk/README.md': readMd('typescript/agent-sdk/README.md'),
+  'typescript/agent-sdk/patterns.md': readMd('typescript/agent-sdk/patterns.md'),
+  'typescript/claude-api/README.md': readMd('typescript/claude-api/README.md'),
+  'typescript/claude-api/batches.md': readMd('typescript/claude-api/batches.md'),
+  'typescript/claude-api/files-api.md': readMd('typescript/claude-api/files-api.md'),
+  'typescript/claude-api/streaming.md': readMd('typescript/claude-api/streaming.md'),
+  'typescript/claude-api/tool-use.md': readMd('typescript/claude-api/tool-use.md'),
 }
