@@ -1,2 +1,6 @@
-// Auto-generated stub
-export const logRemoteSkillLoaded: any = undefined as any;
+// Stub: skill search telemetry — loaded behind require() in SkillTool.ts.
+export function logRemoteSkillLoaded(
+  _info: Record<string, unknown>,
+): void {
+  // no-op
+}

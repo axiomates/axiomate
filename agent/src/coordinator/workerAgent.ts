@@ -1,2 +1,6 @@
-// Auto-generated stub
-export const getCoordinatorAgents: any = undefined as any;
+// Stub: workerAgent — loaded behind require() in builtInAgents.ts.
+import type { AgentDefinition } from '../tools/AgentTool/loadAgentsDir.js'
+
+export function getCoordinatorAgents(): AgentDefinition[] {
+  return []
+}

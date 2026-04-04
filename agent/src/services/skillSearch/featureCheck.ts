@@ -1,2 +1,4 @@
-// Auto-generated stub
-export const isSkillSearchEnabled: any = undefined as any;
+// Stub: skill search feature check — loaded behind require() in SkillTool.ts and prompts.ts.
+export function isSkillSearchEnabled(): boolean {
+  return false
+}

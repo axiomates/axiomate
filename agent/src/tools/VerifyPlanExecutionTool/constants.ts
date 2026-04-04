@@ -1,2 +1,2 @@
-// Auto-generated stub
-export const VERIFY_PLAN_EXECUTION_TOOL_NAME: any = undefined as any;
+// Stub: VerifyPlanExecutionTool constants — loaded behind feature guard in classifierDecision.ts.
+export const VERIFY_PLAN_EXECUTION_TOOL_NAME = 'verify_plan_execution'

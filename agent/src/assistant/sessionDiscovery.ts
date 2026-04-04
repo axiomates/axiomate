@@ -1,3 +1,11 @@
-// Auto-generated stub
-export type AssistantSession = any;
-export const discoverAssistantSessions: any = undefined as any;
+// Stub: sessionDiscovery — type-only import from dialogLaunchers.tsx.
+
+export interface AssistantSession {
+  id: string
+  name: string
+  createdAt?: string
+}
+
+export async function discoverAssistantSessions(): Promise<AssistantSession[]> {
+  return []
+}

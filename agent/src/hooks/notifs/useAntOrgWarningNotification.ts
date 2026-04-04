@@ -1,4 +1,5 @@
-// Auto-generated stub
-export function useAntOrgWarningNotification(...args: any[]): any {
-  return undefined;
+// Stub: useAntOrgWarningNotification — Anthropic-internal hook.
+// Loaded behind ("external" as string) === 'ant' check in REPL.tsx.
+export function useAntOrgWarningNotification(): void {
+  // no-op
 }
