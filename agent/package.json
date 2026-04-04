@@ -9,7 +9,7 @@
   },
   "scripts": {
     "build": "tsc",
-    "start": "node --import ./dist/runtime/register.js dist/entrypoints/cli.js",
+    "start": "bun dist/entrypoints/cli.js",
     "test": "vitest run"
   },
   "dependencies": {

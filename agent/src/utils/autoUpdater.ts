@@ -69,6 +69,9 @@ export type MaxVersionConfig = {
  * This approach keeps version comparison logic simple while maintaining traceability via the SHA.
  */
 export async function assertMinVersion(): Promise<void> {
+  // Axiomate: skip version gate — we don't use Anthropic's remote config
+  return
+
   if (process.env.NODE_ENV === 'test') {
     return
   }

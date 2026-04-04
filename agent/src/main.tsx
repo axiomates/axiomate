@@ -914,11 +914,6 @@ async function run(): Promise<CommanderCommand> {
   // not when displaying help. This avoids the need for env variable signaling.
   program.hook('preAction', async thisCommand => {
     profileCheckpoint('preAction_start');
-    // Await async subprocess loads started at module evaluation (lines 12-20).
-    // Nearly free — subprocesses complete during the ~135ms of imports above.
-    // Must resolve before init() which triggers the first settings read
-    // (applySafeConfigEnvironmentVariables → getSettingsForSource('policySettings')
-    // → isRemoteManagedSettingsEligible → sync keychain reads otherwise ~65ms).
     await Promise.all([ensureMdmSettingsLoaded(), ensureKeychainPrefetchCompleted()]);
     profileCheckpoint('preAction_after_mdm');
     await init();
