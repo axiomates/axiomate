@@ -14,6 +14,7 @@
     "url-handler-mac-napi-axiomate",
     "audio-capture-axiomate",
     "sandbox-axiomate",
+    "computer-use-mcp-axiomate",
     "agent"
   ]
 }

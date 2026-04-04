@@ -25,6 +25,7 @@
     "url-handler-mac-napi-axiomate": "*",
     "audio-capture-axiomate": "*",
     "sandbox-axiomate": "*",
+    "computer-use-mcp-axiomate": "*",
     "@anthropic-ai/sdk": "^0.39.0",
     "openai": "^4.0.0",
     "@commander-js/extra-typings": "^12.0.0",
