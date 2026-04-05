@@ -1,5 +1,5 @@
 import type { ToolUseBlock as BetaToolUseBlock } from '../services/api/streamTypes.js'
-import type { ToolResultBlockParam } from '@anthropic-ai/sdk/resources/messages/messages.mjs'
+import type { ToolResultBlockParam } from '../services/api/streamTypes.js'
 import type { Tools } from '../Tool.js'
 import type {
   GroupedToolUseMessage,

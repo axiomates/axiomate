@@ -1,5 +1,5 @@
 import { c as _c } from "react/compiler-runtime";
-import type { TextBlockParam } from '@anthropic-ai/sdk/resources/index.mjs';
+import type { TextBlockParam } from '../../services/api/streamTypes.js';
 import React, { useContext } from 'react';
 import { ERROR_MESSAGE_USER_ABORT } from '../../services/compact/compact.js';
 import { isRateLimitErrorMessage } from '../../services/rateLimitMessages.js';

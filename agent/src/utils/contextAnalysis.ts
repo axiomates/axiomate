@@ -2,7 +2,7 @@ import type { ContentBlock as BetaContentBlock } from '../services/api/streamTyp
 import type {
   ContentBlock,
   ContentBlockParam,
-} from '@anthropic-ai/sdk/resources/index.mjs'
+} from '../services/api/streamTypes.js'
 import { roughTokenCountEstimation as countTokens } from '../services/tokenEstimation.js'
 import type {
   AssistantMessage,

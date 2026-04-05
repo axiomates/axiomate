@@ -3,7 +3,7 @@ import type {
   Base64ImageSource,
   ContentBlockParam,
   ImageBlockParam,
-} from '@anthropic-ai/sdk/resources/messages.mjs'
+} from '../../services/api/streamTypes.js'
 import { randomUUID } from 'crypto'
 import type { QuerySource } from '../../constants/querySource.js'
 import { logEvent } from '../../services/analytics/index.js'

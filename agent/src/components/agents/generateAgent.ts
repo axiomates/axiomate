@@ -1,4 +1,4 @@
-import type { ContentBlock } from '@anthropic-ai/sdk/resources/index.mjs'
+import type { ContentBlock } from '../../services/api/streamTypes.js'
 import { getUserContext } from '../../context.js'
 import { queryModelWithoutStreaming } from '../../services/api/claude.js'
 import { getEmptyToolPermissionContext } from '../../Tool.js'

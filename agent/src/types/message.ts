@@ -15,7 +15,7 @@ import type {
   LLMMessage,
   StreamEvent as NeutralStreamEvent,
 } from '../services/api/streamTypes.js'
-import type { ContentBlockParam } from '@anthropic-ai/sdk/resources/index.mjs'
+import type { ContentBlockParam } from '../services/api/streamTypes.js'
 import type { UUID } from 'crypto'
 import type { PermissionMode } from './permissions.js'
 

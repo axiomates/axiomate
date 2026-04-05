@@ -11,235 +11,142 @@ import {
 } from '../adapters/anthropicRequestAdapter.js'
 
 // ---------------------------------------------------------------------------
-// blockParamToNeutral
+// blockParamToNeutral — now pass-through since field names match
 // ---------------------------------------------------------------------------
 
 describe('blockParamToNeutral', () => {
-  it('converts text block', () => {
-    expect(blockParamToNeutral({ type: 'text', text: 'hello' })).toEqual({
-      type: 'text',
-      text: 'hello',
-    })
+  it('passes through text block unchanged', () => {
+    const block = { type: 'text', text: 'hello', cache_control: { type: 'ephemeral' } }
+    expect(blockParamToNeutral(block)).toBe(block) // same reference
   })
 
-  it('strips cache_control from text block', () => {
-    const result = blockParamToNeutral({
-      type: 'text',
-      text: 'cached',
-      cache_control: { type: 'ephemeral' },
-    })
-    expect(result).toEqual({ type: 'text', text: 'cached' })
-    expect('cache_control' in result).toBe(false)
-  })
-
-  it('converts image block (base64 source)', () => {
-    expect(
-      blockParamToNeutral({
-        type: 'image',
-        source: { type: 'base64', data: 'abc123', media_type: 'image/png' },
-      }),
-    ).toEqual({ type: 'image', mediaType: 'image/png', data: 'abc123' })
-  })
-
-  it('converts tool_result block', () => {
-    expect(
-      blockParamToNeutral({
-        type: 'tool_result',
-        tool_use_id: 'toolu_01',
-        content: 'file contents',
-        is_error: false,
-      }),
-    ).toEqual({
-      type: 'tool_result',
-      toolUseId: 'toolu_01',
-      content: 'file contents',
-      isError: false,
-    })
-  })
-
-  it('converts tool_result with nested content blocks', () => {
-    const result = blockParamToNeutral({
-      type: 'tool_result',
-      tool_use_id: 'toolu_02',
-      content: [{ type: 'text', text: 'output' }],
-    })
-    expect(result).toMatchObject({
-      type: 'tool_result',
-      toolUseId: 'toolu_02',
-      content: [{ type: 'text', text: 'output' }],
-    })
-  })
-
-  it('converts tool_use block', () => {
-    expect(
-      blockParamToNeutral({
-        type: 'tool_use',
-        id: 'toolu_03',
-        name: 'Read',
-        input: { path: '/a' },
-      }),
-    ).toEqual({
-      type: 'tool_use',
-      id: 'toolu_03',
-      name: 'Read',
-      input: { path: '/a' },
-    })
-  })
-
-  it('converts thinking block', () => {
-    expect(
-      blockParamToNeutral({
-        type: 'thinking',
-        thinking: 'hmm',
-        signature: 'sig',
-      }),
-    ).toEqual({ type: 'thinking', thinking: 'hmm', signature: 'sig' })
-  })
-
-  it('converts unknown block type to empty text', () => {
-    expect(
-      blockParamToNeutral({ type: 'document', source: { type: 'base64' } }),
-    ).toEqual({ type: 'text', text: '' })
-  })
-})
-
-// ---------------------------------------------------------------------------
-// messageToNeutral
-// ---------------------------------------------------------------------------
-
-describe('messageToNeutral', () => {
-  it('converts user message with string content', () => {
-    expect(
-      messageToNeutral({ role: 'user', content: 'hello' }),
-    ).toEqual({ role: 'user', content: 'hello' })
-  })
-
-  it('converts user message with block array content', () => {
-    const result = messageToNeutral({
-      role: 'user',
-      content: [
-        { type: 'text', text: 'look at this' },
-        { type: 'tool_result', tool_use_id: 'toolu_01', content: 'ok' },
-      ],
-    })
-    expect(result.role).toBe('user')
-    expect(result.content).toHaveLength(2)
-    expect((result.content as any)[0]).toEqual({ type: 'text', text: 'look at this' })
-    expect((result.content as any)[1]).toMatchObject({
-      type: 'tool_result',
-      toolUseId: 'toolu_01',
-    })
-  })
-
-  it('converts assistant message with content blocks', () => {
-    const result = messageToNeutral({
-      role: 'assistant',
-      content: [
-        { type: 'text', text: 'I will read that' },
-        { type: 'tool_use', id: 'toolu_01', name: 'Read', input: {} },
-      ],
-    })
-    expect(result.role).toBe('assistant')
-    expect((result as any).content).toHaveLength(2)
-  })
-})
-
-// ---------------------------------------------------------------------------
-// blockParamToAnthropic (reverse)
-// ---------------------------------------------------------------------------
-
-describe('blockParamToAnthropic', () => {
-  it('converts neutral text → Anthropic text', () => {
-    expect(blockParamToAnthropic({ type: 'text', text: 'hi' })).toMatchObject({
-      type: 'text',
-      text: 'hi',
-    })
-  })
-
-  it('converts neutral image → Anthropic image', () => {
-    const result = blockParamToAnthropic({
-      type: 'image',
-      mediaType: 'image/jpeg',
-      data: 'base64data',
-    })
-    expect(result).toMatchObject({
-      type: 'image',
-      source: { type: 'base64', data: 'base64data', media_type: 'image/jpeg' },
-    })
-  })
-
-  it('converts neutral tool_result → Anthropic tool_result', () => {
-    const result = blockParamToAnthropic({
-      type: 'tool_result',
-      toolUseId: 'toolu_01',
-      content: 'output',
-      isError: true,
-    })
+  it('passes through tool_result block with snake_case fields', () => {
+    const block = { type: 'tool_result', tool_use_id: 'toolu_01', content: 'output', is_error: false }
+    const result = blockParamToNeutral(block)
     expect(result).toMatchObject({
       type: 'tool_result',
       tool_use_id: 'toolu_01',
       content: 'output',
-      is_error: true,
+      is_error: false,
     })
   })
 
-  it('converts neutral tool_use → Anthropic tool_use', () => {
-    const result = blockParamToAnthropic({
-      type: 'tool_use',
-      id: 'toolu_01',
-      name: 'Read',
-      input: { path: '/a' },
-    })
-    expect(result).toMatchObject({
-      type: 'tool_use',
-      id: 'toolu_01',
-      name: 'Read',
-      input: { path: '/a' },
-    })
+  it('passes through image block with source structure', () => {
+    const block = {
+      type: 'image',
+      source: { type: 'base64', data: 'abc', media_type: 'image/png' },
+    }
+    expect(blockParamToNeutral(block)).toBe(block)
   })
 
-  it('converts neutral thinking → Anthropic thinking', () => {
-    const result = blockParamToAnthropic({
-      type: 'thinking',
-      thinking: 'hmm',
-      signature: 'sig',
-    })
-    expect(result).toMatchObject({
-      type: 'thinking',
-      thinking: 'hmm',
-      signature: 'sig',
-    })
+  it('passes through tool_use block', () => {
+    const block = { type: 'tool_use', id: 'toolu_01', name: 'Read', input: { path: '/a' } }
+    expect(blockParamToNeutral(block)).toBe(block)
+  })
+
+  it('passes through thinking block', () => {
+    const block = { type: 'thinking', thinking: 'hmm', signature: 'sig' }
+    expect(blockParamToNeutral(block)).toBe(block)
   })
 })
 
 // ---------------------------------------------------------------------------
-// Round-trip: neutral → anthropic → neutral
+// messageToNeutral — pass-through cast
+// ---------------------------------------------------------------------------
+
+describe('messageToNeutral', () => {
+  it('passes through user message with string content', () => {
+    const msg = { role: 'user' as const, content: 'hello' }
+    expect(messageToNeutral(msg)).toBe(msg)
+  })
+
+  it('passes through user message with block array', () => {
+    const msg = {
+      role: 'user' as const,
+      content: [
+        { type: 'text', text: 'look' },
+        { type: 'tool_result', tool_use_id: 'toolu_01', content: 'ok' },
+      ],
+    }
+    expect(messageToNeutral(msg)).toBe(msg)
+  })
+
+  it('passes through assistant message', () => {
+    const msg = {
+      role: 'assistant' as const,
+      content: [{ type: 'text', text: 'hello' }],
+    }
+    expect(messageToNeutral(msg)).toBe(msg)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// messagesToAnthropic — pass-through cast
+// ---------------------------------------------------------------------------
+
+describe('messagesToAnthropic', () => {
+  it('passes through messages (field names are compatible)', () => {
+    const messages = [
+      { role: 'user' as const, content: 'hi' },
+      { role: 'assistant' as const, content: [{ type: 'text', text: 'hello' }] },
+    ]
+    const result = messagesToAnthropic(messages as any)
+    expect(result).toHaveLength(2)
+    expect(result[0].role).toBe('user')
+    expect(result[1].role).toBe('assistant')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// blockParamToAnthropic — pass-through cast
+// ---------------------------------------------------------------------------
+
+describe('blockParamToAnthropic', () => {
+  it('passes through text block', () => {
+    const block = { type: 'text' as const, text: 'hi' }
+    expect(blockParamToAnthropic(block)).toBe(block)
+  })
+
+  it('passes through tool_result block with snake_case fields', () => {
+    const block = {
+      type: 'tool_result' as const,
+      tool_use_id: 'toolu_01',
+      content: 'output',
+      is_error: true,
+    }
+    const result = blockParamToAnthropic(block)
+    expect(result).toBe(block)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Round-trip: neutral → anthropic → neutral (trivial since pass-through)
 // ---------------------------------------------------------------------------
 
 describe('round-trip conversion', () => {
-  it('text block survives round-trip', () => {
-    const original = { type: 'text' as const, text: 'hello' }
-    expect(blockParamToNeutral(blockParamToAnthropic(original))).toEqual(original)
+  it('text block is identity', () => {
+    const block = { type: 'text' as const, text: 'hello' }
+    expect(blockParamToNeutral(blockParamToAnthropic(block))).toBe(block)
   })
 
-  it('tool_use block survives round-trip', () => {
-    const original = {
+  it('tool_use block is identity', () => {
+    const block = {
       type: 'tool_use' as const,
       id: 'toolu_01',
       name: 'Read',
       input: { path: '/a' },
     }
-    expect(blockParamToNeutral(blockParamToAnthropic(original))).toEqual(original)
+    expect(blockParamToNeutral(blockParamToAnthropic(block))).toBe(block)
   })
 
-  it('tool_result block survives round-trip', () => {
-    const original = {
+  it('tool_result block is identity', () => {
+    const block = {
       type: 'tool_result' as const,
-      toolUseId: 'toolu_01',
+      tool_use_id: 'toolu_01',
       content: 'output',
-      isError: false,
+      is_error: false,
     }
-    expect(blockParamToNeutral(blockParamToAnthropic(original))).toEqual(original)
+    expect(blockParamToNeutral(blockParamToAnthropic(block))).toBe(block)
   })
 })
 
@@ -249,26 +156,16 @@ describe('round-trip conversion', () => {
 
 describe('toolsToNeutral', () => {
   it('converts BetaTool to ToolDefinition', () => {
-    const tools = [
-      {
-        name: 'Read',
-        description: 'Read a file',
-        input_schema: {
-          type: 'object' as const,
-          properties: { path: { type: 'string' } },
-        },
-      },
-    ]
-    expect(toolsToNeutral(tools as any)).toEqual([
-      {
-        name: 'Read',
-        description: 'Read a file',
-        inputSchema: {
-          type: 'object',
-          properties: { path: { type: 'string' } },
-        },
-      },
-    ])
+    const tools = [{
+      name: 'Read',
+      description: 'Read a file',
+      input_schema: { type: 'object', properties: { path: { type: 'string' } } },
+    }]
+    expect(toolsToNeutral(tools as any)).toEqual([{
+      name: 'Read',
+      description: 'Read a file',
+      inputSchema: { type: 'object', properties: { path: { type: 'string' } } },
+    }])
   })
 
   it('filters out special tool types without input_schema', () => {
@@ -284,16 +181,13 @@ describe('toolsToNeutral', () => {
 
 describe('toolsToAnthropic', () => {
   it('converts ToolDefinition to BetaTool', () => {
-    const result = toolsToAnthropic([
-      {
-        name: 'Read',
-        description: 'Read a file',
-        inputSchema: { type: 'object', properties: { path: { type: 'string' } } },
-      },
-    ])
-    expect(result[0]).toMatchObject({
+    const result = toolsToAnthropic([{
       name: 'Read',
       description: 'Read a file',
+      inputSchema: { type: 'object', properties: { path: { type: 'string' } } },
+    }])
+    expect(result[0]).toMatchObject({
+      name: 'Read',
       input_schema: { type: 'object', properties: { path: { type: 'string' } } },
     })
   })
@@ -319,27 +213,4 @@ describe('toolChoiceToAnthropic', () => {
     expect(toolChoiceToAnthropic({ type: 'specific', name: 'Read' })).toEqual({ type: 'tool', name: 'Read' }))
   it('maps none', () => expect(toolChoiceToAnthropic({ type: 'none' })).toEqual({ type: 'none' }))
   it('returns undefined for undefined', () => expect(toolChoiceToAnthropic(undefined)).toBeUndefined())
-})
-
-// ---------------------------------------------------------------------------
-// messagesToAnthropic
-// ---------------------------------------------------------------------------
-
-describe('messagesToAnthropic', () => {
-  it('converts neutral messages to Anthropic format', () => {
-    const result = messagesToAnthropic([
-      { role: 'user', content: 'hello' },
-      {
-        role: 'assistant',
-        content: [{ type: 'text', text: 'hi back' }],
-      },
-    ])
-    expect(result).toHaveLength(2)
-    expect(result[0]).toEqual({ role: 'user', content: 'hello' })
-    expect(result[1].role).toBe('assistant')
-    expect((result[1].content as any)[0]).toMatchObject({
-      type: 'text',
-      text: 'hi back',
-    })
-  })
 })

@@ -131,39 +131,73 @@ export type BlockDelta =
 
 // =====================================================================
 // Request-side types (what gets sent TO the LLM)
+//
+// Field names use snake_case for compatibility with ~60 internal files
+// that construct these objects. OpenAI adapter converts to its own format.
 // =====================================================================
+
+// ===== Image source =====
+
+export type Base64ImageSource = {
+  data: string
+  media_type: 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp'
+  type: 'base64'
+}
+
+export type URLImageSource = {
+  type: 'url'
+  url: string
+}
 
 // ===== Request content blocks =====
 
 export type TextBlockParam = {
   type: 'text'
   text: string
+  cache_control?: { type: 'ephemeral' } | null
+  citations?: unknown[] | null
 }
 
 export type ImageBlockParam = {
   type: 'image'
-  mediaType: string
-  data: string // base64
+  source: Base64ImageSource | URLImageSource
+  cache_control?: { type: 'ephemeral' } | null
 }
 
 export type ToolResultBlockParam = {
   type: 'tool_result'
-  toolUseId: string
-  content: string | TextBlockParam[]
-  isError?: boolean
+  tool_use_id: string
+  content?: string | (TextBlockParam | ImageBlockParam)[]
+  is_error?: boolean
+  cache_control?: { type: 'ephemeral' } | null
 }
 
 export type ToolUseBlockParam = {
   type: 'tool_use'
   id: string
   name: string
-  input: Record<string, unknown>
+  input: unknown
+  cache_control?: { type: 'ephemeral' } | null
 }
 
 export type ThinkingBlockParam = {
   type: 'thinking'
   thinking: string
-  signature?: string
+  signature: string
+}
+
+export type RedactedThinkingBlockParam = {
+  type: 'redacted_thinking'
+  data: string
+}
+
+export type DocumentBlockParam = {
+  type: 'document'
+  source: unknown
+  cache_control?: { type: 'ephemeral' } | null
+  title?: string | null
+  context?: string | null
+  citations?: unknown
 }
 
 export type ContentBlockParam =
@@ -172,20 +206,18 @@ export type ContentBlockParam =
   | ToolResultBlockParam
   | ToolUseBlockParam
   | ThinkingBlockParam
+  | RedactedThinkingBlockParam
+  | DocumentBlockParam
 
 // ===== Request messages =====
 
-export type UserMessageParam = {
-  role: 'user'
+export type MessageParam = {
   content: string | ContentBlockParam[]
+  role: 'user' | 'assistant'
 }
 
-export type AssistantMessageParam = {
-  role: 'assistant'
-  content: ContentBlockParam[]
-}
-
-export type MessageParam = UserMessageParam | AssistantMessageParam
+export type UserMessageParam = MessageParam & { role: 'user' }
+export type AssistantMessageParam = MessageParam & { role: 'assistant' }
 
 // ===== Tool definition =====
 

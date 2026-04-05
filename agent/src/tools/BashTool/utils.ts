@@ -2,7 +2,7 @@ import type {
   Base64ImageSource,
   ContentBlockParam,
   ToolResultBlockParam,
-} from '@anthropic-ai/sdk/resources/index.mjs'
+} from '../../services/api/streamTypes.js'
 import { readFile, stat } from 'fs/promises'
 import { getOriginalCwd } from '../../bootstrap/state.js'
 import { logEvent } from '../../services/analytics/index.js'

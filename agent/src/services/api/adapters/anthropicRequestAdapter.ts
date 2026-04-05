@@ -1,9 +1,9 @@
 /**
  * Converts between neutral request types and Anthropic SDK types.
  *
- * Two directions:
- * - toNeutral: internal Message[] → neutral MessageParam[] (for StreamRequest)
- * - toAnthropic: neutral types → Anthropic SDK types (inside AnthropicProvider)
+ * Since neutral request types use snake_case (matching Anthropic SDK field names),
+ * most conversions are pass-through. The adapter handles structural differences
+ * (ContentBlockParam union membership, BetaToolUnion wrapper, etc.)
  */
 import type {
   BetaContentBlockParam,
@@ -13,17 +13,10 @@ import type {
   BetaToolUnion,
 } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
 import type {
-  AssistantMessageParam,
   ContentBlockParam,
-  ImageBlockParam,
   MessageParam,
-  TextBlockParam,
-  ThinkingBlockParam,
   ToolChoice,
   ToolDefinition,
-  ToolResultBlockParam,
-  ToolUseBlockParam,
-  UserMessageParam,
 } from '../streamTypes.js'
 
 // =====================================================================
@@ -31,72 +24,22 @@ import type {
 // =====================================================================
 
 /**
- * Convert an internal message (UserMessage | AssistantMessage) to neutral MessageParam.
- * Accepts the raw `.message` field from internal types.
+ * Convert an internal message to neutral MessageParam.
+ * Since field names are identical (snake_case), this is a type cast.
  */
 export function messageToNeutral(msg: {
   role: 'user' | 'assistant'
   content: string | any[]
 }): MessageParam {
-  if (msg.role === 'user') {
-    return {
-      role: 'user',
-      content:
-        typeof msg.content === 'string'
-          ? msg.content
-          : msg.content.map(blockParamToNeutral),
-    } as UserMessageParam
-  }
-  return {
-    role: 'assistant',
-    content: Array.isArray(msg.content)
-      ? msg.content.map(blockParamToNeutral)
-      : [],
-  } as AssistantMessageParam
+  return msg as MessageParam
 }
 
 /**
  * Convert a single Anthropic BetaContentBlockParam to neutral ContentBlockParam.
+ * Field names are identical — just a type boundary cast.
  */
 export function blockParamToNeutral(block: any): ContentBlockParam {
-  switch (block.type) {
-    case 'text':
-      return { type: 'text', text: block.text }
-    case 'image':
-      return {
-        type: 'image',
-        mediaType: block.source?.media_type ?? 'image/png',
-        data: block.source?.data ?? '',
-      }
-    case 'tool_result':
-      return {
-        type: 'tool_result',
-        toolUseId: block.tool_use_id,
-        content:
-          typeof block.content === 'string'
-            ? block.content
-            : Array.isArray(block.content)
-              ? block.content.map(blockParamToNeutral) as TextBlockParam[]
-              : '',
-        isError: block.is_error,
-      }
-    case 'tool_use':
-      return {
-        type: 'tool_use',
-        id: block.id,
-        name: block.name,
-        input: block.input ?? {},
-      }
-    case 'thinking':
-      return {
-        type: 'thinking',
-        thinking: block.thinking,
-        signature: block.signature,
-      }
-    default:
-      // Unknown block types (document, redacted_thinking, etc.) → text placeholder
-      return { type: 'text', text: '' }
-  }
+  return block as ContentBlockParam
 }
 
 /**
@@ -127,7 +70,7 @@ export function toolChoiceToNeutral(
     case 'any':
       return { type: 'required' }
     case 'tool':
-      return { type: 'specific', name: choice.name }
+      return { type: 'specific', name: (choice as BetaToolChoiceTool).name }
     case 'none':
       return { type: 'none' }
     default:
@@ -141,57 +84,18 @@ export function toolChoiceToNeutral(
 
 /**
  * Convert neutral MessageParam[] to Anthropic BetaMessageParam[].
+ * Field names are identical — structural cast.
  */
 export function messagesToAnthropic(messages: MessageParam[]): BetaMessageParam[] {
-  return messages.map(msg => ({
-    role: msg.role,
-    content:
-      typeof msg.content === 'string'
-        ? msg.content
-        : msg.content.map(blockParamToAnthropic),
-  }))
+  return messages as unknown as BetaMessageParam[]
 }
 
 /**
  * Convert a single neutral ContentBlockParam to Anthropic BetaContentBlockParam.
+ * Field names are identical — type boundary cast.
  */
 export function blockParamToAnthropic(block: ContentBlockParam): BetaContentBlockParam {
-  switch (block.type) {
-    case 'text':
-      return { type: 'text', text: block.text } as BetaContentBlockParam
-    case 'image':
-      return {
-        type: 'image',
-        source: {
-          type: 'base64',
-          data: block.data,
-          media_type: block.mediaType as any,
-        },
-      } as BetaContentBlockParam
-    case 'tool_result':
-      return {
-        type: 'tool_result',
-        tool_use_id: block.toolUseId,
-        content:
-          typeof block.content === 'string'
-            ? block.content
-            : block.content.map(b => blockParamToAnthropic(b)),
-        is_error: block.isError,
-      } as BetaContentBlockParam
-    case 'tool_use':
-      return {
-        type: 'tool_use',
-        id: block.id,
-        name: block.name,
-        input: block.input,
-      } as BetaContentBlockParam
-    case 'thinking':
-      return {
-        type: 'thinking',
-        thinking: block.thinking,
-        signature: block.signature ?? '',
-      } as BetaContentBlockParam
-  }
+  return block as unknown as BetaContentBlockParam
 }
 
 /**

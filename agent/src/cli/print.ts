@@ -296,7 +296,7 @@ import {
 import { runWithWorkload, WORKLOAD_CRON } from '../utils/workloadContext.js'
 import type { UUID } from 'crypto'
 import { randomUUID } from 'crypto'
-import type { ContentBlockParam } from '@anthropic-ai/sdk/resources/messages.mjs'
+import type { ContentBlockParam } from '../services/api/streamTypes.js'
 import type { AppState } from '../state/AppStateStore.js'
 import {
   fileHistoryRewind,

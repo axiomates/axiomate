@@ -1,5 +1,5 @@
 import { c as _c } from "react/compiler-runtime";
-import type { TextBlockParam } from '@anthropic-ai/sdk/resources/index.mjs';
+import type { TextBlockParam } from '../../services/api/streamTypes.js';
 import * as React from 'react';
 import { REFRESH_ARROW } from '../../constants/figures.js';
 import { Box, Text } from '../../ink.js';

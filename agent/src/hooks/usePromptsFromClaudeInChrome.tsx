@@ -1,5 +1,5 @@
 import { c as _c } from "react/compiler-runtime";
-import type { ContentBlockParam } from '@anthropic-ai/sdk/resources/messages.mjs';
+import type { ContentBlockParam } from '../services/api/streamTypes.js';
 import { useEffect, useRef } from 'react';
 import { logError } from '../utils/log.js';
 import { z } from 'zod/v4';

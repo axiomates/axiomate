@@ -1,5 +1,5 @@
 import { feature } from 'bun:bundle'
-import type { ContentBlockParam } from '@anthropic-ai/sdk/resources/messages.mjs'
+import type { ContentBlockParam } from '../../../services/api/streamTypes.js'
 import { randomUUID } from 'crypto'
 import { logForDebugging } from '../../../utils/debug.js'
 import { getAllowedChannels } from '../../../bootstrap/state.js'
