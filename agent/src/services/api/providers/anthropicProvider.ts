@@ -77,7 +77,7 @@ export interface AnthropicProviderOptions {
   /** Query source for client creation. */
   querySource?: string
   /** Called for each raw Anthropic event before neutral adaptation. */
-  onRawEvent?: (raw: any) => void
+  onRawEvent?: (raw: BetaRawMessageStreamEvent) => void
   // --- Non-streaming fallback options (only used by createNonStreamingFallback) ---
   /** Called on each non-streaming attempt (for logging/metrics). */
   onNonStreamingAttempt?: (attempt: number, start: number, maxOutputTokens: number) => void

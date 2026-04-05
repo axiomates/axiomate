@@ -3,18 +3,13 @@ import type {
   BetaContentBlockParam,
   BetaImageBlockParam,
   BetaJSONOutputFormat,
-  BetaMessage,
-  BetaMessageDeltaUsage,
   BetaMessageStreamParams,
   BetaOutputConfig,
   BetaRawMessageStreamEvent,
   BetaRequestDocumentBlock,
-  BetaStopReason,
   BetaToolChoiceAuto,
   BetaToolChoiceTool,
   BetaToolResultBlockParam,
-  BetaToolUnion,
-  BetaUsage,
   BetaMessageParam as MessageParam,
 } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
 import { LLMAbortError } from './streamTypes.js'
@@ -27,7 +22,6 @@ import { getProviderForModel } from './providerRegistry.js'
 import { processStream } from './streamAccumulator.js'
 import {
   getAPIProvider,
-  isFirstPartyAnthropicBaseUrl,
 } from '../../utils/model/providers.js'
 import {
   getAttributionHeader,
@@ -44,7 +38,6 @@ import {
 import type { AgentDefinition } from '../../tools/AgentTool/loadAgentsDir.js'
 import {
   type ConnectorTextBlock,
-  type ConnectorTextDelta,
   isConnectorTextBlock,
 } from '../../types/connectorText.js'
 import type {
@@ -78,7 +71,6 @@ import { errorMessage } from '../../utils/errors.js'
 import { computeFingerprintFromMessages } from '../../utils/fingerprint.js'
 import { captureAPIRequest, logError } from '../../utils/log.js'
 import {
-  createAssistantAPIErrorMessage,
   createUserMessage,
   ensureToolResultPairing,
   normalizeContentFromAPI,
@@ -115,7 +107,6 @@ import { feature } from 'bun:bundle'
 import type { ClientOptions } from '@anthropic-ai/sdk'
 import {
   APIConnectionTimeoutError,
-  APIError,
   APIUserAbortError,
 } from '@anthropic-ai/sdk/error'
 import {
@@ -233,12 +224,10 @@ import {
 import { getInitializationStatus } from '../lsp/manager.js'
 import { isToolFromMcpServer } from '../mcp/utils.js'
 import { withStreamingVCR, withVCR } from '../vcr.js'
-import { CLIENT_REQUEST_ID_HEADER, getAnthropicClient } from './client.js'
+import { getAnthropicClient } from './client.js'
 import {
-  API_ERROR_MESSAGE_PREFIX,
   CUSTOM_OFF_SWITCH_MESSAGE,
   getAssistantMessageFromError,
-  getErrorMessageIfRefusal,
 } from './errors.js'
 import {
   EMPTY_USAGE,
@@ -1749,7 +1738,7 @@ async function* queryModel(
           streamResponse = info.response
           queryCheckpoint('query_response_headers_received')
         },
-        onRawEvent: (raw: any) => {
+        onRawEvent: (raw: BetaRawMessageStreamEvent) => {
           // NOTE: idle timer reset moved to stream_event consumption (protocol-agnostic)
 
           // TTFB from message_start
