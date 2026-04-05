@@ -1,7 +1,7 @@
 /**
  * CLI `ComputerExecutor` implementation. Wraps two native modules:
- *   - `@ant/computer-use-input` (Rust/enigo) — mouse, keyboard, frontmost app
- *   - `@ant/computer-use-swift` — SCContentFilter screenshots, NSWorkspace apps, TCC
+ *   - `computer-use-native-axiomate` (Rust/enigo) — mouse, keyboard, frontmost app
+ *   - `computer-use-native-axiomate` — SCContentFilter screenshots, NSWorkspace apps, TCC
  *
  * Contract: `packages/desktop/computer-use-mcp/src/executor.ts` in the apps
  * repo. The reference impl is Cowork's `apps/desktop/src/main/nest-only/

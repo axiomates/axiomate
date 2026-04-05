@@ -4,7 +4,7 @@
  * (same pattern as Chrome's rendering overrides, plus `.call()`).
  *
  * The wrapper-closure logic (build overrides fresh, lock gate, permission
- * merge, screenshot stash) lives in `@ant/computer-use-mcp`'s
+ * merge, screenshot stash) lives in `computer-use-mcp-axiomate`'s
  * `bindSessionContext`. This file binds it once per process,
  * caches the dispatcher, and updates a per-call ref for the pieces of
  * `ToolUseContext` that vary per-call (`abortController`, `setToolJSX`,

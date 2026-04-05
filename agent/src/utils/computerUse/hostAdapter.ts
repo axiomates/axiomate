@@ -31,7 +31,7 @@ let cached: ComputerUseHostAdapter | undefined
 
 /**
  * Process-lifetime singleton. Built once on first CU tool call; native modules
- * (both `@ant/computer-use-input` and `@ant/computer-use-swift`) are loaded
+ * (both `computer-use-native-axiomate` and `computer-use-native-axiomate`) are loaded
  * here via the executor factory, which throws on load failure — there is no
  * degraded mode.
  */

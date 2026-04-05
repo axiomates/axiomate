@@ -96,22 +96,12 @@ export function showSetupDialog<T = void>(root: Root, renderer: (done: (result: 
  * Handles the common epilogue: start deferred prefetches, wait for exit, graceful shutdown.
  */
 export async function renderAndRun(root: Root, element: React.ReactNode): Promise<void> {
-  const fs = require('fs'), path = require('path');
-  const _dbg = (m: string) => fs.appendFileSync(path.join(process.cwd(), 'debug.log'), m + '\n');
-  _dbg('[renderAndRun] render...');
   root.render(element);
-  _dbg('[renderAndRun] rendered, prefetches...');
   startDeferredPrefetches();
-  _dbg('[renderAndRun] waiting exit...');
   await root.waitUntilExit();
-  _dbg('[renderAndRun] exited');
   await gracefulShutdown(0);
 }
 export async function showSetupScreens(root: Root, permissionMode: PermissionMode, allowDangerouslySkipPermissions: boolean, commands?: Command[], claudeInChrome?: boolean, devChannels?: ChannelEntry[]): Promise<boolean> {
-  // Axiomate: skip onboarding and trust dialogs — they render blank
-  // because theme/config infrastructure from claude-code isn't fully ported.
-  // TODO: implement axiomate's own onboarding flow
-  return false;
   if (("production" as string) === 'test' || isEnvTruthy(false) || process.env.IS_DEMO // Skip onboarding in demo mode
   ) {
     return false;
