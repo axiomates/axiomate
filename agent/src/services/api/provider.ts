@@ -7,11 +7,7 @@
  * The caller (queryModel in claude.ts) only sees neutral types.
  */
 import type {
-  MessageParam,
   StreamEvent,
-  TextBlockParam,
-  ToolChoice,
-  ToolDefinition,
   Usage,
 } from './streamTypes.js'
 
@@ -21,23 +17,34 @@ import type {
 
 /**
  * Protocol-neutral request for a streaming LLM call.
- * Each provider converts this to its own SDK format internally.
+ *
+ * Neutral fields (model, signal) are used by all providers.
+ * providerOptions carries provider-specific configuration opaquely —
+ * each provider knows what to extract from it.
  */
 export interface StreamRequest {
   model: string
-  messages: MessageParam[]
-  systemPrompt: string | TextBlockParam[]
-  tools: ToolDefinition[]
-  toolChoice?: ToolChoice
-  maxTokens: number
-  temperature?: number
+  signal: AbortSignal
   /**
    * Provider-specific options passed opaquely.
-   * Anthropic: { betas, thinkingConfig, cacheControl, fastMode, metadata, ... }
-   * OpenAI: { streamOptions, responseFormat, seed, ... }
+   *
+   * Anthropic: {
+   *   buildParams: (retryContext) => SDK params,
+   *   getClient: () => Promise<Anthropic>,
+   *   retryOptions: { model, fallbackModel, thinkingConfig, ... },
+   *   onAttemptStart: (info) => void,
+   *   onRequestSent: (info) => void,
+   * }
+   *
+   * OpenAI: {
+   *   messages: ChatCompletionMessageParam[],
+   *   tools: ChatCompletionTool[],
+   *   baseURL: string,
+   *   apiKey: string,
+   *   ...
+   * }
    */
-  providerOptions?: Record<string, unknown>
-  signal: AbortSignal
+  providerOptions: Record<string, unknown>
 }
 
 // ---------------------------------------------------------------------------
@@ -55,6 +62,8 @@ export interface ProviderStreamResult {
   requestId?: string
   /** Response headers (for quota status, gateway detection) */
   responseHeaders?: Headers
+  /** Max output tokens used for this request (for error messages) */
+  maxOutputTokens: number
 }
 
 // ---------------------------------------------------------------------------
@@ -87,11 +96,36 @@ export interface LLMProvider {
   readonly name: string
 
   /**
-   * Create a streaming request and return neutral events.
-   * Handles internally: client creation, auth, param building,
-   * SDK call, retry logic, raw→neutral stream adaptation.
+   * Create a streaming request.
+   *
+   * This is an async generator because providers may need to yield
+   * messages during the connection phase (e.g. Anthropic yields retry
+   * error notifications). After all retries succeed, the generator
+   * returns the final ProviderStreamResult.
+   *
+   * Usage:
+   * ```
+   * const gen = provider.createStream(request)
+   * let result: ProviderStreamResult
+   * for (;;) {
+   *   const next = await gen.next()
+   *   if (next.done) { result = next.value; break }
+   *   yield next.value  // retry messages
+   * }
+   * // Now consume result.stream via processStream
+   * ```
+   *
+   * OpenAI providers that don't retry can simply return immediately:
+   * ```
+   * async *createStream(request) {
+   *   const stream = await openai.chat.completions.create(...)
+   *   return { stream: adapt(stream), ... }
+   * }
+   * ```
    */
-  createStream(request: StreamRequest): Promise<ProviderStreamResult>
+  createStream(
+    request: StreamRequest,
+  ): AsyncGenerator<unknown, ProviderStreamResult>
 
   /**
    * Classify an error for retry/fallback decisions.

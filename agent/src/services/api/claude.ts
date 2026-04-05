@@ -21,8 +21,8 @@ import type { TextBlockParam } from '@anthropic-ai/sdk/resources/index.mjs'
 import type { Stream } from '@anthropic-ai/sdk/streaming.mjs'
 import { randomUUID } from 'crypto'
 import { updateUsage } from './usageUtils.js'
-import { anthropicStreamAdapter } from './adapters/anthropicStreamAdapter.js'
 import { withStallDetection } from './middleware/stallDetection.js'
+import { AnthropicProvider } from './providers/anthropicProvider.js'
 import { processStream } from './streamAccumulator.js'
 import {
   getAPIProvider,
@@ -1510,7 +1510,8 @@ async function* queryModel(
   let start = Date.now()
   let attemptNumber = 0
   const attemptStartTimes: number[] = []
-  let stream: Stream<BetaRawMessageStreamEvent> | undefined = undefined
+  // stream is now managed by the Provider — only streamResponse needs cleanup
+  let stream: any = undefined // kept for releaseStreamResources compatibility
   let streamRequestId: string | null | undefined = undefined
   let clientRequestId: string | undefined = undefined
   // eslint-disable-next-line eslint-plugin-n/no-unsupported-features/node-builtins -- Response is available in Node 18+ and is used by the SDK
@@ -1779,86 +1780,119 @@ async function* queryModel(
 
   try {
     queryCheckpoint('query_client_creation_start')
-    const generator = withRetry(
-      () =>
-        getAnthropicClient({
-          maxRetries: 0, // Disabled auto-retry in favor of manual implementation
+
+    // --- Use Provider to create stream (encapsulates withRetry + SDK call + adaptation) ---
+    const provider = new AnthropicProvider({
+      calculateUSDCost: (model, u) => calculateUSDCost(model, u as any),
+    })
+    const providerGen = provider.createStream({
+      model: options.model,
+      signal,
+      providerOptions: {
+        buildParams: (context: any) => {
+          const params = paramsFromContext(context)
+          captureAPIRequest(params, options.querySource)
+          return params
+        },
+        getClient: (clientOpts: any) => getAnthropicClient(clientOpts),
+        retryOptions: {
           model: options.model,
-          fetchOverride: options.fetchOverride,
-          source: options.querySource,
-        }),
-      async (anthropic, attempt, context) => {
-        attemptNumber = attempt
-        isFastModeRequest = context.fastMode ?? false
-        start = Date.now()
-        attemptStartTimes.push(start)
-        // Client has been created by withRetry's getClient() call. This fires
-        // once per attempt; on retries the client is usually cached (withRetry
-        // only calls getClient() again after auth errors), so the delta from
-        // client_creation_start is meaningful on attempt 1.
-        queryCheckpoint('query_client_creation_end')
-
-        const params = paramsFromContext(context)
-        captureAPIRequest(params, options.querySource) // Capture for bug reports
-
-        maxOutputTokens = params.max_tokens
-
-        // Fire immediately before the fetch is dispatched. .withResponse() below
-        // awaits until response headers arrive, so this MUST be before the await
-        // or the "Network TTFB" phase measurement is wrong.
-        queryCheckpoint('query_api_request_sent')
-        if (!options.agentId) {
-          headlessProfilerCheckpoint('api_request_sent')
-        }
-
-        // Generate and track client request ID so timeouts (which return no
-        // server request ID) can still be correlated with server logs.
-        // First-party only — 3P providers don't log it (inc-4029 class).
-        clientRequestId =
-          getAPIProvider() === 'firstParty' && isFirstPartyAnthropicBaseUrl()
-            ? randomUUID()
-            : undefined
-
-        // Use raw stream instead of BetaMessageStream to avoid O(n²) partial JSON parsing
-        // BetaMessageStream calls partialParse() on every input_json_delta, which we don't need
-        // since we handle tool input accumulation ourselves
-        // biome-ignore lint/plugin: main conversation loop handles attribution separately
-        const result = await anthropic.beta.messages
-          .create(
-            { ...params, stream: true },
-            {
-              signal,
-              ...(clientRequestId && {
-                headers: { [CLIENT_REQUEST_ID_HEADER]: clientRequestId },
-              }),
-            },
-          )
-          .withResponse()
-        queryCheckpoint('query_response_headers_received')
-        streamRequestId = result.request_id
-        streamResponse = result.response as any
-        return result.data
-      },
-      {
-        model: options.model,
-        fallbackModel: options.fallbackModel,
-        thinkingConfig,
-        ...(isFastModeEnabled() ? { fastMode: isFastMode } : false),
-        signal,
+          fallbackModel: options.fallbackModel,
+          thinkingConfig,
+          ...(isFastModeEnabled() ? { fastMode: isFastMode } : false),
+          signal,
+          querySource: options.querySource,
+        },
+        fetchOverride: options.fetchOverride,
         querySource: options.querySource,
+        onAttemptStart: (info: any) => {
+          attemptNumber = info.attempt
+          isFastModeRequest = info.fastMode
+          start = info.start
+          attemptStartTimes.push(info.start)
+          queryCheckpoint('query_client_creation_end')
+          queryCheckpoint('query_api_request_sent')
+          if (!options.agentId) {
+            headlessProfilerCheckpoint('api_request_sent')
+          }
+        },
+        onRequestSent: (info: any) => {
+          maxOutputTokens = info.maxOutputTokens
+          streamRequestId = info.requestId
+          streamResponse = info.response
+          queryCheckpoint('query_response_headers_received')
+        },
+        onRawEvent: (raw: any) => {
+          // Idle timer reset
+          resetStreamIdleTimer()
+
+          // TTFB from message_start
+          if (raw.type === 'message_start') {
+            ttftMs = Date.now() - start
+          }
+
+          // Anthropic-specific: research capture
+          if (process.env.USER_TYPE === 'ant') {
+            if (
+              raw.type === 'message_start' &&
+              'research' in (raw.message as unknown as Record<string, unknown>)
+            ) {
+              research = (raw.message as unknown as Record<string, unknown>)
+                .research
+            }
+            if (raw.type === 'content_block_delta' && 'research' in raw) {
+              research = (raw as { research: unknown }).research
+            }
+            if (
+              raw.type === 'message_delta' &&
+              'research' in (raw as unknown as Record<string, unknown>)
+            ) {
+              research = (raw as unknown as Record<string, unknown>).research
+              for (const msg of newMessages) {
+                ;(msg as any).research = research
+              }
+            }
+          }
+
+          // Anthropic-specific: advisor state
+          if (
+            raw.type === 'content_block_start' &&
+            (raw.content_block as any)?.type === 'server_tool_use' &&
+            (raw.content_block as any)?.name === 'advisor'
+          ) {
+            isAdvisorInProgress = true
+            logForDebugging(`[AdvisorTool] Advisor tool called`)
+            logEvent('tengu_advisor_tool_call', {
+              model:
+                options.model as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+              advisor_model: (advisorModel ??
+                'unknown') as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+            })
+          }
+          if (
+            raw.type === 'content_block_start' &&
+            (raw.content_block as any)?.type === 'advisor_tool_result'
+          ) {
+            isAdvisorInProgress = false
+            logForDebugging(`[AdvisorTool] Advisor tool result received`)
+          }
+        },
       },
-    )
+    })
 
-    let e
-    do {
-      e = await generator.next()
-
-      // yield API error messages (the stream has a 'controller' property, error messages don't)
-      if (!('controller' in e.value)) {
-        yield e.value
+    // Consume Provider generator: yield retry messages, get stream result
+    let providerResult: import('./provider.js').ProviderStreamResult
+    for (;;) {
+      const next = await providerGen.next()
+      if (next.done) {
+        providerResult = next.value
+        break
       }
-    } while (!e.done)
-    stream = e.value as Stream<BetaRawMessageStreamEvent>
+      // Yield retry error messages to the caller
+      yield next.value as any
+    }
+    maxOutputTokens = providerResult.maxOutputTokens
+    streamRequestId = providerResult.requestId
 
     // reset state
     newMessages.length = 0
@@ -1937,64 +1971,8 @@ async function* queryModel(
       let stallCount = 0
       let totalStallTime = 0
 
-      // --- Adapt raw Anthropic stream → neutral StreamEvent via adapter ---
-      // The onRawEvent callback handles Anthropic-specific side effects that
-      // can't go through the neutral layer: idle timer, TTFB, research, advisor.
-      const neutralStream = anthropicStreamAdapter(stream, (raw) => {
-        // Idle timer reset (Anthropic-specific: tied to releaseStreamResources)
-        resetStreamIdleTimer()
-
-        // TTFB from message_start
-        if (raw.type === 'message_start') {
-          ttftMs = Date.now() - start
-        }
-
-        // Anthropic-specific: research capture
-        if (process.env.USER_TYPE === 'ant') {
-          if (
-            raw.type === 'message_start' &&
-            'research' in (raw.message as unknown as Record<string, unknown>)
-          ) {
-            research = (raw.message as unknown as Record<string, unknown>)
-              .research
-          }
-          if (raw.type === 'content_block_delta' && 'research' in raw) {
-            research = (raw as { research: unknown }).research
-          }
-          if (
-            raw.type === 'message_delta' &&
-            'research' in (raw as unknown as Record<string, unknown>)
-          ) {
-            research = (raw as unknown as Record<string, unknown>).research
-            for (const msg of newMessages) {
-              ;(msg as any).research = research
-            }
-          }
-        }
-
-        // Anthropic-specific: advisor state
-        if (
-          raw.type === 'content_block_start' &&
-          (raw.content_block as any).type === 'server_tool_use' &&
-          (raw.content_block as any).name === 'advisor'
-        ) {
-          isAdvisorInProgress = true
-          logForDebugging(`[AdvisorTool] Advisor tool called`)
-          logEvent('tengu_advisor_tool_call', {
-            model:
-              options.model as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-            advisor_model: (advisorModel ??
-              'unknown') as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-          })
-        }
-        if (
-          raw.type === 'content_block_start' &&
-          (raw.content_block as any).type === 'advisor_tool_result'
-        ) {
-          isAdvisorInProgress = false
-          logForDebugging(`[AdvisorTool] Advisor tool result received`)
-        }
-      })
+      // Provider already adapted raw stream → neutral StreamEvent (with onRawEvent callback)
+      const neutralStream = providerResult.stream
 
       // --- Stall detection middleware (protocol-agnostic) ---
       const monitoredStream = withStallDetection(neutralStream, {
