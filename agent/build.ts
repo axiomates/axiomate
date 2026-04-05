@@ -91,7 +91,7 @@ const result = await Bun.build({
     'parse5',
     'jsonc-parser',
     'node-forge',
-    'modifiers-napi',
+    'modifiers-mac-napi-axiomate',
     'url-handler-mac-napi-axiomate',
   ],
 })
