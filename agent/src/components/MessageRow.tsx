@@ -81,7 +81,7 @@ export function hasContentAfterIndex(messages: RenderableMessage[], index: numbe
     // Collapsible grouped_tool_use messages arrive transiently before being
     // merged into the current collapsed group on the next render cycle
     if (msg?.type === 'grouped_tool_use') {
-      const firstInput = msg.messages[0]?.message.content[0]?.input;
+      const firstInput = (msg.messages[0]?.message.content[0] as any)?.input;
       if (getToolSearchOrReadInfo(msg.toolName, firstInput, tools).isCollapsible) {
         continue;
       }

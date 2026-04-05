@@ -308,13 +308,12 @@ export const SYNTHETIC_MESSAGES = new Set([
 ])
 
 export function isSyntheticMessage(message: Message): boolean {
+  if (message.type !== 'user' && message.type !== 'assistant') return false
+  const content = (message as UserMessage | AssistantMessage).message.content
   return (
-    message.type !== 'progress' &&
-    message.type !== 'attachment' &&
-    message.type !== 'system' &&
-    Array.isArray(message.message.content) &&
-    message.message.content[0]?.type === 'text' &&
-    SYNTHETIC_MESSAGES.has(message.message.content[0].text)
+    Array.isArray(content) &&
+    content[0]?.type === 'text' &&
+    SYNTHETIC_MESSAGES.has(content[0].text)
   )
 }
 
@@ -695,27 +694,32 @@ export function isNotEmptyMessage(message: Message): boolean {
     return true
   }
 
-  if (typeof message.message.content === 'string') {
-    return message.message.content.trim().length > 0
+  if (message.type !== 'user' && message.type !== 'assistant') {
+    return true
   }
 
-  if (message.message.content.length === 0) {
+  const msg = message as UserMessage | AssistantMessage
+  if (typeof msg.message.content === 'string') {
+    return msg.message.content.trim().length > 0
+  }
+
+  if (msg.message.content.length === 0) {
     return false
   }
 
   // Skip multi-block messages for now
-  if (message.message.content.length > 1) {
+  if (msg.message.content.length > 1) {
     return true
   }
 
-  if (message.message.content[0]!.type !== 'text') {
+  if (msg.message.content[0]!.type !== 'text') {
     return true
   }
 
   return (
-    message.message.content[0]!.text.trim().length > 0 &&
-    message.message.content[0]!.text !== NO_CONTENT_MESSAGE &&
-    message.message.content[0]!.text !== INTERRUPT_MESSAGE_FOR_TOOL_USE
+    msg.message.content[0]!.text.trim().length > 0 &&
+    msg.message.content[0]!.text !== NO_CONTENT_MESSAGE &&
+    msg.message.content[0]!.text !== INTERRUPT_MESSAGE_FOR_TOOL_USE
   )
 }
 
@@ -1469,7 +1473,7 @@ export function getToolUseIDs(
           Array.isArray(_.message.content) &&
           _.message.content[0]?.type === 'tool_use',
       )
-      .map(_ => _.message.content[0].id),
+      .map(_ => (_.message.content[0] as any).id),
   )
 }
 
