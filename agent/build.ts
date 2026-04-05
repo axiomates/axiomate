@@ -32,6 +32,9 @@ const result = await Bun.build({
     'MACRO.FEEDBACK_CHANNEL': JSON.stringify('https://github.com/user/axiomate/issues'),
     'MACRO.ISSUES_EXPLAINER': JSON.stringify('Report issues at https://github.com/user/axiomate/issues'),
     'MACRO.VERSION_CHANGELOG': JSON.stringify(''),
+    // Force production mode for React (development mode's useEffectEvent
+    // dispatcher doesn't work with our bundled reconciler)
+    'process.env.NODE_ENV': JSON.stringify('production'),
   },
 
   // Mark workspace packages and node_modules as external — don't bundle them
