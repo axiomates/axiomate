@@ -1,9 +1,14 @@
 import type { NonNullableUsage } from '../../entrypoints/sdk/sdkUtilityTypes.js'
 
 /**
- * Zero-initialized usage object. Extracted from logging.ts so that
- * bridge/replBridge.ts can import it without transitively pulling in
- * api/errors.ts → utils/messages.ts → BashTool.tsx → the world.
+ * Anthropic-specific zero-initialized usage object (NonNullableUsage format).
+ * Used by Anthropic Provider path code (claude.ts, QueryEngine, logging).
+ *
+ * NOT used by the protocol-neutral layer (processStream has its own
+ * neutral EMPTY_USAGE with { inputTokens: 0, outputTokens: 0 }).
+ *
+ * Contains Anthropic-specific fields: server_tool_use, service_tier,
+ * inference_geo, iterations, speed. OpenAI Provider would not use this.
  */
 export const EMPTY_USAGE: Readonly<NonNullableUsage> = {
   input_tokens: 0,

@@ -91,7 +91,8 @@ export type LLMMessage = {
   content: any[]
   model: string
   stop_reason: StopReason
-  stop_sequence: string | null
+  /** Anthropic-specific: which stop sequence was matched. OpenAI providers omit this. */
+  stop_sequence?: string | null
   usage: LLMMessageUsage
   /** Allow extra provider-specific fields (e.g. container, context_management) */
   [key: string]: unknown
@@ -100,7 +101,9 @@ export type LLMMessage = {
 export type LLMMessageUsage = {
   input_tokens: number
   output_tokens: number
+  /** Anthropic prompt caching: tokens used to create cache. OpenAI providers set null. */
   cache_creation_input_tokens: number | null
+  /** Anthropic prompt caching: tokens read from cache. OpenAI providers set null. */
   cache_read_input_tokens: number | null
 }
 
@@ -154,7 +157,9 @@ export type URLImageSource = {
 export type TextBlockParam = {
   type: 'text'
   text: string
+  /** Provider extension: Anthropic prompt caching. Ignored by OpenAI. */
   cache_control?: { type: 'ephemeral' } | null
+  /** Provider extension: Anthropic citations. */
   citations?: unknown[] | null
 }
 

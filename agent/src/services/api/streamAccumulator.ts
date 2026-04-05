@@ -9,9 +9,10 @@
 import { randomUUID } from 'crypto'
 import { logEvent } from '../../services/analytics/index.js'
 import type { Tools } from '../../Tool.js'
+import { findToolByName } from '../../Tool.js'
 import type { AgentId } from '../../types/ids.js'
 import type { AssistantMessage } from '../../types/message.js'
-import { normalizeContentFromAPI } from '../../utils/contentNormalization.js'
+import { normalizeToolInput } from '../../utils/api.js'
 import { createAssistantAPIErrorMessage } from '../../utils/messages.js'
 import {
   API_ERROR_MESSAGE_PREFIX,
@@ -166,13 +167,8 @@ export async function* processStream(
           throw new Error('Response not found (missing response_start)')
         }
 
-        // Convert accumulated block to the format normalizeContentFromAPI expects
-        const rawBlock = accBlockToApiBlock(block)
-        const normalizedContent = normalizeContentFromAPI(
-          [rawBlock] as any,
-          tools,
-          agentId,
-        )
+        // Finalize accumulated block: parse JSON input, apply tool-specific normalization
+        const normalizedContent = [finalizeBlock(block, tools, agentId)]
 
         const m: AssistantMessage = {
           message: {
@@ -223,12 +219,12 @@ export async function* processStream(
             cache_creation_input_tokens: usage.cacheWriteTokens ?? null,
             cache_read_input_tokens: usage.cacheReadTokens ?? null,
           }
-          lastMsg.message.stop_reason = mapStopReasonToApi(stopReason)
+          lastMsg.message.stop_reason = stopReason
         }
 
         // Refusal
         const refusalMessage = getErrorMessageIfRefusal(
-          mapStopReasonToApi(stopReason),
+          stopReason,
           model,
         )
         if (refusalMessage) {
@@ -274,20 +270,42 @@ export async function* processStream(
 // ---------------------------------------------------------------------------
 
 /**
- * Converts an accumulated block back to BetaContentBlock-like shape
- * for normalizeContentFromAPI (which handles JSON parsing of tool input).
+ * Finalize an accumulated block into a content block for AssistantMessage.
+ * Protocol-neutral: parses JSON tool input (both Anthropic and OpenAI accumulate
+ * tool arguments as JSON strings), applies tool-specific input normalization.
  */
-function accBlockToApiBlock(block: AccBlock): any {
+function finalizeBlock(block: AccBlock, tools: Tools, agentId?: AgentId): any {
   switch (block.type) {
     case 'text':
-      return { type: 'text', text: block.text, citations: null }
-    case 'tool_use':
-      return {
-        type: 'tool_use',
-        id: block.id,
-        name: block.name,
-        input: block.input, // string — normalizeContentFromAPI will JSON.parse it
+      return { type: 'text', text: block.text }
+    case 'tool_use': {
+      // Parse accumulated JSON string → object
+      let input: unknown = {}
+      if (block.input.length > 0) {
+        try {
+          input = JSON.parse(block.input)
+        } catch {
+          // JSON parse failed — fall back to empty object
+          input = {}
+        }
       }
+      // Apply tool-specific input corrections (e.g., type coercion)
+      if (typeof input === 'object' && input !== null) {
+        const tool = findToolByName(tools, block.name)
+        if (tool) {
+          try {
+            input = normalizeToolInput(
+              tool,
+              input as { [key: string]: unknown },
+              agentId,
+            )
+          } catch {
+            // Keep original input if normalization fails
+          }
+        }
+      }
+      return { type: 'tool_use', id: block.id, name: block.name, input }
+    }
     case 'thinking':
       return {
         type: 'thinking',
@@ -295,12 +313,4 @@ function accBlockToApiBlock(block: AccBlock): any {
         signature: block.signature,
       }
   }
-}
-
-/**
- * Maps neutral StopReason back to Anthropic BetaStopReason for
- * compatibility with existing AssistantMessage.message.stop_reason type.
- */
-function mapStopReasonToApi(reason: StopReason): any {
-  return reason // same string values, just different type aliases
 }
