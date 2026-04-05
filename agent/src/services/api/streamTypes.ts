@@ -38,7 +38,19 @@ export type ServerToolResultBlock = {
   content: unknown
 }
 
-export type ContentBlock = TextBlock | ToolUseBlock | ThinkingBlock | ServerToolUseBlock | ServerToolResultBlock
+/** Redacted thinking block (content not visible) */
+export type RedactedThinkingBlock = {
+  type: 'redacted_thinking'
+  data: string
+}
+
+export type ContentBlock =
+  | TextBlock
+  | ToolUseBlock
+  | ThinkingBlock
+  | RedactedThinkingBlock
+  | ServerToolUseBlock
+  | ServerToolResultBlock
 
 // ===== Stop reason =====
 
@@ -46,16 +58,50 @@ export type StopReason =
   | 'end_turn'
   | 'tool_use'
   | 'max_tokens'
+  | 'stop_sequence'
   | 'content_filter'
   | null
 
-// ===== Usage =====
+// ===== Usage (stream event layer — camelCase) =====
 
 export type Usage = {
   inputTokens: number
   outputTokens: number
   cacheReadTokens?: number
   cacheWriteTokens?: number
+}
+
+// ===== LLM Message (internal message layer — snake_case for 97+ file compatibility) =====
+
+/**
+ * Protocol-neutral LLM response message.
+ * Field names use snake_case to maintain compatibility with 97+ internal files
+ * that access .message.content, .message.stop_reason, .message.usage etc.
+ */
+export type LLMMessage = {
+  id: string
+  type: 'message'
+  role: 'assistant'
+  /**
+   * Content blocks. Typed as any[] for compatibility with 97+ internal files
+   * that access block fields without strict narrowing. The runtime values are
+   * ContentBlock instances, but provider-specific blocks (mcp_tool_use,
+   * code_execution_tool_result, etc.) may also appear.
+   */
+  content: any[]
+  model: string
+  stop_reason: StopReason
+  stop_sequence: string | null
+  usage: LLMMessageUsage
+  /** Allow extra provider-specific fields (e.g. container, context_management) */
+  [key: string]: unknown
+}
+
+export type LLMMessageUsage = {
+  input_tokens: number
+  output_tokens: number
+  cache_creation_input_tokens: number | null
+  cache_read_input_tokens: number | null
 }
 
 // ===== Response shell =====

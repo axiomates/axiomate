@@ -11,10 +11,10 @@
 
 import type { APIError } from '@anthropic-ai/sdk'
 import type {
-  BetaContentBlock,
-  BetaMessage,
-} from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
-import type { StreamEvent as NeutralStreamEvent } from '../services/api/streamTypes.js'
+  ContentBlock,
+  LLMMessage,
+  StreamEvent as NeutralStreamEvent,
+} from '../services/api/streamTypes.js'
 import type { ContentBlockParam } from '@anthropic-ai/sdk/resources/index.mjs'
 import type { UUID } from 'crypto'
 import type { PermissionMode } from './permissions.js'
@@ -130,7 +130,7 @@ export type UserMessage = BaseMessage & {
 
 export type AssistantMessage = BaseMessage & {
   type: 'assistant'
-  message: BetaMessage & {
+  message: LLMMessage & {
     context_management?: unknown | null
   }
   requestId?: string
@@ -394,8 +394,8 @@ export type NormalizedUserMessage = Omit<UserMessage, 'message'> & {
 }
 
 export type NormalizedAssistantMessage = Omit<AssistantMessage, 'message'> & {
-  message: BetaMessage & {
-    content: [BetaContentBlock]
+  message: LLMMessage & {
+    content: [ContentBlock]
     context_management?: unknown | null
   }
 }

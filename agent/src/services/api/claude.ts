@@ -2057,7 +2057,7 @@ async function* queryModel(
           accResult = next.value
           break
         }
-        const output = next.value
+        const output = next.value as import('./streamAccumulator.js').StreamOutput
         switch (output.type) {
           case 'assistant_message': {
             const m = output.message
