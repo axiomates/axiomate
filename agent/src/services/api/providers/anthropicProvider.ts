@@ -25,6 +25,10 @@ import type {
   ProviderStreamResult,
   StreamRequest,
 } from '../provider.js'
+import {
+  LLMAbortError,
+  LLMAPIError,
+} from '../streamTypes.js'
 import type { LLMMessage, StreamIntent, Usage } from '../streamTypes.js'
 import { withRetry, type RetryContext } from '../withRetry.js'
 
@@ -254,6 +258,26 @@ export class AnthropicProvider implements LLMProvider {
       cache_creation_input_tokens: usage.cacheWriteTokens ?? 0,
     }
     return this.costFn(model, anthropicUsage)
+  }
+
+  wrapError(error: unknown): LLMAPIError {
+    if (error instanceof LLMAPIError) return error
+    if (error instanceof APIUserAbortError) {
+      return new LLMAbortError(error)
+    }
+    if (error instanceof APIError) {
+      return new LLMAPIError(error.message, {
+        status: error.status,
+        cause: error,
+        headers: error.headers as any,
+        request_id: (error as any).request_id,
+        error: (error as any).error,
+      })
+    }
+    if (error instanceof Error) {
+      return new LLMAPIError(error.message, { cause: error })
+    }
+    return new LLMAPIError(String(error))
   }
 
   async *createNonStreamingFallback(

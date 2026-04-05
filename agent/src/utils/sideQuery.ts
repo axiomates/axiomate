@@ -18,6 +18,8 @@ import { getModelBetas, modelSupportsStructuredOutputs } from './betas.js'
 import { computeFingerprint } from './fingerprint.js'
 import { normalizeModelStringForAPI } from './model/model.js'
 
+// Anthropic-specific: uses Anthropic SDK API directly (countTokens / messages.create)
+
 type MessageParam = Anthropic.MessageParam
 type TextBlockParam = Anthropic.TextBlockParam
 type Tool = Anthropic.Tool

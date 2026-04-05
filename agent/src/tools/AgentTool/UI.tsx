@@ -379,10 +379,10 @@ export function renderToolResultMessage(data: Output, progressMessagesForMessage
     content: completionMessage,
     usage: {
       ...usage,
-      inference_geo: null,
-      iterations: null,
-      speed: null
-    }
+      inference_geo: '',
+      iterations: [],
+      speed: 'standard'
+    } as any
   });
   return <Box flexDirection="column">
       {("external" as string) === 'ant' && <MessageResponse>

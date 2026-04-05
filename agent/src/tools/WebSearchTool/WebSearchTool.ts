@@ -22,6 +22,8 @@ import {
   renderToolUseProgressMessage,
 } from './UI.js'
 
+// Anthropic-specific: uses Anthropic SDK API directly (countTokens / messages.create)
+
 const inputSchema = lazySchema(() =>
   z.strictObject({
     query: z.string().min(2).describe('The search query to use'),

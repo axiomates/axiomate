@@ -62,6 +62,8 @@ import { buildEffectiveSystemPrompt } from './systemPrompt.js'
 import type { Theme } from './theme.js'
 import { getCurrentUsage } from './tokens.js'
 
+// Anthropic-specific: uses Anthropic SDK API directly (countTokens / messages.create)
+
 const RESERVED_CATEGORY_NAME = 'Autocompact buffer'
 const MANUAL_COMPACT_BUFFER_NAME = 'Compact buffer'
 

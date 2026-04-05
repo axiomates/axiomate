@@ -1,9 +1,7 @@
 import { feature } from 'bun:bundle'
 import { APIError } from '@anthropic-ai/sdk'
-import type {
-  BetaStopReason,
-  BetaUsage as Usage,
-} from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
+import type { NonNullableUsage, NonNullableUsage as Usage } from '../../entrypoints/sdk/sdkUtilityTypes.js'
+import type { StopReason } from './streamTypes.js'
 import {
   addToTotalDurationState,
   consumePostCompaction,
@@ -28,7 +26,6 @@ import {
   isBetaTracingEnabled,
   type Span,
 } from '../../utils/telemetry/sessionTracing.js'
-import type { NonNullableUsage } from '../../entrypoints/sdk/sdkUtilityTypes.js'
 import { consumeInvokingRequestId } from '../../utils/agentContext.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -432,7 +429,7 @@ function logAPISuccess({
   attempt: number
   ttftMs: number | null
   requestId: string | null
-  stopReason: BetaStopReason | null
+  stopReason: StopReason | null
   costUSD: number
   didFallBackToNonStreaming: boolean
   querySource: string
@@ -615,7 +612,7 @@ export function logAPISuccessAndDuration({
   messageCount: number
   messageTokens: number
   requestId: string | null
-  stopReason: BetaStopReason | null
+  stopReason: StopReason | null
   didFallBackToNonStreaming: boolean
   querySource: string
   headers?: globalThis.Headers

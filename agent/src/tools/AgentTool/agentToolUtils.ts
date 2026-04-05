@@ -316,7 +316,7 @@ export function finalizeAgentTool(
     }
   }
 
-  const totalTokens = getTokenCountFromUsage(lastAssistantMessage.message.usage)
+  const totalTokens = getTokenCountFromUsage(lastAssistantMessage.message.usage as any)
   const totalToolUseCount = countToolUses(agentMessages)
 
   logEvent('tengu_agent_tool_completed', {

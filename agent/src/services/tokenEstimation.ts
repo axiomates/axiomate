@@ -27,6 +27,8 @@ import { getAPIMetadata, getExtraBodyParams } from './api/claude.js'
 import { getAnthropicClient } from './api/client.js'
 import { withTokenCountVCR } from './vcr.js'
 
+// Anthropic-specific: uses Anthropic SDK API directly (countTokens / messages.create)
+
 // Minimal values for token counting with thinking enabled
 // API constraint: max_tokens must be greater than thinking.budget_tokens
 const TOKEN_COUNT_THINKING_BUDGET = 1024

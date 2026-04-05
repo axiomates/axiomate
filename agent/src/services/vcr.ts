@@ -1,4 +1,5 @@
 import type { ContentBlock as BetaContentBlock } from './api/streamTypes.js'
+import type { NonNullableUsage } from '../entrypoints/sdk/sdkUtilityTypes.js'
 import { createHash, randomUUID, type UUID } from 'crypto'
 import { mkdir, readFile, writeFile } from 'fs/promises'
 import isPlainObject from 'lodash-es/isPlainObject.js'
@@ -168,8 +169,8 @@ function addCachedCostToTotalSessionCost(
   }
   const model = message.message.model
   const usage = message.message.usage
-  const costUSD = calculateUSDCost(model, usage)
-  addToTotalSessionCost(costUSD, usage, model)
+  const costUSD = calculateUSDCost(model, usage as NonNullableUsage)
+  addToTotalSessionCost(costUSD, usage as NonNullableUsage, model)
 }
 
 function mapMessages(

@@ -43,6 +43,8 @@ import {
 } from './classifierShared.js'
 import { getClaudeTempDir } from './filesystem.js'
 
+// Anthropic-specific: uses Anthropic SDK API directly (countTokens / messages.create)
+
 // Dead code elimination: conditional imports for auto mode classifier prompts.
 // At build time, the bundler inlines .txt files as string literals. At test
 // time, require() returns {default: string} — txtRequire normalizes both.

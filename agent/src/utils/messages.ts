@@ -1,5 +1,5 @@
 import { feature } from 'bun:bundle'
-import type { BetaUsage as Usage } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
+import type { NonNullableUsage as Usage } from '../entrypoints/sdk/sdkUtilityTypes.js'
 import type {
   ContentBlock,
   ContentBlockParam,

@@ -2,7 +2,7 @@
  * Content block normalization for API responses.
  * Extracted from messages.ts for testability (messages.ts has a heavy import chain).
  */
-import type { BetaMessage } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
+import type { ContentBlock, LLMMessage } from '../services/api/streamTypes.js'
 import isObject from 'lodash-es/isObject.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -18,14 +18,18 @@ import { safeParseJSON } from './json.js'
 import { logError } from './log.js'
 
 export function normalizeContentFromAPI(
-  contentBlocks: BetaMessage['content'],
+  contentBlocks: LLMMessage['content'],
   tools: Tools,
   agentId?: AgentId,
-): BetaMessage['content'] {
+): LLMMessage['content'] {
   if (!contentBlocks) {
     return []
   }
-  return contentBlocks.map(contentBlock => {
+  // Cast to any[] — the function handles provider-specific block types
+  // (mcp_tool_use, code_execution_tool_result, etc.) that aren't in the
+  // ContentBlock union but appear at runtime. After normalization, the
+  // result is assigned back to LLMMessage['content'].
+  return (contentBlocks as any[]).map((contentBlock: any) => {
     switch (contentBlock.type) {
       case 'tool_use': {
         if (

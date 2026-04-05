@@ -6,6 +6,9 @@
  *
  * The caller (queryModel in claude.ts) only sees neutral types.
  */
+import {
+  LLMAPIError,
+} from './streamTypes.js'
 import type {
   LLMMessage,
   StreamEvent,
@@ -128,6 +131,14 @@ export interface LLMProvider {
    * Returns null if pricing is unknown.
    */
   calculateCost(model: string, usage: Usage): number | null
+
+  /**
+   * Wrap a provider-specific error into a protocol-neutral LLMAPIError.
+   * Called at catch boundaries to normalize errors before they propagate
+   * to non-protocol code. Returns the original error if it's already
+   * an LLMAPIError.
+   */
+  wrapError(error: unknown): LLMAPIError
 
   /**
    * Optional: non-streaming fallback when streaming fails.

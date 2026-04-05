@@ -116,23 +116,50 @@ export type LLMMessageUsage = {
 // ===== API error (protocol-neutral) =====
 
 /**
- * Protocol-neutral API error.
- * Structural subtype of both Anthropic APIError and OpenAI APIError.
- * Used in SystemAPIErrorMessage instead of provider-specific error classes.
+ * Protocol-neutral API error class.
+ *
+ * Providers wrap their SDK-specific errors into LLMAPIError at the boundary
+ * (via provider.wrapError()). All non-protocol code uses `instanceof LLMAPIError`
+ * instead of `instanceof APIError` from any specific SDK.
  */
-export type LLMAPIError = {
+export class LLMAPIError extends Error {
   /** HTTP status code (e.g. 429, 529, 500). Undefined for connection errors. */
   status?: number
-  /** Human-readable error message. */
-  message: string
-  /** Underlying cause (e.g. connection error). */
-  cause?: unknown
   /** Response headers (for retry-after, rate-limit info). */
   headers?: Record<string, string> | { get(name: string): string | null }
   /** Provider-assigned request ID. */
   request_id?: string
   /** Nested error body (provider-specific deserialized error). */
   error?: unknown
+
+  constructor(
+    message: string,
+    opts?: {
+      status?: number
+      cause?: unknown
+      headers?: Record<string, string> | { get(name: string): string | null }
+      request_id?: string
+      error?: unknown
+    },
+  ) {
+    super(message, { cause: opts?.cause })
+    this.name = 'LLMAPIError'
+    this.status = opts?.status
+    this.headers = opts?.headers
+    this.request_id = opts?.request_id
+    this.error = opts?.error
+  }
+}
+
+/**
+ * Protocol-neutral abort error (user cancelled the request).
+ * Providers wrap their SDK abort errors into this class.
+ */
+export class LLMAbortError extends LLMAPIError {
+  constructor(cause?: unknown) {
+    super('Request aborted', { cause })
+    this.name = 'LLMAbortError'
+  }
 }
 
 // ===== Response shell =====

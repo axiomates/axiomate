@@ -2600,7 +2600,7 @@ async function* queryModel(
       ) ?? 0
       costUSD += addToTotalSessionCost(
         fallbackCost,
-        fallbackUsage,
+        fallbackUsage as NonNullableUsage,
         options.model,
       )
     }
@@ -2642,7 +2642,7 @@ async function* queryModel(
       messageCount: logMessageCount,
       messageTokens: logMessageTokens,
       requestId: streamRequestId ?? null,
-      stopReason: stopReason as BetaStopReason | null, // Cast at logging boundary (Anthropic-specific)
+      stopReason,
       ttftMs,
       didFallBackToNonStreaming,
       querySource: options.querySource,

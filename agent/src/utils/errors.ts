@@ -1,4 +1,5 @@
 import { APIUserAbortError } from '@anthropic-ai/sdk'
+import { LLMAbortError } from '../services/api/streamTypes.js'
 
 export class ClaudeError extends Error {
   constructor(message: string) {
@@ -27,6 +28,7 @@ export class AbortError extends Error {
 export function isAbortError(e: unknown): boolean {
   return (
     e instanceof AbortError ||
+    e instanceof LLMAbortError ||
     e instanceof APIUserAbortError ||
     (e instanceof Error && e.name === 'AbortError')
   )

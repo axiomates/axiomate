@@ -1,4 +1,4 @@
-import type { BetaUsage as Usage } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
+import type { NonNullableUsage as Usage } from '../entrypoints/sdk/sdkUtilityTypes.js'
 import { roughTokenCountEstimationForMessages } from '../services/tokenEstimation.js'
 import type { AssistantMessage, Message } from '../types/message.js'
 import { SYNTHETIC_MESSAGES, SYNTHETIC_MODEL } from './messages.js'
@@ -14,7 +14,9 @@ export function getTokenUsage(message: Message): Usage | undefined {
     ) &&
     message.message.model !== SYNTHETIC_MODEL
   ) {
-    return message.message.usage
+    // LLMMessage.usage is typed as LLMMessageUsage (4 core fields) but
+    // Anthropic API responses carry the full NonNullableUsage shape at runtime.
+    return message.message.usage as unknown as Usage
   }
   return undefined
 }
