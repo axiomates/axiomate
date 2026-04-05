@@ -3,7 +3,7 @@ import setWith from 'lodash-es/setWith.js';
 import * as React from 'react';
 import { Box, Text, useTheme } from '../ink.js';
 import type { ValidationError } from '../utils/settings/validation.js';
-import { type TreeNode, treeify } from '../utils/treeify.js';
+import { type TreeNode, treeify } from 'treeify-axiomate';
 
 /**
  * Builds a nested tree structure from dot-notation paths
@@ -94,12 +94,6 @@ export function ValidationErrorsList(t0) {
       });
       const treeOutput = treeify(errorTree, {
         showValues: true,
-        themeName,
-        treeCharColors: {
-          treeChar: "inactive",
-          key: "text",
-          value: "inactive"
-        }
       });
       return <Box key={file_0} flexDirection="column"><Text>{file_0}</Text><Box marginLeft={1}><Text dimColor={true}>{treeOutput}</Text></Box>{suggestionPairs.size > 0 && <Box flexDirection="column" marginTop={1}>{Array.from(suggestionPairs.values()).map(_temp3)}</Box>}</Box>;
     });
