@@ -6,14 +6,14 @@
  * - yoloClassifier.ts (YOLO mode security classification)
  */
 
-import type { BetaContentBlock } from '@anthropic-ai/sdk/resources/beta/messages.js'
+import type { ContentBlock as BetaContentBlock } from '../../services/api/streamTypes.js'
 import type { z } from 'zod/v4'
 
 /**
  * Extract tool use block from message content by tool name.
  */
 export function extractToolUseBlock(
-  content: BetaContentBlock[],
+  content: BetaContentBlock[] | any[],
   toolName: string,
 ): Extract<BetaContentBlock, { type: 'tool_use' }> | null {
   const block = content.find(b => b.type === 'tool_use' && b.name === toolName)

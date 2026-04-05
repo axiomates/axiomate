@@ -1,6 +1,6 @@
 import { c as _c } from "react/compiler-runtime";
 import { feature } from 'bun:bundle';
-import type { BetaContentBlock } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs';
+import type { ContentBlock as BetaContentBlock } from '../services/api/streamTypes.js';
 import type { ImageBlockParam, TextBlockParam, ThinkingBlockParam, ToolResultBlockParam, ToolUseBlockParam } from '@anthropic-ai/sdk/resources/index.mjs';
 import * as React from 'react';
 import type { Command } from '../commands.js';

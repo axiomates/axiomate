@@ -27,12 +27,12 @@ vi.mock('../Tool.js', () => ({
 }))
 
 import { normalizeContentFromAPI } from '../utils/contentNormalization.js'
-import type { BetaContentBlock } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
+import type { ContentBlock as BetaContentBlock } from '../services/api/streamTypes.js'
 
 // ---- test data helpers ----
 
 function textBlock(text: string): BetaContentBlock {
-  return { type: 'text' as const, text, citations: null }
+  return { type: 'text' as const, text } as BetaContentBlock
 }
 
 function toolUseBlock(

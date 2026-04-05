@@ -1,4 +1,4 @@
-import type { BetaToolUseBlock } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
+import type { ToolUseBlock as BetaToolUseBlock } from '../services/api/streamTypes.js'
 import type { ToolResultBlockParam } from '@anthropic-ai/sdk/resources/messages/messages.mjs'
 import type { Tools } from '../Tool.js'
 import type {

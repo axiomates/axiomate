@@ -1,4 +1,4 @@
-import type { BetaContentBlock } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
+import type { ContentBlock as BetaContentBlock } from '../services/api/streamTypes.js'
 import type {
   ContentBlock,
   ContentBlockParam,
@@ -97,7 +97,7 @@ export function analyzeContext(messages: Message[]): TokenStats {
 }
 
 function processBlock(
-  block: ContentBlockParam | ContentBlock | BetaContentBlock,
+  block: ContentBlockParam | ContentBlock | BetaContentBlock | any,
   message: UserMessage | AssistantMessage,
   stats: TokenStats,
   toolIds: Map<string, string>,
