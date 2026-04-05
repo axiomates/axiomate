@@ -22,6 +22,7 @@ import type { Stream } from '@anthropic-ai/sdk/streaming.mjs'
 import { randomUUID } from 'crypto'
 import { updateUsage } from './usageUtils.js'
 import { anthropicStreamAdapter } from './adapters/anthropicStreamAdapter.js'
+import { withStallDetection } from './middleware/stallDetection.js'
 import { processStream } from './streamAccumulator.js'
 import {
   getAPIProvider,
@@ -1933,57 +1934,15 @@ async function* queryModel(
 
     startSessionActivity('api_call')
     try {
-      // stream in and accumulate state
-      let isFirstChunk = true
-      let lastEventTime: number | null = null // Set after first chunk to avoid measuring TTFB as a stall
-      const STALL_THRESHOLD_MS = 30_000 // 30 seconds
-      let totalStallTime = 0
       let stallCount = 0
+      let totalStallTime = 0
 
       // --- Adapt raw Anthropic stream → neutral StreamEvent via adapter ---
       // The onRawEvent callback handles Anthropic-specific side effects that
-      // can't go through the neutral layer: stall detection, TTFB, research,
-      // advisor state.
+      // can't go through the neutral layer: idle timer, TTFB, research, advisor.
       const neutralStream = anthropicStreamAdapter(stream, (raw) => {
-        // Idle timer reset
+        // Idle timer reset (Anthropic-specific: tied to releaseStreamResources)
         resetStreamIdleTimer()
-
-        // Stall detection
-        const now = Date.now()
-        if (lastEventTime !== null) {
-          const timeSinceLastEvent = now - lastEventTime
-          if (timeSinceLastEvent > STALL_THRESHOLD_MS) {
-            stallCount++
-            totalStallTime += timeSinceLastEvent
-            logForDebugging(
-              `Streaming stall detected: ${(timeSinceLastEvent / 1000).toFixed(1)}s gap between events (stall #${stallCount})`,
-              { level: 'warn' },
-            )
-            logEvent('tengu_streaming_stall', {
-              stall_duration_ms: timeSinceLastEvent,
-              stall_count: stallCount,
-              total_stall_time_ms: totalStallTime,
-              event_type:
-                raw.type as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-              model:
-                options.model as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-              request_id: (streamRequestId ??
-                'unknown') as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-            })
-          }
-        }
-        lastEventTime = now
-
-        // First chunk / TTFB
-        if (isFirstChunk) {
-          logForDebugging('Stream started - received first chunk')
-          queryCheckpoint('query_first_chunk_received')
-          if (!options.agentId) {
-            headlessProfilerCheckpoint('first_chunk')
-          }
-          endQueryProfile()
-          isFirstChunk = false
-        }
 
         // TTFB from message_start
         if (raw.type === 'message_start') {
@@ -2037,6 +1996,50 @@ async function* queryModel(
         }
       })
 
+      // --- Stall detection middleware (protocol-agnostic) ---
+      const monitoredStream = withStallDetection(neutralStream, {
+        thresholdMs: 30_000,
+        onFirstEvent() {
+          logForDebugging('Stream started - received first chunk')
+          queryCheckpoint('query_first_chunk_received')
+          if (!options.agentId) {
+            headlessProfilerCheckpoint('first_chunk')
+          }
+          endQueryProfile()
+        },
+        onStall(info) {
+          stallCount = info.stallCount
+          totalStallTime = info.totalStallTimeMs
+          logForDebugging(
+            `Streaming stall detected: ${(info.durationMs / 1000).toFixed(1)}s gap between events (stall #${info.stallCount})`,
+            { level: 'warn' },
+          )
+          logEvent('tengu_streaming_stall', {
+            stall_duration_ms: info.durationMs,
+            stall_count: info.stallCount,
+            total_stall_time_ms: info.totalStallTimeMs,
+            model:
+              options.model as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+            request_id: (streamRequestId ??
+              'unknown') as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+          })
+        },
+        onStreamEnd(summary) {
+          logForDebugging(
+            `Streaming completed with ${summary.stallCount} stall(s), total stall time: ${(summary.totalStallTimeMs / 1000).toFixed(1)}s`,
+            { level: 'warn' },
+          )
+          logEvent('tengu_streaming_stall_summary', {
+            stall_count: summary.stallCount,
+            total_stall_time_ms: summary.totalStallTimeMs,
+            model:
+              options.model as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+            request_id: (streamRequestId ??
+              'unknown') as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+          })
+        },
+      })
+
       // --- Consume neutral stream via processStream ---
       const accumulatorConfig = {
         tools,
@@ -2045,7 +2048,7 @@ async function* queryModel(
         streamRequestId,
         maxOutputTokens,
       }
-      const accumulator = processStream(neutralStream, accumulatorConfig)
+      const accumulator = processStream(monitoredStream, accumulatorConfig)
       let accResult: import('./streamAccumulator.js').StreamAccumulatorResult | undefined
 
       for (;;) {
@@ -2180,21 +2183,7 @@ async function* queryModel(
         throw new Error('Stream ended without receiving any events')
       }
 
-      // Log summary if any stalls occurred during streaming
-      if (stallCount > 0) {
-        logForDebugging(
-          `Streaming completed with ${stallCount} stall(s), total stall time: ${(totalStallTime / 1000).toFixed(1)}s`,
-          { level: 'warn' },
-        )
-        logEvent('tengu_streaming_stall_summary', {
-          stall_count: stallCount,
-          total_stall_time_ms: totalStallTime,
-          model:
-            options.model as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-          request_id: (streamRequestId ??
-            'unknown') as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-        })
-      }
+      // Stall summary is now logged by withStallDetection.onStreamEnd
 
       // Check if the cache actually broke based on response tokens
       if (feature('PROMPT_CACHE_BREAK_DETECTION')) {
