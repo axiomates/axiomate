@@ -36,7 +36,7 @@ import { getRetryDelay } from '../api/withRetry.js'
 import {
   checkManagedSettingsSecurity,
   handleSecurityCheckResult,
-} from './securityCheck.js'
+} from './securityCheck.jsx'
 import { isRemoteManagedSettingsEligible, resetSyncCache } from './syncCache.js'
 import {
   getRemoteManagedSettingsSyncFromCache,

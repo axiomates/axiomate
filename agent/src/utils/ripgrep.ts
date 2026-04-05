@@ -29,17 +29,39 @@ type RipgrepConfig = {
 }
 
 const getRipgrepConfig = memoize((): RipgrepConfig => {
-  // Axiomate: always use system ripgrep (no bundled binary).
-  // claude-code bundles rg in vendor/ or embeds it in bun — we don't.
-  // Users must have `rg` in PATH (install via: scoop/choco/brew/apt).
-  const { cmd: systemPath } = findExecutable('rg', [])
-  if (systemPath !== 'rg') {
-    return { mode: 'system', command: 'rg', args: [] }
+  const userWantsSystemRipgrep = isEnvDefinedFalsy(
+    process.env.USE_BUILTIN_RIPGREP,
+  )
+
+  // Try system ripgrep if user wants it
+  if (userWantsSystemRipgrep) {
+    const { cmd: systemPath } = findExecutable('rg', [])
+    if (systemPath !== 'rg') {
+      // SECURITY: Use command name 'rg' instead of systemPath to prevent PATH hijacking
+      // If we used systemPath, a malicious ./rg.exe in current directory could be executed
+      // Using just 'rg' lets the OS resolve it safely with NoDefaultCurrentDirectoryInExePath protection
+      return { mode: 'system', command: 'rg', args: [] }
+    }
   }
 
-  // Fallback: rg not found, but still return 'rg' and let it fail
-  // with a clear error at spawn time rather than a cryptic path error
-  return { mode: 'system', command: 'rg', args: [] }
+  // In bundled (native) mode, ripgrep is statically compiled into bun-internal
+  // and dispatches based on argv[0]. We spawn ourselves with argv0='rg'.
+  if (isInBundledMode()) {
+    return {
+      mode: 'embedded',
+      command: process.execPath,
+      args: ['--no-config'],
+      argv0: 'rg',
+    }
+  }
+
+  const rgRoot = path.resolve(__dirname, 'vendor', 'ripgrep')
+  const command =
+    process.platform === 'win32'
+      ? path.resolve(rgRoot, `${process.arch}-win32`, 'rg.exe')
+      : path.resolve(rgRoot, `${process.arch}-${process.platform}`, 'rg')
+
+  return { mode: 'builtin', command, args: [] }
 })
 
 export function ripgrepCommand(): {
