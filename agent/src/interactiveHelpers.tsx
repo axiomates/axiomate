@@ -102,6 +102,10 @@ export async function renderAndRun(root: Root, element: React.ReactNode): Promis
   await gracefulShutdown(0);
 }
 export async function showSetupScreens(root: Root, permissionMode: PermissionMode, allowDangerouslySkipPermissions: boolean, commands?: Command[], claudeInChrome?: boolean, devChannels?: ChannelEntry[]): Promise<boolean> {
+  // Axiomate: skip onboarding and trust dialogs — they render blank
+  // because theme/config infrastructure isn't fully ported yet.
+  // TODO: implement axiomate's own onboarding flow
+  return false;
   if (("production" as string) === 'test' || isEnvTruthy(false) || process.env.IS_DEMO // Skip onboarding in demo mode
   ) {
     return false;
