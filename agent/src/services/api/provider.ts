@@ -7,6 +7,7 @@
  * The caller (queryModel in claude.ts) only sees neutral types.
  */
 import type {
+  LLMMessage,
   StreamEvent,
   Usage,
 } from './streamTypes.js'
@@ -127,4 +128,36 @@ export interface LLMProvider {
    * Returns null if pricing is unknown.
    */
   calculateCost(model: string, usage: Usage): number | null
+
+  /**
+   * Optional: non-streaming fallback when streaming fails.
+   *
+   * Anthropic needs this because proxy gateways can return 200 with non-SSE
+   * body, or streams can silently hang. The fallback re-issues the same
+   * request without `stream: true`.
+   *
+   * Other providers (OpenAI, etc.) don't have this failure mode and should
+   * not implement this method.
+   *
+   * Like createStream, this is an async generator that yields retry error
+   * messages during attempts, then returns the final result.
+   */
+  createNonStreamingFallback?(
+    request: StreamRequest,
+  ): AsyncGenerator<unknown, NonStreamingResult>
+}
+
+// ---------------------------------------------------------------------------
+// Non-streaming fallback result
+// ---------------------------------------------------------------------------
+
+/**
+ * Result of a non-streaming fallback request.
+ * Carries a complete LLM message (neutral type) plus metadata.
+ */
+export interface NonStreamingResult {
+  /** The complete response message in neutral format. */
+  message: LLMMessage
+  /** Server-assigned request ID (for logging/correlation). */
+  requestId?: string
 }

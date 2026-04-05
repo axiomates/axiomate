@@ -21,10 +21,11 @@ import { anthropicStreamAdapter } from '../adapters/anthropicStreamAdapter.js'
 import type {
   ErrorClassification,
   LLMProvider,
+  NonStreamingResult,
   ProviderStreamResult,
   StreamRequest,
 } from '../provider.js'
-import type { StreamIntent, Usage } from '../streamTypes.js'
+import type { LLMMessage, StreamIntent, Usage } from '../streamTypes.js'
 import { withRetry, type RetryContext } from '../withRetry.js'
 
 // ---------------------------------------------------------------------------
@@ -72,6 +73,13 @@ export interface AnthropicProviderOptions {
   querySource?: string
   /** Called for each raw Anthropic event before neutral adaptation. */
   onRawEvent?: (raw: any) => void
+  // --- Non-streaming fallback options (only used by createNonStreamingFallback) ---
+  /** Called on each non-streaming attempt (for logging/metrics). */
+  onNonStreamingAttempt?: (attempt: number, start: number, maxOutputTokens: number) => void
+  /** Called to capture the non-streaming request params (for logging). */
+  captureRequest?: (params: Record<string, unknown>) => void
+  /** Request ID of the failed streaming attempt (for correlation). */
+  originatingRequestId?: string | null
 }
 
 // ---------------------------------------------------------------------------
@@ -246,5 +254,127 @@ export class AnthropicProvider implements LLMProvider {
       cache_creation_input_tokens: usage.cacheWriteTokens ?? 0,
     }
     return this.costFn(model, anthropicUsage)
+  }
+
+  async *createNonStreamingFallback(
+    request: StreamRequest,
+  ): AsyncGenerator<unknown, NonStreamingResult> {
+    const opts = request.providerOptions as unknown as AnthropicProviderOptions
+    const {
+      buildParams,
+      getClient,
+      retryOptions,
+      onNonStreamingAttempt,
+      captureRequest,
+      fetchOverride,
+      querySource,
+      originatingRequestId,
+    } = opts
+
+    const fallbackTimeoutMs =
+      parseInt(process.env.API_TIMEOUT_MS || '', 10) ||
+      (process.env.CLAUDE_CODE_REMOTE ? 120_000 : 300_000)
+
+    const generator = withRetry(
+      () =>
+        getClient({
+          maxRetries: 0,
+          model: request.model,
+          fetchOverride,
+          source: querySource,
+        }),
+      async (anthropic: Anthropic, attempt: number, context: RetryContext) => {
+        const start = Date.now()
+        const params = buildParams(context)
+        captureRequest?.(params)
+        onNonStreamingAttempt?.(attempt, start, (params as Record<string, unknown>).max_tokens as number ?? 0)
+
+        // Cap max_tokens for non-streaming (64K limit)
+        const maxTokensCap = 64_000
+        const cappedMaxTokens = Math.min(
+          (params as Record<string, unknown>).max_tokens as number ?? 0,
+          maxTokensCap,
+        )
+        const adjustedParams = {
+          ...params,
+          max_tokens: cappedMaxTokens,
+          // Adjust thinking budget if needed
+          ...(typeof (params as any).thinking?.budget_tokens === 'number' && {
+            thinking: {
+              ...(params as any).thinking,
+              budget_tokens: Math.min(
+                (params as any).thinking.budget_tokens,
+                cappedMaxTokens - 1,
+              ),
+            },
+          }),
+        }
+
+        try {
+          return await (anthropic.beta.messages as any).create(
+            adjustedParams,
+            {
+              signal: request.signal,
+              timeout: fallbackTimeoutMs,
+            },
+          )
+        } catch (err) {
+          if (err instanceof APIUserAbortError) throw err
+          throw err
+        }
+      },
+      {
+        ...(retryOptions as any),
+        signal: request.signal,
+      },
+    )
+
+    // Consume withRetry generator: yield retry messages, return SDK result
+    let sdkResult: any
+    for (;;) {
+      const next = await generator.next()
+      if (next.done) {
+        sdkResult = next.value
+        break
+      }
+      if ((next.value as any)?.type === 'system') {
+        yield next.value
+      }
+    }
+
+    // Convert BetaMessage → neutral LLMMessage
+    const msg = sdkResult as {
+      id: string
+      model: string
+      content: any[]
+      stop_reason: string | null
+      stop_sequence?: string | null
+      usage: {
+        input_tokens: number
+        output_tokens: number
+        cache_creation_input_tokens?: number | null
+        cache_read_input_tokens?: number | null
+      }
+    }
+    const neutralMessage: LLMMessage = {
+      id: msg.id,
+      type: 'message',
+      role: 'assistant',
+      content: msg.content,
+      model: msg.model,
+      stop_reason: msg.stop_reason as LLMMessage['stop_reason'],
+      stop_sequence: msg.stop_sequence ?? null,
+      usage: {
+        input_tokens: msg.usage.input_tokens,
+        output_tokens: msg.usage.output_tokens,
+        cache_creation_input_tokens: msg.usage.cache_creation_input_tokens ?? null,
+        cache_read_input_tokens: msg.usage.cache_read_input_tokens ?? null,
+      },
+    }
+
+    return {
+      message: neutralMessage,
+      requestId: (sdkResult as any)?.request_id,
+    }
   }
 }

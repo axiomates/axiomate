@@ -808,12 +808,6 @@ function shouldDeferLspTool(tool: Tool): boolean {
  * Otherwise defaults to 300s — long enough for slow backends without
  * approaching the API's 10-minute non-streaming boundary.
  */
-function getNonstreamingFallbackTimeoutMs(): number {
-  const override = parseInt(process.env.API_TIMEOUT_MS || '', 10)
-  if (override) return override
-  return isEnvTruthy(process.env.CLAUDE_CODE_REMOTE) ? 120_000 : 300_000
-}
-
 /**
 /**
  * Extract request ID from an error, regardless of provider.
@@ -843,118 +837,6 @@ function tryExtractQuotaStatus(error: unknown): void {
   ) {
     extractQuotaStatusFromError(error as import('./streamTypes.js').LLMAPIError)
   }
-}
-
-/**
- * Helper generator for non-streaming API requests.
- * Encapsulates the common pattern of creating a withRetry generator,
- * iterating to yield system messages, and returning the final BetaMessage.
- */
-/**
- * Anthropic-specific: non-streaming fallback when streaming fails.
- * Uses Anthropic SDK directly (getAnthropicClient + withRetry).
- * When OpenAI provider is implemented, this path is not needed —
- * OpenAI streaming doesn't have the same proxy failure modes.
- */
-export async function* executeNonStreamingRequest(
-  clientOptions: {
-    model: string
-    fetchOverride?: Options['fetchOverride']
-    source: string
-  },
-  retryOptions: {
-    model: string
-    fallbackModel?: string
-    thinkingConfig: ThinkingConfig
-    fastMode?: boolean
-    signal: AbortSignal
-    initialConsecutive529Errors?: number
-    querySource?: QuerySource
-  },
-  paramsFromContext: (context: RetryContext) => BetaMessageStreamParams,
-  onAttempt: (attempt: number, start: number, maxOutputTokens: number) => void,
-  captureRequest: (params: BetaMessageStreamParams) => void,
-  /**
-   * Request ID of the failed streaming attempt this fallback is recovering
-   * from. Emitted in tengu_nonstreaming_fallback_error for funnel correlation.
-   */
-  originatingRequestId?: string | null,
-): AsyncGenerator<SystemAPIErrorMessage, BetaMessage> {
-  const fallbackTimeoutMs = getNonstreamingFallbackTimeoutMs()
-  const generator = withRetry(
-    () =>
-      getAnthropicClient({
-        maxRetries: 0,
-        model: clientOptions.model,
-        fetchOverride: clientOptions.fetchOverride,
-        source: clientOptions.source,
-      }),
-    async (anthropic, attempt, context) => {
-      const start = Date.now()
-      const retryParams = paramsFromContext(context)
-      captureRequest(retryParams)
-      onAttempt(attempt, start, retryParams.max_tokens)
-
-      const adjustedParams = adjustParamsForNonStreaming(
-        retryParams,
-        MAX_NON_STREAMING_TOKENS,
-      )
-
-      try {
-        // biome-ignore lint/plugin: non-streaming API call
-        return await anthropic.beta.messages.create(
-          {
-            ...adjustedParams,
-            model: normalizeModelStringForAPI(adjustedParams.model),
-          },
-          {
-            signal: retryOptions.signal,
-            timeout: fallbackTimeoutMs,
-          },
-        )
-      } catch (err) {
-        // User aborts are not errors — re-throw immediately without logging
-        if (err instanceof APIUserAbortError) throw err
-
-        // Instrumentation: record when the non-streaming request errors (including
-        // timeouts). Lets us distinguish "fallback hung past container kill"
-        // (no event) from "fallback hit the bounded timeout" (this event).
-        logForDiagnosticsNoPII('error', 'cli_nonstreaming_fallback_error')
-        logEvent('tengu_nonstreaming_fallback_error', {
-          model:
-            clientOptions.model as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-          error:
-            err instanceof Error
-              ? (err.name as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS)
-              : ('unknown' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS),
-          attempt,
-          timeout_ms: fallbackTimeoutMs,
-          request_id: (originatingRequestId ??
-            'unknown') as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-        })
-        throw err
-      }
-    },
-    {
-      model: retryOptions.model,
-      fallbackModel: retryOptions.fallbackModel,
-      thinkingConfig: retryOptions.thinkingConfig,
-      ...(isFastModeEnabled() && { fastMode: retryOptions.fastMode }),
-      signal: retryOptions.signal,
-      initialConsecutive529Errors: retryOptions.initialConsecutive529Errors,
-      querySource: retryOptions.querySource,
-    },
-  )
-
-  let e
-  do {
-    e = await generator.next()
-    if (!e.done && e.value.type === 'system') {
-      yield e.value
-    }
-  } while (!e.done)
-
-  return e.value as BetaMessage
 }
 
 /**
@@ -2402,36 +2284,55 @@ async function* queryModel(
           ? 'watchdog'
           : 'other') as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
       })
-      const result = yield* executeNonStreamingRequest(
-        { model: options.model, source: options.querySource },
-        {
-          model: options.model,
-          fallbackModel: options.fallbackModel,
-          thinkingConfig,
-          ...(isFastModeEnabled() && { fastMode: isFastMode }),
-          signal,
-          initialConsecutive529Errors: is529Error(streamingError) ? 1 : 0,
+      if (!provider.createNonStreamingFallback) {
+        throw new Error('Provider does not support non-streaming fallback')
+      }
+      const fallbackGen = provider.createNonStreamingFallback({
+        model: options.model,
+        signal,
+        providerOptions: {
+          buildParams: (context: any) => {
+            const params = paramsFromContext(context)
+            captureAPIRequest(params, options.querySource)
+            return params
+          },
+          getClient: (clientOpts: any) => getAnthropicClient(clientOpts),
+          retryOptions: {
+            model: options.model,
+            fallbackModel: options.fallbackModel,
+            thinkingConfig,
+            ...(isFastModeEnabled() ? { fastMode: isFastMode } : false),
+            initialConsecutive529Errors: is529Error(streamingError) ? 1 : 0,
+            querySource: options.querySource,
+          },
+          fetchOverride: options.fetchOverride,
           querySource: options.querySource,
+          onNonStreamingAttempt: (attempt: number, _start: number, tokens: number) => {
+            attemptNumber = attempt
+            maxOutputTokens = tokens
+          },
+          captureRequest: (params: Record<string, unknown>) => captureAPIRequest(params, options.querySource),
+          originatingRequestId: streamRequestId,
         },
-        paramsFromContext,
-        (attempt, _startTime, tokens) => {
-          attemptNumber = attempt
-          maxOutputTokens = tokens
-        },
-        params => captureAPIRequest(params, options.querySource),
-        streamRequestId,
-      )
+      })
+      // Consume generator: yield retry messages, get result
+      let fallbackResult: import('./provider.js').NonStreamingResult
+      for (;;) {
+        const next = await fallbackGen.next()
+        if (next.done) { fallbackResult = next.value; break }
+        yield next.value as any
+      }
 
       const m: AssistantMessage = {
         message: {
-          ...result,
+          ...fallbackResult.message,
           content: normalizeContentFromAPI(
-            result.content,
+            fallbackResult.message.content,
             tools,
             options.agentId,
           ),
         },
-        requestId: streamRequestId ?? undefined,
+        requestId: fallbackResult.requestId ?? streamRequestId ?? undefined,
         type: 'assistant',
         uuid: randomUUID(),
         timestamp: new Date().toISOString(),
@@ -2500,34 +2401,53 @@ async function* queryModel(
 
       try {
         // Fall back to non-streaming mode
-        const result = yield* executeNonStreamingRequest(
-          { model: options.model, source: options.querySource },
-          {
-            model: options.model,
-            fallbackModel: options.fallbackModel,
-            thinkingConfig,
-            ...(isFastModeEnabled() && { fastMode: isFastMode }),
-            signal,
+        if (!provider.createNonStreamingFallback) {
+          throw new Error('Provider does not support non-streaming fallback')
+        }
+        const fallback404Gen = provider.createNonStreamingFallback({
+          model: options.model,
+          signal,
+          providerOptions: {
+            buildParams: (context: any) => {
+              const params = paramsFromContext(context)
+              captureAPIRequest(params, options.querySource)
+              return params
+            },
+            getClient: (clientOpts: any) => getAnthropicClient(clientOpts),
+            retryOptions: {
+              model: options.model,
+              fallbackModel: options.fallbackModel,
+              thinkingConfig,
+              ...(isFastModeEnabled() ? { fastMode: isFastMode } : false),
+              querySource: options.querySource,
+            },
+            fetchOverride: options.fetchOverride,
+            querySource: options.querySource,
+            onNonStreamingAttempt: (attempt: number, _start: number, tokens: number) => {
+              attemptNumber = attempt
+              maxOutputTokens = tokens
+            },
+            captureRequest: (params: Record<string, unknown>) => captureAPIRequest(params, options.querySource),
+            originatingRequestId: failedRequestId,
           },
-          paramsFromContext,
-          (attempt, _startTime, tokens) => {
-            attemptNumber = attempt
-            maxOutputTokens = tokens
-          },
-          params => captureAPIRequest(params, options.querySource),
-          failedRequestId,
-        )
+        })
+        let fallback404Result: import('./provider.js').NonStreamingResult
+        for (;;) {
+          const next = await fallback404Gen.next()
+          if (next.done) { fallback404Result = next.value; break }
+          yield next.value as any
+        }
 
         const m: AssistantMessage = {
           message: {
-            ...result,
+            ...fallback404Result.message,
             content: normalizeContentFromAPI(
-              result.content,
+              fallback404Result.message.content,
               tools,
               options.agentId,
             ),
           },
-          requestId: streamRequestId ?? undefined,
+          requestId: fallback404Result.requestId ?? streamRequestId ?? undefined,
           type: 'assistant',
           uuid: randomUUID(),
           timestamp: new Date().toISOString(),
