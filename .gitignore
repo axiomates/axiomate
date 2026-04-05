@@ -5,3 +5,4 @@ target
 package-lock.json
 Cargo.lock
 CLAUDE.md
+debug.log
