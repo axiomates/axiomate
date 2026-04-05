@@ -7,7 +7,7 @@ import type { FiberRoot } from 'react-reconciler';
 import { ConcurrentRoot } from 'react-reconciler/constants.js';
 import { onExit } from 'signal-exit';
 import { flushInteractionTime } from '../bootstrap/state.js';
-import { getYogaCounters } from '../native-ts/yoga-layout/index.js';
+import { getYogaCounters } from 'yoga-axiomate';
 import { logForDebugging } from '../utils/debug.js';
 import { logError } from '../utils/log.js';
 import { format } from 'util';
