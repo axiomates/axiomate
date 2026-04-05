@@ -1771,7 +1771,7 @@ async function* queryModel(
   const contentBlocks: (BetaContentBlock | ConnectorTextBlock)[] = []
   let usage: NonNullableUsage = EMPTY_USAGE
   let costUSD = 0
-  let stopReason: BetaStopReason | null = null
+  let stopReason: import('./streamTypes.js').StopReason = null
   let didFallBackToNonStreaming = false
   let fallbackMessage: AssistantMessage | undefined
   let maxOutputTokens = 0
@@ -1823,8 +1823,7 @@ async function* queryModel(
           queryCheckpoint('query_response_headers_received')
         },
         onRawEvent: (raw: any) => {
-          // Idle timer reset
-          resetStreamIdleTimer()
+          // NOTE: idle timer reset moved to stream_event consumption (protocol-agnostic)
 
           // TTFB from message_start
           if (raw.type === 'message_start') {
@@ -2057,11 +2056,13 @@ async function* queryModel(
             yield output.message
             break
           case 'stream_event': {
+            // Idle timer reset (protocol-agnostic: any event = stream alive)
+            resetStreamIdleTimer()
             // Cost calculation on response_delta
             if (output.event.type === 'response_delta') {
               const deltaUsage = neutralUsageToDeltaUsage(output.event.usage)
               usage = updateUsage(usage, deltaUsage)
-              stopReason = output.event.stopReason as BetaStopReason
+              stopReason = output.event.stopReason as typeof stopReason
               const costUSDForPart = calculateUSDCost(resolvedModel, usage)
               costUSD += addToTotalSessionCost(
                 costUSDForPart,
@@ -2088,7 +2089,7 @@ async function* queryModel(
           partialMessage = { id: '', type: 'message', role: 'assistant', content: [], model: '', stop_reason: null, stop_sequence: null, usage: { input_tokens: 0, output_tokens: 0, cache_creation_input_tokens: null, cache_read_input_tokens: null } } as BetaMessage // truthy sentinel for post-loop check
         }
         if (accResult.stopReason) {
-          stopReason = accResult.stopReason as BetaStopReason
+          stopReason = accResult.stopReason as typeof stopReason
         }
       }
       // Clear the idle timeout watchdog now that the stream loop has exited
@@ -2641,7 +2642,7 @@ async function* queryModel(
       messageCount: logMessageCount,
       messageTokens: logMessageTokens,
       requestId: streamRequestId ?? null,
-      stopReason,
+      stopReason: stopReason as BetaStopReason | null, // Cast at logging boundary (Anthropic-specific)
       ttftMs,
       didFallBackToNonStreaming,
       querySource: options.querySource,
