@@ -1,8 +1,5 @@
 import { feature } from 'bun:bundle';
 
-// useEffectEvent dispatcher is broken under Bun's CJS resolution.
-// eslint-disable-next-line custom-rules/no-top-level-side-effects
-
 // Bugfix for corepack auto-pinning, which adds yarnpkg to peoples' package.jsons
 // eslint-disable-next-line custom-rules/no-top-level-side-effects
 process.env.COREPACK_ENABLE_AUTO_PIN = '0';
