@@ -40,11 +40,6 @@ const result = await Bun.build({
   // Mark workspace packages and node_modules as external — don't bundle them
   external: [
     // Workspace packages
-    'ink-axiomate',
-    'yoga-axiomate',
-    'utils-axiomate',
-    'file-index-axiomate',
-    'color-diff-axiomate',
     'treeify-axiomate',
     'clipboard-axiomate',
     'image-processor-axiomate',
@@ -54,7 +49,8 @@ const result = await Bun.build({
     'computer-use-native-axiomate',
     'mcpb-axiomate',
     'chrome-mcp-axiomate',
-    'react-reconciler-axiomate',
+    // react-reconciler-axiomate is NOT external — must be bundled
+    // (contains useEffectEvent support missing from npm version)
 
     // npm packages that have native bindings or should not be bundled
     // react is NOT external — must be bundled so bun build picks the
