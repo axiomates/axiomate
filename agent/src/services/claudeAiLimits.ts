@@ -1,4 +1,4 @@
-import { APIError } from '@anthropic-ai/sdk'
+import type { LLMAPIError } from './api/streamTypes.js'
 import type { MessageParam } from './api/streamTypes.js'
 import isEqual from 'lodash-es/isEqual.js'
 import { getIsNonInteractiveSession } from '../bootstrap/state.js'
@@ -242,8 +242,8 @@ export async function checkQuotaStatus(): Promise<void> {
     // Update limits based on the response
     extractQuotaStatusFromHeaders(raw.headers as any)
   } catch (error) {
-    if (error instanceof APIError) {
-      extractQuotaStatusFromError(error)
+    if (error && typeof error === 'object' && 'status' in error) {
+      extractQuotaStatusFromError(error as LLMAPIError)
     }
   }
 }
@@ -484,7 +484,7 @@ export function extractQuotaStatusFromHeaders(
   }
 }
 
-export function extractQuotaStatusFromError(error: APIError): void {
+export function extractQuotaStatusFromError(error: LLMAPIError): void {
   if (
     !shouldProcessRateLimits(isClaudeAISubscriber()) ||
     error.status !== 429

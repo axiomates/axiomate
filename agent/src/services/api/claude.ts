@@ -815,6 +815,37 @@ function getNonstreamingFallbackTimeoutMs(): number {
 }
 
 /**
+/**
+ * Extract request ID from an error, regardless of provider.
+ * Checks common provider error shapes: .request_id, .error.request_id.
+ */
+function extractRequestIdFromError(error: unknown): string | undefined {
+  if (!error || typeof error !== 'object') return undefined
+  const e = error as Record<string, unknown>
+  if (typeof e.request_id === 'string') return e.request_id
+  if (e.error && typeof e.error === 'object') {
+    const nested = e.error as Record<string, unknown>
+    if (typeof nested.request_id === 'string') return nested.request_id
+  }
+  return undefined
+}
+
+/**
+ * Try to extract quota status from error if it has .status and .headers.
+ * Works with any provider error that has these properties (duck-typed).
+ */
+function tryExtractQuotaStatus(error: unknown): void {
+  if (
+    error &&
+    typeof error === 'object' &&
+    'status' in error &&
+    'headers' in error
+  ) {
+    extractQuotaStatusFromError(error as import('./streamTypes.js').LLMAPIError)
+  }
+}
+
+/**
  * Helper generator for non-streaming API requests.
  * Encapsulates the common pattern of creating a withRetry generator,
  * iterating to yield system messages, and returning the final BetaMessage.
@@ -2435,15 +2466,14 @@ async function* queryModel(
     const is404StreamCreationError =
       !didFallBackToNonStreaming &&
       errorFromRetry instanceof CannotRetryError &&
-      errorFromRetry.originalError instanceof APIError &&
-      errorFromRetry.originalError.status === 404
+      provider.classifyError(errorFromRetry.originalError).statusCode === 404
 
     if (is404StreamCreationError) {
       // 404 is thrown at .withResponse() before streamRequestId is assigned,
       // and CannotRetryError means every retry failed — so grab the failed
       // request's ID from the error header instead.
       const failedRequestId =
-        (errorFromRetry.originalError as APIError).request_id ?? 'unknown'
+        (errorFromRetry.originalError as { request_id?: string }).request_id ?? 'unknown'
       logForDebugging(
         'Streaming endpoint returned 404, falling back to non-streaming mode',
         { level: 'warn' },
@@ -2529,16 +2559,10 @@ async function* queryModel(
           errorModel = fallbackError.retryContext.model
         }
 
-        if (error instanceof APIError) {
-          extractQuotaStatusFromError(error)
-        }
+        tryExtractQuotaStatus(error)
 
         const requestId =
-          streamRequestId ||
-          (error instanceof APIError ? error.request_id : undefined) ||
-          (error instanceof APIError
-            ? (error.error as { request_id?: string })?.request_id
-            : undefined)
+          streamRequestId || extractRequestIdFromError(error)
 
         logAPIError({
           error,
@@ -2587,18 +2611,12 @@ async function* queryModel(
       // Classify error via provider abstraction (protocol-neutral)
       const errorClass = provider.classifyError(error)
 
-      // Extract quota status from error headers if it's a rate limit error
-      if (error instanceof APIError) {
-        extractQuotaStatusFromError(error)
-      }
+      // Extract quota status from error headers (protocol-neutral duck-typing)
+      tryExtractQuotaStatus(error)
 
-      // Extract requestId from stream, error header, or error body
+      // Extract requestId from stream or error object (protocol-neutral)
       const requestId =
-        streamRequestId ||
-        (error instanceof APIError ? error.request_id : undefined) ||
-        (error instanceof APIError
-          ? (error.error as { request_id?: string })?.request_id
-          : undefined)
+        streamRequestId || extractRequestIdFromError(error)
 
       logAPIError({
         error,
