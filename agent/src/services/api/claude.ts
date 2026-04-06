@@ -1574,11 +1574,28 @@ async function* queryModel(
     thinking: neutralThinking,
   }
 
+  // --- Provider-specific config (hoisted before try for fallback reuse) ---
+  const streamingExt = {
+      buildParams: (context: RetryContext) => {
+        const params = paramsFromContext(context)
+        captureAPIRequest(params, options.querySource)
+        return params
+      },
+      retryOptions: {
+        model: options.model,
+        fallbackModel: options.fallbackModel,
+        thinkingConfig,
+        ...(isFastModeEnabled() ? { fastMode: isFastMode } : false),
+        signal,
+        querySource: options.querySource,
+      },
+    } satisfies import('./providers/anthropicProvider.js').AnthropicRequestExt
+
   try {
     queryCheckpoint('query_client_creation_start')
 
-    // --- Use Provider to create stream (encapsulates withRetry + SDK call + adaptation) ---
-    const providerGen = provider.createStream({
+    const bound = provider.bind(streamingExt)
+    const providerGen = bound.createStream({
       model: options.model,
       signal,
       intent: streamIntent,
@@ -1628,21 +1645,6 @@ async function* queryModel(
           }
         },
       },
-      providerExt: {
-        buildParams: (context: RetryContext) => {
-          const params = paramsFromContext(context)
-          captureAPIRequest(params, options.querySource)
-          return params
-        },
-        retryOptions: {
-          model: options.model,
-          fallbackModel: options.fallbackModel,
-          thinkingConfig,
-          ...(isFastModeEnabled() ? { fastMode: isFastMode } : false),
-          signal,
-          querySource: options.querySource,
-        },
-      } satisfies import('./providers/anthropicProvider.js').AnthropicRequestExt,
     })
 
     // Consume Provider generator: yield retry messages, get stream result
@@ -2091,34 +2093,26 @@ async function* queryModel(
           ? 'watchdog'
           : 'other') as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
       })
-      if (!provider.createNonStreamingFallback) {
+      const fallbackBound = provider.bind({
+        ...streamingExt,
+        retryOptions: {
+          ...streamingExt.retryOptions,
+          initialConsecutive529Errors: is529Error(streamingError) ? 1 : 0,
+        },
+        onNonStreamingAttempt: (attempt: number, _start: number, tokens: number) => {
+          attemptNumber = attempt
+          maxOutputTokens = tokens
+        },
+        captureRequest: (params: Record<string, unknown>) => captureAPIRequest(params, options.querySource),
+        originatingRequestId: streamRequestId,
+      } satisfies import('./providers/anthropicProvider.js').AnthropicRequestExt)
+      if (!fallbackBound.createNonStreamingFallback) {
         throw new Error('Provider does not support non-streaming fallback')
       }
-      const fallbackGen = provider.createNonStreamingFallback({
+      const fallbackGen = fallbackBound.createNonStreamingFallback({
         model: options.model,
         signal,
         intent: streamIntent,
-        providerExt: {
-          buildParams: (context: RetryContext) => {
-            const params = paramsFromContext(context)
-            captureAPIRequest(params, options.querySource)
-            return params
-          },
-          retryOptions: {
-            model: options.model,
-            fallbackModel: options.fallbackModel,
-            thinkingConfig,
-            ...(isFastModeEnabled() ? { fastMode: isFastMode } : false),
-            initialConsecutive529Errors: is529Error(streamingError) ? 1 : 0,
-            querySource: options.querySource,
-          },
-          onNonStreamingAttempt: (attempt: number, _start: number, tokens: number) => {
-            attemptNumber = attempt
-            maxOutputTokens = tokens
-          },
-          captureRequest: (params: Record<string, unknown>) => captureAPIRequest(params, options.querySource),
-          originatingRequestId: streamRequestId,
-        } satisfies import('./providers/anthropicProvider.js').AnthropicRequestExt,
       })
       let fallbackResult: import('./provider.js').NonStreamingResult
       for (;;) {
@@ -2205,33 +2199,22 @@ async function* queryModel(
 
       try {
         // Fall back to non-streaming mode
-        if (!provider.createNonStreamingFallback) {
+        const fallback404Bound = provider.bind({
+          ...streamingExt,
+          onNonStreamingAttempt: (attempt: number, _start: number, tokens: number) => {
+            attemptNumber = attempt
+            maxOutputTokens = tokens
+          },
+          captureRequest: (params: Record<string, unknown>) => captureAPIRequest(params, options.querySource),
+          originatingRequestId: failedRequestId,
+        } satisfies import('./providers/anthropicProvider.js').AnthropicRequestExt)
+        if (!fallback404Bound.createNonStreamingFallback) {
           throw new Error('Provider does not support non-streaming fallback')
         }
-        const fallback404Gen = provider.createNonStreamingFallback({
+        const fallback404Gen = fallback404Bound.createNonStreamingFallback({
           model: options.model,
           signal,
           intent: streamIntent,
-          providerExt: {
-            buildParams: (context: RetryContext) => {
-              const params = paramsFromContext(context)
-              captureAPIRequest(params, options.querySource)
-              return params
-            },
-            retryOptions: {
-              model: options.model,
-              fallbackModel: options.fallbackModel,
-              thinkingConfig,
-              ...(isFastModeEnabled() ? { fastMode: isFastMode } : false),
-              querySource: options.querySource,
-            },
-            onNonStreamingAttempt: (attempt: number, _start: number, tokens: number) => {
-              attemptNumber = attempt
-              maxOutputTokens = tokens
-            },
-            captureRequest: (params: Record<string, unknown>) => captureAPIRequest(params, options.querySource),
-            originatingRequestId: failedRequestId,
-          } satisfies import('./providers/anthropicProvider.js').AnthropicRequestExt,
         })
         let fallback404Result: import('./provider.js').NonStreamingResult
         for (;;) {

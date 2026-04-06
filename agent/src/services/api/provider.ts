@@ -34,12 +34,6 @@ export interface StreamRequest {
   signal: AbortSignal
   intent: StreamIntent
   hooks?: RequestHooks
-  /**
-   * Provider-specific extension data. Opaque at the interface level.
-   * Each provider defines its own extension type (e.g. AnthropicRequestExt)
-   * and reads it via a single documented cast at the provider boundary.
-   */
-  providerExt?: unknown
 }
 
 // ---------------------------------------------------------------------------
@@ -118,11 +112,40 @@ export interface ErrorClassification {
 }
 
 // ---------------------------------------------------------------------------
+// Bound provider (returned by LLMProvider.bind)
+// ---------------------------------------------------------------------------
+
+/**
+ * A provider bound with provider-specific request configuration.
+ * Returned by LLMProvider.bind(ext). All methods accept pure neutral StreamRequest
+ * (no providerExt field needed — the ext is already bound).
+ */
+export interface BoundProvider {
+  createStream(
+    request: StreamRequest,
+  ): AsyncGenerator<SystemAPIErrorMessage, ProviderStreamResult>
+
+  createNonStreamingFallback?(
+    request: StreamRequest,
+  ): AsyncGenerator<SystemAPIErrorMessage, NonStreamingResult>
+}
+
+// ---------------------------------------------------------------------------
 // Provider interface
 // ---------------------------------------------------------------------------
 
 export interface LLMProvider {
   readonly name: string
+
+  /**
+   * Bind provider-specific configuration for a request scope.
+   * Returns a BoundProvider whose createStream/createNonStreamingFallback
+   * methods accept pure neutral StreamRequest (no providerExt).
+   *
+   * The ext parameter is provider-specific (e.g. AnthropicRequestExt).
+   * Type safety is enforced at the call site via `satisfies ProviderExtType`.
+   */
+  bind(ext: unknown): BoundProvider
 
   /**
    * Create a streaming request.

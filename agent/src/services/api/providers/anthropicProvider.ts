@@ -19,6 +19,7 @@ import type {
 } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
 import { anthropicStreamAdapter } from '../adapters/anthropicStreamAdapter.js'
 import type {
+  BoundProvider,
   ErrorClassification,
   LLMProvider,
   NonStreamingResult,
@@ -152,12 +153,36 @@ export class AnthropicProvider implements LLMProvider {
     this.config = config
   }
 
+  /**
+   * Bind Anthropic-specific request configuration.
+   * Returns a BoundProvider with typed createStream/createNonStreamingFallback.
+   * The ext is validated once here — internal methods receive it typed.
+   */
+  bind(ext: unknown): BoundProvider {
+    const anthropicExt = ext as AnthropicRequestExt // single boundary assertion
+    if (!anthropicExt?.buildParams) {
+      throw new Error('AnthropicProvider.bind requires buildParams in ext')
+    }
+    return {
+      createStream: (request: StreamRequest) =>
+        this.createStreamWithExt(request, anthropicExt),
+      createNonStreamingFallback: (request: StreamRequest) =>
+        this.createNonStreamingFallbackWithExt(request, anthropicExt),
+    }
+  }
+
+  // LLMProvider.createStream — requires ext via bind(), kept for interface compliance
   async *createStream(
     request: StreamRequest,
   ): AsyncGenerator<SystemAPIErrorMessage, ProviderStreamResult> {
-    const ext = request.providerExt as AnthropicRequestExt | undefined
-    if (!ext?.buildParams) throw new Error('AnthropicProvider requires buildParams in providerExt')
+    throw new Error('Use provider.bind(ext).createStream() instead of provider.createStream()')
+  }
 
+  /** Internal: streaming with typed ext (called by bind) */
+  private async *createStreamWithExt(
+    request: StreamRequest,
+    ext: AnthropicRequestExt,
+  ): AsyncGenerator<SystemAPIErrorMessage, ProviderStreamResult> {
     const { buildParams, retryOptions } = ext
     const hooks = request.hooks
     const { getClient, fetchOverride, querySource } = this.config
@@ -342,12 +367,18 @@ export class AnthropicProvider implements LLMProvider {
     return new LLMAPIError(String(error))
   }
 
+  // LLMProvider.createNonStreamingFallback — requires ext via bind()
   async *createNonStreamingFallback(
     request: StreamRequest,
   ): AsyncGenerator<SystemAPIErrorMessage, NonStreamingResult> {
-    const ext = request.providerExt as AnthropicRequestExt | undefined
-    if (!ext?.buildParams) throw new Error('AnthropicProvider requires buildParams in providerExt')
+    throw new Error('Use provider.bind(ext).createNonStreamingFallback() instead')
+  }
 
+  /** Internal: non-streaming fallback with typed ext (called by bind) */
+  private async *createNonStreamingFallbackWithExt(
+    request: StreamRequest,
+    ext: AnthropicRequestExt,
+  ): AsyncGenerator<SystemAPIErrorMessage, NonStreamingResult> {
     const { buildParams, retryOptions, onNonStreamingAttempt, captureRequest } = ext
     const { getClient, fetchOverride, querySource } = this.config
 

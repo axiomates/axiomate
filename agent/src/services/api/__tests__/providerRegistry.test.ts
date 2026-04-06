@@ -31,6 +31,7 @@ import type { LLMProvider } from '../provider.js'
 function createMockProvider(name = 'test'): LLMProvider {
   return {
     name,
+    bind: vi.fn().mockReturnValue({ createStream: vi.fn() }),
     createStream: vi.fn() as any,
     classifyError: vi.fn().mockReturnValue({ retryable: false, type: 'other' }),
     calculateCost: vi.fn().mockReturnValue(null),

@@ -111,14 +111,14 @@ describe('AnthropicProvider.createNonStreamingFallback', () => {
       model: 'claude-opus-4-6',
       signal: new AbortController().signal,
       intent: dummyIntent,
-      providerExt: {
-        buildParams: () => ({ model: 'claude-opus-4-6', max_tokens: 4096 }),
-        retryOptions: { model: 'claude-opus-4-6', thinkingConfig: { type: 'disabled' } },
-      } as any,
     }
 
+    const bound = provider.bind({
+      buildParams: () => ({ model: 'claude-opus-4-6', max_tokens: 4096 }),
+      retryOptions: { model: 'claude-opus-4-6', thinkingConfig: { type: 'disabled' } },
+    })
     const { result } = await consumeGenerator(
-      provider.createNonStreamingFallback!(request),
+      bound.createNonStreamingFallback!(request),
     )
 
     expect(result.message).toMatchObject({
@@ -145,13 +145,13 @@ describe('AnthropicProvider.createNonStreamingFallback', () => {
       model: 'claude-opus-4-6',
       signal: new AbortController().signal,
       intent: dummyIntent,
-      providerExt: {
-        buildParams,
-        retryOptions: { model: 'claude-opus-4-6', thinkingConfig: { type: 'disabled' } },
-      } as any,
     }
 
-    await consumeGenerator(provider.createNonStreamingFallback!(request))
+    const bound = provider.bind({
+      buildParams,
+      retryOptions: { model: 'claude-opus-4-6', thinkingConfig: { type: 'disabled' } },
+    })
+    await consumeGenerator(bound.createNonStreamingFallback!(request))
 
     expect(buildParams).toHaveBeenCalledTimes(1)
     // Called with RetryContext from withRetry mock
@@ -165,13 +165,13 @@ describe('AnthropicProvider.createNonStreamingFallback', () => {
       model: 'claude-opus-4-6',
       signal: new AbortController().signal,
       intent: dummyIntent,
-      providerExt: {
-        buildParams: () => ({ model: 'claude-opus-4-6', max_tokens: 128000 }),
-        retryOptions: { model: 'claude-opus-4-6', thinkingConfig: { type: 'disabled' } },
-      } as any,
     }
 
-    await consumeGenerator(provider.createNonStreamingFallback!(request))
+    const bound = provider.bind({
+      buildParams: () => ({ model: 'claude-opus-4-6', max_tokens: 128000 }),
+      retryOptions: { model: 'claude-opus-4-6', thinkingConfig: { type: 'disabled' } },
+    })
+    await consumeGenerator(bound.createNonStreamingFallback!(request))
 
     expect(mockAdjustParams).toHaveBeenCalledTimes(1)
     expect(mockAdjustParams.mock.calls[0][1]).toBe(64000) // MAX_NON_STREAMING_TOKENS
@@ -182,13 +182,13 @@ describe('AnthropicProvider.createNonStreamingFallback', () => {
       model: 'claude-opus-4-6',
       signal: new AbortController().signal,
       intent: dummyIntent,
-      providerExt: {
-        buildParams: () => ({ model: 'claude-opus-4-6', max_tokens: 4096 }),
-        retryOptions: { model: 'claude-opus-4-6', thinkingConfig: { type: 'disabled' } },
-      } as any,
     }
 
-    await consumeGenerator(provider.createNonStreamingFallback!(request))
+    const bound = provider.bind({
+      buildParams: () => ({ model: 'claude-opus-4-6', max_tokens: 4096 }),
+      retryOptions: { model: 'claude-opus-4-6', thinkingConfig: { type: 'disabled' } },
+    })
+    await consumeGenerator(bound.createNonStreamingFallback!(request))
 
     expect(mockNormalizeModel).toHaveBeenCalled()
   })
@@ -200,14 +200,14 @@ describe('AnthropicProvider.createNonStreamingFallback', () => {
       model: 'claude-opus-4-6',
       signal: new AbortController().signal,
       intent: dummyIntent,
-      providerExt: {
-        buildParams: () => ({ model: 'claude-opus-4-6', max_tokens: 4096 }),
-        retryOptions: { model: 'claude-opus-4-6', thinkingConfig: { type: 'disabled' } },
-        onNonStreamingAttempt,
-      } as any,
     }
 
-    await consumeGenerator(provider.createNonStreamingFallback!(request))
+    const bound = provider.bind({
+      buildParams: () => ({ model: 'claude-opus-4-6', max_tokens: 4096 }),
+      retryOptions: { model: 'claude-opus-4-6', thinkingConfig: { type: 'disabled' } },
+      onNonStreamingAttempt,
+    })
+    await consumeGenerator(bound.createNonStreamingFallback!(request))
 
     expect(onNonStreamingAttempt).toHaveBeenCalledTimes(1)
     expect(onNonStreamingAttempt.mock.calls[0][0]).toBe(1) // attempt number
@@ -223,14 +223,14 @@ describe('AnthropicProvider.createNonStreamingFallback', () => {
       model: 'claude-opus-4-6',
       signal: new AbortController().signal,
       intent: dummyIntent,
-      providerExt: {
-        buildParams: () => params,
-        retryOptions: { model: 'claude-opus-4-6', thinkingConfig: { type: 'disabled' } },
-        captureRequest,
-      } as any,
     }
 
-    await consumeGenerator(provider.createNonStreamingFallback!(request))
+    const bound = provider.bind({
+      buildParams: () => params,
+      retryOptions: { model: 'claude-opus-4-6', thinkingConfig: { type: 'disabled' } },
+      captureRequest,
+    })
+    await consumeGenerator(bound.createNonStreamingFallback!(request))
 
     expect(captureRequest).toHaveBeenCalledWith(params)
   })
@@ -247,15 +247,15 @@ describe('AnthropicProvider.createNonStreamingFallback', () => {
       model: 'claude-opus-4-6',
       signal: new AbortController().signal,
       intent: dummyIntent,
-      providerExt: {
-        buildParams: () => ({ model: 'claude-opus-4-6', max_tokens: 4096 }),
-        retryOptions: { model: 'claude-opus-4-6', thinkingConfig: { type: 'disabled' } },
-        originatingRequestId: 'req_original_123',
-      } as any,
     }
 
+    const bound = failProvider.bind({
+      buildParams: () => ({ model: 'claude-opus-4-6', max_tokens: 4096 }),
+      retryOptions: { model: 'claude-opus-4-6', thinkingConfig: { type: 'disabled' } },
+      originatingRequestId: 'req_original_123',
+    })
     await expect(
-      consumeGenerator(failProvider.createNonStreamingFallback!(request)),
+      consumeGenerator(bound.createNonStreamingFallback!(request)),
     ).rejects.toThrow('timeout')
 
     expect(mockLogDiag).toHaveBeenCalledWith('error', 'cli_nonstreaming_fallback_error')
@@ -268,16 +268,7 @@ describe('AnthropicProvider.createNonStreamingFallback', () => {
     )
   })
 
-  it('throws without buildParams hook', async () => {
-    const request: StreamRequest = {
-      model: 'claude-opus-4-6',
-      signal: new AbortController().signal,
-      intent: dummyIntent,
-      providerExt: {} as any,
-    }
-
-    await expect(
-      consumeGenerator(provider.createNonStreamingFallback!(request)),
-    ).rejects.toThrow('AnthropicProvider requires buildParams in providerExt')
+  it('throws without buildParams in ext', async () => {
+    expect(() => provider.bind({})).toThrow('AnthropicProvider.bind requires buildParams in ext')
   })
 })

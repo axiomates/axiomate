@@ -59,7 +59,12 @@ function createProvider(mockClient?: any) {
   })
 }
 
-function baseRequest(mockClient: any, onProviderEvent?: (e: ProviderEvent) => void) {
+const baseExt = {
+  buildParams: () => ({ model: 'claude-opus-4-6', max_tokens: 4096 }),
+  retryOptions: { model: 'claude-opus-4-6', thinkingConfig: { type: 'disabled' } },
+}
+
+function baseRequest(_mockClient: any, onProviderEvent?: (e: ProviderEvent) => void) {
   return {
     model: 'claude-opus-4-6',
     signal: new AbortController().signal,
@@ -73,10 +78,6 @@ function baseRequest(mockClient: any, onProviderEvent?: (e: ProviderEvent) => vo
     },
     hooks: {
       onProviderEvent,
-    },
-    providerExt: {
-      buildParams: () => ({ model: 'claude-opus-4-6', max_tokens: 4096 }),
-      retryOptions: { model: 'claude-opus-4-6', thinkingConfig: { type: 'disabled' } },
     },
   }
 }
@@ -117,7 +118,7 @@ describe('AnthropicProvider — ProviderEvents', () => {
     const onProviderEvent = vi.fn()
     const provider = createProvider(mockClient)
 
-    const { result } = await consumeProvider(provider.createStream(baseRequest(mockClient, onProviderEvent)))
+    const { result } = await consumeProvider(provider.bind(baseExt).createStream(baseRequest(mockClient, onProviderEvent)))
     await collectStream(result.stream)
 
     const ttfbCall = onProviderEvent.mock.calls.find((c: any[]) => c[0].type === 'ttfb')
@@ -142,7 +143,7 @@ describe('AnthropicProvider — ProviderEvents', () => {
     const onProviderEvent = vi.fn()
     const provider = createProvider(mockClient)
 
-    const { result } = await consumeProvider(provider.createStream(baseRequest(mockClient, onProviderEvent)))
+    const { result } = await consumeProvider(provider.bind(baseExt).createStream(baseRequest(mockClient, onProviderEvent)))
     await collectStream(result.stream)
 
     const researchCall = onProviderEvent.mock.calls.find((c: any[]) => c[0].type === 'research')
@@ -172,7 +173,7 @@ describe('AnthropicProvider — ProviderEvents', () => {
     const onProviderEvent = vi.fn()
     const provider = createProvider(mockClient)
 
-    const { result } = await consumeProvider(provider.createStream(baseRequest(mockClient, onProviderEvent)))
+    const { result } = await consumeProvider(provider.bind(baseExt).createStream(baseRequest(mockClient, onProviderEvent)))
     await collectStream(result.stream)
 
     const advisorStart = onProviderEvent.mock.calls.find((c: any[]) => c[0].type === 'advisor_start')
@@ -202,7 +203,7 @@ describe('AnthropicProvider — ProviderEvents', () => {
     const onProviderEvent = vi.fn()
     const provider = createProvider(mockClient)
 
-    const { result } = await consumeProvider(provider.createStream(baseRequest(mockClient, onProviderEvent)))
+    const { result } = await consumeProvider(provider.bind(baseExt).createStream(baseRequest(mockClient, onProviderEvent)))
     await collectStream(result.stream)
 
     const advisorEnd = onProviderEvent.mock.calls.find((c: any[]) => c[0].type === 'advisor_end')
@@ -225,7 +226,7 @@ describe('AnthropicProvider — ProviderEvents', () => {
     const provider = createProvider(mockClient)
 
     // No onProviderEvent — should not throw
-    const { result } = await consumeProvider(provider.createStream(baseRequest(mockClient, undefined)))
+    const { result } = await consumeProvider(provider.bind(baseExt).createStream(baseRequest(mockClient, undefined)))
     const events = await collectStream(result.stream)
     expect(events.length).toBeGreaterThan(0)
   })
@@ -247,7 +248,7 @@ describe('AnthropicProvider — ProviderEvents', () => {
     const provider = createProvider(mockClient)
 
     const startTime = Date.now()
-    const { result } = await consumeProvider(provider.createStream(baseRequest(mockClient, onProviderEvent)))
+    const { result } = await consumeProvider(provider.bind(baseExt).createStream(baseRequest(mockClient, onProviderEvent)))
     await collectStream(result.stream)
     const elapsed = Date.now() - startTime
 
