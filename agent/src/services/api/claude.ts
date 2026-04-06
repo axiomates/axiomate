@@ -47,7 +47,6 @@ import { getOauthAccountInfo } from '../../utils/auth.js'
 import {
   getBedrockExtraBodyParamsBetas,
   getMergedBetas,
-  getModelBetas,
 } from '../../utils/betas.js'
 import { getOrCreateUserID } from '../../utils/config.js'
 import {
@@ -156,7 +155,7 @@ import {
   isFastModeEnabled,
   isFastModeSupportedByModel,
 } from '../../utils/fastMode.js'
-import { returnValue } from '../../utils/generators.js'
+// returnValue removed — verifyApiKey now delegates to provider
 import { headlessProfilerCheckpoint } from '../../utils/headlessProfiler.js'
 import { isMcpInstructionsDeltaEnabled } from '../../utils/mcpInstructionsDelta.js'
 // calculateUSDCost removed — cost calculation now goes through provider.calculateCost()
@@ -211,7 +210,7 @@ import {
 import { getInitializationStatus } from '../lsp/manager.js'
 import { isToolFromMcpServer } from '../mcp/utils.js'
 import { withStreamingVCR, withVCR } from '../vcr.js'
-import { getAnthropicClient } from './client.js'
+// getAnthropicClient removed — all SDK calls now go through provider
 import {
   CUSTOM_OFF_SWITCH_MESSAGE,
   getAssistantMessageFromError,
@@ -234,7 +233,6 @@ import {
   FallbackTriggeredError,
   is529Error,
   type RetryContext,
-  withRetry,
 } from './withRetry.js'
 
 // Define a type that represents valid JSON values
@@ -521,40 +519,12 @@ export async function verifyApiKey(
   }
 
   try {
-    // WARNING: if you change this to use a non-Haiku model, this request will fail in 1P unless it uses getCLISyspromptPrefix.
-    const model = getSmallFastModel()
-    const betas = getModelBetas(model)
-    return await returnValue(
-      withRetry(
-        () =>
-          getAnthropicClient({
-            apiKey,
-            maxRetries: 3,
-            model,
-            source: 'verify_api_key',
-          }),
-        async anthropic => {
-          const messages: MessageParam[] = [{ role: 'user', content: 'test' }]
-          // biome-ignore lint/plugin: API key verification is intentionally a minimal direct call
-          await anthropic.beta.messages.create({
-            model,
-            max_tokens: 1,
-            messages: messages as any, // neutral MessageParam → SDK BetaMessageParam at boundary
-            temperature: 1,
-            ...(betas.length > 0 && { betas }),
-            metadata: getAPIMetadata(),
-            ...getExtraBodyParams(),
-          })
-          return true
-        },
-        { maxRetries: 2, model, thinkingConfig: { type: 'disabled' } }, // Use fewer retries for API key verification
-      ),
-    )
-  } catch (errorFromRetry) {
-    let error = errorFromRetry
-    if (errorFromRetry instanceof CannotRetryError) {
-      error = errorFromRetry.originalError
+    const provider = getProviderForModel(getSmallFastModel())
+    if (!provider.verifyConnection) {
+      return true // Provider doesn't support verification
     }
+    return await provider.verifyConnection({ apiKey })
+  } catch (error) {
     logError(error)
     // Check for authentication error
     if (
@@ -647,13 +617,13 @@ export function assistantMessageToMessageParam(
               ? { cache_control: getCacheControl({ querySource }) }
               : {}
             : {}),
-        })) as unknown as MessageParam['content'],
+        })),
       }
     }
   }
   return {
     role: 'assistant',
-    content: message.message.content as unknown as MessageParam['content'],
+    content: message.message.content,
   }
 }
 
@@ -1595,7 +1565,7 @@ async function* queryModel(
 
   const streamIntent: import('./streamTypes.js').StreamIntent = {
     model: options.model,
-    messages: messagesForAPI as unknown as import('./streamTypes.js').MessageParam[],
+    messages: messagesForAPI,
     systemPrompt: system,
     tools: allTools,
     toolChoice: options.toolChoice as import('./streamTypes.js').ToolChoice | undefined,
@@ -1967,10 +1937,8 @@ async function* queryModel(
       }
 
       // Process fallback percentage header and quota status if available
-      // streamResponse is set when the stream is created in the withRetry callback above
-      // TypeScript's control flow analysis can't track that streamResponse is set in the callback
-      // eslint-disable-next-line eslint-plugin-n/no-unsupported-features/node-builtins
-      const resp = streamResponse as unknown as Response | undefined
+      // streamResponse is set in the onRequestSent callback above
+      const resp = streamResponse
       if (resp) {
         extractQuotaStatusFromHeaders(resp.headers)
         // Store headers for gateway detection
@@ -2689,10 +2657,10 @@ export function addCacheBreakpoints(
           const block = msg.content[j]
           if (block && isToolResultBlock(block)) {
             if (!cloned) {
-              msg.content = [...msg.content]
+              ;(msg as { content: unknown[] }).content = [...msg.content]
               cloned = true
             }
-            msg.content[j] = Object.assign({}, block, {
+            ;(msg.content as unknown[])[j] = Object.assign({}, block, {
               cache_reference: block.tool_use_id,
             })
           }

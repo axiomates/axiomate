@@ -422,4 +422,22 @@ export class AnthropicProvider implements LLMProvider {
       requestId: (sdkResult as any)?.request_id,
     }
   }
+
+  async verifyConnection(options: { apiKey?: string }): Promise<boolean> {
+    const { getClient } = this.config
+    const model = 'claude-haiku-4-5-20251001' // Cheapest model for verification
+    const anthropic = await getClient({
+      maxRetries: 3,
+      model,
+      ...(options.apiKey ? { apiKey: options.apiKey } : {}),
+      source: 'verify_api_key',
+    } as any)
+    await anthropic.beta.messages.create({
+      model,
+      max_tokens: 1,
+      messages: [{ role: 'user', content: 'test' }],
+      temperature: 1,
+    })
+    return true
+  }
 }

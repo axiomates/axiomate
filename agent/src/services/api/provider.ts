@@ -181,6 +181,12 @@ export interface LLMProvider {
   createNonStreamingFallback?(
     request: StreamRequest,
   ): AsyncGenerator<SystemAPIErrorMessage, NonStreamingResult>
+
+  /**
+   * Verify that the provider connection works (e.g. API key is valid).
+   * Returns true if verification succeeds, throws on failure.
+   */
+  verifyConnection?(options: { apiKey?: string }): Promise<boolean>
 }
 
 // ---------------------------------------------------------------------------

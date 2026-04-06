@@ -23,7 +23,8 @@ export type ToolUseBlock = {
 export type ThinkingBlock = {
   type: 'thinking'
   thinking: string
-  signature?: string
+  /** Always populated: accumulator initializes to '', signature_delta fills actual value. */
+  signature: string
 }
 
 export type ServerToolUseBlock = {
@@ -282,7 +283,8 @@ export type ContentBlockParam =
 // ===== Request messages =====
 
 export type MessageParam = {
-  content: string | ContentBlockParam[]
+  /** User messages use ContentBlockParam[], assistant echo-back uses ContentBlock[]. */
+  content: string | ContentBlockParam[] | ContentBlock[]
   role: 'user' | 'assistant'
 }
 
@@ -342,7 +344,9 @@ export type NeutralOutputFormat = { type: string; [key: string]: unknown }
  */
 export type StreamIntent = {
   model: string
-  messages: MessageParam[]
+  /** Normalized messages. Typed as unknown[] because the actual shape
+   *  is (UserMessage | AssistantMessage)[] which varies by provider. */
+  messages: unknown[]
   systemPrompt: unknown[] // System prompt blocks (provider-specific format)
   tools: NeutralToolSchema[]
   toolChoice?: ToolChoice

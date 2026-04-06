@@ -2544,7 +2544,7 @@ export async function transformResultContent(
             imageBuffer.length,
             ext,
           )
-          const content: MessageParam['content'] = []
+          const content: import('../api/streamTypes.js').ContentBlockParam[] = []
           if (prefix) {
             content.push({
               type: 'text',
