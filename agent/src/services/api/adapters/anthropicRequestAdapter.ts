@@ -139,7 +139,18 @@ export function toolChoiceToAnthropic(
  * optional provider-hint fields (strict, defer_loading, cache_control,
  * eager_input_streaming). Unknown fields are ignored.
  */
-export function neutralToolToSDK(t: NeutralToolSchema): Record<string, unknown> {
+/** Anthropic SDK tool format produced by neutralToolToSDK */
+export interface AnthropicToolSchema {
+  name: string
+  description?: string
+  input_schema: { type: 'object'; [key: string]: unknown }
+  strict?: boolean
+  eager_input_streaming?: boolean
+  defer_loading?: boolean
+  cache_control?: { type: 'ephemeral'; scope?: string; ttl?: string } | null
+}
+
+export function neutralToolToSDK(t: NeutralToolSchema): AnthropicToolSchema {
   return {
     name: t.name,
     description: t.description,

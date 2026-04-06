@@ -581,6 +581,9 @@ function AssistantMessageBlock(t0) {
         logError(new Error(`Unable to render server tool block: ${param.type}`));
         return null;
       }
+    case "server_tool_result":
+      // API-side tool results (web_search_tool_result, etc.) — not rendered in UI
+      return null;
     default:
       {
         logError(new Error(`Unable to render message type: ${param.type}`));

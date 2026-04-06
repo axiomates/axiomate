@@ -38,14 +38,15 @@ export function GroupedToolUseContent({
     }
   }
   const toolUsesData = message.messages.map(msg => {
-    const content = msg.message.content[0] as any;
-    const result = resultsByToolUseId.get(content.id);
+    const content = msg.message.content[0]
+    const id = content?.type === 'tool_use' ? content.id : ''
+    const result = resultsByToolUseId.get(id);
     return {
       param: content as ToolUseBlockParam,
-      isResolved: lookups.resolvedToolUseIDs.has(content.id),
-      isError: lookups.erroredToolUseIDs.has(content.id),
-      isInProgress: inProgressToolUseIDs.has(content.id),
-      progressMessages: filterToolProgressMessages(lookups.progressMessagesByToolUseID.get(content.id) ?? []),
+      isResolved: lookups.resolvedToolUseIDs.has(id),
+      isError: lookups.erroredToolUseIDs.has(id),
+      isInProgress: inProgressToolUseIDs.has(id),
+      progressMessages: filterToolProgressMessages(lookups.progressMessagesByToolUseID.get(id) ?? []),
       result
     };
   });
