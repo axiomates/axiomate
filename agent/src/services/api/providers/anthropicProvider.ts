@@ -132,6 +132,7 @@ export class AnthropicProvider implements LLMProvider {
     let streamRequestId: string | undefined
     let streamResponse: unknown
     let maxOutputTokens = 0
+    let lastAttemptStart = Date.now()
 
     // --- withRetry: handles retries, yields error messages ---
     const generator = withRetry(
@@ -143,10 +144,10 @@ export class AnthropicProvider implements LLMProvider {
           source: querySource,
         }),
       async (anthropic: Anthropic, attempt: number, context: RetryContext) => {
-        const start = Date.now()
+        lastAttemptStart = Date.now()
         hooks.onAttemptStart?.({
           attempt,
-          start,
+          start: lastAttemptStart,
           fastMode: context.fastMode ?? false,
         })
 
@@ -192,7 +193,7 @@ export class AnthropicProvider implements LLMProvider {
       ? (raw: BetaRawMessageStreamEvent) => {
           // TTFB from message_start
           if (raw.type === 'message_start') {
-            onProviderEvent({ type: 'ttfb', ms: Date.now() - (streamResponse ? 0 : Date.now()) })
+            onProviderEvent({ type: 'ttfb', ms: Date.now() - lastAttemptStart })
           }
 
           // Research capture
@@ -423,21 +424,6 @@ export class AnthropicProvider implements LLMProvider {
     }
   }
 
-  async verifyConnection(options: { apiKey?: string }): Promise<boolean> {
-    const { getClient } = this.config
-    const model = 'claude-haiku-4-5-20251001' // Cheapest model for verification
-    const anthropic = await getClient({
-      maxRetries: 3,
-      model,
-      ...(options.apiKey ? { apiKey: options.apiKey } : {}),
-      source: 'verify_api_key',
-    } as any)
-    await anthropic.beta.messages.create({
-      model,
-      max_tokens: 1,
-      messages: [{ role: 'user', content: 'test' }],
-      temperature: 1,
-    })
-    return true
-  }
+  // verifyConnection removed — verifyApiKey in claude.ts handles this directly
+  // with full withRetry + betas + metadata (Anthropic-specific auth logic)
 }

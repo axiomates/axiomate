@@ -46,6 +46,7 @@ import {
 import { getOauthAccountInfo } from '../../utils/auth.js'
 import {
   getBedrockExtraBodyParamsBetas,
+  getModelBetas,
   getMergedBetas,
 } from '../../utils/betas.js'
 import { getOrCreateUserID } from '../../utils/config.js'
@@ -155,10 +156,10 @@ import {
   isFastModeEnabled,
   isFastModeSupportedByModel,
 } from '../../utils/fastMode.js'
-// returnValue removed — verifyApiKey now delegates to provider
+import { returnValue } from '../../utils/generators.js'
 import { headlessProfilerCheckpoint } from '../../utils/headlessProfiler.js'
 import { isMcpInstructionsDeltaEnabled } from '../../utils/mcpInstructionsDelta.js'
-// calculateUSDCost removed — cost calculation now goes through provider.calculateCost()
+import { calculateUSDCost } from '../../utils/modelCost.js'
 import { endQueryProfile, queryCheckpoint } from '../../utils/queryProfiler.js'
 import {
   modelSupportsAdaptiveThinking,
@@ -210,7 +211,7 @@ import {
 import { getInitializationStatus } from '../lsp/manager.js'
 import { isToolFromMcpServer } from '../mcp/utils.js'
 import { withStreamingVCR, withVCR } from '../vcr.js'
-// getAnthropicClient removed — all SDK calls now go through provider
+import { getAnthropicClient } from './client.js'
 import {
   CUSTOM_OFF_SWITCH_MESSAGE,
   getAssistantMessageFromError,
@@ -233,6 +234,7 @@ import {
   FallbackTriggeredError,
   is529Error,
   type RetryContext,
+  withRetry,
 } from './withRetry.js'
 
 // Define a type that represents valid JSON values
@@ -519,12 +521,40 @@ export async function verifyApiKey(
   }
 
   try {
-    const provider = getProviderForModel(getSmallFastModel())
-    if (!provider.verifyConnection) {
-      return true // Provider doesn't support verification
+    // WARNING: if you change this to use a non-Haiku model, this request will fail in 1P unless it uses getCLISyspromptPrefix.
+    const model = getSmallFastModel()
+    const betas = getModelBetas(model)
+    return await returnValue(
+      withRetry(
+        () =>
+          getAnthropicClient({
+            apiKey,
+            maxRetries: 3,
+            model,
+            source: 'verify_api_key',
+          }),
+        async anthropic => {
+          const messages: MessageParam[] = [{ role: 'user', content: 'test' }]
+          // biome-ignore lint/plugin: API key verification is intentionally a minimal direct call
+          await anthropic.beta.messages.create({
+            model,
+            max_tokens: 1,
+            messages: messages as any, // neutral MessageParam → SDK BetaMessageParam at SDK boundary
+            temperature: 1,
+            ...(betas.length > 0 && { betas }),
+            metadata: getAPIMetadata(),
+            ...getExtraBodyParams(),
+          })
+          return true
+        },
+        { maxRetries: 2, model, thinkingConfig: { type: 'disabled' } },
+      ),
+    )
+  } catch (errorFromRetry) {
+    let error = errorFromRetry
+    if (errorFromRetry instanceof CannotRetryError) {
+      error = errorFromRetry.originalError
     }
-    return await provider.verifyConnection({ apiKey })
-  } catch (error) {
     logError(error)
     // Check for authentication error
     if (
@@ -1824,15 +1854,13 @@ async function* queryModel(
           case 'stream_event': {
             // Idle timer reset (protocol-agnostic: any event = stream alive)
             resetStreamIdleTimer()
-            // Cost calculation on response_delta — via provider abstraction
+            // Cost calculation on response_delta
             if (output.event.type === 'response_delta') {
               const deltaUsage = neutralUsageToDeltaUsage(output.event.usage)
               usage = updateUsage(usage, deltaUsage)
               stopReason = output.event.stopReason as typeof stopReason
-              const costUSDForPart = provider.calculateCost(
-                resolvedModel,
-                output.event.usage,
-              ) ?? 0
+              // Use full NonNullableUsage for cost (includes server_tool_use, service_tier)
+              const costUSDForPart = calculateUSDCost(resolvedModel, usage)
               costUSD += addToTotalSessionCost(
                 costUSDForPart,
                 usage,
@@ -2386,17 +2414,8 @@ async function* queryModel(
       const fallbackUsage = fallbackMessage.message.usage
       usage = updateUsage(EMPTY_USAGE, fallbackUsage)
       stopReason = fallbackMessage.message.stop_reason
-      // Convert snake_case LLMMessageUsage → camelCase neutral Usage for provider
-      const neutralFallbackUsage: import('./streamTypes.js').Usage = {
-        inputTokens: fallbackUsage.input_tokens,
-        outputTokens: fallbackUsage.output_tokens,
-        cacheReadTokens: fallbackUsage.cache_read_input_tokens ?? undefined,
-        cacheWriteTokens: fallbackUsage.cache_creation_input_tokens ?? undefined,
-      }
-      const fallbackCost = provider.calculateCost(
-        resolvedModel,
-        neutralFallbackUsage,
-      ) ?? 0
+      // Use full NonNullableUsage for cost calculation (matches v0.1.0 behavior)
+      const fallbackCost = calculateUSDCost(resolvedModel, fallbackUsage as NonNullableUsage)
       costUSD += addToTotalSessionCost(
         fallbackCost,
         fallbackUsage as NonNullableUsage,
