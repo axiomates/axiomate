@@ -10,6 +10,9 @@ import {
   LLMAPIError,
 } from './streamTypes.js'
 import type {
+  CountTokensRequest,
+  InferenceRequest,
+  InferenceResponse,
   LLMMessage,
   StreamEvent,
   StreamIntent,
@@ -213,6 +216,22 @@ export interface LLMProvider {
    * Provider handles all retry logic, betas, metadata internally.
    */
   verifyConnection?(options: { apiKey?: string }): Promise<boolean>
+
+  /**
+   * Non-streaming inference for side queries, classifiers, validation.
+   * Unlike createStream, returns a complete response in one call.
+   * Provider handles all protocol-specific details (betas, caching, etc.)
+   * based on providerHints in the request.
+   */
+  inference(request: InferenceRequest): Promise<InferenceResponse>
+
+  /**
+   * Count tokens for messages + tools.
+   * Returns null if the provider doesn't support server-side token counting.
+   * Providers that lack a countTokens API (e.g. OpenAI) return null;
+   * callers should fall back to local estimation (tiktoken, etc.).
+   */
+  countTokens(request: CountTokensRequest): Promise<number | null>
 }
 
 // ---------------------------------------------------------------------------

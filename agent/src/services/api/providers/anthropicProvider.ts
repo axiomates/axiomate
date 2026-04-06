@@ -523,4 +523,121 @@ export class AnthropicProvider implements LLMProvider {
     }
     return result
   }
+
+  /**
+   * Non-streaming inference for side queries, classifiers, validation.
+   * Handles Anthropic-specific: betas, thinking config, model normalization.
+   * providerHints.betas → beta headers
+   * providerHints.maxRetries → SDK client retries
+   */
+  async inference(request: import('../streamTypes.js').InferenceRequest): Promise<import('../streamTypes.js').InferenceResponse> {
+    const { getClient } = this.config
+    const hints = request.providerHints ?? {}
+    const betas = (hints.betas as string[]) ?? []
+    const maxRetries = (hints.maxRetries as number) ?? 2
+
+    const anthropic = await getClient({
+      maxRetries,
+      model: request.model,
+      source: (hints.source as string) ?? 'inference',
+    })
+
+    // Build thinking config
+    let thinking: { type: string; budget_tokens?: number } | undefined
+    if (request.thinking) {
+      if (request.thinking.type === 'disabled') {
+        thinking = { type: 'disabled' }
+      } else if (request.thinking.type === 'enabled' && request.thinking.budgetTokens) {
+        thinking = {
+          type: 'enabled',
+          budget_tokens: Math.min(request.thinking.budgetTokens, (request.maxTokens ?? 1024) - 1),
+        }
+      } else if (request.thinking.type === 'adaptive') {
+        thinking = { type: 'adaptive' }
+      }
+    }
+
+    const normalizedModel = normalizeModelStringForAPI(request.model)
+
+    // Build SDK params
+    const params: Record<string, unknown> = {
+      model: normalizedModel,
+      max_tokens: request.maxTokens ?? 1024,
+      messages: request.messages,
+      ...(request.system && { system: request.system }),
+      ...(request.tools && { tools: request.tools.map((t) => ({
+        name: t.name,
+        description: t.description,
+        input_schema: { type: 'object' as const, ...t.inputSchema },
+      })) }),
+      ...(request.toolChoice && {
+        tool_choice: request.toolChoice.type === 'specific'
+          ? { type: 'tool', name: request.toolChoice.name }
+          : request.toolChoice.type === 'required'
+            ? { type: 'any' }
+            : { type: request.toolChoice.type },
+      }),
+      ...(request.outputFormat && { output_config: { format: request.outputFormat } }),
+      ...(request.temperature !== undefined && { temperature: request.temperature }),
+      ...(request.stopSequences && { stop_sequences: request.stopSequences }),
+      ...(thinking && { thinking }),
+      ...(betas.length > 0 && { betas }),
+      ...(request.metadata && { metadata: request.metadata }),
+    }
+
+    const response = await (anthropic.beta.messages as { create: Function }).create(
+      params,
+      { signal: request.signal },
+    )
+
+    // Convert to neutral InferenceResponse
+    const msg = response as SDKBetaMessage
+    return {
+      id: msg.id,
+      content: msg.content as import('../streamTypes.js').ContentBlock[],
+      model: msg.model,
+      stopReason: msg.stop_reason as import('../streamTypes.js').StopReason,
+      usage: {
+        inputTokens: msg.usage.input_tokens,
+        outputTokens: msg.usage.output_tokens,
+        cacheReadTokens: msg.usage.cache_read_input_tokens ?? undefined,
+        cacheWriteTokens: msg.usage.cache_creation_input_tokens ?? undefined,
+      },
+      requestId: (response as { _request_id?: string })._request_id ?? undefined,
+    }
+  }
+
+  /**
+   * Token counting via Anthropic's countTokens API.
+   * Falls back to null if API call fails (callers should use local estimation).
+   */
+  async countTokens(request: import('../streamTypes.js').CountTokensRequest): Promise<number | null> {
+    const { getClient } = this.config
+
+    try {
+      const anthropic = await getClient({
+        maxRetries: 2,
+        model: request.model,
+        source: 'count_tokens',
+      })
+
+      const betas = getModelBetas(request.model)
+      const params: Record<string, unknown> = {
+        model: normalizeModelStringForAPI(request.model),
+        messages: request.messages,
+        ...(request.tools && { tools: request.tools.map((t) => ({
+          name: t.name,
+          description: t.description,
+          input_schema: { type: 'object' as const, ...t.inputSchema },
+        })) }),
+        ...(request.thinking && { thinking: { type: 'enabled', budget_tokens: 1024 } }),
+        ...(betas.length > 0 && { betas }),
+      }
+
+      const result = await (anthropic.beta.messages as { countTokens: Function }).countTokens(params)
+      return (result as { input_tokens: number }).input_tokens
+    } catch {
+      return null
+    }
+  }
 }

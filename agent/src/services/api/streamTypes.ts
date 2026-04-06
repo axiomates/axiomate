@@ -358,3 +358,59 @@ export type StreamIntent = {
     budgetTokens?: number
   }
 }
+
+// =====================================================================
+// Non-streaming inference (side queries, classifiers, validation)
+// =====================================================================
+
+/**
+ * Non-streaming inference request.
+ * Used by sideQuery, classifiers, model validation — lightweight API calls
+ * outside the main conversation streaming loop.
+ */
+export type InferenceRequest = {
+  model: string
+  messages: MessageParam[]
+  system?: string | ContentBlockParam[]
+  tools?: NeutralToolSchema[]
+  toolChoice?: ToolChoice
+  outputFormat?: NeutralOutputFormat
+  maxTokens?: number
+  temperature?: number
+  thinking?: { type: 'enabled' | 'disabled' | 'adaptive'; budgetTokens?: number }
+  stopSequences?: string[]
+  signal?: AbortSignal
+  /** Provider-specific metadata (fingerprint, attribution, query source, etc.) */
+  metadata?: Record<string, unknown>
+  /**
+   * Provider-specific hints. Providers read hints they understand, ignore the rest.
+   * Anthropic: { betas?: string[], cacheControl?: boolean, ... }
+   * OpenAI: { ... }
+   */
+  providerHints?: Record<string, unknown>
+}
+
+/**
+ * Non-streaming inference response.
+ * Protocol-neutral: content blocks, usage, stop reason.
+ */
+export type InferenceResponse = {
+  id: string
+  content: ContentBlock[]
+  model: string
+  stopReason: StopReason
+  usage: Usage
+  /** Provider-assigned request ID (for correlation/logging) */
+  requestId?: string
+}
+
+/**
+ * Token counting request.
+ * Not all providers support this (OpenAI uses local tiktoken instead).
+ */
+export type CountTokensRequest = {
+  model: string
+  messages: MessageParam[]
+  tools?: NeutralToolSchema[]
+  thinking?: boolean
+}

@@ -36,6 +36,8 @@ function createMockProvider(name = 'test'): LLMProvider {
     classifyError: vi.fn().mockReturnValue({ retryable: false, type: 'other' }),
     calculateCost: vi.fn().mockReturnValue(null),
     wrapError: vi.fn(),
+    inference: vi.fn().mockResolvedValue({ id: '', content: [], model: '', stopReason: null, usage: { inputTokens: 0, outputTokens: 0 } }),
+    countTokens: vi.fn().mockResolvedValue(null),
   }
 }
 
