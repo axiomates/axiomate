@@ -905,6 +905,7 @@ async function approximateMessageTokens(
   }
 
   // Calculate total tokens using the API for accuracy
+  // Cast neutral MessageParam → BetaMessageParam at SDK boundary (countTokens API)
   const approximateMessageTokens = await countTokensWithFallback(
     normalizeMessagesForAPI(microcompactResult.messages).map(_ => {
       if (_.type === 'assistant') {
@@ -915,7 +916,7 @@ async function approximateMessageTokens(
         }
       }
       return _.message
-    }),
+    }) as any,
     [],
   )
 

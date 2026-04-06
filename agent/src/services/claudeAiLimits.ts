@@ -210,7 +210,7 @@ async function makeTestQuery() {
     .create({
       model,
       max_tokens: 1,
-      messages,
+      messages: messages as any, // neutral MessageParam → SDK BetaMessageParam at SDK boundary
       metadata: getAPIMetadata(),
       ...(betas.length > 0 ? { betas } : {}),
     })

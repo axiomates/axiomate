@@ -375,6 +375,8 @@ function roughTokenCountEstimationForContent(
     | string
     | Array<Anthropic.ContentBlock>
     | Array<Anthropic.ContentBlockParam>
+    | Array<import('./api/streamTypes.js').ContentBlockParam>
+    | Array<import('./api/streamTypes.js').ContentBlock>
     | undefined,
 ): number {
   if (!content) {
@@ -391,7 +393,7 @@ function roughTokenCountEstimationForContent(
 }
 
 function roughTokenCountEstimationForBlock(
-  block: string | Anthropic.ContentBlock | Anthropic.ContentBlockParam,
+  block: string | Anthropic.ContentBlock | Anthropic.ContentBlockParam | import('./api/streamTypes.js').ContentBlock | import('./api/streamTypes.js').ContentBlockParam,
 ): number {
   if (typeof block === 'string') {
     return roughTokenCountEstimation(block)
