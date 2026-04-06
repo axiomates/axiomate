@@ -12,7 +12,7 @@ import type { StreamEvent, StreamIntent } from '../streamTypes.js'
 vi.mock('../../../services/analytics/index.js', () => ({
   logEvent: vi.fn(),
 }))
-// Mock withRetry to avoid deep import chain (modelCost → model configs etc.)
+// Mock transitive deps to avoid deep import chain (modelCost → model configs etc.)
 vi.mock('../withRetry.js', () => ({
   withRetry: vi.fn(async function* (getClient: any, operation: any, options: any) {
     const client = await getClient()
@@ -23,7 +23,21 @@ vi.mock('../withRetry.js', () => ({
     })
     return result
   }),
+  CannotRetryError: class extends Error {},
 }))
+vi.mock('../../../utils/diagLogs.js', () => ({ logForDiagnosticsNoPII: vi.fn() }))
+vi.mock('../../../utils/betas.js', () => ({ getModelBetas: vi.fn().mockReturnValue([]) }))
+vi.mock('../../../utils/model/model.js', () => ({
+  getSmallFastModel: vi.fn().mockReturnValue('claude-haiku-4-5-20251001'),
+  normalizeModelStringForAPI: vi.fn((m: string) => m),
+}))
+vi.mock('../claude.js', () => ({
+  getAPIMetadata: vi.fn().mockReturnValue({}),
+  getExtraBodyParams: vi.fn().mockReturnValue({}),
+  adjustParamsForNonStreaming: vi.fn((p: any) => p),
+  MAX_NON_STREAMING_TOKENS: 64000,
+}))
+vi.mock('../../../utils/log.js', () => ({ logError: vi.fn() }))
 
 // ---------------------------------------------------------------------------
 // Helpers

@@ -58,6 +58,10 @@ describe('mapStopReason', () => {
   it('maps null', () => expect(mapStopReason(null)).toBeNull())
   it('passes through unknown reasons', () =>
     expect(mapStopReason('stop_sequence' as any)).toBe('stop_sequence'))
+  it('maps stop_sequence', () => expect(mapStopReason('stop_sequence' as any)).toBe('stop_sequence'))
+  it('maps content_filter', () => expect(mapStopReason('content_filter' as any)).toBe('content_filter'))
+  it('maps unknown value (e.g. refusal) to end_turn', () =>
+    expect(mapStopReason('refusal' as any)).toBe('end_turn'))
 })
 
 // ---------------------------------------------------------------------------
