@@ -182,6 +182,14 @@ export interface LLMProvider {
     request: StreamRequest,
   ): AsyncGenerator<SystemAPIErrorMessage, NonStreamingResult>
 
+  /**
+   * Verify that the provider connection works (e.g. API key is valid).
+   * Returns true if the key is valid, false if authentication fails.
+   * Throws on non-auth errors (network, overloaded, etc.).
+   *
+   * Provider handles all retry logic, betas, metadata internally.
+   */
+  verifyConnection?(options: { apiKey?: string }): Promise<boolean>
 }
 
 // ---------------------------------------------------------------------------

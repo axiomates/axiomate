@@ -33,7 +33,7 @@ import {
   LLMAPIError,
 } from '../streamTypes.js'
 import type { LLMMessage, StreamIntent, Usage } from '../streamTypes.js'
-import { withRetry, type RetryContext } from '../withRetry.js'
+import { CannotRetryError, withRetry, type RetryContext } from '../withRetry.js'
 import { adjustParamsForNonStreaming, MAX_NON_STREAMING_TOKENS } from '../claude.js'
 import { normalizeModelStringForAPI } from '../../../utils/model/model.js'
 import {
@@ -41,6 +41,10 @@ import {
   logEvent,
 } from '../../../services/analytics/index.js'
 import { logForDiagnosticsNoPII } from '../../../utils/diagLogs.js'
+import { getSmallFastModel } from '../../../utils/model/model.js'
+import { getModelBetas } from '../../../utils/betas.js'
+import { getAPIMetadata, getExtraBodyParams } from '../claude.js'
+import { logError } from '../../../utils/log.js'
 
 // ---------------------------------------------------------------------------
 // Session-level config (injected at construction time)
@@ -430,6 +434,49 @@ export class AnthropicProvider implements LLMProvider {
     }
   }
 
-  // verifyConnection removed — verifyApiKey in claude.ts handles this directly
-  // with full withRetry + betas + metadata (Anthropic-specific auth logic)
+  /**
+   * Verify API key by sending a minimal request with full Anthropic configuration
+   * (betas, metadata, extra body params). Matches v0.1.0 verifyApiKey behavior.
+   */
+  async verifyConnection(options: { apiKey?: string }): Promise<boolean> {
+    const model = getSmallFastModel()
+    const betas = getModelBetas(model)
+    const { getClient } = this.config
+
+    // Use a local async generator to match withRetry's consumption pattern
+    const generator = withRetry(
+      () =>
+        getClient({
+          maxRetries: 0, // Manual retry via withRetry
+          model,
+          ...(options.apiKey ? { apiKey: options.apiKey } as any : {}),
+          source: 'verify_api_key',
+        }),
+      async (anthropic) => {
+        await anthropic.beta.messages.create({
+          model,
+          max_tokens: 1,
+          messages: [{ role: 'user', content: 'test' }],
+          temperature: 1,
+          ...(betas.length > 0 && { betas }),
+          metadata: getAPIMetadata(),
+          ...getExtraBodyParams(),
+        })
+        return true
+      },
+      { maxRetries: 2, model, thinkingConfig: { type: 'disabled' } },
+    )
+
+    // Consume generator (withRetry yields SystemAPIErrorMessage on retry)
+    let result: boolean
+    for (;;) {
+      const next = await generator.next()
+      if (next.done) {
+        result = next.value
+        break
+      }
+      // Ignore retry messages during verification
+    }
+    return result
+  }
 }

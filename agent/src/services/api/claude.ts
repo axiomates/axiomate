@@ -46,7 +46,6 @@ import {
 import { getOauthAccountInfo } from '../../utils/auth.js'
 import {
   getBedrockExtraBodyParamsBetas,
-  getModelBetas,
   getMergedBetas,
 } from '../../utils/betas.js'
 import { getOrCreateUserID } from '../../utils/config.js'
@@ -156,7 +155,7 @@ import {
   isFastModeEnabled,
   isFastModeSupportedByModel,
 } from '../../utils/fastMode.js'
-import { returnValue } from '../../utils/generators.js'
+// returnValue — not needed, verifyApiKey delegates to provider
 import { headlessProfilerCheckpoint } from '../../utils/headlessProfiler.js'
 import { isMcpInstructionsDeltaEnabled } from '../../utils/mcpInstructionsDelta.js'
 import { calculateUSDCost } from '../../utils/modelCost.js'
@@ -211,7 +210,7 @@ import {
 import { getInitializationStatus } from '../lsp/manager.js'
 import { isToolFromMcpServer } from '../mcp/utils.js'
 import { withStreamingVCR, withVCR } from '../vcr.js'
-import { getAnthropicClient } from './client.js'
+// getAnthropicClient — used only by provider layer, not by claude.ts
 import {
   CUSTOM_OFF_SWITCH_MESSAGE,
   getAssistantMessageFromError,
@@ -234,7 +233,6 @@ import {
   FallbackTriggeredError,
   is529Error,
   type RetryContext,
-  withRetry,
 } from './withRetry.js'
 
 // Define a type that represents valid JSON values
@@ -521,40 +519,12 @@ export async function verifyApiKey(
   }
 
   try {
-    // WARNING: if you change this to use a non-Haiku model, this request will fail in 1P unless it uses getCLISyspromptPrefix.
-    const model = getSmallFastModel()
-    const betas = getModelBetas(model)
-    return await returnValue(
-      withRetry(
-        () =>
-          getAnthropicClient({
-            apiKey,
-            maxRetries: 3,
-            model,
-            source: 'verify_api_key',
-          }),
-        async anthropic => {
-          const messages: MessageParam[] = [{ role: 'user', content: 'test' }]
-          // biome-ignore lint/plugin: API key verification is intentionally a minimal direct call
-          await anthropic.beta.messages.create({
-            model,
-            max_tokens: 1,
-            messages: messages as any, // neutral MessageParam → SDK BetaMessageParam at SDK boundary
-            temperature: 1,
-            ...(betas.length > 0 && { betas }),
-            metadata: getAPIMetadata(),
-            ...getExtraBodyParams(),
-          })
-          return true
-        },
-        { maxRetries: 2, model, thinkingConfig: { type: 'disabled' } },
-      ),
-    )
-  } catch (errorFromRetry) {
-    let error = errorFromRetry
-    if (errorFromRetry instanceof CannotRetryError) {
-      error = errorFromRetry.originalError
+    const provider = getProviderForModel(getSmallFastModel())
+    if (!provider.verifyConnection) {
+      return true // Provider doesn't support verification
     }
+    return await provider.verifyConnection({ apiKey })
+  } catch (error) {
     logError(error)
     // Check for authentication error
     if (
