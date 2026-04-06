@@ -34,6 +34,12 @@ export interface StreamRequest {
   signal: AbortSignal
   intent: StreamIntent
   hooks?: RequestHooks
+  /**
+   * Provider-specific extension data. Opaque at the interface level.
+   * Each provider defines its own extension type (e.g. AnthropicRequestExt)
+   * and reads it via a single documented cast at the provider boundary.
+   */
+  providerExt?: unknown
 }
 
 // ---------------------------------------------------------------------------
@@ -58,12 +64,6 @@ export interface RequestHooks {
   onRequestSent?: (info: { maxOutputTokens: number; requestId?: string; response?: unknown }) => void
   /** Called with provider-neutral events (TTFB, research, advisor, etc.). */
   onProviderEvent?: (event: ProviderEvent) => void
-  /**
-   * Transitional: Anthropic-specific params builder injected per-request.
-   * Will be internalized into AnthropicProvider when StreamIntent is enriched
-   * to carry all necessary application-layer state.
-   */
-  buildParams?: (retryContext: unknown) => Record<string, unknown>
 }
 
 /**

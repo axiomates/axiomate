@@ -24,7 +24,6 @@ import type {
   NonStreamingResult,
   ProviderEvent,
   ProviderStreamResult,
-  RequestHooks,
   StreamRequest,
 } from '../provider.js'
 import type { SystemAPIErrorMessage } from '../../../types/message.js'
@@ -75,13 +74,15 @@ export interface AnthropicProviderConfig {
 // ---------------------------------------------------------------------------
 
 /**
- * Anthropic-specific request hooks extending the neutral RequestHooks.
- * Adds fields needed by withRetry and the non-streaming fallback path.
+ * Anthropic-specific extension data passed via StreamRequest.providerExt.
+ * Contains provider-specific fields that don't belong in the neutral interface.
  */
-export interface AnthropicRequestHooks extends RequestHooks {
+export interface AnthropicRequestExt {
+  /** Builds Anthropic SDK params from retry context. Closure from claude.ts. */
+  buildParams: (retryContext: RetryContext) => Record<string, unknown>
   /** withRetry options (model, fallbackModel, thinkingConfig, etc.) */
   retryOptions: Record<string, unknown>
-  // --- Non-streaming fallback options (only used by createNonStreamingFallback) ---
+  // --- Non-streaming fallback options ---
   /** Called on each non-streaming attempt (for logging/metrics). */
   onNonStreamingAttempt?: (attempt: number, start: number, maxOutputTokens: number) => void
   /** Called to capture the non-streaming request params (for logging). */
@@ -133,11 +134,11 @@ export class AnthropicProvider implements LLMProvider {
   async *createStream(
     request: StreamRequest,
   ): AsyncGenerator<SystemAPIErrorMessage, ProviderStreamResult> {
-    const hooks = request.hooks as AnthropicRequestHooks | undefined
-    const buildParams = hooks?.buildParams
-    if (!buildParams) throw new Error('AnthropicProvider requires buildParams hook')
+    const ext = request.providerExt as AnthropicRequestExt | undefined
+    if (!ext?.buildParams) throw new Error('AnthropicProvider requires buildParams in providerExt')
 
-    const { retryOptions } = hooks
+    const { buildParams, retryOptions } = ext
+    const hooks = request.hooks
     const { getClient, fetchOverride, querySource } = this.config
 
     let streamRequestId: string | undefined
@@ -156,7 +157,7 @@ export class AnthropicProvider implements LLMProvider {
         }),
       async (anthropic: Anthropic, attempt: number, context: RetryContext) => {
         lastAttemptStart = Date.now()
-        hooks.onAttemptStart?.({
+        hooks?.onAttemptStart?.({
           attempt,
           start: lastAttemptStart,
           fastMode: context.fastMode ?? false,
@@ -171,7 +172,7 @@ export class AnthropicProvider implements LLMProvider {
         streamRequestId = result.request_id
         streamResponse = result.response
 
-        hooks.onRequestSent?.({
+        hooks?.onRequestSent?.({
           maxOutputTokens,
           requestId: streamRequestId,
           response: streamResponse,
@@ -199,7 +200,7 @@ export class AnthropicProvider implements LLMProvider {
 
     // --- Adapt raw Anthropic stream → neutral StreamEvent ---
     // Convert raw SDK events → ProviderEvents and call hooks.onProviderEvent
-    const onProviderEvent = hooks.onProviderEvent
+    const onProviderEvent = hooks?.onProviderEvent
     const onRawEvent = onProviderEvent
       ? (raw: BetaRawMessageStreamEvent) => {
           // TTFB from message_start
@@ -322,11 +323,10 @@ export class AnthropicProvider implements LLMProvider {
   async *createNonStreamingFallback(
     request: StreamRequest,
   ): AsyncGenerator<SystemAPIErrorMessage, NonStreamingResult> {
-    const hooks = request.hooks as AnthropicRequestHooks | undefined
-    const buildParams = hooks?.buildParams
-    if (!buildParams) throw new Error('AnthropicProvider requires buildParams hook')
+    const ext = request.providerExt as AnthropicRequestExt | undefined
+    if (!ext?.buildParams) throw new Error('AnthropicProvider requires buildParams in providerExt')
 
-    const { retryOptions, onNonStreamingAttempt, captureRequest } = hooks
+    const { buildParams, retryOptions, onNonStreamingAttempt, captureRequest } = ext
     const { getClient, fetchOverride, querySource } = this.config
 
     const fallbackTimeoutMs =
@@ -374,7 +374,7 @@ export class AnthropicProvider implements LLMProvider {
               : ('unknown' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS),
             attempt,
             timeout_ms: fallbackTimeoutMs,
-            request_id: (hooks.originatingRequestId ??
+            request_id: (ext.originatingRequestId ??
               'unknown') as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
           })
           throw err

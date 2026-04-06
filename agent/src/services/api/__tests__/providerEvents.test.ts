@@ -72,10 +72,12 @@ function baseRequest(mockClient: any, onProviderEvent?: (e: ProviderEvent) => vo
       thinking: { type: 'disabled' as const },
     },
     hooks: {
+      onProviderEvent,
+    },
+    providerExt: {
       buildParams: () => ({ model: 'claude-opus-4-6', max_tokens: 4096 }),
       retryOptions: { model: 'claude-opus-4-6', thinkingConfig: { type: 'disabled' } },
-      onProviderEvent,
-    } as any,
+    },
   }
 }
 

@@ -1583,19 +1583,6 @@ async function* queryModel(
       signal,
       intent: streamIntent,
       hooks: {
-        buildParams: (context: unknown) => {
-          const params = paramsFromContext(context as RetryContext)
-          captureAPIRequest(params, options.querySource)
-          return params
-        },
-        retryOptions: {
-          model: options.model,
-          fallbackModel: options.fallbackModel,
-          thinkingConfig,
-          ...(isFastModeEnabled() ? { fastMode: isFastMode } : false),
-          signal,
-          querySource: options.querySource,
-        },
         onAttemptStart: (info: { attempt: number; start: number; fastMode?: boolean }) => {
           attemptNumber = info.attempt
           isFastModeRequest = info.fastMode
@@ -1640,7 +1627,22 @@ async function* queryModel(
             logForDebugging(`[AdvisorTool] Advisor tool result received`)
           }
         },
-      } as import('./providers/anthropicProvider.js').AnthropicRequestHooks,
+      },
+      providerExt: {
+        buildParams: (context: RetryContext) => {
+          const params = paramsFromContext(context)
+          captureAPIRequest(params, options.querySource)
+          return params
+        },
+        retryOptions: {
+          model: options.model,
+          fallbackModel: options.fallbackModel,
+          thinkingConfig,
+          ...(isFastModeEnabled() ? { fastMode: isFastMode } : false),
+          signal,
+          querySource: options.querySource,
+        },
+      } satisfies import('./providers/anthropicProvider.js').AnthropicRequestExt,
     })
 
     // Consume Provider generator: yield retry messages, get stream result
@@ -2096,9 +2098,9 @@ async function* queryModel(
         model: options.model,
         signal,
         intent: streamIntent,
-        hooks: {
-          buildParams: (context: unknown) => {
-            const params = paramsFromContext(context as RetryContext)
+        providerExt: {
+          buildParams: (context: RetryContext) => {
+            const params = paramsFromContext(context)
             captureAPIRequest(params, options.querySource)
             return params
           },
@@ -2116,7 +2118,7 @@ async function* queryModel(
           },
           captureRequest: (params: Record<string, unknown>) => captureAPIRequest(params, options.querySource),
           originatingRequestId: streamRequestId,
-        } as import('./providers/anthropicProvider.js').AnthropicRequestHooks,
+        } satisfies import('./providers/anthropicProvider.js').AnthropicRequestExt,
       })
       let fallbackResult: import('./provider.js').NonStreamingResult
       for (;;) {
@@ -2210,9 +2212,9 @@ async function* queryModel(
           model: options.model,
           signal,
           intent: streamIntent,
-          hooks: {
-            buildParams: (context: unknown) => {
-              const params = paramsFromContext(context as RetryContext)
+          providerExt: {
+            buildParams: (context: RetryContext) => {
+              const params = paramsFromContext(context)
               captureAPIRequest(params, options.querySource)
               return params
             },
@@ -2229,7 +2231,7 @@ async function* queryModel(
             },
             captureRequest: (params: Record<string, unknown>) => captureAPIRequest(params, options.querySource),
             originatingRequestId: failedRequestId,
-          } as import('./providers/anthropicProvider.js').AnthropicRequestHooks,
+          } satisfies import('./providers/anthropicProvider.js').AnthropicRequestExt,
         })
         let fallback404Result: import('./provider.js').NonStreamingResult
         for (;;) {

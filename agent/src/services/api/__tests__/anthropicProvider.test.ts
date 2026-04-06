@@ -91,10 +91,10 @@ function baseRequest(overrides: Partial<StreamRequest> = {}): StreamRequest {
     model: 'claude-opus-4-6',
     signal: new AbortController().signal,
     intent: dummyIntent,
-    hooks: {
+    providerExt: {
       buildParams: () => ({ model: 'claude-opus-4-6', max_tokens: 4096 }),
       retryOptions: { model: 'claude-opus-4-6', thinkingConfig: { type: 'disabled' } },
-    } as any,
+    },
     ...overrides,
   }
 }
@@ -166,10 +166,10 @@ describe('AnthropicProvider', () => {
         model: 'claude-opus-4-6',
         signal: new AbortController().signal,
         intent: dummyIntent,
-        hooks: {
+        providerExt: {
           buildParams: () => ({ model: 'claude-opus-4-6', max_tokens: 4096 }),
           retryOptions: { model: 'claude-opus-4-6', thinkingConfig: { type: 'disabled' } },
-        } as any,
+        },
       }))
 
       expect(result.requestId).toBe('req_test_123')
@@ -199,7 +199,7 @@ describe('AnthropicProvider', () => {
         model: 'claude-opus-4-6',
         signal: new AbortController().signal,
         intent: dummyIntent,
-        hooks: { buildParams, retryOptions: { model: 'claude-opus-4-6', thinkingConfig: { type: 'disabled' } } } as any,
+        providerExt: { buildParams, retryOptions: { model: 'claude-opus-4-6', thinkingConfig: { type: 'disabled' } } },
       }))
 
       expect(buildParams).toHaveBeenCalledTimes(1)
@@ -220,12 +220,11 @@ describe('AnthropicProvider', () => {
         model: 'claude-opus-4-6',
         signal: new AbortController().signal,
         intent: dummyIntent,
-        hooks: {
+        hooks: { onAttemptStart, onRequestSent },
+        providerExt: {
           buildParams: () => ({ model: 'claude-opus-4-6', max_tokens: 8192 }),
           retryOptions: { model: 'claude-opus-4-6', thinkingConfig: { type: 'disabled' } },
-          onAttemptStart,
-          onRequestSent,
-        } as any,
+        },
       }))
 
       expect(onAttemptStart).toHaveBeenCalledTimes(1)
@@ -256,11 +255,11 @@ describe('AnthropicProvider', () => {
         model: 'claude-opus-4-6',
         signal: new AbortController().signal,
         intent: dummyIntent,
-        hooks: {
+        hooks: { onProviderEvent },
+        providerExt: {
           buildParams: () => ({ model: 'claude-opus-4-6', max_tokens: 4096 }),
           retryOptions: { model: 'claude-opus-4-6', thinkingConfig: { type: 'disabled' } },
-          onProviderEvent,
-        } as any,
+        },
       }))
 
       // Consume the stream to trigger provider events
@@ -282,10 +281,10 @@ describe('AnthropicProvider', () => {
         model: 'claude-opus-4-6',
         signal: new AbortController().signal,
         intent: dummyIntent,
-        hooks: {
+        providerExt: {
           buildParams: () => ({ model: 'claude-opus-4-6', max_tokens: 32000 }),
           retryOptions: { model: 'claude-opus-4-6', thinkingConfig: { type: 'disabled' } },
-        } as any,
+        },
       }))
 
       expect(result.maxOutputTokens).toBe(32000)
