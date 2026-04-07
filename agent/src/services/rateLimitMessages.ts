@@ -10,7 +10,7 @@ import {
 } from '../utils/auth.js'
 import { hasClaudeAiBillingAccess } from '../utils/billing.js'
 import { formatResetTime } from '../utils/format.js'
-import type { ClaudeAILimits } from './claudeAiLimits.js'
+import type { ClaudeAILimits } from './apiLimits.js'
 
 const FEEDBACK_CHANNEL_ANT = '#briarpatch-cc'
 

@@ -80,7 +80,7 @@ vi.mock('../../../utils/privacyLevel.js', () => ({
   isEssentialTrafficOnly: vi.fn().mockReturnValue(false),
 }))
 
-vi.mock('../../claudeAiLimits.js', () => ({
+vi.mock('../../apiLimits.js', () => ({
   getRateLimitErrorMessage: vi.fn().mockReturnValue(null),
 }))
 

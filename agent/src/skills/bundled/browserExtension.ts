@@ -1,6 +1,6 @@
 import { BROWSER_TOOLS } from 'chrome-mcp-axiomate'
-import { BASE_CHROME_PROMPT } from '../../utils/claudeInChrome/prompt.js'
-import { shouldAutoEnableClaudeInChrome } from '../../utils/claudeInChrome/setup.js'
+import { BASE_CHROME_PROMPT } from '../../utils/browserExtension/prompt.js'
+import { shouldAutoEnableClaudeInChrome } from '../../utils/browserExtension/setup.js'
 import { registerBundledSkill } from '../bundledSkills.js'
 
 const CLAUDE_IN_CHROME_MCP_TOOLS = BROWSER_TOOLS.map(

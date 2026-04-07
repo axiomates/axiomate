@@ -84,7 +84,7 @@ import {
   currentLimits,
   extractQuotaStatusFromError,
   extractQuotaStatusFromHeaders,
-} from '../claudeAiLimits.js'
+} from '../apiLimits.js'
 import { getAPIContextManagement } from '../compact/apiMicrocompact.js'
 
 /* eslint-disable @typescript-eslint/no-require-imports */
@@ -143,8 +143,8 @@ import {
   shouldIncludeFirstPartyOnlyBetas,
   shouldUseGlobalCacheScope,
 } from '../../utils/betas.js'
-import { CLAUDE_IN_CHROME_MCP_SERVER_NAME } from '../../utils/claudeInChrome/common.js'
-import { CHROME_TOOL_SEARCH_INSTRUCTIONS } from '../../utils/claudeInChrome/prompt.js'
+import { CLAUDE_IN_CHROME_MCP_SERVER_NAME } from '../../utils/browserExtension/common.js'
+import { CHROME_TOOL_SEARCH_INSTRUCTIONS } from '../../utils/browserExtension/prompt.js'
 import { getMaxThinkingTokensForModel } from '../../utils/context.js'
 import { logForDebugging } from '../../utils/debug.js'
 import { logForDiagnosticsNoPII } from '../../utils/diagLogs.js'

@@ -72,7 +72,7 @@ import {
   extractQuotaStatusFromError,
   getRawUtilization,
   currentLimits,
-} from '../claudeAiLimits.js'
+} from '../apiLimits.js'
 
 describe('extractQuotaStatusFromHeaders', () => {
   beforeEach(() => {

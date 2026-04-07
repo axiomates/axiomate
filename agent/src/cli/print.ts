@@ -262,7 +262,7 @@ import { LOCAL_COMMAND_STDOUT_TAG } from '../constants/xml.js'
 import {
   statusListeners,
   type ClaudeAILimits,
-} from '../services/claudeAiLimits.js'
+} from '../services/apiLimits.js'
 import {
   getDefaultMainLoopModel,
   getMainLoopModel,
