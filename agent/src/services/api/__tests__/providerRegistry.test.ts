@@ -1,5 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
+// Mock getGlobalConfig to control models configuration
+const mockGlobalConfig = vi.fn()
+vi.mock('../../../utils/config.js', () => ({
+  getGlobalConfig: () => mockGlobalConfig(),
+}))
+
 // Mock transitive deps of providerRegistry (it imports AnthropicProvider)
 vi.mock('../../../services/analytics/index.js', () => ({ logEvent: vi.fn() }))
 vi.mock('../withRetry.js', () => ({
@@ -25,63 +31,93 @@ vi.mock('../claude.js', () => ({
 vi.mock('../../../utils/log.js', () => ({ logError: vi.fn() }))
 vi.mock('../../../utils/modelCost.js', () => ({ calculateUSDCost: vi.fn().mockReturnValue(0) }))
 
-import { getProviderForModel, registerProvider, unregisterProvider } from '../providerRegistry.js'
-import type { LLMProvider } from '../provider.js'
-
-function createMockProvider(name = 'test'): LLMProvider {
-  return {
-    name,
-    bind: vi.fn().mockReturnValue({ createStream: vi.fn() }),
-    createStream: vi.fn() as any,
-    classifyError: vi.fn().mockReturnValue({ retryable: false, type: 'other' }),
-    calculateCost: vi.fn().mockReturnValue(null),
-    wrapError: vi.fn(),
-    inference: vi.fn().mockResolvedValue({ id: '', content: [], model: '', stopReason: null, usage: { inputTokens: 0, outputTokens: 0 } }),
-    countTokens: vi.fn().mockResolvedValue(null),
-  }
-}
+import { getProviderForModel, clearProviderCache } from '../providerRegistry.js'
 
 describe('providerRegistry', () => {
   beforeEach(() => {
-    // Clean up any registered providers between tests
-    unregisterProvider('test')
-    unregisterProvider('openai')
+    clearProviderCache()
   })
 
-  it('returns default anthropic provider for standard model', () => {
-    const provider = getProviderForModel('claude-opus-4-6')
+  it('throws when model is not configured', () => {
+    mockGlobalConfig.mockReturnValue({ models: undefined })
+    expect(() => getProviderForModel('unknown-model')).toThrow(
+      /not configured/,
+    )
+  })
+
+  it('throws when models exists but model is missing', () => {
+    mockGlobalConfig.mockReturnValue({ models: {} })
+    expect(() => getProviderForModel('missing-model')).toThrow(
+      /not configured/,
+    )
+  })
+
+  it('returns AnthropicProvider for protocol: anthropic', () => {
+    mockGlobalConfig.mockReturnValue({
+      models: {
+        'claude-sonnet-4-6': {
+          model: 'claude-sonnet-4-6',
+          protocol: 'anthropic',
+          baseUrl: 'https://api.anthropic.com',
+          apiKey: 'sk-ant-test',
+        },
+      },
+    })
+    const provider = getProviderForModel('claude-sonnet-4-6')
     expect(provider.name).toBe('anthropic')
   })
 
-  it('registerProvider with wildcard pattern matches model', () => {
-    const mockProvider = createMockProvider()
-    registerProvider('test', mockProvider, ['test-*'])
-    expect(getProviderForModel('test-model')).toBe(mockProvider)
+  it('caches providers by protocol:baseUrl', () => {
+    mockGlobalConfig.mockReturnValue({
+      models: {
+        'model-a': {
+          model: 'model-a',
+          protocol: 'anthropic',
+          baseUrl: 'https://api.anthropic.com',
+          apiKey: 'sk-ant-test',
+        },
+        'model-b': {
+          model: 'model-b',
+          protocol: 'anthropic',
+          baseUrl: 'https://api.anthropic.com',
+          apiKey: 'sk-ant-test',
+        },
+      },
+    })
+    const a = getProviderForModel('model-a')
+    const b = getProviderForModel('model-b')
+    expect(a).toBe(b) // same instance — same protocol:baseUrl
   })
 
-  it('exact match: registered pattern matches only that model', () => {
-    const mockProvider = createMockProvider()
-    registerProvider('test', mockProvider, ['exact-model'])
-    expect(getProviderForModel('exact-model')).toBe(mockProvider)
-    // Other models fall back to default
-    expect(getProviderForModel('other-model').name).toBe('anthropic')
+  it('throws for openai protocol (not yet implemented)', () => {
+    mockGlobalConfig.mockReturnValue({
+      models: {
+        'gpt-4o': {
+          model: 'gpt-4o',
+          protocol: 'openai',
+          baseUrl: 'https://api.openai.com/v1',
+          apiKey: 'sk-test',
+        },
+      },
+    })
+    expect(() => getProviderForModel('gpt-4o')).toThrow(
+      /not yet implemented/,
+    )
   })
 
-  it('unregisterProvider causes fallback to default', () => {
-    const mockProvider = createMockProvider()
-    registerProvider('test', mockProvider, ['test-*'])
-    expect(getProviderForModel('test-model')).toBe(mockProvider)
-
-    unregisterProvider('test')
-    expect(getProviderForModel('test-model').name).toBe('anthropic')
-  })
-
-  it('multiple patterns: both match', () => {
-    const mockProvider = createMockProvider('openai')
-    registerProvider('openai', mockProvider, ['gpt-*', 'o1-*'])
-    expect(getProviderForModel('gpt-4o')).toBe(mockProvider)
-    expect(getProviderForModel('o1-preview')).toBe(mockProvider)
-    // Non-matching still falls back
-    expect(getProviderForModel('claude-opus-4-6').name).toBe('anthropic')
+  it('throws for unsupported protocol', () => {
+    mockGlobalConfig.mockReturnValue({
+      models: {
+        'some-model': {
+          model: 'some-model',
+          protocol: 'unknown' as any,
+          baseUrl: 'https://example.com',
+          apiKey: 'key',
+        },
+      },
+    })
+    expect(() => getProviderForModel('some-model')).toThrow(
+      /Unsupported protocol/,
+    )
   })
 })

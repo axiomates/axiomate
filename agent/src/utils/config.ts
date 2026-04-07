@@ -180,6 +180,27 @@ export type DiffTool = 'terminal' | 'auto'
 
 export type OutputStyle = string
 
+/** Per-model provider configuration in ~/.axiomate.json */
+export type ModelProviderConfig = {
+  /** API model ID (e.g. "Qwen/Qwen3.5-397B-A17B", "claude-sonnet-4-6") */
+  model: string
+  /** Display name for UI */
+  name?: string
+  description?: string
+  /** Determines which LLMProvider to use */
+  protocol: 'openai' | 'anthropic'
+  /** API endpoint (e.g. "https://api.siliconflow.cn/v1") */
+  baseUrl: string
+  apiKey: string
+  supportsTools?: boolean
+  supportsToolChoice?: boolean
+  contextWindow?: number
+  /** Extra params sent when thinking is enabled (vendor-specific, user declares) */
+  thinkingParams?: Record<string, unknown>
+  /** Extra params sent on every request (passthrough to API body) */
+  extraParams?: Record<string, unknown>
+}
+
 export type GlobalConfig = {
   /**
    * @deprecated Use settings.apiKeyHelper instead.
@@ -575,6 +596,15 @@ export type GlobalConfig = {
   // CURRENT_MIGRATION_VERSION, runMigrations() skips all sync migrations
   // (avoiding 11× saveGlobalConfig lock+re-read on every startup).
   migrationVersion?: number
+
+  // ── Multi-provider model configuration ──
+
+  /** User-configured models: model ID → provider/endpoint/key/capabilities */
+  models?: Record<string, ModelProviderConfig>
+  /** Active main-loop model (key into models) */
+  currentModel?: string
+  /** Small/fast model for side queries (key into models) */
+  suggestionModel?: string
 }
 
 /**

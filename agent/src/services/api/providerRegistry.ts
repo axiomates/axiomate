@@ -1,103 +1,81 @@
 /**
- * Provider registry: selects the appropriate LLMProvider based on model name.
+ * Provider registry: selects the appropriate LLMProvider for a model
+ * by looking up the model in ~/.axiomate.json's "models" configuration.
  *
- * Default: all models route to AnthropicProvider (including Bedrock/Vertex/Foundry
- * which are Anthropic SDK variants, not separate providers).
- *
- * Custom providers can be registered via registerProvider() for OpenAI-compatible
- * models. When custom model configuration is implemented (e.g., via
- * ~/.axiomate/custom-models.json), the registry will automatically route
- * matching models to the registered provider.
+ * No fallback — every model must be explicitly configured.
  */
 import type { LLMProvider } from './provider.js'
+import { getGlobalConfig, type ModelProviderConfig } from '../../utils/config.js'
 import { AnthropicProvider } from './providers/anthropicProvider.js'
 import { getAnthropicClient } from './client.js'
 import { calculateUSDCost } from '../../utils/modelCost.js'
 import type { NonNullableUsage } from '../../entrypoints/sdk/sdkUtilityTypes.js'
 
 // ---------------------------------------------------------------------------
-// Provider store
+// Provider cache — keyed by protocol:baseUrl to reuse instances
 // ---------------------------------------------------------------------------
 
-let defaultProvider: AnthropicProvider | undefined
-
-/**
- * Registered providers keyed by provider name (e.g. 'openai').
- * Models are matched against registered patterns to select a provider.
- */
-const registeredProviders = new Map<string, {
-  provider: LLMProvider
-  /** Model name patterns that this provider handles (glob-style, e.g. 'gpt-*'). */
-  modelPatterns: string[]
-}>()
+const providerCache = new Map<string, LLMProvider>()
 
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 
 /**
- * Register a custom LLMProvider for specific model patterns.
- * @param name Unique provider name (e.g. 'openai')
- * @param provider The LLMProvider implementation
- * @param modelPatterns Glob-style patterns for model names (e.g. ['gpt-*', 'o1-*'])
- */
-export function registerProvider(
-  name: string,
-  provider: LLMProvider,
-  modelPatterns: string[],
-): void {
-  registeredProviders.set(name, { provider, modelPatterns })
-}
-
-/**
- * Remove a registered provider.
- */
-export function unregisterProvider(name: string): void {
-  registeredProviders.delete(name)
-}
-
-/**
  * Get the LLMProvider for the given model.
  *
- * Checks registered providers first (by model pattern match),
- * then falls back to the default AnthropicProvider.
+ * Looks up the model in getGlobalConfig().models. If not found, throws
+ * with a clear message telling the user to add it to ~/.axiomate.json.
  */
 export function getProviderForModel(model: string): LLMProvider {
-  // Check registered providers for a matching pattern
-  for (const [, entry] of registeredProviders) {
-    if (matchesAnyPattern(model, entry.modelPatterns)) {
-      return entry.provider
-    }
+  const modelConfig = getGlobalConfig().models?.[model]
+  if (!modelConfig) {
+    throw new Error(
+      `Model '${model}' is not configured. Add it to the "models" section in ~/.axiomate.json.`,
+    )
   }
 
-  // Default: Anthropic (covers firstParty, Bedrock, Vertex, Foundry)
-  if (!defaultProvider) {
-    defaultProvider = new AnthropicProvider({
-      getClient: (opts) => getAnthropicClient(opts as Parameters<typeof getAnthropicClient>[0]),
-      calculateUSDCost: (m, usage) =>
-        calculateUSDCost(m, usage as NonNullableUsage),
-    })
+  const cacheKey = `${modelConfig.protocol}:${modelConfig.baseUrl}`
+  let provider = providerCache.get(cacheKey)
+  if (!provider) {
+    provider = createProviderFromConfig(modelConfig)
+    providerCache.set(cacheKey, provider)
   }
-  return defaultProvider
+  return provider
 }
-
-// ---------------------------------------------------------------------------
-// Pattern matching
-// ---------------------------------------------------------------------------
 
 /**
- * Simple glob-style matching: '*' matches any substring.
- * Supports patterns like 'gpt-*', 'o1-*', 'claude-*', exact matches.
+ * Clear the provider cache. Used in tests.
  */
-function matchesPattern(model: string, pattern: string): boolean {
-  if (pattern === '*') return true
-  if (!pattern.includes('*')) return model === pattern
-  const regex = new RegExp(
-    '^' + pattern.replace(/\*/g, '.*') + '$',
-  )
-  return regex.test(model)
+export function clearProviderCache(): void {
+  providerCache.clear()
 }
 
-function matchesAnyPattern(model: string, patterns: string[]): boolean {
-  return patterns.some(p => matchesPattern(model, p))
+// ---------------------------------------------------------------------------
+// Provider factory
+// ---------------------------------------------------------------------------
+
+function createProviderFromConfig(config: ModelProviderConfig): LLMProvider {
+  switch (config.protocol) {
+    case 'anthropic':
+      return new AnthropicProvider({
+        getClient: (opts) =>
+          getAnthropicClient(
+            opts as Parameters<typeof getAnthropicClient>[0],
+          ),
+        calculateUSDCost: (m, usage) =>
+          calculateUSDCost(m, usage as NonNullableUsage),
+      })
+
+    case 'openai':
+      // OpenAIProvider will be added in Phase 3
+      throw new Error(
+        `OpenAI protocol support is not yet implemented. Model: ${config.model}`,
+      )
+
+    default:
+      throw new Error(
+        `Unsupported protocol '${(config as { protocol: string }).protocol}' for model '${config.model}'. Supported: 'anthropic', 'openai'.`,
+      )
+  }
 }
