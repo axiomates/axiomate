@@ -7,6 +7,7 @@
 import type { LLMProvider } from './provider.js'
 import { getGlobalConfig, type ModelProviderConfig } from '../../utils/config.js'
 import { AnthropicProvider } from './providers/anthropicProvider.js'
+import { OpenAIProvider } from './providers/openaiProvider.js'
 import { getAnthropicClient } from './client.js'
 import { calculateUSDCost } from '../../utils/modelCost.js'
 import type { NonNullableUsage } from '../../entrypoints/sdk/sdkUtilityTypes.js'
@@ -68,10 +69,11 @@ function createProviderFromConfig(config: ModelProviderConfig): LLMProvider {
       })
 
     case 'openai':
-      // OpenAIProvider will be added in Phase 3
-      throw new Error(
-        `OpenAI protocol support is not yet implemented. Model: ${config.model}`,
-      )
+      return new OpenAIProvider({
+        baseUrl: config.baseUrl,
+        apiKey: config.apiKey,
+        modelConfig: config,
+      })
 
     default:
       throw new Error(

@@ -89,7 +89,7 @@ describe('providerRegistry', () => {
     expect(a).toBe(b) // same instance — same protocol:baseUrl
   })
 
-  it('throws for openai protocol (not yet implemented)', () => {
+  it('returns OpenAIProvider for protocol: openai', () => {
     mockGlobalConfig.mockReturnValue({
       models: {
         'gpt-4o': {
@@ -100,9 +100,8 @@ describe('providerRegistry', () => {
         },
       },
     })
-    expect(() => getProviderForModel('gpt-4o')).toThrow(
-      /not yet implemented/,
-    )
+    const provider = getProviderForModel('gpt-4o')
+    expect(provider.name).toBe('openai')
   })
 
   it('throws for unsupported protocol', () => {

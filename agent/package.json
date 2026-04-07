@@ -3,9 +3,9 @@
   "version": "0.1.0",
   "description": "AI agent with multi-provider support (OpenAI / Anthropic / self-hosted)",
   "type": "module",
-  "main": "./dist/entrypoints/cli.js",
+  "main": "./dist/cli.js",
   "bin": {
-    "axiomate": "./dist/entrypoints/cli.js"
+    "axiomate": "./dist/cli.js"
   },
   "scripts": {
     "build": "bun run build.ts",
@@ -83,7 +83,7 @@
     "mcpb-axiomate": "*",
     "modifiers-mac-napi-axiomate": "*",
     "open": "^10.0.0",
-    "openai": "^4.0.0",
+    "openai": "^4.104.0",
     "p-map": "^7.0.0",
     "parse5": "^7.0.0",
     "parse5-htmlparser2-tree-adapter": "^7.0.0",
