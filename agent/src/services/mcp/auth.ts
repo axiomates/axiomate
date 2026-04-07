@@ -192,7 +192,7 @@ export async function normalizeOAuthErrorBody(
 
 /**
  * Creates a fetch function with a fresh 30-second timeout for each OAuth request.
- * Used by ClaudeAuthProvider for metadata discovery and token refresh.
+ * Used by AxiomateAuthProvider for metadata discovery and token refresh.
  * Prevents stale timeout signals from affecting auth operations.
  */
 function createAuthFetch(): FetchLike {
@@ -791,7 +791,7 @@ async function performMCPXaaAuth(
     }
 
     // Save tokens via the same storage path as normal OAuth. We write directly
-    // (instead of ClaudeAuthProvider.saveTokens) to avoid instantiating the
+    // (instead of AxiomateAuthProvider.saveTokens) to avoid instantiating the
     // whole provider just to write the same keys.
     const storage = getSecureStorage()
     const existingData = storage.read() || {}
@@ -858,7 +858,7 @@ export async function performMCPOAuthFlow(
   // If the IdP id_token isn't cached, this pops the browser once at the IdP
   // (shared across all XAA servers for that issuer). Subsequent servers hit
   // the cache and are silent. Tokens land in the same keychain slot, so the
-  // rest of CC's transport wiring (ClaudeAuthProvider.tokens() in client.ts)
+  // rest of CC's transport wiring (AxiomateAuthProvider.tokens() in client.ts)
   // works unchanged.
   //
   // No silent fallback: if `oauth.xaa` is set, XAA is the only path. We
@@ -965,7 +965,7 @@ export async function performMCPOAuthFlow(
       `Using redirect port: ${port}${configuredCallbackPort ? ' (from config)' : ''}`,
     )
 
-    const provider = new ClaudeAuthProvider(
+    const provider = new AxiomateAuthProvider(
       serverName,
       serverConfig,
       redirectUri,
@@ -1353,7 +1353,7 @@ export async function performMCPOAuthFlow(
  */
 export function wrapFetchWithStepUpDetection(
   baseFetch: FetchLike,
-  provider: ClaudeAuthProvider,
+  provider: AxiomateAuthProvider,
 ): FetchLike {
   return async (url, init) => {
     const response = await baseFetch(url, init)
@@ -1373,7 +1373,7 @@ export function wrapFetchWithStepUpDetection(
   }
 }
 
-export class ClaudeAuthProvider implements OAuthClientProvider {
+export class AxiomateAuthProvider implements OAuthClientProvider {
   private serverName: string
   private serverConfig: McpSSEServerConfig | McpHTTPServerConfig
   private redirectUri: string

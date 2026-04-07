@@ -127,7 +127,7 @@ import { classifyMcpToolForCollapse } from '../../tools/MCPTool/classifyForColla
 import { clearKeychainCache } from '../../utils/secureStorage/macOsKeychainHelpers.js'
 import { sleep } from '../../utils/sleep.js'
 import {
-  ClaudeAuthProvider,
+  AxiomateAuthProvider,
   hasMcpDiscoveryButNoToken,
   wrapFetchWithStepUpDetection,
 } from './auth.js'
@@ -618,7 +618,7 @@ export const connectToServer = memoize(
 
       if (serverRef.type === 'sse') {
         // Create an auth provider for this server
-        const authProvider = new ClaudeAuthProvider(name, serverRef)
+        const authProvider = new AxiomateAuthProvider(name, serverRef)
 
         // Get combined headers (static + dynamic)
         const combinedHeaders = await getMcpServerHeaders(name, serverRef)
@@ -799,7 +799,7 @@ export const connectToServer = memoize(
         )
 
         // Create an auth provider for this server
-        const authProvider = new ClaudeAuthProvider(name, serverRef)
+        const authProvider = new AxiomateAuthProvider(name, serverRef)
 
         // Get combined headers (static + dynamic)
         const combinedHeaders = await getMcpServerHeaders(name, serverRef)

@@ -2,12 +2,12 @@ import figures from 'figures'
 import { logError } from '../utils/log.js'
 import { callIdeRpc } from '../services/mcp/client.js'
 import type { MCPServerConnection } from '../services/mcp/types.js'
-import { ClaudeError } from '../utils/errors.js'
+import { AxiomateError } from '../utils/errors.js'
 import { normalizePathForComparison, pathsEqual } from '../utils/file.js'
 import { getConnectedIdeClient } from '../utils/ide.js'
 import { jsonParse } from '../utils/slowOperations.js'
 
-class DiagnosticsTrackingError extends ClaudeError {}
+class DiagnosticsTrackingError extends AxiomateError {}
 
 const MAX_DIAGNOSTICS_SUMMARY_CHARS = 4000
 

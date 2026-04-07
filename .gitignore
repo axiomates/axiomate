@@ -4,5 +4,5 @@ target
 *.node
 package-lock.json
 Cargo.lock
-CLAUDE.md
+AXIOMATE.md
 debug.log

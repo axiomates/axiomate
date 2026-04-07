@@ -35,7 +35,7 @@ export const AXIOMATE_CONFIG_DIRECTORIES = [
   ...(feature('TEMPLATES') ? (['templates'] as const) : []),
 ] as const
 
-export type ClaudeConfigDirectory = (typeof AXIOMATE_CONFIG_DIRECTORIES)[number]
+export type ConfigDirectory = (typeof AXIOMATE_CONFIG_DIRECTORIES)[number]
 
 export type MarkdownFile = {
   filePath: string
@@ -232,7 +232,7 @@ function resolveStopBoundary(cwd: string): string | null {
  * @returns Array of directory paths containing .axiomate/subdir, from most specific (cwd) to least specific
  */
 export function getProjectDirsUpToHome(
-  subdir: ClaudeConfigDirectory,
+  subdir: ConfigDirectory,
   cwd: string,
 ): string[] {
   const home = resolve(homedir()).normalize('NFC')
@@ -296,7 +296,7 @@ export function getProjectDirsUpToHome(
  */
 export const loadMarkdownFilesForSubdir = memoize(
   async function (
-    subdir: ClaudeConfigDirectory,
+    subdir: ConfigDirectory,
     cwd: string,
   ): Promise<MarkdownFile[]> {
     const searchStartTime = Date.now()
@@ -426,7 +426,7 @@ export const loadMarkdownFilesForSubdir = memoize(
     return deduplicatedFiles
   },
   // Custom resolver creates cache key from both subdir and cwd parameters
-  (subdir: ClaudeConfigDirectory, cwd: string) => `${subdir}:${cwd}`,
+  (subdir: ConfigDirectory, cwd: string) => `${subdir}:${cwd}`,
 )
 
 /**

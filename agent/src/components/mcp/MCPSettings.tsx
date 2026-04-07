@@ -1,7 +1,7 @@
 import { c as _c } from "react/compiler-runtime";
 import React, { useEffect, useMemo } from 'react';
 import type { CommandResultDisplay } from '../../commands.js';
-import { ClaudeAuthProvider } from '../../services/mcp/auth.js';
+import { AxiomateAuthProvider } from '../../services/mcp/auth.js';
 import type { McpClaudeAIProxyServerConfig, McpHTTPServerConfig, McpSSEServerConfig, McpStdioServerConfig } from '../../services/mcp/types.js';
 import { extractAgentMcpServers, filterToolsByServer } from '../../services/mcp/utils.js';
 import { useAppState } from '../../state/AppState.js';
@@ -75,7 +75,7 @@ export function MCPSettings(t0) {
           const isClaudeAIProxy = client_0.config.type === "claudeai-proxy";
           let isAuthenticated = undefined;
           if (isSSE || isHTTP) {
-            const authProvider = new ClaudeAuthProvider(client_0.name, client_0.config as McpSSEServerConfig | McpHTTPServerConfig);
+            const authProvider = new AxiomateAuthProvider(client_0.name, client_0.config as McpSSEServerConfig | McpHTTPServerConfig);
             const tokens = await authProvider.tokens();
             const hasSessionAuth = getSessionIngressAuthToken() !== null && client_0.type === "connected";
             const hasToolsAndConnected = client_0.type === "connected" && filterToolsByServer(mcp.tools, client_0.name).length > 0;

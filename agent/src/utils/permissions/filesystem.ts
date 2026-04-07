@@ -7,9 +7,9 @@ import { join, normalize, posix, sep } from 'path'
 import { hasAutoMemPathOverride, isAutoMemPath } from '../../memdir/paths.js'
 import { isAgentMemoryPath } from '../../tools/AgentTool/agentMemory.js'
 import {
-  CLAUDE_FOLDER_PERMISSION_PATTERN,
+  AXIOMATE_FOLDER_PERMISSION_PATTERN,
   FILE_EDIT_TOOL_NAME,
-  GLOBAL_CLAUDE_FOLDER_PERMISSION_PATTERN,
+  GLOBAL_AXIOMATE_FOLDER_PERMISSION_PATTERN,
 } from '../../tools/FileEditTool/constants.js'
 import type { z } from 'zod/v4'
 import { getOriginalCwd, getSessionId } from '../../bootstrap/state.js'
@@ -1279,9 +1279,9 @@ export function checkWritePermissionForTool<Input extends AnyObject>(
     const ruleContent = claudeFolderAllowRule.ruleValue.ruleContent
     if (
       ruleContent &&
-      (ruleContent.startsWith(CLAUDE_FOLDER_PERMISSION_PATTERN.slice(0, -2)) ||
+      (ruleContent.startsWith(AXIOMATE_FOLDER_PERMISSION_PATTERN.slice(0, -2)) ||
         ruleContent.startsWith(
-          GLOBAL_CLAUDE_FOLDER_PERMISSION_PATTERN.slice(0, -2),
+          GLOBAL_AXIOMATE_FOLDER_PERMISSION_PATTERN.slice(0, -2),
         )) &&
       !ruleContent.includes('..') &&
       ruleContent.endsWith('/**')

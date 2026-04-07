@@ -1,6 +1,6 @@
 import { LLMAbortError } from '../services/api/streamTypes.js'
 
-export class ClaudeError extends Error {
+export class AxiomateError extends Error {
   constructor(message: string) {
     super(message)
     this.name = this.constructor.name

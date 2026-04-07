@@ -33,7 +33,7 @@ import { getPlatform } from './platform.js'
 
 // Constants for tmux socket management
 const TMUX_COMMAND = 'tmux'
-const CLAUDE_SOCKET_PREFIX = 'claude'
+const AXIOMATE_SOCKET_PREFIX = 'claude'
 
 /**
  * Executes a tmux command, routing through WSL on Windows.
@@ -90,7 +90,7 @@ let tmuxToolUsed = false
  */
 export function getClaudeSocketName(): string {
   if (!socketName) {
-    socketName = `${CLAUDE_SOCKET_PREFIX}-${process.pid}`
+    socketName = `${AXIOMATE_SOCKET_PREFIX}-${process.pid}`
   }
   return socketName
 }

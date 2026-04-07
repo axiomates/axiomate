@@ -12,7 +12,7 @@ import { type ReleaseChannel, saveGlobalConfig } from './config.js'
 import { logForDebugging } from './debug.js'
 import { env } from './env.js'
 import { getConfigHomeDir } from './envUtils.js'
-import { ClaudeError, getErrnoCode, isENOENT } from './errors.js'
+import { AxiomateError, getErrnoCode, isENOENT } from './errors.js'
 import { execFileNoThrowWithCwd } from './execFileNoThrow.js'
 import { getFsImplementation } from './fsOperations.js'
 import { gracefulShutdownSync } from './gracefulShutdown.js'
@@ -30,7 +30,7 @@ import { jsonParse } from './slowOperations.js'
 const GCS_BUCKET_URL =
   'https://storage.googleapis.com/claude-code-dist-86c565f3-f756-42ad-8dfa-d59b1c096819/claude-code-releases'
 
-class AutoUpdaterError extends ClaudeError {}
+class AutoUpdaterError extends AxiomateError {}
 
 export type InstallStatus =
   | 'success'
