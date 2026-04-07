@@ -58,6 +58,8 @@ export class OpenAIStreamState {
   private hasThinkingBlock = false
   /** Tool call blocks: openai tool_call index → our block index */
   private toolBlockIndices = new Map<number, number>()
+  /** Buffered tool call metadata for tool calls whose id/name arrived late */
+  private pendingToolCalls = new Map<number, { id?: string; name?: string; argChunks: string[] }>()
   /** Next available block index */
   private nextIndex = 0
   /** Accumulated usage from final chunk */
@@ -134,30 +136,45 @@ export class OpenAIStreamState {
         for (const tc of delta.tool_calls) {
           let blockIdx = this.toolBlockIndices.get(tc.index)
 
-          if (blockIdx === undefined && tc.id && tc.function?.name) {
-            // New tool call — emit block_start
-            blockIdx = this.nextIndex++
-            this.toolBlockIndices.set(tc.index, blockIdx)
-            // Close open blocks before starting tool
-            if (this.hasThinkingBlock) {
-              events.push({ type: 'block_stop', index: this.thinkingBlockIndex })
-              this.hasThinkingBlock = false
+          if (blockIdx === undefined) {
+            // Block not yet initialized — accumulate metadata until id + name are both available
+            let pending = this.pendingToolCalls.get(tc.index)
+            if (!pending) {
+              pending = { argChunks: [] }
+              this.pendingToolCalls.set(tc.index, pending)
             }
-            if (this.hasTextBlock) {
-              events.push({ type: 'block_stop', index: this.textBlockIndex })
-              this.hasTextBlock = false
-            }
-            const block: ContentBlock = {
-              type: 'tool_use',
-              id: tc.id,
-              name: tc.function.name,
-              input: {},
-            }
-            events.push({ type: 'block_start', index: blockIdx, block })
-          }
+            if (tc.id) pending.id = tc.id
+            if (tc.function?.name) pending.name = tc.function.name
+            if (tc.function?.arguments) pending.argChunks.push(tc.function.arguments)
 
-          if (blockIdx !== undefined && tc.function?.arguments) {
-            // Tool input delta
+            // Once we have both id and name, emit block_start + any buffered argument deltas
+            if (pending.id && pending.name) {
+              blockIdx = this.nextIndex++
+              this.toolBlockIndices.set(tc.index, blockIdx)
+              this.pendingToolCalls.delete(tc.index)
+              // Close open blocks before starting tool
+              if (this.hasThinkingBlock) {
+                events.push({ type: 'block_stop', index: this.thinkingBlockIndex })
+                this.hasThinkingBlock = false
+              }
+              if (this.hasTextBlock) {
+                events.push({ type: 'block_stop', index: this.textBlockIndex })
+                this.hasTextBlock = false
+              }
+              const block: ContentBlock = {
+                type: 'tool_use',
+                id: pending.id,
+                name: pending.name,
+                input: {},
+              }
+              events.push({ type: 'block_start', index: blockIdx, block })
+              // Flush buffered argument chunks
+              for (const arg of pending.argChunks) {
+                events.push({ type: 'block_delta', index: blockIdx, delta: { type: 'tool_input', json: arg } })
+              }
+            }
+          } else if (tc.function?.arguments) {
+            // Block already initialized — emit argument delta directly
             const inputDelta: BlockDelta = { type: 'tool_input', json: tc.function.arguments }
             events.push({ type: 'block_delta', index: blockIdx, delta: inputDelta })
           }
