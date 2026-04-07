@@ -2,7 +2,8 @@ import { feature } from 'bun:bundle'
 import { logForDebugging } from '../utils/debug.js'
 import { errorMessage } from '../utils/errors.js'
 import { getDefaultSonnetModel } from '../utils/model/model.js'
-import { sideQuery } from '../utils/sideQuery.js'
+import { sideQuery } from '../services/api/capabilities/sideQuery.js'
+import { getProviderForModel } from '../services/api/providerRegistry.js'
 import { jsonParse } from '../utils/slowOperations.js'
 import {
   formatMemoryManifest,
@@ -95,8 +96,9 @@ async function selectRelevantMemories(
       : ''
 
   try {
-    const result = await sideQuery({
-      model: getDefaultSonnetModel(),
+    const model = getDefaultSonnetModel()
+    const result = await sideQuery(getProviderForModel(model), {
+      model,
       system: SELECT_MEMORIES_SYSTEM_PROMPT,
       skipSystemPromptPrefix: true,
       messages: [
@@ -105,8 +107,8 @@ async function selectRelevantMemories(
           content: `Query: ${query}\n\nAvailable memories:\n${manifest}${toolsSection}`,
         },
       ],
-      max_tokens: 256,
-      output_format: {
+      maxTokens: 256,
+      outputFormat: {
         type: 'json_schema',
         schema: {
           type: 'object',

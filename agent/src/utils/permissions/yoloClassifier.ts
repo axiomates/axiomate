@@ -1,6 +1,5 @@
 import { feature } from 'bun:bundle'
 import type Anthropic from '@anthropic-ai/sdk'
-import type { BetaToolUnion } from '@anthropic-ai/sdk/resources/beta/messages.js'
 import { mkdir, writeFile } from 'fs/promises'
 import { dirname, join } from 'path'
 import { z } from 'zod/v4'
@@ -30,7 +29,9 @@ import { extractTextContent } from '../messages.js'
 import { resolveAntModel } from '../model/antModels.js'
 import { getMainLoopModel } from '../model/model.js'
 import { getAutoModeConfig } from '../settings/settings.js'
-import { sideQuery } from '../sideQuery.js'
+import { sideQuery } from '../../services/api/capabilities/sideQuery.js'
+import { getProviderForModel } from '../../services/api/providerRegistry.js'
+import type { InferenceResponse, NeutralToolSchema } from '../../services/api/streamTypes.js'
 import { jsonStringify } from '../slowOperations.js'
 import { tokenCountWithEstimation } from '../tokens.js'
 import {
@@ -261,11 +262,10 @@ const yoloClassifierResponseSchema = lazySchema(() =>
 
 export const YOLO_CLASSIFIER_TOOL_NAME = 'classify_result'
 
-const YOLO_CLASSIFIER_TOOL_SCHEMA: BetaToolUnion = {
-  type: 'custom',
+const YOLO_CLASSIFIER_TOOL_SCHEMA: NeutralToolSchema = {
   name: YOLO_CLASSIFIER_TOOL_NAME,
   description: 'Report the security classification result for the agent action',
-  input_schema: {
+  inputSchema: {
     type: 'object',
     properties: {
       thinking: {
@@ -609,24 +609,23 @@ function parseXmlThinking(text: string): string | null {
  * Extract usage stats from an API response.
  */
 function extractUsage(
-  result: Anthropic.Beta.Messages.BetaMessage,
+  result: InferenceResponse,
 ): ClassifierUsage {
   return {
-    inputTokens: result.usage.input_tokens,
-    outputTokens: result.usage.output_tokens,
-    cacheReadInputTokens: result.usage.cache_read_input_tokens ?? 0,
-    cacheCreationInputTokens: result.usage.cache_creation_input_tokens ?? 0,
+    inputTokens: result.usage.inputTokens,
+    outputTokens: result.usage.outputTokens,
+    cacheReadInputTokens: result.usage.cacheReadTokens ?? 0,
+    cacheCreationInputTokens: result.usage.cacheWriteTokens ?? 0,
   }
 }
 
 /**
- * Extract the API request_id (req_xxx) that the SDK attaches as a
- * non-enumerable `_request_id` property on response objects.
+ * Extract the provider-assigned request ID from an InferenceResponse.
  */
 function extractRequestId(
-  result: Anthropic.Beta.Messages.BetaMessage,
+  result: InferenceResponse,
 ): string | undefined {
-  return (result as { _request_id?: string | null })._request_id ?? undefined
+  return result.requestId
 }
 
 /**
@@ -752,7 +751,7 @@ async function classifyYoloActionXml(
   let stage1DurationMs: number | undefined
   let stage1RequestId: string | undefined
   let stage1MsgId: string | undefined
-  let stage1Opts: Parameters<typeof sideQuery>[0] | undefined
+  let stage1Opts: Parameters<typeof sideQuery>[1] | undefined
   const overallStart = Date.now()
   const [disableThinking, thinkingPadding] = getClassifierThinkingConfig(model)
 
@@ -780,7 +779,7 @@ async function classifyYoloActionXml(
       // response can carry a <reason> tag (system prompt already asks for it).
       stage1Opts = {
         model,
-        max_tokens: (mode === 'fast' ? 256 : 64) + thinkingPadding,
+        maxTokens: (mode === 'fast' ? 256 : 64) + thinkingPadding,
         system: systemBlocks,
         skipSystemPromptPrefix: true,
         temperature: 0,
@@ -791,10 +790,10 @@ async function classifyYoloActionXml(
         ],
         maxRetries: getDefaultMaxRetries(),
         signal,
-        ...(mode !== 'fast' && { stop_sequences: ['</block>'] }),
+        ...(mode !== 'fast' && { stopSequences: ['</block>'] }),
         querySource: 'auto_mode',
       }
-      const stage1Raw = await sideQuery(stage1Opts)
+      const stage1Raw = await sideQuery(getProviderForModel(model), stage1Opts)
       stage1DurationMs = Date.now() - stage1Start
       stage1Usage = extractUsage(stage1Raw)
       stage1RequestId = extractRequestId(stage1Raw)
@@ -867,7 +866,7 @@ async function classifyYoloActionXml(
     ]
     const stage2Opts = {
       model,
-      max_tokens: 4096 + thinkingPadding,
+      maxTokens: 4096 + thinkingPadding,
       system: systemBlocks,
       skipSystemPromptPrefix: true,
       temperature: 0,
@@ -880,7 +879,7 @@ async function classifyYoloActionXml(
       signal,
       querySource: 'auto_mode' as const,
     }
-    const stage2Raw = await sideQuery(stage2Opts)
+    const stage2Raw = await sideQuery(getProviderForModel(model), stage2Opts)
     const stage2DurationMs = Date.now() - stage2Start
     const stage2Usage = extractUsage(stage2Raw)
     const stage2RequestId = extractRequestId(stage2Raw)
@@ -1135,7 +1134,7 @@ export async function classifyYoloAction(
     const start = Date.now()
     const sideQueryOpts = {
       model,
-      max_tokens: 4096 + thinkingPadding,
+      maxTokens: 4096 + thinkingPadding,
       system: [
         {
           type: 'text' as const,
@@ -1151,15 +1150,15 @@ export async function classifyYoloAction(
         { role: 'user' as const, content: userContentBlocks },
       ],
       tools: [YOLO_CLASSIFIER_TOOL_SCHEMA],
-      tool_choice: {
-        type: 'tool' as const,
+      toolChoice: {
+        type: 'specific' as const,
         name: YOLO_CLASSIFIER_TOOL_NAME,
       },
       maxRetries: getDefaultMaxRetries(),
       signal,
       querySource: 'auto_mode' as const,
     }
-    const result = await sideQuery(sideQueryOpts)
+    const result = await sideQuery(getProviderForModel(model), sideQueryOpts)
     void maybeDumpAutoMode(sideQueryOpts, result, start)
     setLastClassifierRequests([sideQueryOpts])
     const durationMs = Date.now() - start
@@ -1167,12 +1166,7 @@ export async function classifyYoloAction(
     const stage1MsgId = result.id
 
     // Extract usage for overhead telemetry
-    const usage = {
-      inputTokens: result.usage.input_tokens,
-      outputTokens: result.usage.output_tokens,
-      cacheReadInputTokens: result.usage.cache_read_input_tokens ?? 0,
-      cacheCreationInputTokens: result.usage.cache_creation_input_tokens ?? 0,
-    }
+    const usage = extractUsage(result)
     // Actual total input tokens the classifier API consumed (uncached + cache)
     const classifierInputTokens =
       usage.inputTokens +

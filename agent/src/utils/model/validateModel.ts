@@ -2,7 +2,8 @@
 import { MODEL_ALIASES } from './aliases.js'
 import { isModelAllowed } from './modelAllowlist.js'
 import { getAPIProvider } from './providers.js'
-import { sideQuery } from '../sideQuery.js'
+import { sideQuery } from '../../services/api/capabilities/sideQuery.js'
+import { getProviderForModel } from '../../services/api/providerRegistry.js'
 import {
   NotFoundError,
   APIError,
@@ -54,9 +55,9 @@ export async function validateModel(
 
   // Try to make an actual API call with minimal parameters
   try {
-    await sideQuery({
+    await sideQuery(getProviderForModel(normalizedModel), {
       model: normalizedModel,
-      max_tokens: 1,
+      maxTokens: 1,
       maxRetries: 0,
       querySource: 'model_validation',
       messages: [
@@ -66,7 +67,6 @@ export async function validateModel(
             {
               type: 'text',
               text: 'Hi',
-              cache_control: { type: 'ephemeral' },
             },
           ],
         },

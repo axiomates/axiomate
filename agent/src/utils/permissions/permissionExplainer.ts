@@ -8,7 +8,8 @@ import { errorMessage } from '../errors.js'
 import { lazySchema } from '../lazySchema.js'
 import { logError } from '../log.js'
 import { getMainLoopModel } from '../model/model.js'
-import { sideQuery } from '../sideQuery.js'
+import { sideQuery } from '../../services/api/capabilities/sideQuery.js'
+import { getProviderForModel } from '../../services/api/providerRegistry.js'
 import { jsonStringify } from '../slowOperations.js'
 
 export type RiskLevel = 'LOW' | 'MEDIUM' | 'HIGH'
@@ -46,7 +47,7 @@ const SYSTEM_PROMPT = `Analyze shell commands and explain what they do, why you'
 const EXPLAIN_COMMAND_TOOL = {
   name: 'explain_command',
   description: 'Provide an explanation of a shell command',
-  input_schema: {
+  inputSchema: {
     type: 'object' as const,
     properties: {
       explanation: {
@@ -175,19 +176,19 @@ Explain this command in context.`
     const model = getMainLoopModel()
 
     // Use sideQuery with forced tool choice for guaranteed structured output
-    const response = await sideQuery({
+    const response = await sideQuery(getProviderForModel(model), {
       model,
       system: SYSTEM_PROMPT,
       messages: [{ role: 'user', content: userPrompt }],
       tools: [EXPLAIN_COMMAND_TOOL],
-      tool_choice: { type: 'tool', name: 'explain_command' },
+      toolChoice: { type: 'specific', name: 'explain_command' },
       signal,
       querySource: 'permission_explainer',
     })
 
     const latencyMs = Date.now() - startTime
     logForDebugging(
-      `Permission explainer: API returned in ${latencyMs}ms, stop_reason=${response.stop_reason}`,
+      `Permission explainer: API returned in ${latencyMs}ms, stop_reason=${response.stopReason}`,
     )
 
     // Extract structured data from tool use block

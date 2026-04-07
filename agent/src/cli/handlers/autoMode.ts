@@ -14,7 +14,8 @@ import {
   getDefaultExternalAutoModeRules,
 } from '../../utils/permissions/yoloClassifier.js'
 import { getAutoModeConfig } from '../../utils/settings/settings.js'
-import { sideQuery } from '../../utils/sideQuery.js'
+import { sideQuery } from '../../services/api/capabilities/sideQuery.js'
+import { getProviderForModel } from '../../services/api/providerRegistry.js'
 import { jsonStringify } from '../../utils/slowOperations.js'
 
 function writeRules(rules: AutoModeRules): void {
@@ -112,12 +113,12 @@ export async function autoModeCritiqueHandler(options: {
 
   let response
   try {
-    response = await sideQuery({
+    response = await sideQuery(getProviderForModel(model), {
       querySource: 'auto_mode_critique',
       model,
       system: CRITIQUE_SYSTEM_PROMPT,
       skipSystemPromptPrefix: true,
-      max_tokens: 4096,
+      maxTokens: 4096,
       messages: [
         {
           role: 'user',

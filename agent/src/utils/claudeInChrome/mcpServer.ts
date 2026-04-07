@@ -17,7 +17,8 @@ import { getClaudeAIOAuthTokens } from '../auth.js'
 import { enableConfigs, getGlobalConfig, saveGlobalConfig } from '../config.js'
 import { logForDebugging } from '../debug.js'
 import { isEnvTruthy } from '../envUtils.js'
-import { sideQuery } from '../sideQuery.js'
+import { sideQuery } from '../../services/api/capabilities/sideQuery.js'
+import { getProviderForModel } from '../../services/api/providerRegistry.js'
 import { getAllSocketPaths, getSecureSocketPath } from './common.js'
 
 const EXTENSION_DOWNLOAD_URL = 'https://claude.ai/chrome'
@@ -171,7 +172,7 @@ export function createChromeContext(
         model: string
         max_tokens: number
         system: string
-        messages: Parameters<typeof sideQuery>[0]['messages']
+        messages: Parameters<typeof sideQuery>[1]['messages']
         stop_sequences?: string[]
         signal?: AbortSignal
       }): Promise<{
@@ -185,18 +186,18 @@ export function createChromeContext(
         // tools: [] is load-bearing — without it Sonnet emits
         // <function_calls> XML before the text commands. Original
         // lightning-harness.js (apps repo) does the same.
-        const response = await sideQuery({
+        const response = await sideQuery(getProviderForModel(req.model), {
           model: req.model,
           system: req.system,
           messages: req.messages,
-          max_tokens: req.max_tokens,
-          stop_sequences: req.stop_sequences,
+          maxTokens: req.max_tokens,
+          stopSequences: req.stop_sequences,
           signal: req.signal,
           skipSystemPromptPrefix: true,
           tools: [],
           querySource: 'chrome_mcp',
         })
-        // BetaContentBlock is TextBlock | ThinkingBlock | ToolUseBlock | ...
+        // ContentBlock is TextBlock | ThinkingBlock | ToolUseBlock | ...
         // Only text blocks carry the model's command output.
         const textBlocks: Array<{ type: 'text'; text: string }> = []
         for (const b of response.content) {
@@ -206,10 +207,10 @@ export function createChromeContext(
         }
         return {
           content: textBlocks,
-          stop_reason: response.stop_reason,
+          stop_reason: response.stopReason,
           usage: {
-            input_tokens: response.usage.input_tokens,
-            output_tokens: response.usage.output_tokens,
+            input_tokens: response.usage.inputTokens,
+            output_tokens: response.usage.outputTokens,
           },
         }
       },

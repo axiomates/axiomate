@@ -125,36 +125,49 @@ function stripToolSearchFieldsFromMessages(
 
 export async function countTokensWithAPI(
   content: string,
+  provider?: import('./api/provider.js').LLMProvider,
 ): Promise<number | null> {
   // Special case for empty content - API doesn't accept empty messages
   if (!content) {
     return 0
   }
 
-  const message: Anthropic.Beta.Messages.BetaMessageParam = {
-    role: 'user',
+  const message = {
+    role: 'user' as const,
     content: content,
   }
 
-  return countMessagesTokensWithAPI([message], [])
+  return countMessagesTokensWithAPI([message], [], provider)
 }
 
 export async function countMessagesTokensWithAPI(
-  messages: Anthropic.Beta.Messages.BetaMessageParam[],
-  tools: Anthropic.Beta.Messages.BetaToolUnion[],
+  messages: unknown[],
+  tools: unknown[],
+  provider?: import('./api/provider.js').LLMProvider,
 ): Promise<number | null> {
-  return withTokenCountVCR(messages, tools, async () => {
+  return withTokenCountVCR(messages as any, tools as any, async () => {
     try {
       const model = getMainLoopModel()
+      const containsThinking = hasThinkingBlocks(messages as any)
+
+      // If provider is available, use the neutral countTokens API
+      if (provider) {
+        return provider.countTokens({
+          model,
+          messages: messages as import('./api/streamTypes.js').MessageParam[],
+          tools: tools as import('./api/streamTypes.js').NeutralToolSchema[],
+          thinking: containsThinking,
+        })
+      }
+
+      // Legacy path (no provider): direct SDK call
       const betas = getModelBetas(model)
-      const containsThinking = hasThinkingBlocks(messages)
 
       if (getAPIProvider() === 'bedrock') {
-        // @anthropic-sdk/bedrock-sdk doesn't support countTokens currently
         return countTokensWithBedrock({
           model: normalizeModelStringForAPI(model),
-          messages,
-          tools,
+          messages: messages as any,
+          tools: tools as any,
           betas,
           containsThinking,
         })
@@ -174,23 +187,18 @@ export async function countMessagesTokensWithAPI(
       const response = await anthropic.beta.messages.countTokens({
         model: normalizeModelStringForAPI(model),
         messages:
-          // When we pass tools and no messages, we need to pass a dummy message
-          // to get an accurate tool token count.
           messages.length > 0 ? messages : [{ role: 'user', content: 'foo' }],
         tools,
         ...(filteredBetas.length > 0 && { betas: filteredBetas }),
-        // Enable thinking if messages contain thinking blocks
         ...(containsThinking && {
           thinking: {
             type: 'enabled',
             budget_tokens: TOKEN_COUNT_THINKING_BUDGET,
           },
         }),
-      })
+      } as any)
 
       if (typeof response.input_tokens !== 'number') {
-        // Vertex client throws
-        // Bedrock client succeeds with { Output: { __type: 'com.amazon.coral.service#UnknownOperationException' }, Version: '1.0' }
         return null
       }
 
@@ -251,12 +259,48 @@ export function roughTokenCountEstimationForFileType(
  * - Bedrock with thinking blocks: uses Sonnet (Haiku 3.5 doesn't support thinking)
  */
 export async function countTokensViaHaikuFallback(
-  messages: Anthropic.Beta.Messages.BetaMessageParam[],
-  tools: Anthropic.Beta.Messages.BetaToolUnion[],
+  messages: unknown[],
+  tools: unknown[],
+  provider?: import('./api/provider.js').LLMProvider,
 ): Promise<number | null> {
   // Check if messages contain thinking blocks
-  const containsThinking = hasThinkingBlocks(messages)
+  const containsThinking = hasThinkingBlocks(messages as any)
 
+  // Provider path: use inference with max_tokens=1 to get usage.input_tokens
+  if (provider) {
+    const model = getSmallFastModel()
+    const normalizedMessages = stripToolSearchFieldsFromMessages(messages as any)
+    const messagesToSend = normalizedMessages.length > 0
+      ? normalizedMessages
+      : [{ role: 'user' as const, content: 'count' }]
+
+    try {
+      const response = await provider.inference({
+        model,
+        messages: messagesToSend as import('./api/streamTypes.js').MessageParam[],
+        maxTokens: containsThinking ? TOKEN_COUNT_MAX_TOKENS : 1,
+        tools: (tools as import('./api/streamTypes.js').NeutralToolSchema[]).length > 0
+          ? tools as import('./api/streamTypes.js').NeutralToolSchema[]
+          : undefined,
+        thinking: containsThinking
+          ? { type: 'enabled', budgetTokens: TOKEN_COUNT_THINKING_BUDGET }
+          : undefined,
+        metadata: getAPIMetadata() as Record<string, unknown>,
+        providerHints: {
+          maxRetries: 1,
+          source: 'count_tokens',
+          betas: getModelBetas(model),
+        },
+      })
+      return response.usage.inputTokens
+        + (response.usage.cacheWriteTokens ?? 0)
+        + (response.usage.cacheReadTokens ?? 0)
+    } catch {
+      return null
+    }
+  }
+
+  // Legacy path: direct SDK call
   // If we're on Vertex and using global region, always use Sonnet since Haiku is not available there.
   const isVertexGlobalEndpoint =
     isEnvTruthy(process.env.CLAUDE_CODE_USE_VERTEX) &&
@@ -285,7 +329,7 @@ export async function countTokensViaHaikuFallback(
 
   // Strip tool search-specific fields (caller, tool_reference) before sending
   // These fields are only valid with the tool search beta header
-  const normalizedMessages = stripToolSearchFieldsFromMessages(messages)
+  const normalizedMessages = stripToolSearchFieldsFromMessages(messages as any)
 
   const messagesToSend: MessageParam[] =
     normalizedMessages.length > 0
@@ -305,7 +349,7 @@ export async function countTokensViaHaikuFallback(
     model: normalizeModelStringForAPI(model),
     max_tokens: containsThinking ? TOKEN_COUNT_MAX_TOKENS : 1,
     messages: messagesToSend,
-    tools: tools.length > 0 ? tools : undefined,
+    tools: (tools as any[]).length > 0 ? (tools as any) : undefined,
     ...(filteredBetas.length > 0 && { betas: filteredBetas }),
     metadata: getAPIMetadata(),
     ...getExtraBodyParams(),

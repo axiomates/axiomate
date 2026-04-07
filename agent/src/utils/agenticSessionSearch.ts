@@ -4,7 +4,8 @@ import { logForDebugging } from './debug.js'
 import { getLogDisplayTitle, logError } from './log.js'
 import { getSmallFastModel } from './model/model.js'
 import { isLiteLog, loadFullLog } from './sessionStorage.js'
-import { sideQuery } from './sideQuery.js'
+import { sideQuery } from '../services/api/capabilities/sideQuery.js'
+import { getProviderForModel } from '../services/api/providerRegistry.js'
 import { jsonParse } from './slowOperations.js'
 
 // Limits for transcript extraction
@@ -261,7 +262,7 @@ Find the sessions that are most relevant to this query.`
     const model = getSmallFastModel()
     logForDebugging(`Agentic search using model: ${model}`)
 
-    const response = await sideQuery({
+    const response = await sideQuery(getProviderForModel(model), {
       model,
       system: SESSION_SEARCH_SYSTEM_PROMPT,
       messages: [{ role: 'user', content: userMessage }],
