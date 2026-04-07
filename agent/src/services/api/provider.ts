@@ -115,6 +115,26 @@ export interface ErrorClassification {
 }
 
 // ---------------------------------------------------------------------------
+// Provider request extension (neutral base for provider-specific config)
+// ---------------------------------------------------------------------------
+
+/**
+ * Base type for provider-specific request configuration passed to bind().
+ *
+ * Each provider defines its own extension (e.g. AnthropicRequestExt) that
+ * satisfies this base shape. claude.ts uses this neutral type in `satisfies`
+ * checks so it doesn't import provider-specific modules.
+ */
+export interface ProviderRequestExt {
+  /** Builds provider-specific API params from retry context. */
+  buildParams: (retryContext: unknown) => Record<string, unknown>
+  /** Retry options (model, fallbackModel, signal, etc.) */
+  retryOptions: object
+  /** Additional provider-specific fields are allowed. */
+  [key: string]: unknown
+}
+
+// ---------------------------------------------------------------------------
 // Bound provider (returned by LLMProvider.bind)
 // ---------------------------------------------------------------------------
 

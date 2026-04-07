@@ -48,13 +48,13 @@ export function blockParamToNeutral(block: any): ContentBlockParam {
  */
 export function toolsToNeutral(tools: BetaToolUnion[]): ToolDefinition[] {
   return tools
-    .filter((t): t is BetaToolUnion & { name: string; input_schema?: any } =>
+    .filter((t): t is BetaToolUnion & { name: string; description?: string; input_schema?: Record<string, unknown> } =>
       'name' in t && 'input_schema' in t,
     )
     .map(t => ({
       name: t.name,
-      description: (t as any).description,
-      inputSchema: (t as any).input_schema ?? { type: 'object' },
+      description: t.description,
+      inputSchema: t.input_schema ?? { type: 'object' },
     }))
 }
 

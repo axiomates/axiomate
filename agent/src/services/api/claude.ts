@@ -1592,7 +1592,7 @@ async function* queryModel(
         signal,
         querySource: options.querySource,
       },
-    } satisfies import('./providers/anthropicProvider.js').AnthropicRequestExt
+    } satisfies import('./provider.js').ProviderRequestExt
 
   try {
     queryCheckpoint('query_client_creation_start')
@@ -2108,7 +2108,7 @@ async function* queryModel(
         },
         captureRequest: (params: Record<string, unknown>) => captureAPIRequest(params, options.querySource),
         originatingRequestId: streamRequestId,
-      } satisfies import('./providers/anthropicProvider.js').AnthropicRequestExt)
+      } satisfies import('./provider.js').ProviderRequestExt)
       if (!fallbackBound.createNonStreamingFallback) {
         throw new Error('Provider does not support non-streaming fallback')
       }
@@ -2210,7 +2210,7 @@ async function* queryModel(
           },
           captureRequest: (params: Record<string, unknown>) => captureAPIRequest(params, options.querySource),
           originatingRequestId: failedRequestId,
-        } satisfies import('./providers/anthropicProvider.js').AnthropicRequestExt)
+        } satisfies import('./provider.js').ProviderRequestExt)
         if (!fallback404Bound.createNonStreamingFallback) {
           throw new Error('Provider does not support non-streaming fallback')
         }

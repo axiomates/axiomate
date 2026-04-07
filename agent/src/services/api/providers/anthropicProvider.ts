@@ -8,6 +8,7 @@
  * (reads settings, feature flags, session state) that belongs in claude.ts,
  * not in the protocol layer. The Provider orchestrates the call sequence.
  */
+import type { ProviderRequestExt } from '../provider.js'
 import type Anthropic from '@anthropic-ai/sdk'
 import {
   APIConnectionError,
@@ -99,7 +100,7 @@ export interface AnthropicProviderConfig {
  * Anthropic-specific extension data passed via StreamRequest.providerExt.
  * Contains provider-specific fields that don't belong in the neutral interface.
  */
-export interface AnthropicRequestExt {
+export interface AnthropicRequestExt extends ProviderRequestExt {
   /** Builds Anthropic SDK params from retry context. Closure from claude.ts. */
   buildParams: (retryContext: RetryContext) => Record<string, unknown>
   /** withRetry options (model, fallbackModel, thinkingConfig, etc.) */
@@ -210,7 +211,7 @@ export class AnthropicProvider implements LLMProvider {
         })
 
         const params = buildParams(context)
-        maxOutputTokens = (params as Record<string, unknown>).max_tokens as number ?? 0
+        maxOutputTokens = typeof params.max_tokens === 'number' ? params.max_tokens : 0
 
         // SDK call (typed wrapper localizes the single `as any` cast)
         const result = await createBetaStream(anthropic, params, request.signal)
