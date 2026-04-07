@@ -1,4 +1,3 @@
-import { APIUserAbortError } from '@anthropic-ai/sdk'
 import { LLMAbortError } from '../services/api/streamTypes.js'
 
 export class ClaudeError extends Error {
@@ -20,16 +19,13 @@ export class AbortError extends Error {
 /**
  * True iff `e` is any of the abort-shaped errors the codebase encounters:
  * our AbortError class, a DOMException from AbortController.abort()
- * (.name === 'AbortError'), or the SDK's APIUserAbortError. The SDK class
- * is checked via instanceof because minified builds mangle class names —
- * constructor.name becomes something like 'nJT' and the SDK never sets
- * this.name, so string matching silently fails in production.
+ * (.name === 'AbortError'), or LLMAbortError (the provider-neutral wrapper
+ * that anthropicProvider.wrapError() produces from SDK abort errors).
  */
 export function isAbortError(e: unknown): boolean {
   return (
     e instanceof AbortError ||
     e instanceof LLMAbortError ||
-    e instanceof APIUserAbortError ||
     (e instanceof Error && e.name === 'AbortError')
   )
 }

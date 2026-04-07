@@ -3,6 +3,7 @@ import type { NonNullableUsage as Usage } from '../entrypoints/sdk/sdkUtilityTyp
 import type {
   ContentBlock,
   ContentBlockParam,
+  LLMAPIError,
   RedactedThinkingBlock,
   RedactedThinkingBlockParam,
   TextBlockParam,
@@ -91,14 +92,6 @@ type HookAttachmentWithName = Exclude<
   HookPermissionDecisionAttachment
 >
 
-import type { APIError } from '@anthropic-ai/sdk'
-import type {
-  BetaContentBlock,
-  BetaMessage,
-  BetaRedactedThinkingBlock,
-  BetaThinkingBlock,
-  BetaToolUseBlock,
-} from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
 import type {
   HookEvent,
   SDKAssistantMessageError,
@@ -374,7 +367,7 @@ function baseCreateAssistantMessage({
     speed: null,
   },
 }: {
-  content: BetaContentBlock[]
+  content: ContentBlock[]
   isApiErrorMessage?: boolean
   apiError?: AssistantMessage['apiError']
   error?: SDKAssistantMessageError
@@ -412,7 +405,7 @@ export function createAssistantMessage({
   usage,
   isVirtual,
 }: {
-  content: string | BetaContentBlock[]
+  content: string | ContentBlock[]
   usage?: Usage
   isVirtual?: true
 }): AssistantMessage {
@@ -423,7 +416,7 @@ export function createAssistantMessage({
             {
               type: 'text' as const,
               text: content === '' ? NO_CONTENT_MESSAGE : content,
-            } as BetaContentBlock, // NOTE: citations field is not supported in Bedrock API
+            } as ContentBlock, // NOTE: citations field is not supported in Bedrock API
           ]
         : content,
     usage,
@@ -447,7 +440,7 @@ export function createAssistantAPIErrorMessage({
       {
         type: 'text' as const,
         text: content === '' ? NO_CONTENT_MESSAGE : content,
-      } as BetaContentBlock, // NOTE: citations field is not supported in Bedrock API
+      } as ContentBlock, // NOTE: citations field is not supported in Bedrock API
     ],
     isApiErrorMessage: true,
     apiError,
@@ -2792,7 +2785,7 @@ export function textForResubmit(
 
 /**
  * Extract text from an array of content blocks, joining text blocks with the
- * given separator. Works with ContentBlock, ContentBlockParam, BetaContentBlock,
+ * given separator. Works with ContentBlock, ContentBlockParam, ContentBlock,
  * and their readonly/DeepImmutable variants via structural typing.
  */
 export function extractTextContent(
@@ -2819,7 +2812,7 @@ export function getContentText(
 
 export type StreamingToolUse = {
   index: number
-  contentBlock: BetaToolUseBlock
+  contentBlock: ToolUseBlock
   unparsedToolInput: string
 }
 
@@ -4471,7 +4464,7 @@ export function createMicrocompactBoundaryMessage(
 }
 
 export function createSystemAPIErrorMessage(
-  error: APIError,
+  error: LLMAPIError,
   retryInMs: number,
   retryAttempt: number,
   maxRetries: number,
@@ -4653,11 +4646,9 @@ type ThinkingBlockType =
   | RedactedThinkingBlock
   | ThinkingBlockParam
   | RedactedThinkingBlockParam
-  | BetaThinkingBlock
-  | BetaRedactedThinkingBlock
 
 function isThinkingBlock(
-  block: ContentBlockParam | ContentBlock | BetaContentBlock,
+  block: ContentBlockParam | ContentBlock,
 ): block is ThinkingBlockType {
   return block.type === 'thinking' || block.type === 'redacted_thinking'
 }

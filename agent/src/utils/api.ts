@@ -1,8 +1,3 @@
-import type Anthropic from '@anthropic-ai/sdk'
-import type {
-  BetaTool,
-  BetaToolUnion,
-} from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
 import type { NeutralToolSchema } from '../services/api/streamTypes.js'
 import { createHash } from 'crypto'
 import { SYSTEM_PROMPT_DYNAMIC_BOUNDARY } from '../constants/prompts.js'
@@ -65,18 +60,6 @@ import type { SystemPrompt } from './systemPromptType.js'
 import { getToolSchemaCache } from './toolSchemaCache.js'
 import { windowsPathToPosixPath } from './windowsPaths.js'
 import { zodToJsonSchema } from './zodToJsonSchema.js'
-
-// Extended BetaTool type with strict mode and defer_loading support
-type BetaToolWithExtras = BetaTool & {
-  strict?: boolean
-  defer_loading?: boolean
-  cache_control?: {
-    type: 'ephemeral'
-    scope?: 'global' | 'org'
-    ttl?: '5m' | '1h'
-  }
-  eager_input_streaming?: boolean
-}
 
 export type CacheScope = 'global' | 'org'
 export type SystemPromptBlock = {
