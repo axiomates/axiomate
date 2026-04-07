@@ -461,6 +461,20 @@ function getKnownModelOption(model: string): ModelOption | null {
 export function getModelOptions(fastMode = false): ModelOption[] {
   const options = getModelOptionsBase(fastMode)
 
+  // Add models from ~/.axiomate.json "models" configuration
+  const configModels = getGlobalConfig().models
+  if (configModels) {
+    for (const [modelId, config] of Object.entries(configModels)) {
+      if (!options.some(existing => existing.value === modelId)) {
+        options.push({
+          value: modelId,
+          label: config.name ?? modelId,
+          description: config.description ?? `${config.protocol} · ${config.baseUrl}`,
+        })
+      }
+    }
+  }
+
   // Add the custom model from the ANTHROPIC_CUSTOM_MODEL_OPTION env var
   const envCustomModel = process.env.ANTHROPIC_CUSTOM_MODEL_OPTION
   if (
