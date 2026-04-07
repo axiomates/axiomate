@@ -1,7 +1,4 @@
-import type {
-  BetaContentBlock,
-  BetaWebSearchTool20250305,
-} from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
+import type { ContentBlock } from '../../services/api/streamTypes.js'
 import { getAPIProvider } from '../../utils/model/providers.js'
 import type { PermissionResult } from '../../utils/permissions/PermissionResult.js'
 import { z } from 'zod/v4'
@@ -75,7 +72,16 @@ export type { WebSearchProgress } from '../../types/tools.js'
 
 import type { WebSearchProgress } from '../../types/tools.js'
 
-function makeToolSchema(input: Input): BetaWebSearchTool20250305 {
+/** Anthropic server-side web search tool schema (Beta API). */
+type WebSearchToolSchema = {
+  type: 'web_search_20250305'
+  name: 'web_search'
+  allowed_domains?: string[] | null
+  blocked_domains?: string[] | null
+  max_uses?: number
+}
+
+function makeToolSchema(input: Input): WebSearchToolSchema {
   return {
     type: 'web_search_20250305',
     name: 'web_search',
@@ -86,7 +92,7 @@ function makeToolSchema(input: Input): BetaWebSearchTool20250305 {
 }
 
 function makeOutputFromSearchResponse(
-  result: BetaContentBlock[],
+  result: ContentBlock[],
   query: string,
   durationSeconds: number,
 ): Output {
@@ -114,18 +120,24 @@ function makeOutputFromSearchResponse(
       continue
     }
 
-    if (block.type === 'web_search_tool_result') {
+    if (block.type === 'server_tool_result') {
+      // The adapter wraps web_search_tool_result as server_tool_result,
+      // with block.content holding the raw SDK content (array of search
+      // results or an error object).
+      const content = block.content as
+        | Array<{ title: string; url: string }>
+        | { error_code: string }
       // Handle error case - content is a WebSearchToolResultError
-      if (!Array.isArray(block.content)) {
-        const errorMessage = `Web search error: ${block.content.error_code}`
+      if (!Array.isArray(content)) {
+        const errorMessage = `Web search error: ${content.error_code}`
         logError(new Error(errorMessage))
         results.push(errorMessage)
         continue
       }
       // Success case - add results to our collection
-      const hits = block.content.map(r => ({ title: r.title, url: r.url }))
+      const hits = content.map(r => ({ title: r.title, url: r.url }))
       results.push({
-        tool_use_id: block.tool_use_id,
+        tool_use_id: block.toolUseId,
         content: hits,
       })
     }
@@ -283,7 +295,11 @@ export const WebSearchTool = buildTool({
         toolChoice: useHaiku ? { type: 'specific', name: 'web_search' } : undefined,
         isNonInteractiveSession: context.options.isNonInteractiveSession,
         hasAppendSystemPrompt: !!context.options.appendSystemPrompt,
-        extraToolSchemas: [toolSchema],
+        // WebSearchToolSchema is an Anthropic server-side tool (not a user-defined
+        // NeutralToolSchema). It bypasses neutralToolToSDK at the adapter layer
+        // because BetaToolUnion accepts both shapes. TODO: add explicit
+        // extraServerTools path in claude.ts for server-side tool schemas.
+        extraToolSchemas: [toolSchema as unknown as import('../../services/api/streamTypes.js').NeutralToolSchema],
         querySource: 'web_search_tool',
         agents: context.options.agentDefinitions.activeAgents,
         mcpTools: [],
@@ -292,7 +308,7 @@ export const WebSearchTool = buildTool({
       },
     })
 
-    const allContentBlocks: BetaContentBlock[] = []
+    const allContentBlocks: ContentBlock[] = []
     let currentToolUseId = null
     let currentToolUseJson = ''
     let progressCounter = 0
