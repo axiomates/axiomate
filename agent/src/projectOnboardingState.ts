@@ -32,7 +32,7 @@ export function getSteps(): Step[] {
     },
     {
       key: 'claudemd',
-      text: 'Run /init to create a AXIOMATE.md file with instructions for Claude',
+      text: 'Run /init to create a AXIOMATE.md file with instructions for Axiomate',
       isComplete: hasClaudeMd,
       isCompletable: true,
       isEnabled: !isWorkspaceDirEmpty,
