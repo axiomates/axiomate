@@ -32,7 +32,17 @@ export function getProviderForModel(model: string): LLMProvider {
   const modelConfig = getGlobalConfig().models?.[model]
   if (!modelConfig) {
     throw new Error(
-      `Model '${model}' is not configured. Add it to the "models" section in ~/.axiomate.json.`,
+      `Model '${model}' is not configured.\n\n` +
+      `Add it to ~/.axiomate.json:\n\n` +
+      `  "models": {\n` +
+      `    "${model}": {\n` +
+      `      "model": "${model}",\n` +
+      `      "protocol": "openai",\n` +
+      `      "baseUrl": "https://your-api-provider.com/v1",\n` +
+      `      "apiKey": "sk-..."\n` +
+      `    }\n` +
+      `  },\n` +
+      `  "currentModel": "${model}"`,
     )
   }
 

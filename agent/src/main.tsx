@@ -1930,6 +1930,39 @@ async function run(): Promise<CommanderCommand> {
     logForDebugging(`[STARTUP] setup() completed in ${Date.now() - setupStart}ms`);
     profileCheckpoint('action_after_setup');
 
+    // ── Axiomate first-run check: no models configured ──
+    {
+      const _cfg = getGlobalConfig()
+      const hasModels = _cfg.models && Object.keys(_cfg.models).length > 0
+      const hasAnthropicKey = !!process.env.ANTHROPIC_API_KEY
+      if (!hasModels && !hasAnthropicKey) {
+        const example = {
+          models: {
+            'your-model-id': {
+              model: 'your-model-id',
+              name: 'Display Name',
+              protocol: 'openai',
+              baseUrl: 'https://your-api-provider.com/v1',
+              apiKey: 'sk-...',
+              contextWindow: 131072,
+              maxOutputTokens: 32768,
+            },
+          },
+          currentModel: 'your-model-id',
+        }
+        console.log(chalk.bold('\nWelcome to Axiomate!\n'))
+        console.log('No models configured yet. Add your models to ~/.axiomate.json:\n')
+        console.log(chalk.dim(JSON.stringify(example, null, 2)))
+        console.log(
+          `\nSupported protocols: ${chalk.cyan('"openai"')} (OpenRouter, SiliconFlow, vLLM, ollama) or ${chalk.cyan('"anthropic"')}`,
+        )
+        console.log(
+          `Docs: ${chalk.underline('https://github.com/axiomates/axiomate#configuration')}\n`,
+        )
+        process.exit(0)
+      }
+    }
+
     // Replay user messages into stream-json only when the socket was
     // explicitly requested. The auto-generated socket is passive — it
     // lets tools inject if they want to, but turning it on by default
