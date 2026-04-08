@@ -225,7 +225,9 @@ export class OpenAIProvider implements LLMProvider {
   async inference(request: InferenceRequest): Promise<InferenceResponse> {
     const body: Record<string, unknown> = {
       model: this.config.modelConfig!.model,
-      messages: messagesToOpenAI(request.messages, request.system),
+      messages: messagesToOpenAI(request.messages, request.system, {
+        supportsImages: this.config.modelConfig?.supportsImages ?? true,
+      }),
       max_tokens: request.maxTokens ?? 4096,
     }
 
@@ -309,7 +311,9 @@ export class OpenAIProvider implements LLMProvider {
     // with { type, message: { role, content }, uuid, ... } structure.
     // Extract the inner .message to get { role, content } that messagesToOpenAI expects.
     const rawMessages = (intent.messages as Array<{ message: import('../streamTypes.js').MessageParam }>).map(m => m.message)
-    const messages = messagesToOpenAI(rawMessages, systemText)
+    const messages = messagesToOpenAI(rawMessages, systemText, {
+      supportsImages: this.config.modelConfig?.supportsImages ?? true,
+    })
 
     const body: Record<string, unknown> = {
       model: this.config.modelConfig!.model,

@@ -45,7 +45,9 @@ type OpenAIToolCall = {
 export function messagesToOpenAI(
   messages: MessageParam[],
   systemPrompt?: string | ContentBlockParam[],
+  options?: { supportsImages?: boolean },
 ): OpenAIMessage[] {
+  const supportsImages = options?.supportsImages ?? true
   const result: OpenAIMessage[] = []
 
   // System prompt
@@ -78,6 +80,10 @@ export function messagesToOpenAI(
           textParts.push({ type: 'text', text: block.text })
           break
         case 'image': {
+          if (!supportsImages) {
+            textParts.push({ type: 'text', text: '[Image omitted: this model does not support image input. Set "supportsImages": true in ~/.axiomate.json if it does.]' })
+            break
+          }
           const src = block.source
           if (src.type === 'base64') {
             textParts.push({

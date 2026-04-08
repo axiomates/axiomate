@@ -49,6 +49,27 @@ import { logError } from '../../../utils/log.js'
 import { getHeader } from '../headerUtils.js'
 
 // ---------------------------------------------------------------------------
+// Image stripping for text-only models (supportsImages: false)
+// ---------------------------------------------------------------------------
+
+const IMAGE_OMITTED_TEXT = '[Image omitted: this model does not support image input. Set "supportsImages": true in ~/.axiomate.json if it does.]'
+
+/** Replace image content blocks with a text placeholder in Anthropic-format messages. */
+function stripImageBlocks(messages: any[]): any[] {
+  return messages.map(msg => {
+    if (!Array.isArray(msg.content)) return msg
+    return {
+      ...msg,
+      content: msg.content.map((block: any) =>
+        block.type === 'image'
+          ? { type: 'text', text: IMAGE_OMITTED_TEXT }
+          : block,
+      ),
+    }
+  })
+}
+
+// ---------------------------------------------------------------------------
 // SDK typed extensions (fields exist at runtime but missing from SDK types)
 // ---------------------------------------------------------------------------
 
@@ -215,6 +236,10 @@ export class AnthropicProvider implements LLMProvider {
         })
 
         const params = buildParams(context)
+        // Strip image blocks if model doesn't support vision
+        if (this.config.modelConfig?.supportsImages === false && Array.isArray(params.messages)) {
+          params.messages = stripImageBlocks(params.messages as any[])
+        }
         // Apply config-driven overrides (thinkingParams when thinking enabled, extraParams always)
         if (this.config.modelConfig?.extraParams) {
           Object.assign(params, this.config.modelConfig.extraParams)
@@ -409,6 +434,10 @@ export class AnthropicProvider implements LLMProvider {
       async (anthropic: Anthropic, attempt: number, context: RetryContext) => {
         const start = Date.now()
         const params = buildParams(context)
+        // Strip image blocks if model doesn't support vision
+        if (this.config.modelConfig?.supportsImages === false && Array.isArray(params.messages)) {
+          params.messages = stripImageBlocks(params.messages as any[])
+        }
         // Apply config-driven overrides (same as streaming path)
         if (this.config.modelConfig?.extraParams) {
           Object.assign(params, this.config.modelConfig.extraParams)
@@ -584,7 +613,9 @@ export class AnthropicProvider implements LLMProvider {
     const params: Record<string, unknown> = {
       model: normalizedModel,
       max_tokens: request.maxTokens ?? 1024,
-      messages: request.messages,
+      messages: this.config.modelConfig?.supportsImages === false
+        ? stripImageBlocks(request.messages as any[])
+        : request.messages,
       ...(request.system && { system: request.system }),
       ...(request.tools && { tools: request.tools.map((t) => ({
         name: t.name,

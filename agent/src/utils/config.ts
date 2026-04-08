@@ -195,6 +195,8 @@ export type ModelProviderConfig = {
   contextWindow?: number
   /** Max output tokens per response. If omitted, defaults to min(32k, contextWindow/4). */
   maxOutputTokens?: number
+  /** Whether this model supports image/vision input. Defaults to true. Set to false for text-only models. */
+  supportsImages?: boolean
   /** Extra params sent when thinking is enabled (vendor-specific, user declares) */
   thinkingParams?: Record<string, unknown>
   /** Extra params sent on every request (passthrough to API body) */

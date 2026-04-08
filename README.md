@@ -60,6 +60,7 @@ Models are configured in `~/.axiomate.json`. On first run the file is created au
 | `apiKey` | yes | API key for authentication |
 | `contextWindow` | no | Context window size in tokens |
 | `maxOutputTokens` | no | Max output tokens per response |
+| `supportsImages` | no | Whether the model supports image/vision input. Defaults to `true`. Set to `false` for text-only models to avoid API errors |
 | `thinkingParams` | no | Vendor-specific thinking/reasoning params, merged into request when thinking is enabled |
 | `extraParams` | no | Extra params merged into every API request body (passthrough) |
 
