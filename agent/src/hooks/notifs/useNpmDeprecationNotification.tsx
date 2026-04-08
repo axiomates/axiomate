@@ -4,7 +4,7 @@ import { isEnvTruthy } from '../../utils/envUtils.js';
 import { useStartupNotification } from './useStartupNotification.js';
 const NPM_DEPRECATION_MESSAGE = 'Claude Code has switched from npm to native installer. Run `claude install` or see https://docs.anthropic.com/en/docs/claude-code/getting-started for more options.';
 export function useNpmDeprecationNotification() {
-  useStartupNotification(_temp as any);
+  // Disabled for axiomate — no native installer migration needed
 }
 async function _temp() {
   if (isInBundledMode() || isEnvTruthy(process.env.DISABLE_INSTALLATION_CHECKS)) {
