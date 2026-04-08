@@ -1934,8 +1934,7 @@ async function run(): Promise<CommanderCommand> {
     {
       const _cfg = getGlobalConfig()
       const hasModels = _cfg.models && Object.keys(_cfg.models).length > 0
-      const hasAnthropicKey = !!process.env.ANTHROPIC_API_KEY
-      if (!hasModels && !hasAnthropicKey) {
+      if (!hasModels) {
         const example = {
           models: {
             'your-model-id': {
