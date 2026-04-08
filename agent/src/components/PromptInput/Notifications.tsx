@@ -303,11 +303,7 @@ function NotificationContent({
             ({apiKeyHelperSlow})
           </Text>
         </Box>}
-      {(apiKeyStatus === 'invalid' || apiKeyStatus === 'missing') && <Box>
-          <Text color="error" wrap="truncate">
-            {isEnvTruthy(process.env.CLAUDE_CODE_REMOTE) ? 'Authentication error · Try again' : 'Not logged in · Run /login'}
-          </Text>
-        </Box>}
+      {/* Removed: OAuth login prompt not applicable to axiomate (API key configured in ~/.axiomate.json) */}
       {debug && <Box>
           <Text color="warning" wrap="truncate">
             Debug mode
