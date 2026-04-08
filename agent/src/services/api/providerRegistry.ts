@@ -58,17 +58,21 @@ export function clearProviderCache(): void {
 
 function createProviderFromConfig(config: ModelProviderConfig): LLMProvider {
   switch (config.protocol) {
-    case 'anthropic':
+    case 'anthropic': {
+      // Anthropic SDK appends /v1/messages to baseURL automatically,
+      // so strip trailing /v1 if present (OpenAI SDK needs it, Anthropic doesn't)
+      const anthropicBaseURL = config.baseUrl.replace(/\/v1\/?$/, '')
       return new AnthropicProvider({
         getClient: async (opts) => new Anthropic({
           apiKey: config.apiKey,
-          baseURL: config.baseUrl,
+          baseURL: anthropicBaseURL,
           maxRetries: opts.maxRetries,
         }),
         calculateUSDCost: (m, usage) =>
           calculateUSDCost(m, usage as NonNullableUsage),
         modelConfig: config,
       })
+    }
 
     case 'openai':
       return new OpenAIProvider({

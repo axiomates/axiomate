@@ -136,7 +136,9 @@ async function createBetaStream(
   request_id?: string
   response?: unknown
 }> {
-  return (client.beta.messages as any)
+  // Use standard messages API (not beta) for compatibility with third-party
+  // Anthropic-compatible endpoints (SiliconFlow, etc.) that don't support beta namespace.
+  return (client.messages as any)
     .create(
       { ...params, stream: true },
       { signal },
