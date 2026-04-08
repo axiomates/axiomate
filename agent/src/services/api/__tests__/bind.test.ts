@@ -46,7 +46,6 @@ function createMockSDKStream(events: Array<Record<string, unknown>>) {
 function createMockClient(events: Array<Record<string, unknown>> = [{ type: 'message_stop' }]) {
   const mockStream = createMockSDKStream(events)
   return {
-    beta: {
       messages: {
         create: vi.fn().mockReturnValue({
           withResponse: vi.fn().mockResolvedValue({
@@ -55,7 +54,6 @@ function createMockClient(events: Array<Record<string, unknown>> = [{ type: 'mes
             response: { headers: new Headers({ 'x-request-id': 'req_bind_test' }) },
           }),
         }),
-      },
     },
   }
 }

@@ -55,10 +55,8 @@ const dummyIntent: StreamIntent = {
 
 function createMockClient(response: Record<string, unknown>) {
   return {
-    beta: {
       messages: {
         create: vi.fn().mockResolvedValue(response),
-      },
     },
   }
 }
@@ -237,7 +235,7 @@ describe('AnthropicProvider.createNonStreamingFallback', () => {
 
   it('logs error instrumentation on SDK failure', async () => {
     const failClient = createMockClient({})
-    failClient.beta.messages.create = vi.fn().mockRejectedValue(new Error('timeout'))
+    failClient.messages.create = vi.fn().mockRejectedValue(new Error('timeout'))
 
     const failProvider = new AnthropicProvider({
       getClient: vi.fn().mockResolvedValue(failClient),

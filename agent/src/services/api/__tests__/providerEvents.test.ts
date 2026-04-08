@@ -39,7 +39,6 @@ function createMockClient(events: Array<Record<string, unknown>>) {
     controller: {},
   }
   return {
-    beta: {
       messages: {
         create: vi.fn().mockReturnValue({
           withResponse: vi.fn().mockResolvedValue({
@@ -48,7 +47,6 @@ function createMockClient(events: Array<Record<string, unknown>>) {
             response: {},
           }),
         }),
-      },
     },
   }
 }

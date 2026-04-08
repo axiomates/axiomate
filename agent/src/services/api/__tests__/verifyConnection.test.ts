@@ -34,10 +34,8 @@ import { getAPIMetadata, getExtraBodyParams } from '../claude.js'
 
 function createMockClient() {
   return {
-    beta: {
       messages: {
         create: vi.fn().mockResolvedValue({ id: 'msg_test', content: [], usage: {} }),
-      },
     },
   }
 }
@@ -69,8 +67,8 @@ describe('AnthropicProvider.verifyConnection', () => {
 
     await provider.verifyConnection({})
 
-    expect(mockClient.beta.messages.create).toHaveBeenCalledTimes(1)
-    const params = mockClient.beta.messages.create.mock.calls[0][0]
+    expect(mockClient.messages.create).toHaveBeenCalledTimes(1)
+    const params = mockClient.messages.create.mock.calls[0][0]
     expect(params.model).toBe('claude-haiku-4-5-20251001')
     expect(params.max_tokens).toBe(1)
     expect(params.temperature).toBe(1)

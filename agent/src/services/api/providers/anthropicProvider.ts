@@ -426,7 +426,7 @@ export class AnthropicProvider implements LLMProvider {
 
         try {
           // SDK beta namespace cast (same as createBetaStream) — non-streaming variant
-          return await (anthropic.beta.messages as { create: Function }).create(
+          return await (anthropic.messages as { create: Function }).create(
             {
               ...adjustedParams,
               model: normalizeModelStringForAPI(
@@ -516,7 +516,7 @@ export class AnthropicProvider implements LLMProvider {
           source: 'verify_api_key',
         }),
       async (anthropic) => {
-        await anthropic.beta.messages.create({
+        await anthropic.messages.create({
           model,
           max_tokens: 1,
           messages: [{ role: 'user', content: 'test' }],
@@ -606,7 +606,7 @@ export class AnthropicProvider implements LLMProvider {
 
     let response: unknown
     try {
-      response = await (anthropic.beta.messages as { create: Function }).create(
+      response = await (anthropic.messages as { create: Function }).create(
         params,
         { signal: request.signal },
       )
@@ -659,7 +659,7 @@ export class AnthropicProvider implements LLMProvider {
         ...(betas.length > 0 && { betas }),
       }
 
-      const result = await (anthropic.beta.messages as { countTokens: Function }).countTokens(params)
+      const result = await (anthropic.messages as { countTokens: Function }).countTokens(params)
       return (result as { input_tokens: number }).input_tokens
     } catch {
       return null

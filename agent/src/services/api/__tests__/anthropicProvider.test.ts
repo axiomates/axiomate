@@ -57,7 +57,6 @@ function createMockSDKStream(
 function createMockClient(events: Array<Record<string, unknown>>) {
   const mockStream = createMockSDKStream(events)
   return {
-    beta: {
       messages: {
         create: vi.fn().mockReturnValue({
           withResponse: vi.fn().mockResolvedValue({
@@ -66,7 +65,6 @@ function createMockClient(events: Array<Record<string, unknown>>) {
             response: { headers: new Headers({ 'x-request-id': 'req_test_123' }) },
           }),
         }),
-      },
     },
   }
 }
@@ -204,7 +202,7 @@ describe('AnthropicProvider', () => {
       }))
 
       expect(buildParams).toHaveBeenCalledTimes(1)
-      const createCall = mockClient.beta.messages.create
+      const createCall = mockClient.messages.create
       expect(createCall).toHaveBeenCalledTimes(1)
       const params = createCall.mock.calls[0][0]
       expect(params.model).toBe('claude-opus-4-6')
