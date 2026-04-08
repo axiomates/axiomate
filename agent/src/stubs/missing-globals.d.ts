@@ -24,9 +24,6 @@ declare const Gates: any
 // ---- Ultraplan (Anthropic internal planning feature) ----
 declare function launchUltraplan(...args: any[]): any
 
-// ---- Companion observer (analytics) ----
-declare function fireCompanionObserver(...args: any[]): void
-
 // ---- Constants ----
 declare const HOOK_TIMING_DISPLAY_THRESHOLD_MS: number
 
