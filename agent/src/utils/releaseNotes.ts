@@ -109,12 +109,6 @@ export async function fetchAndStoreChangelog(): Promise<void> {
     await writeFile(cachePath, changelogContent, { encoding: 'utf-8' })
     changelogMemoryCache = changelogContent
 
-    // Update timestamp in config
-    const changelogLastFetched = Date.now()
-    saveGlobalConfig(current => ({
-      ...current,
-      changelogLastFetched,
-    }))
   }
 }
 

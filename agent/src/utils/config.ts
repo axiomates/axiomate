@@ -219,12 +219,8 @@ export type GlobalConfig = {
   userID?: string
   theme: ThemeSetting
   hasCompletedOnboarding?: boolean
-  // Tracks the last version that reset onboarding, used with MIN_VERSION_REQUIRING_ONBOARDING_RESET
-  lastOnboardingVersion?: string
   // Tracks the last version for which release notes were seen, used for managing release notes
   lastReleaseNotesSeen?: string
-  // Timestamp when changelog was last fetched (content stored in ~/.axiomate/cache/changelog.md)
-  changelogLastFetched?: number
   // @deprecated - Migrated to ~/.axiomate/cache/changelog.md. Keep for migration support.
   cachedChangelog?: string
   mcpServers?: Record<string, McpServerConfig>
