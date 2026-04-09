@@ -9,6 +9,7 @@ import { logEvent } from '../../services/analytics/index.js'
 import { useAppState } from '../../state/AppState.js'
 import { useVoiceState } from '../../context/voice.js'
 import type { VerificationStatus } from '../../hooks/useApiKeyVerification.js'
+import { getGlobalConfig } from '../../utils/config.js'
 import { useIdeConnectionStatus } from '../../hooks/useIdeConnectionStatus.js'
 import type { IDESelection } from '../../hooks/useIdeSelection.js'
 import { useMainLoopModel } from '../../hooks/useMainLoopModel.js'
@@ -64,7 +65,7 @@ type Props = {
 }
 
 export function Notifications({
-  apiKeyStatus,
+  apiKeyStatus: rawApiKeyStatus,
   autoUpdaterResult,
   debug,
   isAutoUpdating,
@@ -77,6 +78,10 @@ export function Notifications({
   isInputWrapped = false,
   isNarrow = false,
 }: Props): ReactNode {
+  // axiomate: each model carries its own apiKey in config.models,
+  // so the global Anthropic API key check is irrelevant when models are configured.
+  const apiKeyStatus: VerificationStatus = getGlobalConfig().models ? 'valid' : rawApiKeyStatus
+
   const tokenUsage = useMemo(() => {
     const messagesForTokenCount = getMessagesAfterCompactBoundary(messages)
     return tokenCountFromLastAPIResponse(messagesForTokenCount)
