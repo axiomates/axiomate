@@ -28,7 +28,6 @@ export function CondensedLogo() {
   const {
     version,
     cwd,
-    billingType,
     agentName: agentNameFromSettings
   } = getLogoDisplayData();
   const agentName = agent ?? agentNameFromSettings;
@@ -76,7 +75,7 @@ export function CondensedLogo() {
     shouldSplit,
     truncatedModel,
     truncatedBilling
-  } = formatModelAndBilling(modelDisplayName + effortSuffix, billingType, textWidth);
+  } = formatModelAndBilling(modelDisplayName + effortSuffix, '', textWidth);
   const cwdAvailableWidth = agentName ? textWidth - 1 - stringWidth(agentName) - 3 : textWidth;
   const truncatedCwd = truncatePath(cwd, Math.max(cwdAvailableWidth, 10));
   let t4;

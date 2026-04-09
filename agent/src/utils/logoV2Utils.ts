@@ -253,15 +253,11 @@ export function getLogoDisplayData(): {
   const cwd = serverUrl
     ? `${displayPath} in ${serverUrl.replace(/^https?:\/\//, '')}`
     : displayPath
-  const billingType = isClaudeAISubscriber()
-    ? getSubscriptionName()
-    : 'API Usage Billing'
   const agentName = getInitialSettings().agent
 
   return {
     version,
     cwd,
-    billingType,
     agentName,
   }
 }
