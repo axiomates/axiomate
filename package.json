@@ -1,6 +1,13 @@
 {
   "name": "axiomate",
   "private": true,
+  "scripts": {
+    "build": "npm --workspace agent run build",
+    "build:types": "npm --workspace agent run build:types",
+    "package:win": "npm --workspace agent run package:win",
+    "start": "npm --workspace agent run start",
+    "test": "npm --workspace agent run test"
+  },
   "workspaces": [
     "treeify-axiomate",
     "clipboard-axiomate",

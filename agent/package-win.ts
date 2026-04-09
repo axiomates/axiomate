@@ -2,16 +2,24 @@
  * Package axiomate as a standalone Windows executable.
  *
  * Steps:
- *   0. Pre-build workspace packages that need compilation (clipboard-axiomate TS)
+ *   0. Clean dist/ and pre-build workspace packages that need compilation
  *   1. Bun.build() API — bundle all JS (including npm deps) into a single file
  *      with define/loader support that the CLI doesn't have.
  *   2. bun build --compile — compile the bundled JS into axiomate.exe.
- *   3. Copy native .node files alongside the exe.
+ *   3. Copy native .node files alongside the exe and remove the intermediate bundle.
  *
  * Usage: bun run package:win
  */
 
-import { readFileSync, copyFileSync, existsSync, statSync } from 'fs'
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  unlinkSync,
+} from 'fs'
 import { join, dirname, resolve } from 'path'
 
 const pkg = JSON.parse(readFileSync(join(dirname(import.meta.path), 'package.json'), 'utf-8'))
@@ -28,6 +36,12 @@ try {
 // ── Step 0: Pre-build workspace packages ─────────────────────────────────────
 
 console.log('Step 0/4: Pre-building workspace packages ...')
+
+// Start from a clean dist/ so stale outputs from other build flows don't get
+// mistaken for runtime requirements of the packaged executable.
+console.log('  Cleaning dist/ ...')
+rmSync(distDir, { recursive: true, force: true })
+mkdirSync(distDir, { recursive: true })
 
 // clipboard-axiomate: compile TS fallback (PowerShell clipboard for Windows)
 const clipboardDir = join(root, 'clipboard-axiomate')
@@ -150,6 +164,12 @@ for (const relPath of nativeFiles) {
   } else {
     console.log(`  ⊘ ${relPath} (not found, skipping)`)
   }
+}
+
+const bundledCliPath = join(distDir, 'cli.js')
+if (existsSync(bundledCliPath)) {
+  unlinkSync(bundledCliPath)
+  console.log('  ✓ removed intermediate cli.js')
 }
 
 // ── Step 4: Summary ──────────────────────────────────────────────────────────
