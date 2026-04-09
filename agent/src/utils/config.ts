@@ -372,8 +372,6 @@ export type GlobalConfig = {
   showExpandedTodos?: boolean // Whether to show todos expanded, even when empty
   showSpinnerTree?: boolean // Whether to show the teammate spinner tree instead of pills
 
-  // First start time tracking
-  firstStartTime?: string // ISO timestamp when Claude Code was first started on this machine
 
   messageIdleNotifThresholdMs: number // How long the user has to have been idle to get a notification that Claude is done generating
 
@@ -1769,16 +1767,6 @@ export function getOrCreateUserID(): string {
   return userID
 }
 
-export function recordFirstStartTime(): void {
-  const config = getGlobalConfig()
-  if (!config.firstStartTime) {
-    const firstStartTime = new Date().toISOString()
-    saveGlobalConfig(current => ({
-      ...current,
-      firstStartTime: current.firstStartTime ?? firstStartTime,
-    }))
-  }
-}
 
 export function getMemoryPath(memoryType: MemoryType): string {
   const cwd = getOriginalCwd()

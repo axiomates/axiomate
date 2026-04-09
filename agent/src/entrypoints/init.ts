@@ -20,7 +20,7 @@ import {
 import { preconnectAnthropicApi } from '../utils/apiPreconnect.js'
 import { applyExtraCACertsFromConfig } from '../utils/caCertsConfig.js'
 import { registerCleanup } from '../utils/cleanupRegistry.js'
-import { enableConfigs, recordFirstStartTime } from '../utils/config.js'
+import { enableConfigs } from '../utils/config.js'
 import { logForDebugging } from '../utils/debug.js'
 import { detectCurrentRepository } from '../utils/detectRepository.js'
 import { logForDiagnosticsNoPII } from '../utils/diagLogs.js'
@@ -127,9 +127,6 @@ export const init = memoize(async (): Promise<void> => {
       initializePolicyLimitsLoadingPromise()
     }
     profileCheckpoint('init_after_remote_settings_check')
-
-    // Record the first start time
-    recordFirstStartTime()
 
     // Configure global mTLS settings
     const mtlsStart = Date.now()
