@@ -261,7 +261,6 @@ import { useRateLimitWarningNotification } from '../hooks/notifs/useRateLimitWar
 import { useDeprecationWarningNotification } from '../hooks/notifs/useDeprecationWarningNotification.js';
 import { useNpmDeprecationNotification } from '../hooks/notifs/useNpmDeprecationNotification.js';
 import { useIDEStatusIndicator } from '../hooks/notifs/useIDEStatusIndicator.js';
-import { useModelMigrationNotifications } from '../hooks/notifs/useModelMigrationNotifications.js';
 import { useCanSwitchToExistingSubscription } from '../hooks/notifs/useCanSwitchToExistingSubscription.js';
 import { useTeammateLifecycleNotification } from '../hooks/notifs/useTeammateShutdownNotification.js';
 import { useFastModeNotification } from '../hooks/notifs/useFastModeNotification.js';
@@ -742,7 +741,6 @@ export function REPL({
   const showRemoteCallout = useAppState(s => s.showRemoteCallout);
   const [showDesktopUpsellStartup, setShowDesktopUpsellStartup] = useState(() => shouldShowDesktopUpsellStartup());
   // notifications
-  useModelMigrationNotifications();
   useCanSwitchToExistingSubscription();
   useIDEStatusIndicator({
     ideSelection,
