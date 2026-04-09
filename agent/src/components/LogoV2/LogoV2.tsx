@@ -296,7 +296,7 @@ export function LogoV2(): React.ReactNode {
               alignItems="center"
               minHeight={9}
             >
-              <Clawd />
+              <Box marginTop={1}><Clawd /></Box>
               <Box flexDirection="column" alignItems="center">
                 <Text dimColor>{modelLine}</Text>
                 <Text dimColor>{cwdLine}</Text>
