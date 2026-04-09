@@ -52,7 +52,8 @@ function PromptChar({
 }: PromptCharProps): React.ReactNode {
   // Assign to original name for clarity within the function
   const teammateColor = themeColor
-  const color = teammateColor
+  const isAnt = "external" === 'ant'
+  const color = teammateColor ?? (isAnt ? 'subtle' : undefined)
 
   return (
     <Text color={color} dimColor={isLoading}>
@@ -70,7 +71,7 @@ export function PromptInputModeIndicator({
   const teammateColor = getTeammateThemeColor()
 
   // Convert viewed teammate's color to theme color
-  // Falls back to PromptChar's default (undefined)
+  // Falls back to PromptChar's default (subtle for ants, undefined for external)
   const viewedTeammateThemeColor = viewingAgentColor
     ? AGENT_COLOR_TO_THEME_COLOR[viewingAgentColor]
     : undefined

@@ -71,7 +71,10 @@ export function AssistantToolUseMessage({
   )
   const isAutoClassifier =
     permissionMode === 'auto' || (permissionMode === 'plan' && hasStrippedRules)
-  const isClassifierChecking = false
+  const isClassifierChecking =
+    "external" === 'ant' &&
+    isClassifierCheckingRaw &&
+    permissionMode !== 'auto'
 
   // Memoize on param identity (stable — from the persisted message object).
   // Zod safeParse allocates per call, and some tools' userFacingName()

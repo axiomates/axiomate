@@ -230,7 +230,10 @@ function ModeIndicator({
   const expandedView = useAppState(s => s.expandedView)
   const showSpinnerTree = expandedView === 'teammates'
   const prStatus = usePrStatus(isLoading, isPrStatusEnabled())
-  const hasTmuxSession = false
+  const hasTmuxSession = useAppState(
+    s =>
+      "external" === 'ant' && s.tungstenActiveSession !== undefined,
+  )
 
   const nextTickAt = useSyncExternalStore(
     proactiveModule?.subscribeToProactiveChanges ?? NO_OP_SUBSCRIBE,
@@ -257,7 +260,9 @@ function ModeIndicator({
     () =>
       count(
         Object.values(tasks),
-        t => isBackgroundTask(t),
+        t =>
+          isBackgroundTask(t) &&
+          !("external" === 'ant' && isPanelAgentTask(t)),
       ),
     [tasks],
   )
@@ -402,6 +407,10 @@ function ModeIndicator({
     // BackgroundTaskStatus is NOT in parts — it renders as a Box sibling so
     // its click-target Box isn't nested inside the <Text wrap="truncate">
     // wrapper (reconciler throws on Box-in-Text).
+    // Tmux pill (ant-only) — appears right after tasks in nav order
+    ...("external" === 'ant' && hasTmuxSession
+      ? [<TungstenPill key="tmux" selected={tmuxSelected} />]
+      : []),
     ...(isAgentSwarmsEnabled() && hasTeams
       ? [
           <TeamStatus
@@ -491,7 +500,8 @@ function ModeIndicator({
   }
 
   // Add "↓ to manage tasks" hint when panel has visible rows
-  const hasCoordinatorTasks = false
+  const hasCoordinatorTasks =
+    "external" === 'ant' && getVisibleAgentTasks(tasks).length > 0
 
   // Tasks pill renders as a Box sibling (not a parts entry) so its
   // click-target Box isn't nested inside <Text wrap="truncate"> — the

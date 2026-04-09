@@ -19,6 +19,7 @@ import { Message as MessageComponent } from '../../components/Message.js'
 import { MessageResponse } from '../../components/MessageResponse.js'
 import { ToolUseLoader } from '../../components/ToolUseLoader.js'
 import { Box, Text } from '../../ink.js'
+import { getDumpPromptsPath } from '../../services/api/dumpPrompts.js'
 import { findToolByName, type Tools } from '../../Tool.js'
 import type { Message, ProgressMessage } from '../../types/message.js'
 import type { AgentToolProgress } from '../../types/tools.js'
@@ -27,6 +28,7 @@ import {
   getSearchOrReadFromContent,
   getSearchReadSummaryText,
 } from '../../utils/collapseReadSearch.js'
+import { getDisplayPath } from '../../utils/file.js'
 import { formatDuration, formatNumber } from '../../utils/format.js'
 import {
   buildSubagentLookups,
@@ -123,12 +125,96 @@ function processProgressMessages(
   tools: Tools,
   isAgentRunning: boolean,
 ): ProcessedMessage[] {
-  return messages
-    .filter(
-      (m): m is ProgressMessage<AgentToolProgress> =>
-        hasProgressMessage(m.data) && m.data.message.type !== 'user',
-    )
-    .map(m => ({ type: 'original', message: m }))
+  // Only process for ants
+  if ("external" !== 'ant') {
+    return messages
+      .filter(
+        (m): m is ProgressMessage<AgentToolProgress> =>
+          hasProgressMessage(m.data) && m.data.message.type !== 'user',
+      )
+      .map(m => ({ type: 'original', message: m }))
+  }
+
+  const result: ProcessedMessage[] = []
+  let currentGroup: {
+    searchCount: number
+    readCount: number
+    replCount: number
+    startUuid: string
+  } | null = null
+
+  function flushGroup(isActive: boolean): void {
+    if (
+      currentGroup &&
+      (currentGroup.searchCount > 0 ||
+        currentGroup.readCount > 0 ||
+        currentGroup.replCount > 0)
+    ) {
+      result.push({
+        type: 'summary',
+        searchCount: currentGroup.searchCount,
+        readCount: currentGroup.readCount,
+        replCount: currentGroup.replCount,
+        uuid: `summary-${currentGroup.startUuid}`,
+        isActive,
+      })
+    }
+    currentGroup = null
+  }
+
+  const agentMessages = messages.filter(
+    (m): m is ProgressMessage<AgentToolProgress> => hasProgressMessage(m.data),
+  )
+
+  // Build tool_use lookup incrementally as we iterate
+  const toolUseByID = new Map<string, ToolUseBlockParam>()
+  for (const msg of agentMessages) {
+    // Track tool_use blocks as we see them
+    if (msg.data.message.type === 'assistant') {
+      for (const c of msg.data.message.message.content) {
+        if (c.type === 'tool_use') {
+          toolUseByID.set(c.id, c as ToolUseBlockParam)
+        }
+      }
+    }
+    const info = getSearchOrReadInfo(msg, tools, toolUseByID)
+
+    if (info && (info.isSearch || info.isRead || info.isREPL)) {
+      // This is a search/read/REPL operation - add to current group
+      if (!currentGroup) {
+        currentGroup = {
+          searchCount: 0,
+          readCount: 0,
+          replCount: 0,
+          startUuid: msg.uuid,
+        }
+      }
+      // Only count tool_result messages (not tool_use) to avoid double counting
+      if (msg.data.message.type === 'user') {
+        if (info.isSearch) {
+          currentGroup.searchCount++
+        } else if (info.isREPL) {
+          currentGroup.replCount++
+        } else if (info.isRead) {
+          currentGroup.readCount++
+        }
+      }
+    } else {
+      // Non-search/read/REPL message - flush current group (completed) and add this message
+      flushGroup(false)
+      // Skip user tool_result messages — subagent progress messages lack
+      // toolUseResult, so UserToolSuccessMessage returns null and the
+      // height=1 Box in renderToolUseProgressMessage shows as a blank line.
+      if (msg.data.message.type !== 'user') {
+        result.push({ type: 'original', message: msg })
+      }
+    }
+  }
+
+  // Flush any remaining group - it's active if the agent is still running
+  flushGroup(isAgentRunning)
+
+  return result
 }
 
 const ESTIMATED_LINES_PER_TOOL = 9
@@ -331,6 +417,13 @@ export function renderToolResultMessage(
 
   return (
     <Box flexDirection="column">
+      {"external" === 'ant' && (
+        <MessageResponse>
+          <Text color="warning">
+            [ANT-ONLY] API calls: {getDisplayPath(getDumpPromptsPath(agentId))}
+          </Text>
+        </MessageResponse>
+      )}
       {isTranscriptMode && prompt && (
         <MessageResponse>
           <AgentPromptDisplay prompt={prompt} theme={theme} />
@@ -652,6 +745,13 @@ export function renderToolUseRejectedMessage(
 
   return (
     <>
+      {"external" === 'ant' && agentId && (
+        <MessageResponse>
+          <Text color="warning">
+            [ANT-ONLY] API calls: {getDisplayPath(getDumpPromptsPath(agentId))}
+          </Text>
+        </MessageResponse>
+      )}
       {renderToolUseProgressMessage(progressMessagesForMessage, {
         tools,
         verbose,

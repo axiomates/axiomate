@@ -436,6 +436,17 @@ function OAuthStatusMessage({
                     <Text>
                       Claude account with subscription ·{' '}
                       <Text dimColor>Pro, Max, Team, or Enterprise</Text>
+                      {"external" === 'ant' && (
+                        <Text>
+                          {'\n'}
+                          <Text color="warning">[ANT-ONLY]</Text>{' '}
+                          <Text dimColor>
+                            Please use this option unless you need to login to a
+                            special org for accessing sensitive data (e.g.
+                            customer data, HIPI data) with the Console option
+                          </Text>
+                        </Text>
+                      )}
                       {'\n'}
                     </Text>
                   ),

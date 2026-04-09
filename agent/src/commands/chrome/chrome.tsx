@@ -7,6 +7,7 @@ import { Dialog } from '../../components/design-system/Dialog.js'
 import { Box, Text } from '../../ink.js'
 import { useAppState } from '../../state/AppState.js'
 import { isClaudeAISubscriber } from '../../utils/auth.js'
+import { openBrowser } from '../../utils/browser.js'
 import {
   CLAUDE_IN_CHROME_MCP_SERVER_NAME,
   openInChrome,
@@ -14,6 +15,7 @@ import {
 import { isChromeExtensionInstalled } from '../../utils/browserExtension/setup.js'
 import { getGlobalConfig, saveGlobalConfig } from '../../utils/config.js'
 import { env } from '../../utils/env.js'
+import { isRunningOnHomespace } from '../../utils/envUtils.js'
 
 const CHROME_EXTENSION_URL = 'https://claude.ai/chrome'
 const CHROME_PERMISSIONS_URL = 'https://clau.de/chrome/permissions'
@@ -48,7 +50,7 @@ function ClaudeInChromeMenu({
   const [showInstallHint, setShowInstallHint] = useState(false)
   const [isExtensionInstalled, setIsExtensionInstalled] = useState(installed)
 
-  const isHomespace = false
+  const isHomespace = "external" === 'ant' && isRunningOnHomespace()
 
   const chromeClient = mcpClients.find(
     c => c.name === CLAUDE_IN_CHROME_MCP_SERVER_NAME,
@@ -56,7 +58,11 @@ function ClaudeInChromeMenu({
   const isConnected = chromeClient?.type === 'connected'
 
   function openUrl(url: string): void {
-    void openInChrome(url)
+    if (isHomespace) {
+      void openBrowser(url)
+    } else {
+      void openInChrome(url)
+    }
   }
 
   function handleAction(action: MenuAction): void {
@@ -97,7 +103,7 @@ function ClaudeInChromeMenu({
     ? ''
     : ' (requires extension)'
 
-  if (!isExtensionInstalled) {
+  if (!isExtensionInstalled && !isHomespace) {
     options.push({
       label: 'Install Chrome extension',
       value: 'install-extension',
@@ -130,7 +136,7 @@ function ClaudeInChromeMenu({
   )
 
   const isDisabled =
-    isWSL || !isClaudeAISubscriber
+    isWSL || ("external" !== 'ant' && !isClaudeAISubscriber)
 
   return (
     <Dialog
@@ -153,7 +159,7 @@ function ClaudeInChromeMenu({
         )}
 
 
-        {!isClaudeAISubscriber && (
+        {"external" !== 'ant' && !isClaudeAISubscriber && (
           <Text color="error">
             Claude in Chrome requires a claude.ai subscription.
           </Text>
@@ -161,24 +167,26 @@ function ClaudeInChromeMenu({
 
         {!isDisabled && (
           <>
-            <Box flexDirection="column">
-              <Text>
-                Status:{' '}
-                {isConnected ? (
-                  <Text color="success">Enabled</Text>
-                ) : (
-                  <Text color="inactive">Disabled</Text>
-                )}
-              </Text>
-              <Text>
-                Extension:{' '}
-                {isExtensionInstalled ? (
-                  <Text color="success">Installed</Text>
-                ) : (
-                  <Text color="warning">Not detected</Text>
-                )}
-              </Text>
-            </Box>
+            {!isHomespace && (
+              <Box flexDirection="column">
+                <Text>
+                  Status:{' '}
+                  {isConnected ? (
+                    <Text color="success">Enabled</Text>
+                  ) : (
+                    <Text color="inactive">Disabled</Text>
+                  )}
+                </Text>
+                <Text>
+                  Extension:{' '}
+                  {isExtensionInstalled ? (
+                    <Text color="success">Installed</Text>
+                  ) : (
+                    <Text color="warning">Not detected</Text>
+                  )}
+                </Text>
+              </Box>
+            )}
             <Select
               key={selectKey}
               options={options}

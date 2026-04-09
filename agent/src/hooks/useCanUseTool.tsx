@@ -2,6 +2,11 @@ import { feature } from 'bun:bundle'
 import { APIUserAbortError } from '@anthropic-ai/sdk'
 import * as React from 'react'
 import { useCallback } from 'react'
+import {
+  type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+  logEvent,
+} from '../services/analytics/index.js'
+import { sanitizeToolNameForAnalytics } from '../services/analytics/metadata.js'
 import type { ToolUseConfirm } from '../components/permissions/PermissionRequest.js'
 import { Text } from '../ink.js'
 import type {
@@ -26,6 +31,7 @@ import { AbortError } from '../utils/errors.js'
 import { logError } from '../utils/log.js'
 import type { PermissionDecision } from '../utils/permissions/PermissionResult.js'
 import { hasPermissionsToUseTool } from '../utils/permissions/permissions.js'
+import { jsonStringify } from '../utils/slowOperations.js'
 import { handleCoordinatorPermission } from './toolPermission/handlers/coordinatorHandler.js'
 import { handleInteractivePermission } from './toolPermission/handlers/interactiveHandler.js'
 import { handleSwarmWorkerPermission } from './toolPermission/handlers/swarmWorkerHandler.js'
@@ -87,6 +93,22 @@ function useCanUseTool(
 
         return decisionPromise
           .then(async result => {
+            // [ANT-ONLY] Log all tool permission decisions with tool name and args
+            if ("external" === 'ant') {
+              logEvent('tengu_internal_tool_permission_decision', {
+                toolName: sanitizeToolNameForAnalytics(tool.name),
+                behavior:
+                  result.behavior as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+                // Note: input contains code/filepaths, only log for ants
+                input: jsonStringify(
+                  input,
+                ) as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+                messageID:
+                  ctx.messageId as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+                isMcp: tool.isMcp ?? false,
+              })
+            }
+
             // Has permissions to use tool, granted in config
             if (result.behavior === 'allow') {
               if (ctx.resolveIfAborted(resolve)) return

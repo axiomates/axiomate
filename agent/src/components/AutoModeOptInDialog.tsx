@@ -62,10 +62,14 @@ export function AutoModeOptInDialog({
 
       <Select
         options={[
-          {
-            label: 'Yes, and make it my default mode',
-            value: 'accept-default' as const,
-          },
+          ...("external" !== 'ant'
+            ? [
+                {
+                  label: 'Yes, and make it my default mode',
+                  value: 'accept-default' as const,
+                },
+              ]
+            : []),
           { label: 'Yes, enable auto mode', value: 'accept' as const },
           {
             label: declineExits ? 'No, exit' : 'No, go back',

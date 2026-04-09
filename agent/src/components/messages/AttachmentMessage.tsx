@@ -144,7 +144,10 @@ export function AttachmentMessage({
         .map(s => (s.shortId ? `${s.name} [${s.shortId}]` : s.name))
         .join(', ')
       const firstId = attachment.skills[0]?.shortId
-      const hint = ''
+      const hint =
+        "external" === 'ant' && !isDemoEnv && firstId
+          ? ` · /skill-feedback ${firstId} 1=wrong 2=noisy 3=good [comment]`
+          : ''
       return (
         <Line>
           <Text bold>{attachment.skills.length}</Text> relevant{' '}
@@ -473,6 +476,10 @@ function TaskStatusMessage({
 }): React.ReactNode {
   // For ants, killed task status is shown in the CoordinatorTaskPanel.
   // Don't render it again in the chat.
+  if ("external" === 'ant' && attachment.status === 'killed') {
+    return null
+  }
+
   // Only access teammate-specific code when swarms are enabled.
   // TeammateTaskStatus subscribes to AppState; by gating the mount we
   // avoid adding a store listener for every non-teammate attachment.

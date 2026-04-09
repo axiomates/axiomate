@@ -5,7 +5,11 @@ export function InterruptedByUser(): React.ReactNode {
   return (
     <>
       <Text dimColor>Interrupted </Text>
-      <Text dimColor>· What should Claude do instead?</Text>
+      {"external" === 'ant' ? (
+        <Text dimColor>· [ANT-ONLY] /issue to report a model issue</Text>
+      ) : (
+        <Text dimColor>· What should Claude do instead?</Text>
+      )}
     </>
   )
 }

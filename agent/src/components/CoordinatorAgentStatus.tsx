@@ -124,7 +124,9 @@ export function CoordinatorTaskPanel(): React.ReactNode {
 export function useCoordinatorTaskCount(): number {
   const tasks = useAppState(s => s.tasks)
   return React.useMemo(() => {
-    return 0
+    if ("external" !== 'ant') return 0
+    const count = getVisibleAgentTasks(tasks).length
+    return count > 0 ? count + 1 : 0
   }, [tasks])
 }
 

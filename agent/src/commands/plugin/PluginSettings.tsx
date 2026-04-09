@@ -68,7 +68,34 @@ function MarketplaceList({
 }
 
 function McpRedirectBanner(): React.ReactNode {
-  return null
+  if ("external" !== 'ant') {
+    return null
+  }
+
+  return (
+    <Box
+      flexDirection="row"
+      alignItems="flex-start"
+      paddingLeft={1}
+      marginTop={1}
+      borderLeft
+      borderRight={false}
+      borderTop={false}
+      borderBottom={false}
+      borderColor="permission"
+      borderStyle="single"
+    >
+      <Box flexShrink={0}>
+        <Text bold italic color="permission">
+          i{' '}
+        </Text>
+      </Box>
+      <Text>
+        [ANT-ONLY] MCP servers are now managed in /plugins. Use /mcp no-redirect
+        to test old UI
+      </Text>
+    </Box>
+  )
 }
 
 type ErrorRowAction =
