@@ -1,6 +1,5 @@
 import * as React from 'react'
 import { type ReactNode, useEffect } from 'react'
-import { RainbowBrandText } from './RainbowBrandText.js'
 import { useMainLoopModel } from '../../hooks/useMainLoopModel.js'
 import { useTerminalSize } from '../../hooks/useTerminalSize.js'
 import { stringWidth } from '../../ink/stringWidth.js'
@@ -58,7 +57,7 @@ export function CondensedLogo(): ReactNode {
   // Account for: condensed clawd width (11 chars) + gap (2) + padding (2) = 15 chars
   const textWidth = Math.max(columns - 15, 20)
 
-  // Truncate version to fit within available width, accounting for "Claude Code v" prefix
+  // Truncate version to fit within available width, accounting for "Axiomate v" prefix
   const versionPrefix = 'Axiomate v'
   const truncatedVersion = truncate(
     version,
@@ -93,7 +92,7 @@ export function CondensedLogo(): ReactNode {
       {/* Info */}
       <Box flexDirection="column">
         <Text>
-          <RainbowBrandText text="Axiomate" />{' '}
+          <Text bold>Axiomate</Text>{' '}
           <Text dimColor>v{truncatedVersion}</Text>
         </Text>
         {shouldSplit ? (

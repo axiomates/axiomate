@@ -77,6 +77,13 @@ export function LogoV2(): React.ReactNode {
   const agent = useAppState(s => s.agent)
   const effortValue = useAppState(s => s.effortValue)
 
+  // Rainbow animation for "Axiomate" brand text in border title
+  const [rainbowOffset, setRainbowOffset] = useState(0)
+  useEffect(() => {
+    const timer = setInterval(() => setRainbowOffset(prev => prev + 1), 100)
+    return () => clearInterval(timer)
+  }, [])
+
   const config = getGlobalConfig()
 
   let changelog: string[]
@@ -181,8 +188,15 @@ export function LogoV2(): React.ReactNode {
   const layoutMode = getLayoutMode(columns)
 
   const userTheme = resolveThemeSetting(getGlobalConfig().theme)
-  const borderTitle = ` ${color('claude', userTheme)('Axiomate')} ${color('inactive', userTheme)(`v${version}`)} `
-  const compactBorderTitle = color('claude', userTheme)(' Axiomate ')
+  const RAINBOW_KEYS: Array<keyof import('../../utils/theme.js').Theme> = [
+    'rainbow_red', 'rainbow_orange', 'rainbow_yellow', 'rainbow_green',
+    'rainbow_blue', 'rainbow_indigo', 'rainbow_violet',
+  ]
+  const rainbowAxiomate = [...'Axiomate'].map((ch, i) =>
+    color(RAINBOW_KEYS[(i + rainbowOffset) % RAINBOW_KEYS.length], userTheme)(ch)
+  ).join('')
+  const borderTitle = ` ${rainbowAxiomate} ${color('inactive', userTheme)(`v${version}`)} `
+  const compactBorderTitle = ` ${rainbowAxiomate} `
 
   // Early return for compact mode
   if (layoutMode === 'compact') {
