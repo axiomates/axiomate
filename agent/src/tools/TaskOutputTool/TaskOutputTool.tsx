@@ -192,7 +192,7 @@ export const TaskOutputTool: Tool<InputSchema, TaskOutputToolOutput> =
     },
 
     isEnabled() {
-      return "external" !== 'ant'
+      return true
     },
 
     isReadOnly(_input) {

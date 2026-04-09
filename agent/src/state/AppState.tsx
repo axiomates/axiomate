@@ -154,12 +154,6 @@ export function useAppState<T>(selector: (state: AppState) => T): T {
     const state = store.getState()
     const selected = selector(state)
 
-    if ("external" === 'ant' && state === selected) {
-      throw new Error(
-        `Your selector in \`useAppState(${selector.toString()})\` returned the original state, which is not allowed. You must instead return a property for optimised rendering.`,
-      )
-    }
-
     return selected
   }
 

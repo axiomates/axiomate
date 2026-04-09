@@ -191,14 +191,14 @@ export function LogSelector({
   const exitState = useExitOnCtrlCDWithKeybindings(onCancel)
   const isTerminalFocused = useTerminalFocus()
   const isResumeWithRenameEnabled = isCustomTitleEnabled()
-  const isDeepSearchEnabled = "external" === 'ant'
+  const isDeepSearchEnabled = false
   const [themeName] = useTheme()
   const theme = getTheme(themeName)
   const highlightColor = React.useMemo(
     () => (text: string) => applyColor(text, theme.warning as Color),
     [theme.warning],
   )
-  const isAgenticSearchEnabled = "external" === 'ant'
+  const isAgenticSearchEnabled = false
 
   const [currentBranch, setCurrentBranch] = React.useState<string | null>(null)
   const [branchFilterEnabled, setBranchFilterEnabled] = React.useState(false)

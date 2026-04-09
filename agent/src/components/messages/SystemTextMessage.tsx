@@ -102,9 +102,6 @@ export function SystemTextMessage({
 
   // Thinking messages are subtle, like turn duration (ant-only)
   if (message.subtype === 'thinking') {
-    if ("external" === 'ant') {
-      return <ThinkingMessage message={message} addMargin={addMargin} />
-    }
     return null
   }
 
@@ -199,7 +196,7 @@ function StopHookSummaryMessage({
   const totalDurationMs =
     message.totalDurationMs ??
     hookInfos.reduce((sum, h) => sum + (h.durationMs ?? 0), 0)
-  const isAnt = "external" === 'ant'
+  const isAnt = false
 
   // Only show summary if there are errors or continuation was prevented
   // For ants: also show when hooks took > 500ms

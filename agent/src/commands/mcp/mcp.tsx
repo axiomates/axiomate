@@ -4,7 +4,6 @@ import { MCPReconnect } from '../../components/mcp/MCPReconnect.js'
 import { useMcpToggleEnabled } from '../../services/mcp/MCPConnectionManager.js'
 import { useAppState } from '../../state/AppState.js'
 import type { LocalJSXCommandOnDone } from '../../types/command.js'
-import { PluginSettings } from '../plugin/PluginSettings.js'
 
 // TODO: This is a hack to get the context value from toggleMcpServer (useContext only works in a component)
 // Ideally, all MCP state and functions would be in global state.
@@ -88,17 +87,6 @@ export async function call(
         />
       )
     }
-  }
-
-  // Redirect base /mcp command to /plugins installed tab for ant users
-  if ("external" === 'ant') {
-    return (
-      <PluginSettings
-        onComplete={onDone}
-        args="manage"
-        showMcpRedirectMessage
-      />
-    )
   }
 
   return <MCPSettings onComplete={onDone} />

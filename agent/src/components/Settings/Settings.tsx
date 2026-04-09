@@ -24,7 +24,7 @@ type Props = {
     options?: { display?: CommandResultDisplay },
   ) => void
   context: LocalJSXCommandContext
-  defaultTab: 'Status' | 'Config' | 'Usage' | 'Gates'
+  defaultTab: 'Status' | 'Config' | 'Usage'
 }
 
 export function Settings({
@@ -37,7 +37,6 @@ export function Settings({
   // True while Config's own Esc handler is active (search mode with content
   // focused). Settings must cede Esc so search can clear/exit first.
   const [configOwnsEsc, setConfigOwnsEsc] = useState(false)
-  const [gatesOwnsEsc, setGatesOwnsEsc] = useState(false)
   // Fixed content height so switching tabs doesn't shift the pane height.
   // Outside modals cap at min(80% viewport, 30). Inside a Modal the modal's
   // innerSize.rows IS the ScrollBox viewport — the 0.8 multiplier over-
@@ -79,8 +78,7 @@ export function Settings({
     context: 'Settings',
     isActive:
       !tabsHidden &&
-      !(selectedTab === 'Config' && configOwnsEsc) &&
-      !(selectedTab === 'Gates' && gatesOwnsEsc),
+      !(selectedTab === 'Config' && configOwnsEsc),
   })
 
   const tabs = [
@@ -101,16 +99,6 @@ export function Settings({
     <Tab key="usage" title="Usage">
       <Usage />
     </Tab>,
-    ...("external" === 'ant'
-      ? [
-          <Tab key="gates" title="Gates">
-            <Gates
-              onOwnsEscChange={setGatesOwnsEsc}
-              contentHeight={contentHeight}
-            />
-          </Tab>,
-        ]
-      : []),
   ]
 
   return (
@@ -122,11 +110,11 @@ export function Settings({
         hidden={tabsHidden}
         // Config has interactive content — start with header unfocused so
         // left/right/tab cycle option values instead of switching tabs.
-        initialHeaderFocused={defaultTab !== 'Config' && defaultTab !== 'Gates'}
+        initialHeaderFocused={defaultTab !== 'Config'}
         // Inside a Modal, skip the Tabs-level cap so tall tabs (Status's
         // MCP list) flow to their natural height for the Modal's ScrollBox
-        // to scroll. Config/Gates still get contentHeight above — they
-        // paginate internally so this only affects Status/Usage.
+        // to scroll. Config still gets contentHeight above — it
+        // paginates internally so this only affects Status/Usage.
         contentHeight={tabsHidden || insideModal ? undefined : contentHeight}
       >
         {tabs}

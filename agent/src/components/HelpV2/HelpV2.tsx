@@ -5,7 +5,6 @@ import {
   builtInCommandNames,
   type Command,
   type CommandResultDisplay,
-  INTERNAL_ONLY_COMMANDS,
 } from '../../commands.js'
 import { useIsInsideModal } from '../../context/modalContext.js'
 import { useTerminalSize } from '../../hooks/useTerminalSize.js'
@@ -38,21 +37,9 @@ export function HelpV2({ onClose, commands }: Props): React.ReactNode {
   const dismissShortcut = useShortcutDisplay('help:dismiss', 'Help', 'esc')
 
   const builtinNames = builtInCommandNames()
-  let builtinCommands = commands.filter(
+  const builtinCommands = commands.filter(
     cmd => builtinNames.has(cmd.name) && !cmd.isHidden,
   )
-  let antOnlyCommands: Command[] = []
-
-  // We have to do this in an `if` to help treeshaking
-  if ("external" === 'ant') {
-    const internalOnlyNames = new Set(INTERNAL_ONLY_COMMANDS.map(_ => _.name))
-    builtinCommands = builtinCommands.filter(
-      cmd => !internalOnlyNames.has(cmd.name),
-    )
-    antOnlyCommands = commands.filter(
-      cmd => internalOnlyNames.has(cmd.name) && !cmd.isHidden,
-    )
-  }
 
   const customCommands = commands.filter(
     cmd => !builtinNames.has(cmd.name) && !cmd.isHidden,
@@ -89,29 +76,11 @@ export function HelpV2({ onClose, commands }: Props): React.ReactNode {
     </Tab>,
   )
 
-  if ("external" === 'ant' && antOnlyCommands.length > 0) {
-    tabs.push(
-      <Tab key="ant-only" title="[ant-only]">
-        <Commands
-          commands={antOnlyCommands}
-          maxHeight={maxHeight}
-          columns={columns}
-          title="Browse ant-only commands:"
-          onCancel={close}
-        />
-      </Tab>,
-    )
-  }
-
   return (
     <Box flexDirection="column" height={insideModal ? undefined : maxHeight}>
       <Pane color="professionalBlue">
         <Tabs
-          title={
-            "external" === 'ant'
-              ? '/help'
-              : `Claude Code v${MACRO.VERSION}`
-          }
+          title={`Claude Code v${MACRO.VERSION}`}
           color="professionalBlue"
           defaultTab="general"
         >

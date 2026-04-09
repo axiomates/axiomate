@@ -296,64 +296,7 @@ export function ContextVisualization({ data }: Props): React.ReactNode {
           </Box>
         )}
 
-        {/* Show builtin tools: always-loaded + deferred (ant-only) */}
-        {((systemTools && systemTools.length > 0) || hasDeferredBuiltinTools) &&
-          "external" === 'ant' && (
-            <Box flexDirection="column" marginTop={1}>
-              <Box>
-                <Text bold>[ANT-ONLY] System tools</Text>
-                {hasDeferredBuiltinTools && (
-                  <Text dimColor> (some loaded on-demand)</Text>
-                )}
-              </Box>
-              {/* Always-loaded + deferred-but-loaded tools */}
-              <Box flexDirection="column" marginTop={1}>
-                <Text dimColor>Loaded</Text>
-                {systemTools?.map((tool, i) => (
-                  <Box key={`sys-${i}`}>
-                    <Text>└ {tool.name}: </Text>
-                    <Text dimColor>{formatTokens(tool.tokens)} tokens</Text>
-                  </Box>
-                ))}
-                {deferredBuiltinTools
-                  .filter(t => t.isLoaded)
-                  .map((tool, i) => (
-                    <Box key={`def-${i}`}>
-                      <Text>└ {tool.name}: </Text>
-                      <Text dimColor>{formatTokens(tool.tokens)} tokens</Text>
-                    </Box>
-                  ))}
-              </Box>
-              {/* Deferred (not yet loaded) tools */}
-              {hasDeferredBuiltinTools &&
-                deferredBuiltinTools.some(t => !t.isLoaded) && (
-                  <Box flexDirection="column" marginTop={1}>
-                    <Text dimColor>Available</Text>
-                    {deferredBuiltinTools
-                      .filter(t => !t.isLoaded)
-                      .map((tool, i) => (
-                        <Box key={i}>
-                          <Text dimColor>└ {tool.name}</Text>
-                        </Box>
-                      ))}
-                  </Box>
-                )}
-            </Box>
-          )}
 
-        {systemPromptSections &&
-          systemPromptSections.length > 0 &&
-          "external" === 'ant' && (
-            <Box flexDirection="column" marginTop={1}>
-              <Text bold>[ANT-ONLY] System prompt sections</Text>
-              {systemPromptSections.map((section, i) => (
-                <Box key={i}>
-                  <Text>└ {section.name}: </Text>
-                  <Text dimColor>{formatTokens(section.tokens)} tokens</Text>
-                </Box>
-              ))}
-            </Box>
-          )}
 
         {agents.length > 0 && (
           <Box flexDirection="column" marginTop={1}>
@@ -414,79 +357,6 @@ export function ContextVisualization({ data }: Props): React.ReactNode {
           </Box>
         )}
 
-        {messageBreakdown && "external" === 'ant' && (
-          <Box flexDirection="column" marginTop={1}>
-            <Text bold>[ANT-ONLY] Message breakdown</Text>
-
-            <Box flexDirection="column" marginLeft={1}>
-              <Box>
-                <Text>Tool calls: </Text>
-                <Text dimColor>
-                  {formatTokens(messageBreakdown.toolCallTokens)} tokens
-                </Text>
-              </Box>
-
-              <Box>
-                <Text>Tool results: </Text>
-                <Text dimColor>
-                  {formatTokens(messageBreakdown.toolResultTokens)} tokens
-                </Text>
-              </Box>
-
-              <Box>
-                <Text>Attachments: </Text>
-                <Text dimColor>
-                  {formatTokens(messageBreakdown.attachmentTokens)} tokens
-                </Text>
-              </Box>
-
-              <Box>
-                <Text>Assistant messages (non-tool): </Text>
-                <Text dimColor>
-                  {formatTokens(messageBreakdown.assistantMessageTokens)} tokens
-                </Text>
-              </Box>
-
-              <Box>
-                <Text>User messages (non-tool-result): </Text>
-                <Text dimColor>
-                  {formatTokens(messageBreakdown.userMessageTokens)} tokens
-                </Text>
-              </Box>
-            </Box>
-
-            {messageBreakdown.toolCallsByType.length > 0 && (
-              <Box flexDirection="column" marginTop={1}>
-                <Text bold>[ANT-ONLY] Top tools</Text>
-                {messageBreakdown.toolCallsByType.slice(0, 5).map((tool, i) => (
-                  <Box key={i} marginLeft={1}>
-                    <Text>└ {tool.name}: </Text>
-                    <Text dimColor>
-                      calls {formatTokens(tool.callTokens)}, results{' '}
-                      {formatTokens(tool.resultTokens)}
-                    </Text>
-                  </Box>
-                ))}
-              </Box>
-            )}
-
-            {messageBreakdown.attachmentsByType.length > 0 && (
-              <Box flexDirection="column" marginTop={1}>
-                <Text bold>[ANT-ONLY] Top attachments</Text>
-                {messageBreakdown.attachmentsByType
-                  .slice(0, 5)
-                  .map((attachment, i) => (
-                    <Box key={i} marginLeft={1}>
-                      <Text>└ {attachment.name}: </Text>
-                      <Text dimColor>
-                        {formatTokens(attachment.tokens)} tokens
-                      </Text>
-                    </Box>
-                  ))}
-              </Box>
-            )}
-          </Box>
-        )}
       </Box>
       <ContextSuggestions suggestions={generateContextSuggestions(data)} />
     </Box>

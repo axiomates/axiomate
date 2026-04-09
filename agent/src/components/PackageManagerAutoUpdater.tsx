@@ -32,13 +32,6 @@ export function PackageManagerAutoUpdater({ verbose }: Props): React.ReactNode {
     useState<PackageManager>('unknown')
 
   const checkForUpdates = React.useCallback(async () => {
-    if (
-      "production" === 'test' ||
-      "production" === 'development'
-    ) {
-      return
-    }
-
     if (isAutoUpdaterDisabled()) {
       return
     }

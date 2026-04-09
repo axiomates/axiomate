@@ -18,7 +18,6 @@ import { ReadMcpResourceTool } from '../../tools/ReadMcpResourceTool/ReadMcpReso
 import { TaskOutputTool } from '../../tools/TaskOutputTool/TaskOutputTool.js'
 import { TaskStopTool } from '../../tools/TaskStopTool/TaskStopTool.js'
 import { TodoWriteTool } from '../../tools/TodoWriteTool/TodoWriteTool.js'
-import { TungstenTool } from '../../tools/TungstenTool/TungstenTool.js'
 import { WebFetchTool } from '../../tools/WebFetchTool/WebFetchTool.js'
 import { WebSearchTool } from '../../tools/WebSearchTool/WebSearchTool.js'
 import type { KeyboardEvent } from '../../ink/events/keyboard-event.js'
@@ -77,12 +76,7 @@ function getToolBuckets(): ToolBuckets {
     },
     EXECUTION: {
       name: 'Execution tools',
-      toolNames: new Set(
-        [
-          BashTool.name,
-          "external" === 'ant' ? TungstenTool.name : undefined,
-        ].filter(n => n !== undefined),
-      ),
+      toolNames: new Set([BashTool.name]),
     },
     MCP: {
       name: 'MCP tools',

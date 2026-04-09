@@ -143,8 +143,7 @@ function FeedbackSurveyThanks({
     },
   })
 
-  const feedbackCommand =
-    "external" === 'ant' ? '/issue' : '/feedback'
+  const feedbackCommand = '/feedback'
 
   return (
     <Box marginTop={1} flexDirection="column">

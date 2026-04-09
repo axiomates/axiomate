@@ -8,7 +8,6 @@ import {
   enterTeammateView,
   exitTeammateView,
 } from '../../state/teammateViewHelpers.js'
-import { isPanelAgentTask } from '../../tasks/LocalAgentTask/LocalAgentTask.js'
 import { getPillLabel, pillNeedsCta } from '../../tasks/pillLabel.js'
 import {
   type BackgroundTaskState,
@@ -49,9 +48,7 @@ export function BackgroundTaskStatus({
   const runningTasks = useMemo(
     () =>
       (Object.values(tasks ?? {}) as TaskState[]).filter(
-        t =>
-          isBackgroundTask(t) &&
-          !("external" === 'ant' && isPanelAgentTask(t)),
+        t => isBackgroundTask(t),
       ),
     [tasks],
   )
