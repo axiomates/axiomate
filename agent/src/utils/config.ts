@@ -240,7 +240,6 @@ export type GlobalConfig = {
   hasAcknowledgedCostThreshold?: boolean
   hasSeenUndercoverAutoNotice?: boolean // ant-only: whether the one-time auto-undercover explainer has been shown
   hasSeenUltraplanTerms?: boolean // ant-only: whether the one-time CCR terms notice has been shown in the ultraplan launch dialog
-  hasResetAutoModeOptInForDefaultOffer?: boolean // ant-only: one-shot migration guard, re-prompts churned auto-mode users
   oauthAccount?: AccountInfo
   editorMode?: EditorMode
   bypassPermissionsModeAccepted?: boolean
@@ -421,18 +420,6 @@ export type GlobalConfig = {
   // Idle-return dialog tracking
   idleReturnDismissed?: boolean // "Don't ask again" picked
 
-  // Opus 4.5 Pro migration tracking
-  opusProMigrationComplete?: boolean
-  opusProMigrationTimestamp?: number
-
-  // Sonnet 4.5 1m migration tracking
-  sonnet1m45MigrationComplete?: boolean
-
-  // Opus 4.0/4.1 → current Opus migration (shows one-time notif)
-  legacyOpusMigrationTimestamp?: number
-
-  // Sonnet 4.5 → 4.6 migration (pro/max/team premium)
-  sonnet45To46MigrationTimestamp?: number
 
   // Cached statsig gate values
   cachedStatsigGates: {
@@ -564,9 +551,6 @@ export type GlobalConfig = {
 
   // Version of the last-applied migration set. When equal to
   // CURRENT_MIGRATION_VERSION, runMigrations() skips all sync migrations
-  // (avoiding 11× saveGlobalConfig lock+re-read on every startup).
-  migrationVersion?: number
-
   // ── Multi-provider model configuration ──
 
   /** User-configured models: model ID → provider/endpoint/key/capabilities */
