@@ -10,10 +10,10 @@ function createProvider(
 ): SearchProvider {
   return {
     name,
-    type: 'google-cse',
+    type: 'exa',
     capabilities: {
-      allowedDomains: 'adapter',
-      blockedDomains: 'adapter',
+      allowedDomains: 'native',
+      blockedDomains: 'native',
       snippets: 'native',
     },
     search: vi.fn(behavior),
@@ -22,20 +22,20 @@ function createProvider(
 
 describe('searchProviderExecutor', () => {
   it('falls back to the next provider when the current provider is unavailable', async () => {
-    const unavailableProvider = createProvider('google', async () => {
+    const unavailableProvider = createProvider('exa', async () => {
       throw new SearchProviderError({
-        providerName: 'google',
+        providerName: 'exa',
         code: 'network',
         message: 'Temporary network failure',
         retryable: true,
       })
     })
-    const bingOutput: Output = {
+    const tavilyOutput: Output = {
       query: 'axiomate',
       results: ['Search snippets for "axiomate":\n1. Axiomate: OK'],
       durationSeconds: 0.2,
     }
-    const fallbackProvider = createProvider('bing', async () => bingOutput)
+    const fallbackProvider = createProvider('tavily', async () => tavilyOutput)
 
     const result = await searchWithProviderFallback(
       [unavailableProvider, fallbackProvider],
@@ -43,20 +43,20 @@ describe('searchProviderExecutor', () => {
       { abortController: new AbortController() } as any,
     )
 
-    expect(result).toEqual(bingOutput)
+    expect(result).toEqual(tavilyOutput)
     expect(unavailableProvider.search).toHaveBeenCalledOnce()
     expect(fallbackProvider.search).toHaveBeenCalledOnce()
   })
 
   it('does not fall back on invalid_request errors', async () => {
-    const invalidRequestProvider = createProvider('google', async () => {
+    const invalidRequestProvider = createProvider('exa', async () => {
       throw new SearchProviderError({
-        providerName: 'google',
+        providerName: 'exa',
         code: 'invalid_request',
         message: 'Query is invalid',
       })
     })
-    const fallbackProvider = createProvider('bing', async () => ({
+    const fallbackProvider = createProvider('tavily', async () => ({
       query: 'axiomate',
       results: [],
       durationSeconds: 0.1,
@@ -70,23 +70,23 @@ describe('searchProviderExecutor', () => {
       ),
     ).rejects.toMatchObject({
       name: 'SearchProviderError',
-      providerName: 'google',
+      providerName: 'exa',
       code: 'invalid_request',
     })
     expect(fallbackProvider.search).not.toHaveBeenCalled()
   })
 
   it('throws an aggregated error when all providers fail', async () => {
-    const googleProvider = createProvider('google', async () => {
+    const exaProvider = createProvider('exa', async () => {
       throw new SearchProviderError({
-        providerName: 'google',
+        providerName: 'exa',
         code: 'auth',
         message: 'Invalid API key',
       })
     })
-    const bingProvider = createProvider('bing', async () => {
+    const tavilyProvider = createProvider('tavily', async () => {
       throw new SearchProviderError({
-        providerName: 'bing',
+        providerName: 'tavily',
         code: 'unavailable',
         message: 'Service temporarily unavailable',
         retryable: true,
@@ -95,23 +95,23 @@ describe('searchProviderExecutor', () => {
 
     await expect(
       searchWithProviderFallback(
-        [googleProvider, bingProvider],
+        [exaProvider, tavilyProvider],
         { query: 'axiomate' },
         { abortController: new AbortController() } as any,
       ),
     ).rejects.toMatchObject({
       name: 'SearchProviderError',
-      providerName: 'google, bing',
+      providerName: 'exa, tavily',
       code: 'unavailable',
       retryable: true,
     })
 
     await expect(
       searchWithProviderFallback(
-        [googleProvider, bingProvider],
+        [exaProvider, tavilyProvider],
         { query: 'axiomate' },
         { abortController: new AbortController() } as any,
       ),
-    ).rejects.toThrow(/google: Invalid API key/)
+    ).rejects.toThrow(/exa: Invalid API key/)
   })
 })

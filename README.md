@@ -29,10 +29,11 @@ Models are configured in `~/.axiomate.json`. On first run the file is created au
 ```jsonc
 {
   "searchProviders": {
-    "google": {
-      "type": "google-cse",
-      "apiKey": "AIza...",
-      "cx": "your-custom-search-engine-id"
+    "exa": {
+      "type": "exa",
+      "apiKey": "exa_...",
+      "searchType": "auto",
+      "numResults": 10
     }
   },
   "models": {
@@ -77,8 +78,9 @@ Search providers are configured once at the top level.
 Current provider types:
 
 - `"brave-web-search"` — Brave Search API web search endpoint
-- `"google-cse"` — Google Custom Search JSON API / Programmable Search Engine
-- `"bing-web-search"` — Bing Web Search REST API
+- `"exa"` — Exa Search API
+- `"tavily"` — Tavily Search API
+- `"serpapi"` — SerpApi Search API
 
 If `searchProviders` contains multiple entries, `WebSearch` tries them in `searchProviders` order until one works.
 
@@ -102,33 +104,64 @@ Brave example:
 }
 ```
 
-Google example:
+Exa example:
 
 ```jsonc
 {
   "searchProviders": {
-    "google": {
-      "type": "google-cse",
-      "apiKey": "AIza...",
-      "cx": "your-custom-search-engine-id",
-      "maxResults": 10
+    "exa": {
+      "type": "exa",
+      "apiKey": "exa_...",
+      "baseUrl": "https://api.exa.ai/search",
+      "searchType": "auto",
+      "category": "news",
+      "userLocation": "US",
+      "numResults": 10,
+      "moderation": false,
+      "highlightMaxCharacters": 1200
     }
   }
 }
 ```
 
-Bing example:
+Tavily example:
 
 ```jsonc
 {
   "searchProviders": {
-    "bing": {
-      "type": "bing-web-search",
-      "apiKey": "YOUR_BING_SEARCH_KEY",
-      "market": "en-US",
-      "setLang": "en-US",
-      "count": 10,
-      "safeSearch": "Moderate"
+    "tavily": {
+      "type": "tavily",
+      "apiKey": "tvly-...",
+      "baseUrl": "https://api.tavily.com/search",
+      "searchDepth": "basic",
+      "maxResults": 8,
+      "topic": "general",
+      "includeAnswer": false,
+      "country": "united states",
+      "autoParameters": false,
+      "exactMatch": false,
+      "includeUsage": false
+    }
+  }
+}
+```
+
+SerpApi example:
+
+```jsonc
+{
+  "searchProviders": {
+    "serpapi": {
+      "type": "serpapi",
+      "apiKey": "serp_...",
+      "baseUrl": "https://serpapi.com/search.json",
+      "engine": "google",
+      "googleDomain": "google.com",
+      "hl": "en",
+      "gl": "us",
+      "device": "desktop",
+      "safe": "active",
+      "num": 10
     }
   }
 }
@@ -139,16 +172,17 @@ Multiple providers with automatic fallback:
 ```jsonc
 {
   "searchProviders": {
-    "google": {
-      "type": "google-cse",
-      "apiKey": "AIza...",
-      "cx": "your-custom-search-engine-id"
+    "exa": {
+      "type": "exa",
+      "apiKey": "exa_..."
     },
-    "bing": {
-      "type": "bing-web-search",
-      "apiKey": "YOUR_BING_SEARCH_KEY",
-      "market": "en-US",
-      "safeSearch": "Moderate"
+    "tavily": {
+      "type": "tavily",
+      "apiKey": "tvly-..."
+    },
+    "serpapi": {
+      "type": "serpapi",
+      "apiKey": "serp_..."
     }
   }
 }

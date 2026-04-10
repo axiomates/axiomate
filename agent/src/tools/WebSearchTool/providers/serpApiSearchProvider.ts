@@ -1,4 +1,4 @@
-import type { GoogleCustomSearchProviderConfig } from '../../../utils/config.js'
+import type { SerpApiSearchProviderConfig } from '../../../utils/config.js'
 import type { ToolCallProgress, ToolUseContext } from '../../../Tool.js'
 import type { WebSearchProgress } from '../../../types/tools.js'
 import {
@@ -17,26 +17,27 @@ import {
   type SearchHitWithSnippet,
 } from './providerUtils.js'
 
-type GoogleSearchItem = {
+type SerpApiResult = {
   title?: string
   link?: string
   snippet?: string
 }
 
-type GoogleSearchResponse = {
-  items?: GoogleSearchItem[]
-  error?: {
-    code?: number
-    message?: string
-    errors?: Array<{ message?: string; reason?: string }>
+type SerpApiSearchResponse = {
+  organic_results?: SerpApiResult[]
+  news_results?: SerpApiResult[]
+  error?: string
+  search_metadata?: {
+    status?: string
   }
 }
 
-const DEFAULT_BASE_URL = 'https://customsearch.googleapis.com/customsearch/v1'
-const DEFAULT_MAX_RESULTS = 10
+const DEFAULT_BASE_URL = 'https://serpapi.com/search.json'
+const DEFAULT_NUM_RESULTS = 10
+const MAX_NUM_RESULTS = 100
 
-export class GoogleCseSearchProvider implements SearchProvider {
-  readonly type = 'google-cse' as const
+export class SerpApiSearchProvider implements SearchProvider {
+  readonly type = 'serpapi' as const
   readonly capabilities = {
     allowedDomains: 'adapter',
     blockedDomains: 'adapter',
@@ -45,7 +46,7 @@ export class GoogleCseSearchProvider implements SearchProvider {
 
   constructor(
     readonly name: string,
-    private readonly config: GoogleCustomSearchProviderConfig,
+    private readonly config: SerpApiSearchProviderConfig,
   ) {}
 
   async search(
@@ -63,7 +64,7 @@ export class GoogleCseSearchProvider implements SearchProvider {
 
       const response = await this.fetchResults(run.query, context)
       const hits = filterHits(
-        mapHits(response.items ?? []),
+        mapHits(getResponseItems(response)),
         input.allowed_domains,
         input.blocked_domains,
       )
@@ -89,19 +90,44 @@ export class GoogleCseSearchProvider implements SearchProvider {
   private async fetchResults(
     query: string,
     context: ToolUseContext,
-  ): Promise<GoogleSearchResponse> {
+  ): Promise<SerpApiSearchResponse> {
     const url = new URL(this.config.baseUrl ?? DEFAULT_BASE_URL)
-    url.searchParams.set('key', this.config.apiKey)
-    url.searchParams.set('cx', this.config.cx)
+    url.searchParams.set('api_key', this.config.apiKey)
+    url.searchParams.set('engine', this.config.engine ?? 'google')
     url.searchParams.set('q', query)
     url.searchParams.set(
       'num',
-      String(clampResultCount(this.config.maxResults, DEFAULT_MAX_RESULTS, 10)),
+      String(clampResultCount(this.config.num, DEFAULT_NUM_RESULTS, MAX_NUM_RESULTS)),
     )
+
+    if (this.config.googleDomain) {
+      url.searchParams.set('google_domain', this.config.googleDomain)
+    }
+    if (this.config.hl) {
+      url.searchParams.set('hl', this.config.hl)
+    }
+    if (this.config.gl) {
+      url.searchParams.set('gl', this.config.gl)
+    }
+    if (this.config.location) {
+      url.searchParams.set('location', this.config.location)
+    }
+    if (this.config.device) {
+      url.searchParams.set('device', this.config.device)
+    }
+    if (this.config.safe) {
+      url.searchParams.set('safe', this.config.safe)
+    }
+    if (this.config.noCache) {
+      url.searchParams.set('no_cache', 'true')
+    }
 
     let response: Response
     try {
       response = await fetch(url, {
+        headers: {
+          Accept: 'application/json',
+        },
         signal: context.abortController.signal,
       })
     } catch (error) {
@@ -117,31 +143,15 @@ export class GoogleCseSearchProvider implements SearchProvider {
       })
     }
 
-    let payload: GoogleSearchResponse | null = null
-    try {
-      payload = (await response.json()) as GoogleSearchResponse
-    } catch (error) {
-      if (!response.ok) {
-        payload = null
-      } else {
-        throw new SearchProviderError({
-          providerName: this.name,
-          code: 'response',
-          message: `Search provider ${this.name} returned an invalid JSON response.`,
-          cause: error,
-        })
-      }
-    }
+    const payload = await parseSerpApiResponse(response, this.name)
 
     if (!response.ok) {
-      const message =
-        payload?.error?.message ||
-        payload?.error?.errors?.find(err => err.message)?.message ||
-        `Search provider ${this.name} returned HTTP ${response.status}`
       throw new SearchProviderError({
         providerName: this.name,
         code: getErrorCodeForResponse(response.status, payload),
-        message,
+        message:
+          getErrorMessage(payload) ||
+          `Search provider ${this.name} returned HTTP ${response.status}`,
         retryable: isRetryableStatus(response.status),
         statusCode: response.status,
       })
@@ -158,10 +168,8 @@ export class GoogleCseSearchProvider implements SearchProvider {
     if (payload.error) {
       throw new SearchProviderError({
         providerName: this.name,
-        code: 'response',
-        message:
-          payload.error.message ||
-          `Search provider ${this.name} returned an unknown error.`,
+        code: getErrorCodeForResponse(response.status, payload),
+        message: payload.error,
       })
     }
 
@@ -169,7 +177,31 @@ export class GoogleCseSearchProvider implements SearchProvider {
   }
 }
 
-function mapHits(items: GoogleSearchItem[]): SearchHitWithSnippet[] {
+async function parseSerpApiResponse(
+  response: Response,
+  providerName: string,
+): Promise<SerpApiSearchResponse | null> {
+  try {
+    return (await response.json()) as SerpApiSearchResponse
+  } catch (error) {
+    if (!response.ok) {
+      return null
+    }
+
+    throw new SearchProviderError({
+      providerName,
+      code: 'response',
+      message: `Search provider ${providerName} returned an invalid JSON response.`,
+      cause: error,
+    })
+  }
+}
+
+function getResponseItems(response: SerpApiSearchResponse): SerpApiResult[] {
+  return response.organic_results ?? response.news_results ?? []
+}
+
+function mapHits(items: SerpApiResult[]): SearchHitWithSnippet[] {
   return items
     .map(item => ({
       title: item.title?.trim() ?? '',
@@ -179,13 +211,17 @@ function mapHits(items: GoogleSearchItem[]): SearchHitWithSnippet[] {
     .filter(hit => hit.title.length > 0 && hit.url.length > 0)
 }
 
+function getErrorMessage(
+  payload: SerpApiSearchResponse | null,
+): string | undefined {
+  return payload?.error
+}
+
 function getErrorCodeForResponse(
   status: number,
-  payload: GoogleSearchResponse | null,
+  payload: SerpApiSearchResponse | null,
 ) {
-  const reason = payload?.error?.errors?.find(error => error.reason)?.reason
-  const message = payload?.error?.message ?? ''
-  const combined = `${reason ?? ''} ${message}`.toLowerCase()
+  const combined = getErrorMessage(payload)?.toLowerCase() ?? ''
 
   if (status === 401 || status === 403) {
     return 'auth' as const
@@ -197,23 +233,20 @@ function getErrorCodeForResponse(
     return 'unavailable' as const
   }
 
-  if (combined.includes('api key') || combined.includes('keyinvalid')) {
+  if (combined.includes('api key') || combined.includes('account')) {
     return 'auth' as const
   }
-
   if (
-    combined.includes('quota') ||
+    combined.includes('searches left') ||
     combined.includes('rate limit') ||
-    combined.includes('daily limit') ||
-    combined.includes('limit exceeded')
+    combined.includes('quota')
   ) {
     return 'rate_limit' as const
   }
-
   if (
-    combined.includes('cx') ||
-    combined.includes('search engine') ||
-    combined.includes('programmable search')
+    combined.includes('engine') ||
+    combined.includes('parameter') ||
+    combined.includes('google_domain')
   ) {
     return 'config' as const
   }

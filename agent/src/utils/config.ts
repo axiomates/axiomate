@@ -180,24 +180,6 @@ export type DiffTool = 'terminal' | 'auto'
 
 export type OutputStyle = string
 
-export type GoogleCustomSearchProviderConfig = {
-  type: 'google-cse'
-  apiKey: string
-  cx: string
-  baseUrl?: string
-  maxResults?: number
-}
-
-export type BingWebSearchProviderConfig = {
-  type: 'bing-web-search'
-  apiKey: string
-  endpoint?: string
-  market?: string
-  setLang?: string
-  count?: number
-  safeSearch?: 'Off' | 'Moderate' | 'Strict'
-}
-
 export type BraveWebSearchProviderConfig = {
   type: 'brave-web-search'
   apiKey: string
@@ -210,10 +192,73 @@ export type BraveWebSearchProviderConfig = {
   extraSnippets?: boolean
 }
 
+export type ExaSearchProviderConfig = {
+  type: 'exa'
+  apiKey: string
+  baseUrl?: string
+  searchType?:
+    | 'auto'
+    | 'neural'
+    | 'fast'
+    | 'deep-lite'
+    | 'deep'
+    | 'deep-reasoning'
+    | 'instant'
+  category?:
+    | 'company'
+    | 'research paper'
+    | 'news'
+    | 'personal site'
+    | 'financial report'
+    | 'people'
+  userLocation?: string
+  numResults?: number
+  includeText?: string[]
+  excludeText?: string[]
+  moderation?: boolean
+  highlightMaxCharacters?: number
+}
+
+export type TavilySearchProviderConfig = {
+  type: 'tavily'
+  apiKey: string
+  baseUrl?: string
+  searchDepth?: 'advanced' | 'basic' | 'fast' | 'ultra-fast'
+  chunksPerSource?: number
+  maxResults?: number
+  topic?: 'general' | 'news' | 'finance'
+  timeRange?: 'day' | 'week' | 'month' | 'year' | 'd' | 'w' | 'm' | 'y'
+  startDate?: string
+  endDate?: string
+  includeAnswer?: boolean | 'basic' | 'advanced'
+  includeRawContent?: boolean | 'markdown' | 'text'
+  country?: string
+  autoParameters?: boolean
+  exactMatch?: boolean
+  includeUsage?: boolean
+  safeSearch?: boolean
+}
+
+export type SerpApiSearchProviderConfig = {
+  type: 'serpapi'
+  apiKey: string
+  baseUrl?: string
+  engine?: string
+  googleDomain?: string
+  hl?: string
+  gl?: string
+  location?: string
+  device?: string
+  safe?: 'active' | 'off'
+  num?: number
+  noCache?: boolean
+}
+
 export type SearchProviderConfig =
-  | GoogleCustomSearchProviderConfig
-  | BingWebSearchProviderConfig
   | BraveWebSearchProviderConfig
+  | ExaSearchProviderConfig
+  | TavilySearchProviderConfig
+  | SerpApiSearchProviderConfig
 
 /** Per-model provider configuration in ~/.axiomate.json */
 export type ModelProviderConfig = {

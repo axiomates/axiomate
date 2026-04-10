@@ -7,9 +7,10 @@ import {
   type SearchProvider,
   type SearchProviderFactory,
 } from './searchProvider.js'
-import { BingWebSearchProvider } from './providers/bingWebSearchProvider.js'
 import { BraveWebSearchProvider } from './providers/braveWebSearchProvider.js'
-import { GoogleCseSearchProvider } from './providers/googleCseProvider.js'
+import { ExaSearchProvider } from './providers/exaSearchProvider.js'
+import { SerpApiSearchProvider } from './providers/serpApiSearchProvider.js'
+import { TavilySearchProvider } from './providers/tavilySearchProvider.js'
 
 type SearchProviderResolution = {
   providerName: string
@@ -18,20 +19,25 @@ type SearchProviderResolution = {
 }
 
 const SEARCH_PROVIDER_FACTORIES = {
-  'bing-web-search': {
-    type: 'bing-web-search',
-    create: (providerName, config) =>
-      new BingWebSearchProvider(providerName, config),
-  },
   'brave-web-search': {
     type: 'brave-web-search',
     create: (providerName, config) =>
       new BraveWebSearchProvider(providerName, config),
   },
-  'google-cse': {
-    type: 'google-cse',
+  exa: {
+    type: 'exa',
     create: (providerName, config) =>
-      new GoogleCseSearchProvider(providerName, config),
+      new ExaSearchProvider(providerName, config),
+  },
+  serpapi: {
+    type: 'serpapi',
+    create: (providerName, config) =>
+      new SerpApiSearchProvider(providerName, config),
+  },
+  tavily: {
+    type: 'tavily',
+    create: (providerName, config) =>
+      new TavilySearchProvider(providerName, config),
   },
 } satisfies Record<SearchProviderConfig['type'], SearchProviderFactory>
 

@@ -1,5 +1,4 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { SearchProviderError } from '../searchProvider.js'
 
 const mockGlobalConfig = vi.fn()
 
@@ -21,10 +20,10 @@ describe('searchProviderRegistry', () => {
   it('auto-selects the only configured provider for a model', () => {
     mockGlobalConfig.mockReturnValue({
       searchProviders: {
-        google: {
-          type: 'google-cse',
+        exa: {
+          type: 'exa',
           apiKey: 'api-key',
-          cx: 'search-engine-id',
+          searchType: 'auto',
         },
       },
       models: {
@@ -38,11 +37,11 @@ describe('searchProviderRegistry', () => {
     })
 
     const provider = getSearchProviderForModel('qwen/qwen3')
-    expect(provider.name).toBe('google')
-    expect(provider.type).toBe('google-cse')
+    expect(provider.name).toBe('exa')
+    expect(provider.type).toBe('exa')
     expect(provider.capabilities).toEqual({
-      allowedDomains: 'adapter',
-      blockedDomains: 'adapter',
+      allowedDomains: 'native',
+      blockedDomains: 'native',
       snippets: 'native',
     })
     expect(hasSearchProviderForModel('qwen/qwen3')).toBe(true)
@@ -55,14 +54,17 @@ describe('searchProviderRegistry', () => {
           type: 'brave-web-search',
           apiKey: 'brave-key',
         },
-        google: {
-          type: 'google-cse',
-          apiKey: 'api-key',
-          cx: 'search-engine-id',
+        exa: {
+          type: 'exa',
+          apiKey: 'exa-key',
         },
-        bing: {
-          type: 'bing-web-search',
-          apiKey: 'bing-key',
+        tavily: {
+          type: 'tavily',
+          apiKey: 'tvly-key',
+        },
+        serpapi: {
+          type: 'serpapi',
+          apiKey: 'serp-key',
         },
       },
       models: {
@@ -80,8 +82,9 @@ describe('searchProviderRegistry', () => {
     expect(provider.name).toBe('brave')
     expect(providers.map(candidate => candidate.name)).toEqual([
       'brave',
-      'google',
-      'bing',
+      'exa',
+      'tavily',
+      'serpapi',
     ])
     expect(hasSearchProviderForModel('qwen/qwen3')).toBe(true)
   })
@@ -110,10 +113,9 @@ describe('searchProviderRegistry', () => {
           type: 'unsupported-provider',
           apiKey: 'bad',
         },
-        google: {
-          type: 'google-cse',
+        exa: {
+          type: 'exa',
           apiKey: 'api-key',
-          cx: 'search-engine-id',
         },
       },
       models: {
@@ -127,7 +129,7 @@ describe('searchProviderRegistry', () => {
     })
 
     const provider = getSearchProviderForModel('qwen/qwen3')
-    expect(provider.name).toBe('google')
-    expect(provider.type).toBe('google-cse')
+    expect(provider.name).toBe('exa')
+    expect(provider.type).toBe('exa')
   })
 })
