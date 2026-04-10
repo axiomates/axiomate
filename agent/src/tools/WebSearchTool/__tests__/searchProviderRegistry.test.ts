@@ -8,6 +8,7 @@ vi.mock('../../../utils/config.js', () => ({
 }))
 
 import {
+  getSearchProvidersForModel,
   getSearchProviderForModel,
   hasSearchProviderForModel,
 } from '../searchProviderRegistry.js'
@@ -17,7 +18,7 @@ describe('searchProviderRegistry', () => {
     mockGlobalConfig.mockReset()
   })
 
-  it('returns the configured provider for a model', () => {
+  it('auto-selects the only configured provider for a model', () => {
     mockGlobalConfig.mockReturnValue({
       searchProviders: {
         google: {
@@ -32,7 +33,6 @@ describe('searchProviderRegistry', () => {
           protocol: 'openai',
           baseUrl: 'https://example.com/v1',
           apiKey: 'sk-test',
-          searchProvider: 'google',
         },
       },
     })
@@ -48,8 +48,19 @@ describe('searchProviderRegistry', () => {
     expect(hasSearchProviderForModel('qwen/qwen3')).toBe(true)
   })
 
-  it('throws when the model does not define a searchProvider', () => {
+  it('falls back to configured order when multiple providers are configured and no preferred provider is set', () => {
     mockGlobalConfig.mockReturnValue({
+      searchProviders: {
+        google: {
+          type: 'google-cse',
+          apiKey: 'api-key',
+          cx: 'search-engine-id',
+        },
+        bing: {
+          type: 'bing-web-search',
+          apiKey: 'bing-key',
+        },
+      },
       models: {
         'qwen/qwen3': {
           model: 'qwen/qwen3',
@@ -60,31 +71,55 @@ describe('searchProviderRegistry', () => {
       },
     })
 
-    expect(() => getSearchProviderForModel('qwen/qwen3')).toThrowError(
-      SearchProviderError,
-    )
-    expect(() => getSearchProviderForModel('qwen/qwen3')).toThrow(
-      /does not define a searchProvider/,
-    )
-    expect(hasSearchProviderForModel('qwen/qwen3')).toBe(false)
+    const provider = getSearchProviderForModel('qwen/qwen3')
+    const providers = getSearchProvidersForModel('qwen/qwen3')
+    expect(provider.name).toBe('google')
+    expect(providers.map(candidate => candidate.name)).toEqual(['google', 'bing'])
+    expect(hasSearchProviderForModel('qwen/qwen3')).toBe(true)
   })
 
-  it('throws when the referenced provider is missing', () => {
+  it('throws when no search providers are configured', () => {
     mockGlobalConfig.mockReturnValue({
-      searchProviders: {},
       models: {
         'qwen/qwen3': {
           model: 'qwen/qwen3',
           protocol: 'openai',
           baseUrl: 'https://example.com/v1',
           apiKey: 'sk-test',
-          searchProvider: 'google',
         },
       },
     })
 
     expect(() => getSearchProviderForModel('qwen/qwen3')).toThrow(
-      /was not found/,
+      /No search providers are configured/,
     )
+  })
+
+  it('skips unusable providers and keeps later configured providers available', () => {
+    mockGlobalConfig.mockReturnValue({
+      searchProviders: {
+        broken: {
+          type: 'unsupported-provider',
+          apiKey: 'bad',
+        },
+        google: {
+          type: 'google-cse',
+          apiKey: 'api-key',
+          cx: 'search-engine-id',
+        },
+      },
+      models: {
+        'qwen/qwen3': {
+          model: 'qwen/qwen3',
+          protocol: 'openai',
+          baseUrl: 'https://example.com/v1',
+          apiKey: 'sk-test',
+        },
+      },
+    })
+
+    const provider = getSearchProviderForModel('qwen/qwen3')
+    expect(provider.name).toBe('google')
+    expect(provider.type).toBe('google-cse')
   })
 })

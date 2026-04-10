@@ -6,7 +6,8 @@ import { getMainLoopModel } from '../../utils/model/model.js'
 import { jsonStringify } from '../../utils/slowOperations.js'
 import { getWebSearchPrompt, WEB_SEARCH_TOOL_NAME } from './prompt.js'
 import { getSearchProviderErrorMessage } from './searchProvider.js'
-import { getSearchProviderForModel, hasSearchProviderForModel } from './searchProviderRegistry.js'
+import { searchWithProviderFallback } from './searchProviderExecutor.js'
+import { getSearchProvidersForModel, hasSearchProviderForModel } from './searchProviderRegistry.js'
 import {
   getToolUseSummary,
   renderToolResultMessage,
@@ -135,7 +136,7 @@ export const WebSearchTool = buildTool({
     }
 
     try {
-      getSearchProviderForModel(context.options.mainLoopModel)
+      getSearchProvidersForModel(context.options.mainLoopModel)
     } catch (error) {
       return {
         result: false,
@@ -147,8 +148,13 @@ export const WebSearchTool = buildTool({
     return { result: true }
   },
   async call(input, context, _canUseTool, _parentMessage, onProgress) {
-    const provider = getSearchProviderForModel(context.options.mainLoopModel)
-    const data = await provider.search(input, context, onProgress)
+    const providers = getSearchProvidersForModel(context.options.mainLoopModel)
+    const data = await searchWithProviderFallback(
+      providers,
+      input,
+      context,
+      onProgress,
+    )
     return { data }
   },
   mapToolResultToToolResultBlockParam(output, toolUseID) {

@@ -7,6 +7,7 @@ import {
   type SearchProvider,
   type SearchProviderFactory,
 } from './searchProvider.js'
+import { BingWebSearchProvider } from './providers/bingWebSearchProvider.js'
 import { GoogleCseSearchProvider } from './providers/googleCseProvider.js'
 
 type SearchProviderResolution = {
@@ -16,6 +17,11 @@ type SearchProviderResolution = {
 }
 
 const SEARCH_PROVIDER_FACTORIES = {
+  'bing-web-search': {
+    type: 'bing-web-search',
+    create: (providerName, config) =>
+      new BingWebSearchProvider(providerName, config),
+  },
   'google-cse': {
     type: 'google-cse',
     create: (providerName, config) =>
@@ -24,12 +30,18 @@ const SEARCH_PROVIDER_FACTORIES = {
 } satisfies Record<SearchProviderConfig['type'], SearchProviderFactory>
 
 export function getSearchProviderForModel(model: string): SearchProvider {
-  return resolveSearchProviderForModel(model).provider
+  return resolveSearchProvidersForModel(model)[0].provider
 }
 
-export function resolveSearchProviderForModel(
+export function getSearchProvidersForModel(model: string): SearchProvider[] {
+  return resolveSearchProvidersForModel(model).map(
+    resolution => resolution.provider,
+  )
+}
+
+export function resolveSearchProvidersForModel(
   model: string,
-): SearchProviderResolution {
+): SearchProviderResolution[] {
   const config = getGlobalConfig()
   const modelConfig = config.models?.[model]
 
@@ -41,33 +53,53 @@ export function resolveSearchProviderForModel(
     })
   }
 
-  if (!modelConfig.searchProvider) {
+  const configuredProviders = config.searchProviders
+  if (!configuredProviders || Object.keys(configuredProviders).length === 0) {
     throw new SearchProviderError({
       providerName: 'unconfigured',
       code: 'config',
-      message: `Model '${model}' does not define a searchProvider in ~/.axiomate.json.`,
+      message: 'No search providers are configured in ~/.axiomate.json.',
     })
   }
 
-  const providerConfig = config.searchProviders?.[modelConfig.searchProvider]
-  if (!providerConfig) {
-    throw new SearchProviderError({
-      providerName: modelConfig.searchProvider,
-      code: 'config',
-      message: `Search provider '${modelConfig.searchProvider}' was not found in ~/.axiomate.json searchProviders.`,
-    })
+  const providerEntries = getOrderedProviderEntries(configuredProviders)
+  const resolutions: SearchProviderResolution[] = []
+  const resolutionErrors: SearchProviderError[] = []
+
+  for (const [providerName, providerConfig] of providerEntries) {
+    try {
+      resolutions.push({
+        providerName,
+        providerConfig,
+        provider: createSearchProvider(providerName, providerConfig),
+      })
+    } catch (error) {
+      if (isRecoverableProviderResolutionError(error)) {
+        resolutionErrors.push(error)
+        continue
+      }
+      throw error
+    }
   }
 
-  return {
-    providerName: modelConfig.searchProvider,
-    providerConfig,
-    provider: createSearchProvider(modelConfig.searchProvider, providerConfig),
+  if (resolutions.length > 0) {
+    return resolutions
   }
+
+  throw buildNoUsableProvidersError(
+    providerEntries.map(([providerName]) => providerName),
+    resolutionErrors,
+  )
 }
 
+function getOrderedProviderEntries(
+  configuredProviders: Record<string, SearchProviderConfig>,
+): Array<[string, SearchProviderConfig]> {
+  return Object.entries(configuredProviders)
+}
 export function hasSearchProviderForModel(model: string): boolean {
   try {
-    resolveSearchProviderForModel(model)
+    resolveSearchProvidersForModel(model)
     return true
   } catch {
     return false
@@ -87,4 +119,27 @@ function createSearchProvider(
     })
   }
   return (factory as SearchProviderFactory).create(providerName, config)
+}
+
+function isRecoverableProviderResolutionError(
+  error: unknown,
+): error is SearchProviderError {
+  return error instanceof SearchProviderError && error.code === 'config'
+}
+
+function buildNoUsableProvidersError(
+  providerNames: string[],
+  errors: SearchProviderError[],
+): SearchProviderError {
+  const details = errors
+    .map(error => `${error.providerName}: ${error.message}`)
+    .join(' | ')
+
+  return new SearchProviderError({
+    providerName: providerNames.join(', '),
+    code: 'config',
+    message: details
+      ? `No usable search providers are configured. ${details}`
+      : 'No usable search providers are configured.',
+  })
 }

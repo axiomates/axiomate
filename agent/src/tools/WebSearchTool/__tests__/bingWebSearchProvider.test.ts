@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { GoogleCseSearchProvider } from '../providers/googleCseProvider.js'
+import { BingWebSearchProvider } from '../providers/bingWebSearchProvider.js'
 
-describe('GoogleCseSearchProvider', () => {
+describe('BingWebSearchProvider', () => {
   afterEach(() => {
     vi.unstubAllGlobals()
   })
@@ -10,22 +10,25 @@ describe('GoogleCseSearchProvider', () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
       json: vi.fn().mockResolvedValue({
-        items: [
-          {
-            title: 'Axiomate Search',
-            link: 'https://example.com/docs/search',
-            snippet: 'Search results can be adapted into the WebSearch tool.',
-          },
-        ],
+        webPages: {
+          value: [
+            {
+              name: 'Axiomate Search',
+              url: 'https://example.com/docs/search',
+              snippet: 'Search providers can normalize results into the WebSearch tool.',
+            },
+          ],
+        },
       }),
     })
     vi.stubGlobal('fetch', fetchMock)
 
-    const provider = new GoogleCseSearchProvider('google', {
-      type: 'google-cse',
+    const provider = new BingWebSearchProvider('bing', {
+      type: 'bing-web-search',
       apiKey: 'api-key',
-      cx: 'search-engine-id',
-      maxResults: 5,
+      count: 5,
+      market: 'en-US',
+      safeSearch: 'Moderate',
     })
     expect(provider.capabilities).toEqual({
       allowedDomains: 'adapter',
@@ -69,10 +72,14 @@ describe('GoogleCseSearchProvider', () => {
     })
 
     const requestUrl = new URL(fetchMock.mock.calls[0][0] as URL)
-    expect(requestUrl.searchParams.get('key')).toBe('api-key')
-    expect(requestUrl.searchParams.get('cx')).toBe('search-engine-id')
+    const requestOptions = fetchMock.mock.calls[0][1] as RequestInit
     expect(requestUrl.searchParams.get('q')).toBe('axiomate search adapters')
-    expect(requestUrl.searchParams.get('num')).toBe('5')
+    expect(requestUrl.searchParams.get('count')).toBe('5')
+    expect(requestUrl.searchParams.get('mkt')).toBe('en-US')
+    expect(requestUrl.searchParams.get('safeSearch')).toBe('Moderate')
+    expect((requestOptions.headers as Record<string, string>)[
+      'Ocp-Apim-Subscription-Key'
+    ]).toBe('api-key')
   })
 
   it('runs one search per allowed domain and filters blocked hosts', async () => {
@@ -81,38 +88,41 @@ describe('GoogleCseSearchProvider', () => {
       .mockResolvedValueOnce({
         ok: true,
         json: vi.fn().mockResolvedValue({
-          items: [
-            {
-              title: 'Docs',
-              link: 'https://docs.example.com/guide',
-              snippet: 'Provider adapters keep the interface stable.',
-            },
-          ],
+          webPages: {
+            value: [
+              {
+                name: 'Docs',
+                url: 'https://docs.example.com/guide',
+                snippet: 'Provider adapters keep the interface stable.',
+              },
+            ],
+          },
         }),
       })
       .mockResolvedValueOnce({
         ok: true,
         json: vi.fn().mockResolvedValue({
-          items: [
-            {
-              title: 'Blocked',
-              link: 'https://blocked.example.net/post',
-              snippet: 'Should be filtered out.',
-            },
-            {
-              title: 'Blog',
-              link: 'https://blog.example.net/post',
-              snippet: 'This result should stay.',
-            },
-          ],
+          webPages: {
+            value: [
+              {
+                name: 'Blocked',
+                url: 'https://blocked.example.net/post',
+                snippet: 'Should be filtered out.',
+              },
+              {
+                name: 'Blog',
+                url: 'https://blog.example.net/post',
+                snippet: 'This result should stay.',
+              },
+            ],
+          },
         }),
       })
     vi.stubGlobal('fetch', fetchMock)
 
-    const provider = new GoogleCseSearchProvider('google', {
-      type: 'google-cse',
+    const provider = new BingWebSearchProvider('bing', {
+      type: 'bing-web-search',
       apiKey: 'api-key',
-      cx: 'search-engine-id',
     })
 
     const output = await provider.search(
@@ -161,17 +171,18 @@ describe('GoogleCseSearchProvider', () => {
         ok: false,
         status: 401,
         json: vi.fn().mockResolvedValue({
-          error: {
-            message: 'Invalid API key',
-          },
+          errors: [
+            {
+              message: 'Access denied due to invalid subscription key.',
+            },
+          ],
         }),
       }),
     )
 
-    const provider = new GoogleCseSearchProvider('google', {
-      type: 'google-cse',
+    const provider = new BingWebSearchProvider('bing', {
+      type: 'bing-web-search',
       apiKey: 'bad-key',
-      cx: 'search-engine-id',
     })
 
     await expect(
@@ -181,81 +192,10 @@ describe('GoogleCseSearchProvider', () => {
       ),
     ).rejects.toMatchObject({
       name: 'SearchProviderError',
-      providerName: 'google',
+      providerName: 'bing',
       code: 'auth',
       statusCode: 401,
       retryable: false,
-    })
-  })
-
-  it('classifies Google 400 API key errors as auth errors', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue({
-        ok: false,
-        status: 400,
-        json: vi.fn().mockResolvedValue({
-          error: {
-            message: 'API key not valid. Please pass a valid API key.',
-            errors: [
-              {
-                reason: 'keyInvalid',
-              },
-            ],
-          },
-        }),
-      }),
-    )
-
-    const provider = new GoogleCseSearchProvider('google', {
-      type: 'google-cse',
-      apiKey: 'bad-key',
-      cx: 'search-engine-id',
-    })
-
-    await expect(
-      provider.search(
-        { query: 'axiomate search adapters' },
-        { abortController: new AbortController() } as any,
-      ),
-    ).rejects.toMatchObject({
-      name: 'SearchProviderError',
-      providerName: 'google',
-      code: 'auth',
-      statusCode: 400,
-    })
-  })
-
-  it('classifies Google 400 cx errors as config errors', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue({
-        ok: false,
-        status: 400,
-        json: vi.fn().mockResolvedValue({
-          error: {
-            message: 'Missing required parameter: cx',
-          },
-        }),
-      }),
-    )
-
-    const provider = new GoogleCseSearchProvider('google', {
-      type: 'google-cse',
-      apiKey: 'api-key',
-      cx: '',
-    })
-
-    await expect(
-      provider.search(
-        { query: 'axiomate search adapters' },
-        { abortController: new AbortController() } as any,
-      ),
-    ).rejects.toMatchObject({
-      name: 'SearchProviderError',
-      providerName: 'google',
-      code: 'config',
-      statusCode: 400,
     })
   })
 })

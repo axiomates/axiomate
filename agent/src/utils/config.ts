@@ -188,7 +188,19 @@ export type GoogleCustomSearchProviderConfig = {
   maxResults?: number
 }
 
-export type SearchProviderConfig = GoogleCustomSearchProviderConfig
+export type BingWebSearchProviderConfig = {
+  type: 'bing-web-search'
+  apiKey: string
+  endpoint?: string
+  market?: string
+  setLang?: string
+  count?: number
+  safeSearch?: 'Off' | 'Moderate' | 'Strict'
+}
+
+export type SearchProviderConfig =
+  | GoogleCustomSearchProviderConfig
+  | BingWebSearchProviderConfig
 
 /** Per-model provider configuration in ~/.axiomate.json */
 export type ModelProviderConfig = {
@@ -211,8 +223,6 @@ export type ModelProviderConfig = {
   thinkingParams?: Record<string, unknown>
   /** Extra params sent on every request (passthrough to API body) */
   extraParams?: Record<string, unknown>
-  /** Optional search provider name from searchProviders in ~/.axiomate.json */
-  searchProvider?: string
 }
 
 export type GlobalConfig = {
@@ -563,7 +573,7 @@ export type GlobalConfig = {
   // CURRENT_MIGRATION_VERSION, runMigrations() skips all sync migrations
   // ── Multi-provider model configuration ──
 
-  /** User-configured search providers: provider name → provider config */
+  /** User-configured search providers: provider name → provider config. */
   searchProviders?: Record<string, SearchProviderConfig>
   /** User-configured models: model ID → provider/endpoint/key/capabilities */
   models?: Record<string, ModelProviderConfig>

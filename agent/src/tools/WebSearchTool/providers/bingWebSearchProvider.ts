@@ -1,4 +1,4 @@
-import type { GoogleCustomSearchProviderConfig } from '../../../utils/config.js'
+import type { BingWebSearchProviderConfig } from '../../../utils/config.js'
 import type { ToolCallProgress, ToolUseContext } from '../../../Tool.js'
 import type { WebSearchProgress } from '../../../types/tools.js'
 import {
@@ -17,26 +17,31 @@ import {
   type SearchHitWithSnippet,
 } from './providerUtils.js'
 
-type GoogleSearchItem = {
-  title?: string
-  link?: string
+type BingError = {
+  code?: string
+  message?: string
+}
+
+type BingWebPage = {
+  name?: string
+  url?: string
   snippet?: string
 }
 
-type GoogleSearchResponse = {
-  items?: GoogleSearchItem[]
-  error?: {
-    code?: number
-    message?: string
-    errors?: Array<{ message?: string; reason?: string }>
+type BingSearchResponse = {
+  webPages?: {
+    value?: BingWebPage[]
   }
+  errors?: BingError[]
+  message?: string
 }
 
-const DEFAULT_BASE_URL = 'https://customsearch.googleapis.com/customsearch/v1'
-const DEFAULT_MAX_RESULTS = 10
+const DEFAULT_ENDPOINT = 'https://api.bing.microsoft.com/v7.0/search'
+const DEFAULT_COUNT = 10
+const MAX_COUNT = 50
 
-export class GoogleCseSearchProvider implements SearchProvider {
-  readonly type = 'google-cse' as const
+export class BingWebSearchProvider implements SearchProvider {
+  readonly type = 'bing-web-search' as const
   readonly capabilities = {
     allowedDomains: 'adapter',
     blockedDomains: 'adapter',
@@ -45,7 +50,7 @@ export class GoogleCseSearchProvider implements SearchProvider {
 
   constructor(
     readonly name: string,
-    private readonly config: GoogleCustomSearchProviderConfig,
+    private readonly config: BingWebSearchProviderConfig,
   ) {}
 
   async search(
@@ -63,7 +68,7 @@ export class GoogleCseSearchProvider implements SearchProvider {
 
       const response = await this.fetchResults(run.query, context)
       const hits = filterHits(
-        mapHits(response.items ?? []),
+        mapHits(response.webPages?.value ?? []),
         input.allowed_domains,
         input.blocked_domains,
       )
@@ -89,19 +94,33 @@ export class GoogleCseSearchProvider implements SearchProvider {
   private async fetchResults(
     query: string,
     context: ToolUseContext,
-  ): Promise<GoogleSearchResponse> {
-    const url = new URL(this.config.baseUrl ?? DEFAULT_BASE_URL)
-    url.searchParams.set('key', this.config.apiKey)
-    url.searchParams.set('cx', this.config.cx)
+  ): Promise<BingSearchResponse> {
+    const url = new URL(this.config.endpoint ?? DEFAULT_ENDPOINT)
     url.searchParams.set('q', query)
     url.searchParams.set(
-      'num',
-      String(clampResultCount(this.config.maxResults, DEFAULT_MAX_RESULTS, 10)),
+      'count',
+      String(clampResultCount(this.config.count, DEFAULT_COUNT, MAX_COUNT)),
     )
+
+    if (this.config.market) {
+      url.searchParams.set('mkt', this.config.market)
+    }
+
+    if (this.config.setLang) {
+      url.searchParams.set('setLang', this.config.setLang)
+    }
+
+    if (this.config.safeSearch) {
+      url.searchParams.set('safeSearch', this.config.safeSearch)
+    }
 
     let response: Response
     try {
       response = await fetch(url, {
+        headers: {
+          'Ocp-Apim-Subscription-Key': this.config.apiKey,
+          Accept: 'application/json',
+        },
         signal: context.abortController.signal,
       })
     } catch (error) {
@@ -117,9 +136,9 @@ export class GoogleCseSearchProvider implements SearchProvider {
       })
     }
 
-    let payload: GoogleSearchResponse | null = null
+    let payload: BingSearchResponse | null = null
     try {
-      payload = (await response.json()) as GoogleSearchResponse
+      payload = (await response.json()) as BingSearchResponse
     } catch (error) {
       if (!response.ok) {
         payload = null
@@ -134,14 +153,12 @@ export class GoogleCseSearchProvider implements SearchProvider {
     }
 
     if (!response.ok) {
-      const message =
-        payload?.error?.message ||
-        payload?.error?.errors?.find(err => err.message)?.message ||
-        `Search provider ${this.name} returned HTTP ${response.status}`
       throw new SearchProviderError({
         providerName: this.name,
-        code: getErrorCodeForResponse(response.status, payload),
-        message,
+        code: getErrorCodeForStatus(response.status),
+        message:
+          getErrorMessage(payload) ||
+          `Search provider ${this.name} returned HTTP ${response.status}`,
         retryable: isRetryableStatus(response.status),
         statusCode: response.status,
       })
@@ -155,38 +172,32 @@ export class GoogleCseSearchProvider implements SearchProvider {
       })
     }
 
-    if (payload.error) {
-      throw new SearchProviderError({
-        providerName: this.name,
-        code: 'response',
-        message:
-          payload.error.message ||
-          `Search provider ${this.name} returned an unknown error.`,
-      })
-    }
-
     return payload
   }
 }
 
-function mapHits(items: GoogleSearchItem[]): SearchHitWithSnippet[] {
+function mapHits(items: BingWebPage[]): SearchHitWithSnippet[] {
   return items
     .map(item => ({
-      title: item.title?.trim() ?? '',
-      url: item.link?.trim() ?? '',
+      title: item.name?.trim() ?? '',
+      url: item.url?.trim() ?? '',
       snippet: item.snippet?.trim(),
     }))
     .filter(hit => hit.title.length > 0 && hit.url.length > 0)
 }
 
-function getErrorCodeForResponse(
-  status: number,
-  payload: GoogleSearchResponse | null,
-) {
-  const reason = payload?.error?.errors?.find(error => error.reason)?.reason
-  const message = payload?.error?.message ?? ''
-  const combined = `${reason ?? ''} ${message}`.toLowerCase()
+function getErrorMessage(payload: BingSearchResponse | null): string | undefined {
+  if (!payload) {
+    return undefined
+  }
 
+  return (
+    payload.errors?.find(error => error.message)?.message ??
+    payload.message
+  )
+}
+
+function getErrorCodeForStatus(status: number) {
   if (status === 401 || status === 403) {
     return 'auth' as const
   }
@@ -196,28 +207,6 @@ function getErrorCodeForResponse(
   if (status >= 500) {
     return 'unavailable' as const
   }
-
-  if (combined.includes('api key') || combined.includes('keyinvalid')) {
-    return 'auth' as const
-  }
-
-  if (
-    combined.includes('quota') ||
-    combined.includes('rate limit') ||
-    combined.includes('daily limit') ||
-    combined.includes('limit exceeded')
-  ) {
-    return 'rate_limit' as const
-  }
-
-  if (
-    combined.includes('cx') ||
-    combined.includes('search engine') ||
-    combined.includes('programmable search')
-  ) {
-    return 'config' as const
-  }
-
   return 'invalid_request' as const
 }
 
