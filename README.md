@@ -43,6 +43,7 @@ Models are configured in `~/.axiomate.json`. On first run the file is created au
       "protocol": "openai",
       "baseUrl": "https://openrouter.ai/api/v1",
       "apiKey": "sk-...",
+      "effort": "high",
       "contextWindow": 131072,
       "maxOutputTokens": 32768,
       "thinkingParams": {
@@ -66,6 +67,7 @@ Models are configured in `~/.axiomate.json`. On first run the file is created au
 | `protocol` | yes | `"openai"` or `"anthropic"` — determines SDK used |
 | `baseUrl` | yes | API endpoint URL |
 | `apiKey` | yes | API key for authentication |
+| `effort` | no | Fixed effort label shown in the model picker for configured models. Display only; does not automatically send Anthropic `output_config.effort` |
 | `contextWindow` | no | Context window size in tokens |
 | `maxOutputTokens` | no | Max output tokens per response |
 | `supportsImages` | no | Whether the model supports image/vision input. Defaults to `true`. Set to `false` for text-only models to avoid API errors |

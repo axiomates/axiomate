@@ -267,6 +267,12 @@ export type ModelProviderConfig = {
   /** Display name for UI */
   name?: string
   description?: string
+  /**
+   * Optional fixed effort label shown in the UI for configured models.
+   * This is display metadata only; it does not automatically send
+   * Anthropic's output_config.effort parameter.
+   */
+  effort?: 'low' | 'medium' | 'high' | 'max'
   /** Determines which LLMProvider to use */
   protocol: 'openai' | 'anthropic'
   /** API endpoint (e.g. "https://api.siliconflow.cn/v1") */

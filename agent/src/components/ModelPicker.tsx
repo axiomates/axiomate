@@ -19,6 +19,7 @@ import {
   convertEffortValueToLevel,
   type EffortLevel,
   getDefaultEffortForModel,
+  getConfiguredModelEffort,
   modelSupportsEffort,
   modelSupportsMaxEffort,
   resolvePickerEffortPersistence,
@@ -141,6 +142,9 @@ export function ModelPicker({
   const focusedSupportsEffort = focusedModel
     ? modelSupportsEffort(focusedModel)
     : false
+  const focusedConfiguredEffort = focusedModel
+    ? getConfiguredModelEffort(focusedModel)
+    : undefined
   const focusedSupportsMax = focusedModel
     ? modelSupportsMaxEffort(focusedModel)
     : false
@@ -265,6 +269,11 @@ export function ModelPicker({
               {capitalize(displayEffort)} effort
               {displayEffort === focusedDefaultEffort ? ` (default)` : ``}{' '}
               <Text color="subtle">← → to adjust</Text>
+            </Text>
+          ) : focusedConfiguredEffort ? (
+            <Text dimColor>
+              <EffortLevelIndicator effort={focusedConfiguredEffort} />{' '}
+              {capitalize(focusedConfiguredEffort)} effort
             </Text>
           ) : (
             <Text color="subtle">

@@ -20,6 +20,16 @@ export const EFFORT_LEVELS = [
 
 export type EffortValue = EffortLevel | number
 
+export function getConfiguredModelEffort(
+  model: string,
+): EffortLevel | undefined {
+  const configuredEffort = getGlobalConfig().models?.[model]?.effort
+  if (!configuredEffort) {
+    return undefined
+  }
+  return isEffortLevel(configuredEffort) ? configuredEffort : undefined
+}
+
 // @[MODEL LAUNCH]: Add the new model to the allowlist if it supports the effort parameter.
 export function modelSupportsEffort(model: string): boolean {
   // Config-driven models don't support Anthropic's effort parameter
@@ -284,6 +294,11 @@ export function getOpusDefaultEffortConfig(): OpusDefaultEffortConfig {
 export function getDefaultEffortForModel(
   model: string,
 ): EffortValue | undefined {
+  const configuredEffort = getConfiguredModelEffort(model)
+  if (configuredEffort !== undefined) {
+    return configuredEffort
+  }
+
   if (process.env.USER_TYPE === 'ant') {
     const config = getAntModelOverrideConfig()
     const isDefaultModel =
