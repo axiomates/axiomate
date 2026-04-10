@@ -14,6 +14,7 @@ import type { AgentId } from '../../types/ids.js'
 import type { AssistantMessage } from '../../types/message.js'
 import { normalizeToolInput } from '../../utils/api.js'
 import { createAssistantAPIErrorMessage } from '../../utils/messages.js'
+import { rememberUnparsedToolInputForRepair } from './toolInputRepairMetadata.js'
 import {
   API_ERROR_MESSAGE_PREFIX,
   getErrorMessageIfRefusal,
@@ -317,13 +318,16 @@ function finalizeBlock(block: AccBlock | ContentBlock, tools: Tools, agentId?: A
     case 'tool_use': {
       // Parse accumulated JSON string → object
       let input: unknown = typeof block.input === 'object' ? block.input : {}
-      const rawInput = typeof block.input === 'string' ? block.input : ''
-      if (rawInput.length > 0) {
+      const accumulatedInputText =
+        typeof block.input === 'string' ? block.input : ''
+      let unparsedInput: string | undefined
+      if (accumulatedInputText.length > 0) {
         try {
-          input = JSON.parse(rawInput)
+          input = JSON.parse(accumulatedInputText)
         } catch {
-          // JSON parse failed — fall back to empty object
+          // JSON parse failed — keep the raw text for opt-in schema repair.
           input = {}
+          unparsedInput = accumulatedInputText
         }
       }
       // Apply tool-specific input corrections (e.g., type coercion)
@@ -341,7 +345,16 @@ function finalizeBlock(block: AccBlock | ContentBlock, tools: Tools, agentId?: A
           }
         }
       }
-      return { type: 'tool_use', id: block.id, name: block.name, input: input as Record<string, unknown> }
+      const finalizedBlock: ContentBlock = {
+        type: 'tool_use',
+        id: block.id,
+        name: block.name,
+        input: input as Record<string, unknown>,
+      }
+      if (unparsedInput) {
+        rememberUnparsedToolInputForRepair(finalizedBlock, unparsedInput)
+      }
+      return finalizedBlock
     }
     case 'server_tool_use': {
       // Same JSON parsing as tool_use, but no tool-specific normalization

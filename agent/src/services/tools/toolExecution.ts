@@ -4,6 +4,7 @@ import type {
   ToolResultBlockParam,
   ToolUseBlock,
 } from '../api/streamTypes.js'
+import { getUnparsedToolInputForRepair } from '../api/toolInputRepairMetadata.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
@@ -106,6 +107,8 @@ import {
   processPreMappedToolResultBlock,
   processToolResultBlock,
 } from '../../utils/toolResultStorage.js'
+import { repairToolCallJsonAgainstSchemas } from '../../utils/jsonRepair.js'
+import { shouldRepairToolCallsForResponseModel } from '../../utils/modelProviderConfig.js'
 import {
   extractDiscoveredToolNames,
   isToolSearchEnabledOptimistic,
@@ -456,6 +459,7 @@ export async function* runToolUse(
       tool,
       toolUse.id,
       toolInput,
+      getUnparsedToolInputForRepair(toolUse),
       toolUseContext,
       canUseTool,
       assistantMessage,
@@ -493,6 +497,7 @@ function streamedCheckPermissionsAndCallTool(
   tool: Tool,
   toolUseID: string,
   input: { [key: string]: boolean | string | number },
+  unparsedInput: string | undefined,
   toolUseContext: ToolUseContext,
   canUseTool: CanUseToolFn,
   assistantMessage: AssistantMessage,
@@ -511,6 +516,7 @@ function streamedCheckPermissionsAndCallTool(
     tool,
     toolUseID,
     input,
+    unparsedInput,
     toolUseContext,
     canUseTool,
     assistantMessage,
@@ -569,6 +575,46 @@ function streamedCheckPermissionsAndCallTool(
   return stream
 }
 
+function buildToolCallJsonForInputRepair(
+  toolName: string,
+  input: unknown,
+  unparsedInput?: string,
+): string {
+  if (unparsedInput && unparsedInput.trim().length > 0) {
+    return `{"type":"tool_use","name":${JSON.stringify(toolName)},"input":${unparsedInput}}`
+  }
+
+  try {
+    return JSON.stringify({
+      type: 'tool_use',
+      name: toolName,
+      input,
+    })
+  } catch {
+    return JSON.stringify({
+      type: 'tool_use',
+      name: toolName,
+      input: {},
+    })
+  }
+}
+
+function repairToolInputForFinalSchemaCheck(
+  tool: Tool,
+  input: unknown,
+  unparsedInput?: string,
+): unknown {
+  try {
+    const repaired = repairToolCallJsonAgainstSchemas(
+      buildToolCallJsonForInputRepair(tool.name, input, unparsedInput),
+      [tool],
+    )
+    return repaired.ok ? repaired.input : input
+  } catch {
+    return input
+  }
+}
+
 /**
  * Appended to Zod errors when a deferred tool wasn't in the discovered-tool
  * set — re-runs the claude.ts schema-filter scan dispatch-time to detect the
@@ -600,6 +646,7 @@ async function checkPermissionsAndCallTool(
   tool: Tool,
   toolUseID: string,
   input: { [key: string]: boolean | string | number },
+  unparsedInput: string | undefined,
   toolUseContext: ToolUseContext,
   canUseTool: CanUseToolFn,
   assistantMessage: AssistantMessage,
@@ -612,7 +659,18 @@ async function checkPermissionsAndCallTool(
   ) => void,
 ): Promise<MessageUpdateLazy[]> {
   // Validate input types with zod (surprisingly, the model is not great at generating valid input)
-  const parsedInput = tool.inputSchema.safeParse(input)
+  let parsedInput = tool.inputSchema.safeParse(input)
+  if (
+    !parsedInput.success &&
+    shouldRepairToolCallsForResponseModel(assistantMessage.message.model)
+  ) {
+    const repairedInput = repairToolInputForFinalSchemaCheck(
+      tool,
+      input,
+      unparsedInput,
+    )
+    parsedInput = tool.inputSchema.safeParse(repairedInput)
+  }
   if (!parsedInput.success) {
     let errorContent = formatZodValidationError(tool.name, parsedInput.error)
 

@@ -76,7 +76,7 @@ export type SkillToolProgress = {
 // Web search progress
 // ============================================================================
 
-export type WebSearchProgress = {
+export type WebSearchProgress =
   | {
       type: 'query_update'
       query: string

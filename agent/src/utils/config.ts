@@ -283,6 +283,12 @@ export type ModelProviderConfig = {
   maxOutputTokens?: number
   /** Whether this model supports image/vision input. Defaults to true. Set to false for text-only models. */
   supportsImages?: boolean
+  /**
+   * Opt-in compatibility shim for models that may emit malformed tool call
+   * arguments. When true, failed tool inputs from this model are repaired
+   * against the selected tool schema before final validation.
+   */
+  repairToolCalls?: boolean
   /** Extra params sent when thinking is enabled (vendor-specific, user declares) */
   thinkingParams?: Record<string, unknown>
   /** Extra params sent on every request (passthrough to API body) */
