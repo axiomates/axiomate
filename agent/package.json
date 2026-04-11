@@ -65,6 +65,7 @@
     "code-excerpt": "^4.0.0",
     "combined-stream": "^1.0.8",
     "computer-use-mcp-axiomate": "*",
+    "commander": "~12.1.0",
     "computer-use-native-axiomate": "*",
     "diff": "^5.0.0",
     "emoji-regex": "^10.6.0",
