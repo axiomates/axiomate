@@ -127,7 +127,7 @@ export function getInitialEffortSetting(): EffortLevel | undefined {
 
 /**
  * Decide what effort level (if any) to persist when the user selects a model
- * in ModelPicker. Keeps an explicit prior /effort choice sticky even when it
+ * in ModelPicker. Keeps an explicit prior effort choice sticky even when it
  * matches the picked model's default, while letting purely-default and
  * session-ephemeral effort (CLI --effort, EffortCallout default) fall through
  * to undefined so it follows future model-default changes.
@@ -184,7 +184,7 @@ export function resolveAppliedEffort(
 /**
  * Resolve the effort level to show the user. Wraps resolveAppliedEffort
  * with the 'high' fallback (what the API uses when no effort param is sent).
- * Single source of truth for the status bar and /effort output (CC-1088).
+ * Single source of truth for the status bar effort display (CC-1088).
  */
 export function getDisplayedEffortLevel(
   model: string,

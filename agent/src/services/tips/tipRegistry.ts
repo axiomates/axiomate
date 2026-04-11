@@ -4,7 +4,6 @@ import { fileHistoryEnabled } from '../../utils/fileHistory.js'
 import {
   getInitialSettings,
   getSettings_DEPRECATED,
-  getSettingsForSource,
 } from '../../utils/settings/settings.js'
 import { shouldOfferTerminalSetup } from '../../commands/terminalSetup/terminalSetup.js'
 import { getDesktopUpsellConfig } from '../../components/DesktopUpsell/DesktopUpsellStartup.js'
@@ -15,10 +14,6 @@ import { isKairosCronEnabled } from '../../tools/ScheduleCronTool/prompt.js'
 import { is1PApiCustomer } from '../../utils/auth.js'
 import { countConcurrentSessions } from '../../utils/concurrentSessions.js'
 import { getGlobalConfig } from '../../utils/config.js'
-import {
-  getEffortEnvOverride,
-  modelSupportsEffort,
-} from '../../utils/effort.js'
 import { env } from '../../utils/env.js'
 import { cacheKeys } from '../../utils/fileStateCache.js'
 import { getWorktreeCount } from '../../utils/git.js'
@@ -32,7 +27,6 @@ import {
   isWindsurfInstalled,
 } from '../../utils/ide.js'
 import {
-  getMainLoopModel,
   getUserSpecifiedModelSetting,
 } from '../../utils/model/model.js'
 import { getPlatform } from '../../utils/platform.js'
@@ -511,36 +505,6 @@ const externalTips: Tip[] = [
         filePath: /(?:^|[/\\])vercel\.json$/i,
         cli: ['vercel'],
       }),
-  },
-  {
-    id: 'effort-high-nudge',
-    content: async ctx => {
-      const blue = color('suggestion', ctx.theme)
-      const cmd = blue('/effort high')
-      const variant = getFeatureValue_CACHED_MAY_BE_STALE<
-        'off' | 'copy_a' | 'copy_b'
-      >('tengu_tide_elm', 'off')
-      return variant === 'copy_b'
-        ? `Use ${cmd} for better one-shot answers. It thinks it through first.`
-        : `Working on something tricky? ${cmd} gives better first answers`
-    },
-    cooldownSessions: 3,
-    isRelevant: async () => {
-      if (!is1PApiCustomer()) return false
-      if (!modelSupportsEffort(getMainLoopModel())) return false
-      if (getSettingsForSource('policySettings')?.effortLevel !== undefined) {
-        return false
-      }
-      if (getEffortEnvOverride() !== undefined) return false
-      const persisted = getInitialSettings().effortLevel
-      if (persisted === 'high' || persisted === 'max') return false
-      return (
-        getFeatureValue_CACHED_MAY_BE_STALE<'off' | 'copy_a' | 'copy_b'>(
-          'tengu_tide_elm',
-          'off',
-        ) !== 'off'
-      )
-    },
   },
   {
     id: 'subagent-fanout-nudge',
