@@ -53,7 +53,6 @@ const agentsPlatform =
 import securityReview from './commands/security-review.js'
 import bughunter from './commands/bughunter/index.js'
 import terminalSetup from './commands/terminalSetup/index.js'
-import usage from './commands/usage/index.js'
 import theme from './commands/theme/index.js'
 import vim from './commands/vim/index.js'
 import { feature } from 'bun:bundle'
@@ -307,7 +306,6 @@ const COMMANDS = memoize((): Command[] => [
   extraUsage,
   extraUsageNonInteractive,
   rateLimitOptions,
-  usage,
   usageReport,
   vim,
   ...(webCmd ? [webCmd] : []),
@@ -617,7 +615,6 @@ export const REMOTE_SAFE_COMMANDS: Set<Command> = new Set([
   color, // Change agent color
   vim, // Toggle vim mode
   cost, // Show session cost (local cost tracking)
-  usage, // Show usage info
   copy, // Copy last message
   btw, // Quick note
   feedback, // Send feedback

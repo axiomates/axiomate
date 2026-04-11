@@ -22,8 +22,8 @@ const MAX_IMPRESSIONS = 3
  * so they don't see an upsell they can't act on.
  *
  * isEligibleForOverageCreditGrant — just the backend eligibility. Use for
- *   persistent reference surfaces (/usage) where the info should show
- *   whenever eligible, no impression cap.
+ *   persistent reference surfaces where the info should show whenever
+ *   eligible, no impression cap.
  * shouldShowOverageCreditUpsell — adds the 3-impression cap and
  *   hasVisitedExtraUsage dismiss. Use for promotional surfaces
  *   (welcome feed, tips).
@@ -74,7 +74,7 @@ export function incrementOverageCreditUpsellSeenCount(): void {
   logEvent('tengu_overage_credit_upsell_shown', { seen_count: newCount })
 }
 
-// Copy from "OC & Bulk Overages copy" doc (#6 — CLI /usage)
+// Copy from "OC & Bulk Overages copy" doc.
 function getUsageText(amount: string): string {
   return `${amount} in extra usage for third-party apps · /extra-usage`
 }
