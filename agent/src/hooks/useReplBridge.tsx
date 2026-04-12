@@ -22,7 +22,7 @@ import { errorMessage } from '../utils/errors.js';
 import { enqueue } from '../utils/messageQueueManager.js';
 import { buildSystemInitMessage } from '../utils/messages/systemInit.js';
 import { createBridgeStatusMessage, createSystemMessage } from '../utils/messages.js';
-import { getAutoModeUnavailableNotification, getAutoModeUnavailableReason, isAutoModeGateEnabled, isBypassPermissionsModeDisabled, transitionPermissionMode } from '../utils/permissions/permissionSetup.js';
+import { getAutoModeUnavailableNotification, getAutoModeUnavailableReason, isAutoModeGateEnabled, transitionPermissionMode } from '../utils/permissions/permissionSetup.js';
 import { getLeaderToolUseConfirmQueue } from '../utils/swarm/leaderPermissionBridge.js';
 
 /** How long after a failure before replBridgeEnabled is auto-cleared (stops retries). */
@@ -424,20 +424,6 @@ export function useReplBridge(messages: Message[], setMessages: (action: React.S
               // These mirror print.ts handleSetPermissionMode; the bridge
               // can't import the checks directly (bootstrap-isolation), so
               // it relies on this verdict to emit the error response.
-              if (mode === 'bypassPermissions') {
-                if (isBypassPermissionsModeDisabled()) {
-                  return {
-                    ok: false,
-                    error: 'Cannot set permission mode to bypassPermissions because it is disabled by settings or configuration'
-                  };
-                }
-                if (!store.getState().toolPermissionContext.isBypassPermissionsModeAvailable) {
-                  return {
-                    ok: false,
-                    error: 'Cannot set permission mode to bypassPermissions because the session was not launched with --dangerously-skip-permissions'
-                  };
-                }
-              }
               if (feature('TRANSCRIPT_CLASSIFIER') && mode === 'auto' && !isAutoModeGateEnabled()) {
                 const reason = getAutoModeUnavailableReason();
                 return {

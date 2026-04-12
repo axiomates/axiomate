@@ -11,7 +11,6 @@ import { useKeybindings } from '../../keybindings/useKeybinding.js'
 import { useShortcutDisplay } from '../../keybindings/useShortcutDisplay.js'
 import {
   type AppState,
-  useAppState,
   useSetAppState,
 } from '../../state/AppState.js'
 import { getEmptyToolPermissionContext } from '../../Tool.js'
@@ -113,11 +112,6 @@ export function TeamsDialog({ initialTeams, onDone }: Props): React.ReactNode {
     return teammateStatuses.find(t => t.name === dialogLevel.memberName) ?? null
   }, [dialogLevel, teammateStatuses])
 
-  // Get isBypassPermissionsModeAvailable from AppState
-  const isBypassAvailable = useAppState(
-    s => s.toolPermissionContext.isBypassPermissionsModeAvailable,
-  )
-
   const goBackToList = (): void => {
     setDialogLevel({ type: 'teammateList', teamName: dialogLevel.teamName })
     setSelectedIndex(0)
@@ -130,7 +124,6 @@ export function TeamsDialog({ initialTeams, onDone }: Props): React.ReactNode {
       cycleTeammateMode(
         currentTeammate,
         dialogLevel.teamName,
-        isBypassAvailable,
       )
       setRefreshKey(k => k + 1)
     } else if (
@@ -141,11 +134,10 @@ export function TeamsDialog({ initialTeams, onDone }: Props): React.ReactNode {
       cycleAllTeammateModes(
         teammateStatuses,
         dialogLevel.teamName,
-        isBypassAvailable,
       )
       setRefreshKey(k => k + 1)
     }
-  }, [dialogLevel, currentTeammate, teammateStatuses, isBypassAvailable])
+  }, [dialogLevel, currentTeammate, teammateStatuses])
 
   // Use keybindings for mode cycling
   useKeybindings(
@@ -748,7 +740,6 @@ function sendModeChangeToTeammate(
 function cycleTeammateMode(
   teammate: TeammateStatus,
   teamName: string,
-  isBypassAvailable: boolean,
 ): void {
   const currentMode = teammate.mode
     ? permissionModeFromString(teammate.mode)
@@ -756,7 +747,6 @@ function cycleTeammateMode(
   const context = {
     ...getEmptyToolPermissionContext(),
     mode: currentMode,
-    isBypassPermissionsModeAvailable: isBypassAvailable,
   }
   const nextMode = getNextPermissionMode(context)
   sendModeChangeToTeammate(teammate.name, teamName, nextMode)
@@ -771,7 +761,6 @@ function cycleTeammateMode(
 function cycleAllTeammateModes(
   teammates: TeammateStatus[],
   teamName: string,
-  isBypassAvailable: boolean,
 ): void {
   if (teammates.length === 0) return
 
@@ -786,7 +775,6 @@ function cycleAllTeammateModes(
     : getNextPermissionMode({
         ...getEmptyToolPermissionContext(),
         mode: modes[0] ?? 'default',
-        isBypassPermissionsModeAvailable: isBypassAvailable,
       })
 
   // Batch update config.json in a single atomic operation

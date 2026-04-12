@@ -28,7 +28,7 @@ import { applyConfigEnvironmentVariables } from './utils/managedEnv.js';
 import type { PermissionMode } from './utils/permissions/PermissionMode.js';
 import { getBaseRenderOptions } from './utils/renderOptions.js';
 import { getSettingsWithAllErrors } from './utils/settings/allErrors.js';
-import { hasAutoModeOptIn, hasSkipDangerousModePermissionPrompt } from './utils/settings/settings.js';
+import { hasAutoModeOptIn } from './utils/settings/settings.js';
 export function completeOnboarding(): void {
   saveGlobalConfig(current => ({
     ...current,
@@ -100,7 +100,7 @@ export async function renderAndRun(root: Root, element: React.ReactNode): Promis
   await root.waitUntilExit();
   await gracefulShutdown(0);
 }
-export async function showSetupScreens(root: Root, permissionMode: PermissionMode, allowDangerouslySkipPermissions: boolean, commands?: Command[], claudeInChrome?: boolean, devChannels?: ChannelEntry[]): Promise<boolean> {
+export async function showSetupScreens(root: Root, permissionMode: PermissionMode, commands?: Command[], claudeInChrome?: boolean, devChannels?: ChannelEntry[]): Promise<boolean> {
   // Axiomate: skip onboarding and trust dialogs — they render blank
   // because theme/config infrastructure isn't fully ported yet.
   // TODO: implement axiomate's own onboarding flow
@@ -217,12 +217,6 @@ export async function showSetupScreens(root: Root, permissionMode: PermissionMod
         onChangeAppState
       });
     }
-  }
-  if ((permissionMode === 'bypassPermissions' || allowDangerouslySkipPermissions) && !hasSkipDangerousModePermissionPrompt()) {
-    const {
-      BypassPermissionsModeDialog
-    } = await import('./components/BypassPermissionsModeDialog.js');
-    await showSetupDialog(root, done => <BypassPermissionsModeDialog onAccept={done} />);
   }
   if (feature('TRANSCRIPT_CLASSIFIER')) {
     // Only show the opt-in dialog if auto mode actually resolved — if the

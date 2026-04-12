@@ -181,13 +181,11 @@ export type BridgeCoreParams = {
   /**
    * Returns a policy verdict so this module can emit an error control_response
    * without importing the policy checks itself (bootstrap-isolation constraint).
-   * The callback must guard `auto` (isAutoModeGateEnabled) and
-   * `bypassPermissions` (isBypassPermissionsModeDisabled AND
-   * isBypassPermissionsModeAvailable) BEFORE calling transitionPermissionMode —
-   * that function's internal auto-gate check is a defensive throw, not a
-   * graceful guard, and its side-effect order is setAutoModeActive(true) then
-   * throw, which corrupts the 3-way invariant documented in src/AXIOMATE.md if
-   * the callback lets the throw escape here.
+   * The callback must guard `auto` (isAutoModeGateEnabled) BEFORE calling
+   * transitionPermissionMode — that function's internal auto-gate check is a
+   * defensive throw, not a graceful guard, and its side-effect order is
+   * setAutoModeActive(true) then throw, which corrupts the 3-way invariant
+   * documented in src/AXIOMATE.md if the callback lets the throw escape here.
    */
   onSetPermissionMode?: (
     mode: PermissionMode,

@@ -64,10 +64,6 @@ export const PermissionsSchema = lazySchema(() =>
         )
         .optional()
         .describe('Default permission mode when Claude Code needs access'),
-      disableBypassPermissionsMode: z
-        .enum(['disable'])
-        .optional()
-        .describe('Disable the ability to bypass permission prompts'),
       ...(feature('TRANSCRIPT_CLASSIFIER')
         ? {
             disableAutoMode: z
@@ -954,12 +950,6 @@ export const SettingsSchema = lazySchema(() =>
         .optional()
         .describe(
           'Show thinking summaries in the transcript view (ctrl+o). Default: false.',
-        ),
-      skipDangerousModePermissionPrompt: z
-        .boolean()
-        .optional()
-        .describe(
-          'Whether the user has accepted the bypass permissions mode dialog',
         ),
       ...(feature('TRANSCRIPT_CLASSIFIER')
         ? {

@@ -1,6 +1,9 @@
 import { createHash } from 'crypto'
 import { join } from 'path'
-import { getIsNonInteractiveSession } from '../../bootstrap/state.js'
+import {
+  getIsNonInteractiveSession,
+  getSessionBypassPermissionsMode,
+} from '../../bootstrap/state.js'
 import type { Command } from '../../commands.js'
 import type { AgentMcpServerInfo } from '../../components/mcp/types.js'
 import type { Tool } from '../../Tool.js'
@@ -8,10 +11,7 @@ import type { AgentDefinition } from '../../tools/AgentTool/loadAgentsDir.js'
 import { getCwd } from '../../utils/cwd.js'
 import { getGlobalConfigFile } from '../../utils/env.js'
 import { isSettingSourceEnabled } from '../../utils/settings/constants.js'
-import {
-  getSettings_DEPRECATED,
-  hasSkipDangerousModePermissionPrompt,
-} from '../../utils/settings/settings.js'
+import { getSettings_DEPRECATED } from '../../utils/settings/settings.js'
 import { jsonStringify } from '../../utils/slowOperations.js'
 import { getEnterpriseMcpFilePath, getMcpConfigByName } from './config.js'
 import { mcpInfoFromString } from './mcpStringUtils.js'
@@ -373,18 +373,10 @@ export function getProjectMcpServerStatus(
     return 'approved'
   }
 
-  // In bypass permissions mode (--dangerously-skip-permissions), there's no way
-  // to show an approval popup. Auto-approve if projectSettings is enabled since
-  // the user has explicitly chosen to bypass all permission checks.
-  // SECURITY: We intentionally only check skipDangerousModePermissionPrompt via
-  // hasSkipDangerousModePermissionPrompt(), which reads from userSettings/localSettings/
-  // flagSettings/policySettings but NOT projectSettings (repo-level .axiomate/settings.json).
-  // This is intentional: a repo should not be able to accept the bypass dialog on behalf of
-  // users. We also do NOT check getSessionBypassPermissionsMode() here because
-  // sessionBypassPermissionsMode can be set from project settings before the dialog is shown,
-  // which would allow RCE attacks via malicious project settings.
+  // In bypass permissions mode, project MCP servers should not be blocked on
+  // an approval popup.
   if (
-    hasSkipDangerousModePermissionPrompt() &&
+    getSessionBypassPermissionsMode() &&
     isSettingSourceEnabled('projectSettings')
   ) {
     return 'approved'

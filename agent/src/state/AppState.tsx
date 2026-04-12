@@ -1,6 +1,5 @@
 import React, {
   useContext,
-  useEffect,
   useEffectEvent,
   useState,
   useSyncExternalStore,
@@ -8,11 +7,6 @@ import React, {
 import { MailboxProvider } from '../context/mailbox.js'
 import { VoiceProvider } from '../context/voice.js'
 import { useSettingsChange } from '../hooks/useSettingsChange.js'
-import { logForDebugging } from '../utils/debug.js'
-import {
-  createDisabledBypassPermissionsContext,
-  isBypassPermissionsModeDisabled,
-} from '../utils/permissions/permissionSetup.js'
 import { applySettingsChange } from '../utils/settings/applySettingsChange.js'
 import type { SettingSource } from '../utils/settings/constants.js'
 import { createStore } from './store.js'
@@ -68,30 +62,6 @@ export function AppStateProvider({
       onChangeAppState,
     ),
   )
-
-  // Check on mount if bypass mode should be disabled
-  // This handles the race condition where remote settings load BEFORE this component mounts,
-  // meaning the settings change notification was sent when no listeners were subscribed.
-  // On subsequent sessions, the cached remote-settings.json is read during initial setup,
-  // but on the first session the remote fetch may complete before React mounts.
-  useEffect(() => {
-    const { toolPermissionContext } = store.getState()
-    if (
-      toolPermissionContext.isBypassPermissionsModeAvailable &&
-      isBypassPermissionsModeDisabled()
-    ) {
-      logForDebugging(
-        'Disabling bypass permissions mode on mount (remote settings loaded before mount)',
-      )
-      store.setState(prev => ({
-        ...prev,
-        toolPermissionContext: createDisabledBypassPermissionsContext(
-          prev.toolPermissionContext,
-        ),
-      }))
-    }
-    // biome-ignore lint/correctness/useExhaustiveDependencies: intentional mount-only effect
-  }, [])
 
   // Listen for external settings changes and sync to AppState.
   // This ensures file watcher changes propagate through the app --

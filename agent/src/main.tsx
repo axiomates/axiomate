@@ -117,7 +117,7 @@ import { getModelDeprecationWarning } from './utils/model/deprecation.js';
 import { getDefaultMainLoopModel, getUserSpecifiedModelSetting, normalizeModelStringForAPI, parseUserSpecifiedModel } from './utils/model/model.js';
 import { ensureModelStringsInitialized } from './utils/model/modelStrings.js';
 import { PERMISSION_MODES } from './utils/permissions/PermissionMode.js';
-import { checkAndDisableBypassPermissions, getAutoModeEnabledStateIfCached, initializeToolPermissionContext, initialPermissionModeFromCLI, isDefaultPermissionModeAuto, parseToolListFromCLI, removeDangerousPermissions, stripDangerousPermissionsForAutoMode, verifyAutoModeGateAccess } from './utils/permissions/permissionSetup.js';
+import { getAutoModeEnabledStateIfCached, initializeToolPermissionContext, initialPermissionModeFromCLI, isDefaultPermissionModeAuto, parseToolListFromCLI, removeDangerousPermissions, stripDangerousPermissionsForAutoMode, verifyAutoModeGateAccess } from './utils/permissions/permissionSetup.js';
 import { cleanupOrphanedPluginVersionsInBackground } from './utils/plugins/cacheUtils.js';
 import { initializeVersionedPlugins } from './utils/plugins/installedPluginsManager.js';
 import { getManagedPluginNames } from './utils/plugins/managedPlugins.js';
@@ -504,12 +504,10 @@ function initializeEntrypoint(isNonInteractive: boolean): void {
 type PendingConnect = {
   url: string | undefined;
   authToken: string | undefined;
-  dangerouslySkipPermissions: boolean;
 };
 const _pendingConnect: PendingConnect | undefined = feature('DIRECT_CONNECT') ? {
   url: undefined,
-  authToken: undefined,
-  dangerouslySkipPermissions: false
+  authToken: undefined
 } : undefined;
 
 // Set by early argv processing when `claude assistant [sessionId]` is detected
@@ -529,7 +527,6 @@ type PendingSSH = {
   host: string | undefined;
   cwd: string | undefined;
   permissionMode: string | undefined;
-  dangerouslySkipPermissions: boolean;
   /** --local: spawn the child CLI directly, skip ssh/probe/deploy. e2e test mode. */
   local: boolean;
   /** Extra CLI args to forward to the remote CLI on initial spawn (--resume, -c). */
@@ -539,7 +536,6 @@ const _pendingSSH: PendingSSH | undefined = feature('SSH_REMOTE') ? {
   host: undefined,
   cwd: undefined,
   permissionMode: undefined,
-  dangerouslySkipPermissions: false,
   local: false,
   extraCliArgs: []
 } : undefined;
@@ -579,24 +575,15 @@ export async function main() {
         parseConnectUrl
       } = await import('./server/parseConnectUrl.js');
       const parsed = parseConnectUrl(ccUrl);
-      _pendingConnect.dangerouslySkipPermissions = rawCliArgs.includes('--dangerously-skip-permissions');
       if (rawCliArgs.includes('-p') || rawCliArgs.includes('--print')) {
         // Headless: rewrite to internal `open` subcommand
         const stripped = rawCliArgs.filter((_, i) => i !== ccIdx);
-        const dspIdx = stripped.indexOf('--dangerously-skip-permissions');
-        if (dspIdx !== -1) {
-          stripped.splice(dspIdx, 1);
-        }
         process.argv = [process.argv[0]!, process.argv[1]!, 'open', ccUrl, ...stripped];
       } else {
         // Interactive: strip cc:// URL and flags, run main command
         _pendingConnect.url = parsed.serverUrl;
         _pendingConnect.authToken = parsed.authToken;
         const stripped = rawCliArgs.filter((_, i) => i !== ccIdx);
-        const dspIdx = stripped.indexOf('--dangerously-skip-permissions');
-        if (dspIdx !== -1) {
-          stripped.splice(dspIdx, 1);
-        }
         process.argv = [process.argv[0]!, process.argv[1]!, ...stripped];
       }
     }
@@ -677,11 +664,6 @@ export async function main() {
       if (localIdx !== -1) {
         _pendingSSH.local = true;
         rawCliArgs.splice(localIdx, 1);
-      }
-      const dspIdx = rawCliArgs.indexOf('--dangerously-skip-permissions');
-      if (dspIdx !== -1) {
-        _pendingSSH.dangerouslySkipPermissions = true;
-        rawCliArgs.splice(dspIdx, 1);
       }
       const pmIdx = rawCliArgs.indexOf('--permission-mode');
       if (pmIdx !== -1 && rawCliArgs[pmIdx + 1] && !rawCliArgs[pmIdx + 1]!.startsWith('-')) {
@@ -929,7 +911,7 @@ async function run(): Promise<CommanderCommand> {
     // If not provided but flag is present, value will be true
     // The actual filtering is handled in debug.ts by parsing process.argv
     return true;
-  }).addOption(new Option('-d2e, --debug-to-stderr', 'Enable debug mode (to stderr)').argParser(Boolean).hideHelp()).option('--debug-file <path>', 'Write debug logs to a specific file path (implicitly enables debug mode)', () => true).option('--verbose', 'Override verbose mode setting from config', () => true).option('-p, --print', 'Print response and exit (useful for pipes). Note: The workspace trust dialog is skipped when Claude is run with the -p mode. Only use this flag in directories you trust.', () => true).option('--bare', 'Minimal mode: skip hooks, LSP, plugin sync, attribution, auto-memory, background prefetches, keychain reads, and AXIOMATE.md auto-discovery. Sets CLAUDE_CODE_SIMPLE=1. Auth is strictly ANTHROPIC_API_KEY or apiKeyHelper via --settings (OAuth and keychain are never read). 3P providers (Bedrock/Vertex/Foundry) use their own credentials. Skills still resolve via /skill-name. Explicitly provide context via: --system-prompt[-file], --append-system-prompt[-file], --add-dir (AXIOMATE.md dirs), --mcp-config, --settings, --agents, --plugin-dir.', () => true).addOption(new Option('--init', 'Run Setup hooks with init trigger, then continue').hideHelp()).addOption(new Option('--init-only', 'Run Setup and SessionStart:startup hooks, then exit').hideHelp()).addOption(new Option('--maintenance', 'Run Setup hooks with maintenance trigger, then continue').hideHelp()).addOption(new Option('--output-format <format>', 'Output format (only works with --print): "text" (default), "json" (single result), or "stream-json" (realtime streaming)').choices(['text', 'json', 'stream-json'])).addOption(new Option('--json-schema <schema>', 'JSON Schema for structured output validation. ' + 'Example: {"type":"object","properties":{"name":{"type":"string"}},"required":["name"]}').argParser(String)).option('--include-hook-events', 'Include all hook lifecycle events in the output stream (only works with --output-format=stream-json)', () => true).option('--include-partial-messages', 'Include partial message chunks as they arrive (only works with --print and --output-format=stream-json)', () => true).addOption(new Option('--input-format <format>', 'Input format (only works with --print): "text" (default), or "stream-json" (realtime streaming input)').choices(['text', 'stream-json'])).option('--mcp-debug', '[DEPRECATED. Use --debug instead] Enable MCP debug mode (shows MCP server errors)', () => true).option('--dangerously-skip-permissions', 'Bypass all permission checks. Recommended only for sandboxes with no internet access.', () => true).option('--allow-dangerously-skip-permissions', 'Enable bypassing all permission checks as an option, without it being enabled by default. Recommended only for sandboxes with no internet access.', () => true).addOption(new Option('--thinking <mode>', 'Thinking mode: enabled (equivalent to adaptive), disabled').choices(['enabled', 'adaptive', 'disabled']).hideHelp()).addOption(new Option('--max-thinking-tokens <tokens>', '[DEPRECATED. Use --thinking instead for newer models] Maximum number of thinking tokens (only works with --print)').argParser(Number).hideHelp()).addOption(new Option('--max-turns <turns>', 'Maximum number of agentic turns in non-interactive mode. This will early exit the conversation after the specified number of turns. (only works with --print)').argParser(Number).hideHelp()).addOption(new Option('--max-budget-usd <amount>', 'Maximum dollar amount to spend on API calls (only works with --print)').argParser(value => {
+  }).addOption(new Option('-d2e, --debug-to-stderr', 'Enable debug mode (to stderr)').argParser(Boolean).hideHelp()).option('--debug-file <path>', 'Write debug logs to a specific file path (implicitly enables debug mode)', () => true).option('--verbose', 'Override verbose mode setting from config', () => true).option('-p, --print', 'Print response and exit (useful for pipes). Note: The workspace trust dialog is skipped when Claude is run with the -p mode. Only use this flag in directories you trust.', () => true).option('--bare', 'Minimal mode: skip hooks, LSP, plugin sync, attribution, auto-memory, background prefetches, keychain reads, and AXIOMATE.md auto-discovery. Sets CLAUDE_CODE_SIMPLE=1. Auth is strictly ANTHROPIC_API_KEY or apiKeyHelper via --settings (OAuth and keychain are never read). 3P providers (Bedrock/Vertex/Foundry) use their own credentials. Skills still resolve via /skill-name. Explicitly provide context via: --system-prompt[-file], --append-system-prompt[-file], --add-dir (AXIOMATE.md dirs), --mcp-config, --settings, --agents, --plugin-dir.', () => true).addOption(new Option('--init', 'Run Setup hooks with init trigger, then continue').hideHelp()).addOption(new Option('--init-only', 'Run Setup and SessionStart:startup hooks, then exit').hideHelp()).addOption(new Option('--maintenance', 'Run Setup hooks with maintenance trigger, then continue').hideHelp()).addOption(new Option('--output-format <format>', 'Output format (only works with --print): "text" (default), "json" (single result), or "stream-json" (realtime streaming)').choices(['text', 'json', 'stream-json'])).addOption(new Option('--json-schema <schema>', 'JSON Schema for structured output validation. ' + 'Example: {"type":"object","properties":{"name":{"type":"string"}},"required":["name"]}').argParser(String)).option('--include-hook-events', 'Include all hook lifecycle events in the output stream (only works with --output-format=stream-json)', () => true).option('--include-partial-messages', 'Include partial message chunks as they arrive (only works with --print and --output-format=stream-json)', () => true).addOption(new Option('--input-format <format>', 'Input format (only works with --print): "text" (default), or "stream-json" (realtime streaming input)').choices(['text', 'stream-json'])).option('--mcp-debug', '[DEPRECATED. Use --debug instead] Enable MCP debug mode (shows MCP server errors)', () => true).addOption(new Option('--thinking <mode>', 'Thinking mode: enabled (equivalent to adaptive), disabled').choices(['enabled', 'adaptive', 'disabled']).hideHelp()).addOption(new Option('--max-thinking-tokens <tokens>', '[DEPRECATED. Use --thinking instead for newer models] Maximum number of thinking tokens (only works with --print)').argParser(Number).hideHelp()).addOption(new Option('--max-turns <turns>', 'Maximum number of agentic turns in non-interactive mode. This will early exit the conversation after the specified number of turns. (only works with --print)').argParser(Number).hideHelp()).addOption(new Option('--max-budget-usd <amount>', 'Maximum dollar amount to spend on API calls (only works with --print)').argParser(value => {
     const amount = Number(value);
     if (isNaN(amount) || amount <= 0) {
       throw new Error('--max-budget-usd must be a positive number greater than 0');
@@ -1046,8 +1028,6 @@ async function run(): Promise<CommanderCommand> {
     const {
       debug = false,
       debugToStderr = false,
-      dangerouslySkipPermissions,
-      allowDangerouslySkipPermissions = false,
       tools: baseTools = [],
       allowedTools = [],
       disallowedTools = [],
@@ -1346,8 +1326,7 @@ async function run(): Promise<CommanderCommand> {
       mode: permissionMode,
       notification: permissionModeNotification
     } = initialPermissionModeFromCLI({
-      permissionModeCli,
-      dangerouslySkipPermissions
+      permissionModeCli
     });
 
     // Store session bypass permissions mode for trust dialog check
@@ -1705,7 +1684,6 @@ async function run(): Promise<CommanderCommand> {
       disallowedToolsCli: disallowedTools,
       baseToolsCli: baseTools,
       permissionMode,
-      allowDangerouslySkipPermissions,
       addDirs: addDir
     });
     let toolPermissionContext = initResult.toolPermissionContext;
@@ -1880,7 +1858,7 @@ async function run(): Promise<CommanderCommand> {
       initBuiltinPlugins();
       initBundledSkills();
     }
-    const setupPromise = setup(preSetupCwd, permissionMode, allowDangerouslySkipPermissions, worktreeEnabled, worktreeName, tmuxEnabled, sessionId ? validateUuid(sessionId) : undefined, worktreePRNumber, messagingSocketPath);
+    const setupPromise = setup(preSetupCwd, worktreeEnabled, worktreeName, tmuxEnabled, sessionId ? validateUuid(sessionId) : undefined, worktreePRNumber, messagingSocketPath);
     const commandsPromise = worktreeEnabled ? null : getCommands(preSetupCwd);
     const agentDefsPromise = worktreeEnabled ? null : getAgentDefinitionsWithOverrides(preSetupCwd);
     // Suppress transient unhandledRejection if these reject during the
@@ -2226,7 +2204,7 @@ async function run(): Promise<CommanderCommand> {
         durationMs: Math.round(process.uptime() * 1000)
       });
       const setupScreensStart = Date.now();
-      const onboardingShown = await showSetupScreens(root, permissionMode, allowDangerouslySkipPermissions, commands, enableClaudeInChrome, devChannels);
+      const onboardingShown = await showSetupScreens(root, permissionMode, commands, enableClaudeInChrome, devChannels);
       logForDebugging(`[STARTUP] showSetupScreens() completed in ${Date.now() - setupScreensStart}ms`);
 
       // Now that trust is established and GrowthBook has auth headers,
@@ -2492,10 +2470,8 @@ async function run(): Promise<CommanderCommand> {
       worktreeEnabled,
       skipWebFetchPreflight: getInitialSettings().skipWebFetchPreflight,
       githubActionInputs: process.env.GITHUB_ACTION_INPUTS,
-      dangerouslySkipPermissionsPassed: dangerouslySkipPermissions ?? false,
       permissionMode,
       modeIsBypass: permissionMode === 'bypassPermissions',
-      allowDangerouslySkipPermissionsPassed: allowDangerouslySkipPermissions,
       systemPromptFlag: systemPrompt ? options.systemPromptFile ? 'file' : 'flag' : undefined,
       appendSystemPromptFlag: appendSystemPrompt ? options.appendSystemPromptFile ? 'file' : 'flag' : undefined,
       thinkingConfig,
@@ -2635,12 +2611,6 @@ async function run(): Promise<CommanderCommand> {
 
       // Init app state
       const headlessStore = createStore(headlessInitialState, onChangeAppState);
-
-      // Check if bypassPermissions should be disabled based on Statsig gate
-      // This runs in parallel to the code below, to avoid blocking the main loop.
-      if (toolPermissionContext.mode === 'bypassPermissions' || allowDangerouslySkipPermissions) {
-        void checkAndDisableBypassPermissions(toolPermissionContext);
-      }
 
       // Async check of auto mode gate — corrects state and disables auto if needed.
       // Gated on TRANSCRIPT_CLASSIFIER (not USER_TYPE) so GrowthBook kill switch runs for external builds too.
@@ -3144,8 +3114,7 @@ async function run(): Promise<CommanderCommand> {
         const session = await createDirectConnectSession({
           serverUrl: _pendingConnect.url,
           authToken: _pendingConnect.authToken,
-          cwd: getOriginalCwd(),
-          dangerouslySkipPermissions: _pendingConnect.dangerouslySkipPermissions
+          cwd: getOriginalCwd()
         });
         if (session.workDir) {
           setOriginalCwd(session.workDir);
@@ -3191,8 +3160,7 @@ async function run(): Promise<CommanderCommand> {
           process.stderr.write('Starting local ssh-proxy test session...\n');
           sshSession = createLocalSSHSession({
             cwd: _pendingSSH.cwd,
-            permissionMode: _pendingSSH.permissionMode,
-            dangerouslySkipPermissions: _pendingSSH.dangerouslySkipPermissions
+            permissionMode: _pendingSSH.permissionMode
           });
         } else {
           process.stderr.write(`Connecting to ${_pendingSSH.host}…\n`);
@@ -3206,7 +3174,6 @@ async function run(): Promise<CommanderCommand> {
             cwd: _pendingSSH.cwd,
             localVersion: MACRO.VERSION,
             permissionMode: _pendingSSH.permissionMode,
-            dangerouslySkipPermissions: _pendingSSH.dangerouslySkipPermissions,
             extraCliArgs: _pendingSSH.extraCliArgs
           }, isTTY ? {
             onProgress: msg => {
@@ -3801,9 +3768,6 @@ async function run(): Promise<CommanderCommand> {
     program.addOption(new Option('--delegate-permissions', '[ANT-ONLY] Alias for --permission-mode auto.').implies({
       permissionMode: 'auto'
     }));
-    program.addOption(new Option('--dangerously-skip-permissions-with-classifiers', '[ANT-ONLY] Deprecated alias for --permission-mode auto.').hideHelp().implies({
-      permissionMode: 'auto'
-    }));
     program.addOption(new Option('--afk', '[ANT-ONLY] Deprecated alias for --permission-mode auto.').hideHelp().implies({
       permissionMode: 'auto'
     }));
@@ -4027,7 +3991,7 @@ async function run(): Promise<CommanderCommand> {
   // this action it means the argv rewrite didn't fire (e.g. user ran
   // `claude ssh` with no host) — just print usage.
   if (feature('SSH_REMOTE')) {
-    program.command('ssh <host> [dir]').description('Run Claude Code on a remote host over SSH. Deploys the binary and ' + 'tunnels API auth back through your local machine — no remote setup needed.').option('--permission-mode <mode>', 'Permission mode for the remote session').option('--dangerously-skip-permissions', 'Skip all permission prompts on the remote (dangerous)').option('--local', 'e2e test mode — spawn the child CLI locally (skip ssh/deploy). ' + 'Exercises the auth proxy and unix-socket plumbing without a remote host.').action(async () => {
+    program.command('ssh <host> [dir]').description('Run Claude Code on a remote host over SSH. Deploys the binary and ' + 'tunnels API auth back through your local machine — no remote setup needed.').option('--permission-mode <mode>', 'Permission mode for the remote session').option('--local', 'e2e test mode — spawn the child CLI locally (skip ssh/deploy). ' + 'Exercises the auth proxy and unix-socket plumbing without a remote host.').action(async () => {
       // Argv rewriting in main() should have consumed `ssh <host>` before
       // commander runs. Reaching here means host was missing or the
       // rewrite predicate didn't match.
@@ -4053,8 +4017,7 @@ async function run(): Promise<CommanderCommand> {
         const session = await createDirectConnectSession({
           serverUrl,
           authToken,
-          cwd: getOriginalCwd(),
-          dangerouslySkipPermissions: _pendingConnect?.dangerouslySkipPermissions
+          cwd: getOriginalCwd()
         });
         if (session.workDir) {
           setOriginalCwd(session.workDir);
@@ -4507,10 +4470,8 @@ async function logTenguInit({
   worktreeEnabled,
   skipWebFetchPreflight,
   githubActionInputs,
-  dangerouslySkipPermissionsPassed,
   permissionMode,
   modeIsBypass,
-  allowDangerouslySkipPermissionsPassed,
   systemPromptFlag,
   appendSystemPromptFlag,
   thinkingConfig,
@@ -4530,10 +4491,8 @@ async function logTenguInit({
   worktreeEnabled: boolean;
   skipWebFetchPreflight: boolean | undefined;
   githubActionInputs: string | undefined;
-  dangerouslySkipPermissionsPassed: boolean;
   permissionMode: string;
   modeIsBypass: boolean;
-  allowDangerouslySkipPermissionsPassed: boolean;
   systemPromptFlag: 'file' | 'flag' | undefined;
   appendSystemPromptFlag: 'file' | 'flag' | undefined;
   thinkingConfig: ThinkingConfig;
@@ -4558,11 +4517,9 @@ async function logTenguInit({
       ...(githubActionInputs && {
         githubActionInputs: githubActionInputs as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
       }),
-      dangerouslySkipPermissionsPassed,
       permissionMode: permissionMode as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
       modeIsBypass,
       inProtectedNamespace: isInProtectedNamespace(),
-      allowDangerouslySkipPermissionsPassed,
       thinkingType: thinkingConfig.type as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
       ...(systemPromptFlag && {
         systemPromptFlag: systemPromptFlag as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS

@@ -327,8 +327,8 @@ export function handleServerControlRequest(
 
     case 'set_permission_mode': {
       // The callback returns a policy verdict so we can send an error
-      // control_response without importing isAutoModeGateEnabled /
-      // isBypassPermissionsModeDisabled here (bootstrap-isolation). If no
+      // control_response without importing isAutoModeGateEnabled here
+      // (bootstrap-isolation). If no
       // callback is registered (daemon context, which doesn't wire this —
       // see daemonBridge.ts), return an error verdict rather than a silent
       // false-success: the mode is never actually applied in that context,

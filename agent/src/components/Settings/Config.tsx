@@ -598,7 +598,7 @@ export function Config({
         )
           ? PERMISSION_MODES
           : EXTERNAL_PERMISSION_MODES
-        const excluded: PermissionMode[] = ['bypassPermissions']
+        const excluded: PermissionMode[] = []
         if (feature('TRANSCRIPT_CLASSIFIER') && !showAutoInDefaultModePicker) {
           excluded.push('auto')
         }

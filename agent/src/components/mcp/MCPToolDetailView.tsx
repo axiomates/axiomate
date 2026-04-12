@@ -45,7 +45,6 @@ export function MCPToolDetailView({
               alwaysAllowRules: {},
               alwaysDenyRules: {},
               alwaysAskRules: {},
-              isBypassPermissionsModeAvailable: false,
             },
             tools: [],
           },

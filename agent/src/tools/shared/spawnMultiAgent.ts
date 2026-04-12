@@ -220,7 +220,7 @@ function buildInheritedCliFlags(options?: {
     permissionMode === 'bypassPermissions' ||
     getSessionBypassPermissionsMode()
   ) {
-    flags.push('--dangerously-skip-permissions')
+    flags.push('--permission-mode bypassPermissions')
   } else if (permissionMode === 'acceptEdits') {
     flags.push('--permission-mode acceptEdits')
   } else if (permissionMode === 'auto') {

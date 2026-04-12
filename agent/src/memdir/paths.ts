@@ -174,7 +174,7 @@ function getAutoMemPathOverride(): string | undefined {
  * autoMemoryDirectory: "~/.ssh" and gain silent write access to sensitive
  * directories via the filesystem.ts write carve-out (which fires when
  * isAutoMemPath() matches and hasAutoMemPathOverride() is false). This follows
- * the same pattern as hasSkipDangerousModePermissionPrompt() etc.
+ * the same pattern as other trusted settings-source checks.
  */
 function getAutoMemPathSetting(): string | undefined {
   const dir =

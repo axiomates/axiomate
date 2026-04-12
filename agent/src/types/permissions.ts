@@ -433,7 +433,6 @@ export type ToolPermissionContext = {
   readonly alwaysAllowRules: ToolPermissionRulesBySource
   readonly alwaysDenyRules: ToolPermissionRulesBySource
   readonly alwaysAskRules: ToolPermissionRulesBySource
-  readonly isBypassPermissionsModeAvailable: boolean
   readonly strippedDangerousRules?: ToolPermissionRulesBySource
   readonly shouldAvoidPermissionPrompts?: boolean
   readonly awaitAutomatedChecksBeforeDialog?: boolean

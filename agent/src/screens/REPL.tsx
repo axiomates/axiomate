@@ -229,7 +229,7 @@ import { useOfficialMarketplaceNotification } from '../hooks/useOfficialMarketpl
 import { usePromptsFromClaudeInChrome } from '../hooks/usePromptsFromClaudeInChrome.js';
 import { getTipToShowOnSpinner, recordShownTip } from '../services/tips/tipScheduler.js';
 import type { Theme } from '../utils/theme.js';
-import { checkAndDisableBypassPermissionsIfNeeded, checkAndDisableAutoModeIfNeeded, useKickOffCheckAndDisableBypassPermissionsIfNeeded, useKickOffCheckAndDisableAutoModeIfNeeded } from '../utils/permissions/bypassPermissionsKillswitch.js';
+import { checkAndDisableAutoModeIfNeeded, useKickOffCheckAndDisableAutoModeIfNeeded } from '../utils/permissions/autoModeKillswitch.js';
 import { SandboxManager } from '../utils/sandbox/sandbox-adapter.js';
 import { SANDBOX_NETWORK_ACCESS_TOOL_NAME } from '../cli/structuredIO.js';
 import { useFileHistorySnapshotInit } from '../hooks/useFileHistorySnapshotInit.js';
@@ -685,7 +685,6 @@ export function REPL({
   // the model emits plain text the brief filter hides.
   const isBriefOnly = useAppState(s => s.isBriefOnly);
   const localTools = useMemo(() => getTools(toolPermissionContext), [toolPermissionContext, proactiveActive, isBriefOnly]);
-  useKickOffCheckAndDisableBypassPermissionsIfNeeded();
   useKickOffCheckAndDisableAutoModeIfNeeded();
   const [dynamicMcpConfig, setDynamicMcpConfig] = useState<Record<string, ScopedMcpServerConfig> | undefined>(initialDynamicMcpConfig);
   const onChangeDynamicMcpConfig = useCallback((config: Record<string, ScopedMcpServerConfig>) => {
@@ -2720,9 +2719,7 @@ export function REPL({
       });
     }
     queryCheckpoint('query_context_loading_start');
-    const [,, defaultSystemPrompt, baseUserContext, systemContext] = await Promise.all([
-    // IMPORTANT: do this after setMessages() above, to avoid UI jank
-    checkAndDisableBypassPermissionsIfNeeded(toolPermissionContext, setAppState),
+    const [, defaultSystemPrompt, baseUserContext, systemContext] = await Promise.all([
     // Gated on TRANSCRIPT_CLASSIFIER so GrowthBook kill switch runs wherever auto mode is built in
     feature('TRANSCRIPT_CLASSIFIER') ? checkAndDisableAutoModeIfNeeded(toolPermissionContext, setAppState, store.getState().fastMode) : undefined, getSystemPrompt(freshTools, mainLoopModelParam, Array.from(toolPermissionContext.additionalWorkingDirectories.keys()), freshMcpClients), getUserContext(), getSystemContext()]);
     const userContext = {

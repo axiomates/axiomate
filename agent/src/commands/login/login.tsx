@@ -18,10 +18,8 @@ import type { LocalJSXCommandOnDone } from '../../types/command.js'
 import { stripSignatureBlocks } from '../../utils/messages.js'
 import {
   checkAndDisableAutoModeIfNeeded,
-  checkAndDisableBypassPermissionsIfNeeded,
   resetAutoModeGateCheck,
-  resetBypassPermissionsCheck,
-} from '../../utils/permissions/bypassPermissionsKillswitch.js'
+} from '../../utils/permissions/autoModeKillswitch.js'
 import { resetUserCache } from '../../utils/user.js'
 
 export async function call(
@@ -53,13 +51,8 @@ export async function call(
           clearTrustedDeviceToken()
           // Enroll as a trusted device for Remote Control (10-min fresh-session window)
           void enrollTrustedDevice()
-          // Reset killswitch gate checks and re-run with new org
-          resetBypassPermissionsCheck()
+          // Reset auto-mode gate checks and re-run with new org
           const appState = context.getAppState()
-          void checkAndDisableBypassPermissionsIfNeeded(
-            appState.toolPermissionContext,
-            context.setAppState,
-          )
           if (feature('TRANSCRIPT_CLASSIFIER')) {
             resetAutoModeGateCheck()
             void checkAndDisableAutoModeIfNeeded(
