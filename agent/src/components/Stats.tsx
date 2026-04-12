@@ -97,7 +97,7 @@ export function Stats({ onClose }: Props): React.ReactNode {
       fallback={
         <Box marginTop={1}>
           <Spinner />
-          <Text> Loading your Claude Code stats…</Text>
+          <Text> Loading your Axiomate stats…</Text>
         </Box>
       }
     >
@@ -210,7 +210,7 @@ function StatsContent({
     return (
       <Box marginTop={1}>
         <Text color="warning">
-          No stats available yet. Start using Claude Code!
+          No stats available yet. Start using Axiomate!
         </Text>
       </Box>
     )
@@ -309,10 +309,7 @@ function OverviewTab({
   )
 
   // Memoize the factoid so it doesn't change when switching tabs
-  const factoid = useMemo(
-    () => generateFunFactoid(stats, totalTokens),
-    [stats, totalTokens],
-  )
+  const factoid = useMemo(() => generateFunFactoid(stats), [stats])
 
   // Calculate range days based on selected date range
   const rangeDays =
@@ -523,35 +520,6 @@ function OverviewTab({
   )
 }
 
-// Famous books and their approximate token counts (words * ~1.3)
-// Sorted by tokens ascending for comparison logic
-const BOOK_COMPARISONS = [
-  { name: 'The Little Prince', tokens: 22000 },
-  { name: 'The Old Man and the Sea', tokens: 35000 },
-  { name: 'A Christmas Carol', tokens: 37000 },
-  { name: 'Animal Farm', tokens: 39000 },
-  { name: 'Fahrenheit 451', tokens: 60000 },
-  { name: 'The Great Gatsby', tokens: 62000 },
-  { name: 'Slaughterhouse-Five', tokens: 64000 },
-  { name: 'Brave New World', tokens: 83000 },
-  { name: 'The Catcher in the Rye', tokens: 95000 },
-  { name: "Harry Potter and the Philosopher's Stone", tokens: 103000 },
-  { name: 'The Hobbit', tokens: 123000 },
-  { name: '1984', tokens: 123000 },
-  { name: 'To Kill a Mockingbird', tokens: 130000 },
-  { name: 'Pride and Prejudice', tokens: 156000 },
-  { name: 'Dune', tokens: 244000 },
-  { name: 'Moby-Dick', tokens: 268000 },
-  { name: 'Crime and Punishment', tokens: 274000 },
-  { name: 'A Game of Thrones', tokens: 381000 },
-  { name: 'Anna Karenina', tokens: 468000 },
-  { name: 'Don Quixote', tokens: 520000 },
-  { name: 'The Lord of the Rings', tokens: 576000 },
-  { name: 'The Count of Monte Cristo', tokens: 603000 },
-  { name: 'Les Misérables', tokens: 689000 },
-  { name: 'War and Peace', tokens: 730000 },
-]
-
 // Time equivalents for session durations
 const TIME_COMPARISONS = [
   { name: 'a TED talk', minutes: 18 },
@@ -566,28 +534,8 @@ const TIME_COMPARISONS = [
   { name: 'a full night of sleep', minutes: 480 },
 ]
 
-function generateFunFactoid(
-  stats: ClaudeCodeStats,
-  totalTokens: number,
-): string {
+function generateFunFactoid(stats: ClaudeCodeStats): string {
   const factoids: string[] = []
-
-  if (totalTokens > 0) {
-    const matchingBooks = BOOK_COMPARISONS.filter(
-      book => totalTokens >= book.tokens,
-    )
-
-    for (const book of matchingBooks) {
-      const times = totalTokens / book.tokens
-      if (times >= 2) {
-        factoids.push(
-          `You've used ~${Math.floor(times)}x more tokens than ${book.name}`,
-        )
-      } else {
-        factoids.push(`You've used the same number of tokens as ${book.name}`)
-      }
-    }
-  }
 
   if (stats.longestSession) {
     const sessionMinutes = stats.longestSession.duration / (1000 * 60)
@@ -1114,8 +1062,10 @@ function renderOverviewToAnsi(stats: ClaudeCodeStats): string[] {
   lines.push('')
 
   // Fun factoid
-  const factoid = generateFunFactoid(stats, totalTokens)
-  lines.push(h(factoid))
+  const factoid = generateFunFactoid(stats)
+  if (factoid) {
+    lines.push(h(factoid))
+  }
   lines.push(chalk.gray(`Stats from the last ${stats.totalDays} days`))
 
   return lines

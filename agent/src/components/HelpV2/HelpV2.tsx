@@ -110,7 +110,7 @@ export function HelpV2({ onClose, commands }: Props): React.ReactNode {
           title={
             "external" === 'ant'
               ? '/help'
-              : `Claude Code v${MACRO.VERSION}`
+              : `Axiomate v${MACRO.VERSION}`
           }
           color="professionalBlue"
           defaultTab="general"
@@ -120,7 +120,7 @@ export function HelpV2({ onClose, commands }: Props): React.ReactNode {
         <Box marginTop={1}>
           <Text>
             For more help:{' '}
-            <Link url="https://code.claude.com/docs/en/overview" />
+            <Link url="https://github.com/axiomates/axiomate" />
           </Text>
         </Box>
         <Box marginTop={1}>
