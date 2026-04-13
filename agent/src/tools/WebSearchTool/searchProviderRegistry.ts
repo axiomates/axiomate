@@ -22,22 +22,22 @@ const SEARCH_PROVIDER_FACTORIES = {
   'brave-web-search': {
     type: 'brave-web-search',
     create: (providerName, config) =>
-      new BraveWebSearchProvider(providerName, config),
+      new BraveWebSearchProvider(providerName, config as import('../../utils/config.js').BraveWebSearchProviderConfig),
   },
   exa: {
     type: 'exa',
     create: (providerName, config) =>
-      new ExaSearchProvider(providerName, config),
+      new ExaSearchProvider(providerName, config as import('../../utils/config.js').ExaSearchProviderConfig),
   },
   serpapi: {
     type: 'serpapi',
     create: (providerName, config) =>
-      new SerpApiSearchProvider(providerName, config),
+      new SerpApiSearchProvider(providerName, config as import('../../utils/config.js').SerpApiSearchProviderConfig),
   },
   tavily: {
     type: 'tavily',
     create: (providerName, config) =>
-      new TavilySearchProvider(providerName, config),
+      new TavilySearchProvider(providerName, config as import('../../utils/config.js').TavilySearchProviderConfig),
   },
 } satisfies Record<SearchProviderConfig['type'], SearchProviderFactory>
 

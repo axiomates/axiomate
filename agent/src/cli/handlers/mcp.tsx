@@ -60,7 +60,7 @@ export async function mcpServeHandler({
     const {
       setup
     } = await import('../../setup.js');
-    await setup(providedCwd, 'default', false, false, undefined, false);
+    await setup(providedCwd, false, undefined, false);
     const {
       startMCPServer
     } = await import('../../entrypoints/mcp.js');

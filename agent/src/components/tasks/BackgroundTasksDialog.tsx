@@ -138,7 +138,7 @@ const WorkflowDetailDialog = feature('WORKFLOW_SCRIPTS')
     ).WorkflowDetailDialog
   : null
 const workflowTaskModule = feature('WORKFLOW_SCRIPTS')
-  ? (require('src/tasks/LocalWorkflowTask/LocalWorkflowTask.js') as typeof import('src/tasks/LocalWorkflowTask/LocalWorkflowTask.js'))
+  ? (require('../../tasks/LocalWorkflowTask/LocalWorkflowTask.js') as typeof import('../../tasks/LocalWorkflowTask/LocalWorkflowTask.js'))
   : null
 const killWorkflowTask = workflowTaskModule?.killWorkflowTask ?? null
 const skipWorkflowAgent = workflowTaskModule?.skipWorkflowAgent ?? null

@@ -107,7 +107,7 @@ export async function installHandler(
   options: { force?: boolean },
 ): Promise<void> {
   const { setup } = await import('../../setup.js')
-  await setup(cwd(), 'default', false, false, undefined, false)
+  await setup(cwd(), false, undefined, false)
   const { install } = await import('../../commands/install.js')
   await new Promise<void>(resolve => {
     const args: string[] = []

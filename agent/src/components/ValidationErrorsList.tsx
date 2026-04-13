@@ -133,12 +133,6 @@ export function ValidationErrorsList({
         // Render the tree
         const treeOutput = treeify(errorTree, {
           showValues: true,
-          themeName,
-          treeCharColors: {
-            treeChar: 'inactive',
-            key: 'text',
-            value: 'inactive',
-          },
         })
 
         return (

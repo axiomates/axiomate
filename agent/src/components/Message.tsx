@@ -174,7 +174,7 @@ function MessageImpl({
               addMargin={addMargin}
               tools={tools}
               progressMessagesForMessage={progressMessagesForMessage}
-              param={param}
+              param={param as TextBlockParam | ImageBlockParam | ToolUseBlockParam | ToolResultBlockParam}
               style={style}
               verbose={verbose}
               imageIndex={imageIndices[index]!}

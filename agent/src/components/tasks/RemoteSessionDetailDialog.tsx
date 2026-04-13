@@ -614,7 +614,7 @@ export function RemoteSessionDetailDialog({
               {lastMessages.map((msg, i) => (
                 <Message
                   key={i}
-                  message={msg}
+                  message={msg as Parameters<typeof Message>[0]['message']}
                   lookups={EMPTY_LOOKUPS}
                   addMargin={i > 0}
                   tools={toolUseContext.options.tools}

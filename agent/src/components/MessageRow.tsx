@@ -17,7 +17,7 @@ import {
   getSiblingToolUseIDsFromLookup,
   getToolUseID,
 } from '../utils/messages.js'
-import { hasThinkingContent, Message } from './Message.js'
+import { hasThinkingContent, Message, type Props as MessageProps } from './Message.js'
 import { MessageModel } from './MessageModel.js'
 import { shouldRenderStatically } from './Messages.js'
 import { MessageTimestamp } from './MessageTimestamp.js'
@@ -103,7 +103,7 @@ export function hasContentAfterIndex(
     // Collapsible grouped_tool_use messages arrive transiently before being
     // merged into the current collapsed group on the next render cycle
     if (msg?.type === 'grouped_tool_use') {
-      const firstInput = msg.messages[0]?.message.content[0]?.input
+      const firstInput = (msg.messages[0]?.message.content[0] as { input?: unknown })?.input
       if (
         getToolSearchOrReadInfo(msg.toolName, firstInput, tools).isCollapsible
       ) {
@@ -194,7 +194,7 @@ function MessageRowImpl({
 
   const messageEl = (
     <Message
-      message={msg}
+      message={msg as MessageProps['message']}
       lookups={lookups}
       addMargin={!hasMetadata}
       containerWidth={hasMetadata ? undefined : columns}
@@ -335,7 +335,7 @@ export function areMessageRowPropsEqual(prev: Props, next: Props): boolean {
   // memo for every scrollback message whenever thinking starts/stops (CC-941).
   if (
     prev.lastThinkingBlockId !== next.lastThinkingBlockId &&
-    hasThinkingContent(next.message)
+    hasThinkingContent(next.message as Parameters<typeof hasThinkingContent>[0])
   ) {
     return false
   }

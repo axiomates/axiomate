@@ -79,7 +79,11 @@ export function renderToolUseProgressMessage(
     )
   }
 
-  const { progress, total, progressMessage } = lastProgress.data
+  const { progress, total, progressMessage } = lastProgress.data as {
+    progress?: number
+    total?: number
+    progressMessage?: string
+  }
 
   if (progress === undefined) {
     return (

@@ -328,7 +328,7 @@ export function renderToolResultMessage(
 
   const finalAssistantMessage = createAssistantMessage({
     content: completionMessage,
-    usage: { ...usage, inference_geo: null, iterations: null, speed: null },
+    usage: { ...usage, inference_geo: null, iterations: null, speed: null } as Parameters<typeof createAssistantMessage>[0]['usage'],
   })
 
   return (
@@ -545,7 +545,7 @@ export function renderToolUseProgressMessage(
 
   const firstData = progressMessages[0]?.data
   const prompt =
-    firstData && hasProgressMessage(firstData) ? firstData.prompt : undefined
+    firstData && hasProgressMessage(firstData) ? (firstData.prompt as string | undefined) : undefined
 
   // After grouping, displayedMessages can be empty when the only progress so
   // far is an assistant tool_use for a search/read op (grouped but not yet

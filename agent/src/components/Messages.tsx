@@ -584,11 +584,11 @@ const MessagesImpl = ({
             })
 
       const messagesToShowNotTruncated = reorderMessagesInUI(
-        compactAwareMessages
+        (compactAwareMessages
           .filter(
             (msg): msg is Exclude<NormalizedMessage, ProgressMessageType> =>
               msg.type !== 'progress',
-          )
+          ) as Parameters<typeof reorderMessagesInUI>[0])
           // CC-724: drop attachment messages that AttachmentMessage renders as
           // null (hook_success, hook_additional_context, hook_cancelled, etc.)
           // BEFORE counting/slicing so they don't inflate the "N messages"

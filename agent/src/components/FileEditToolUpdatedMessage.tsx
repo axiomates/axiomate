@@ -27,11 +27,11 @@ export function FileEditToolUpdatedMessage({
 }: Props): React.ReactNode {
   const { columns } = useTerminalSize()
   const numAdditions = structuredPatch.reduce(
-    (acc, hunk) => acc + count(hunk.lines, _ => _.startsWith('+')),
+    (acc, hunk) => acc + count(hunk.lines, _ => ((_ as string).startsWith('+'))),
     0,
   )
   const numRemovals = structuredPatch.reduce(
-    (acc, hunk) => acc + count(hunk.lines, _ => _.startsWith('-')),
+    (acc, hunk) => acc + count(hunk.lines, _ => ((_ as string).startsWith('-'))),
     0,
   )
 

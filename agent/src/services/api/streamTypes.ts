@@ -273,9 +273,37 @@ export type RedactedThinkingBlockParam = {
   data: string
 }
 
+export type Base64PDFSource = {
+  type: 'base64'
+  media_type: 'application/pdf'
+  data: string
+}
+
+export type PlainTextSource = {
+  type: 'text'
+  media_type: 'text/plain'
+  data: string
+}
+
+export type ContentBlockSource = {
+  type: 'content'
+  content: string | ContentBlockParam[]
+}
+
+export type URLPDFSource = {
+  type: 'url'
+  url: string
+}
+
+export type DocumentBlockSource =
+  | Base64PDFSource
+  | PlainTextSource
+  | ContentBlockSource
+  | URLPDFSource
+
 export type DocumentBlockParam = {
   type: 'document'
-  source: unknown
+  source: DocumentBlockSource
   cache_control?: { type: 'ephemeral' } | null
   title?: string | null
   context?: string | null

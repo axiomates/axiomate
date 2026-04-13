@@ -720,6 +720,7 @@ export type Attachment = (
     }
   | { type: 'pen_mode_enter' }
   | { type: 'pen_mode_exit' }
+  | { type: 'companion_intro' }
 ) & AttachmentCommon
 
 export type TeammateMailboxAttachment = {

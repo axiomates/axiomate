@@ -257,10 +257,9 @@ export const TaskOutputTool: Tool<InputSchema, TaskOutputToolOutput> =
         // Non-blocking: return current state
         if (task.status !== 'running' && task.status !== 'pending') {
           // Mark as notified
-          updateTaskState(task_id, toolUseContext.setAppState, t => ({
-            ...t,
-            notified: true,
-          }))
+          updateTaskState(task_id, toolUseContext.setAppState, t =>
+            Object.assign({}, t, { notified: true }),
+          )
           return {
             data: {
               retrieval_status: 'success' as const,
@@ -281,7 +280,7 @@ export const TaskOutputTool: Tool<InputSchema, TaskOutputToolOutput> =
         onProgress({
           toolUseID: `task-output-waiting-${Date.now()}`,
           data: {
-            type: 'waiting_for_task',
+            type: 'task_output_progress' as const,
             taskDescription: task.description,
             taskType: task.type,
           },
@@ -317,10 +316,9 @@ export const TaskOutputTool: Tool<InputSchema, TaskOutputToolOutput> =
       }
 
       // Mark as notified
-      updateTaskState(task_id, toolUseContext.setAppState, t => ({
-        ...t,
-        notified: true,
-      }))
+      updateTaskState(task_id, toolUseContext.setAppState, t =>
+        Object.assign({}, t, { notified: true }),
+      )
 
       return {
         data: {

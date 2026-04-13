@@ -106,6 +106,11 @@ export function SystemTextMessage({
   }
 
 
+  // api_metrics messages don't have .level / .content — bail early
+  if (message.subtype === 'api_metrics') {
+    return null
+  }
+
   if (message.subtype === 'bridge_status') {
     return <BridgeStatusMessage message={message} addMargin={addMargin} />
   }

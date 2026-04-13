@@ -278,34 +278,6 @@ function createSpeculationFeedbackMessage(
   sessionTotalMs: number,
 ): Message | null {
   return null
-
-  if (messages.length === 0 || timeSavedMs === 0) return null
-
-  const toolUses = countToolsInMessages(messages)
-  const tokens = boundary?.type === 'complete' ? boundary.outputTokens : null
-
-  const parts = []
-  if (toolUses > 0) {
-    parts.push(`Speculated ${toolUses} tool ${toolUses === 1 ? 'use' : 'uses'}`)
-  } else {
-    const turns = messages.length
-    parts.push(`Speculated ${turns} ${turns === 1 ? 'turn' : 'turns'}`)
-  }
-
-  if (tokens !== null) {
-    parts.push(`${formatNumber(tokens)} tokens`)
-  }
-
-  const savedText = `+${formatDuration(timeSavedMs)} saved`
-  const sessionSuffix =
-    sessionTotalMs !== timeSavedMs
-      ? ` (${formatDuration(sessionTotalMs)} this session)`
-      : ''
-
-  return createSystemMessage(
-    `[ANT-ONLY] ${parts.join(' · ')} · ${savedText}${sessionSuffix}`,
-    'warning',
-  )
 }
 
 function updateActiveSpeculationState(

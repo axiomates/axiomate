@@ -242,7 +242,6 @@ export function formatReleaseNoteForDisplay(
 export function getLogoDisplayData(): {
   version: string
   cwd: string
-  billingType: string
   agentName: string | undefined
 } {
   const version = process.env.DEMO_VERSION ?? MACRO.VERSION
