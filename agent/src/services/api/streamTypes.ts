@@ -4,13 +4,22 @@
  * before being consumed by processStream().
  */
 
+import type {
+  CitationsConfigParam,
+  TextCitation,
+  TextCitationParam,
+} from '@anthropic-ai/sdk/resources/messages/messages'
+
+// Re-export so consumers don't need a direct SDK dependency
+export type { CitationsConfigParam, TextCitation, TextCitationParam }
+
 // ===== Content blocks (response side) =====
 
 export type TextBlock = {
   type: 'text'
   text: string
   /** Provider extension: Anthropic citations. Present when citation feature is enabled. */
-  citations?: unknown[] | null
+  citations?: TextCitation[] | null
 }
 
 export type ToolUseBlock = {
@@ -197,7 +206,7 @@ export type BlockDelta =
   | { type: 'tool_input'; json: string }
   | { type: 'thinking'; thinking: string }
   | { type: 'signature'; signature: string }
-  | { type: 'citations'; citation: unknown }
+  | { type: 'citations'; citation: TextCitation }
   | { type: 'connector_text'; text: string }
 
 // =====================================================================
@@ -228,7 +237,7 @@ export type TextBlockParam = {
   /** Provider extension: Anthropic prompt caching. Ignored by OpenAI. */
   cache_control?: { type: 'ephemeral' } | null
   /** Provider extension: Anthropic citations. */
-  citations?: unknown[] | null
+  citations?: TextCitationParam[] | null
 }
 
 export type ImageBlockParam = {
@@ -270,7 +279,7 @@ export type DocumentBlockParam = {
   cache_control?: { type: 'ephemeral' } | null
   title?: string | null
   context?: string | null
-  citations?: unknown
+  citations?: CitationsConfigParam
 }
 
 export type ContentBlockParam =

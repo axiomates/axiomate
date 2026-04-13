@@ -24,6 +24,7 @@ import type {
   LLMResponse,
   StopReason,
   StreamEvent,
+  TextCitation,
   Usage,
 } from './streamTypes.js'
 
@@ -59,7 +60,7 @@ export type StreamAccumulatorResult = {
 // Internal mutable block types (for accumulation)
 // ---------------------------------------------------------------------------
 
-type AccTextBlock = { type: 'text'; text: string; citations?: unknown[] }
+type AccTextBlock = { type: 'text'; text: string; citations?: TextCitation[] }
 type AccToolUseBlock = { type: 'tool_use'; id: string; name: string; input: string }
 type AccThinkingBlock = { type: 'thinking'; thinking: string; signature: string }
 type AccServerToolUseBlock = { type: 'server_tool_use'; id: string; name: string; input: string }
