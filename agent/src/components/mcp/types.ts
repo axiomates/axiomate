@@ -59,14 +59,20 @@ export interface AgentMcpServerInfo {
   config?: McpStdioServerConfig | McpHTTPServerConfig | McpSSEServerConfig
 }
 
-export type MCPViewState = 'list' | 'detail' | 'add' | string
-
-export type ServerInfo =
+export type RegularServerInfo =
   | ClaudeAIServerInfo
   | HTTPServerInfo
   | SSEServerInfo
   | StdioServerInfo
-  | AgentMcpServerInfo
+
+export type ServerInfo = RegularServerInfo | AgentMcpServerInfo
+
+export type MCPViewState =
+  | { type: 'list'; defaultTab?: string }
+  | { type: 'server-menu'; server: RegularServerInfo }
+  | { type: 'server-tools'; server: RegularServerInfo }
+  | { type: 'server-tool-detail'; server: RegularServerInfo; toolIndex: number }
+  | { type: 'agent-server-menu'; agentServer: AgentMcpServerInfo }
 
 export function getCwd(): string {
   return process.cwd()

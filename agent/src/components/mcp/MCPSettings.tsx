@@ -19,7 +19,7 @@ import { MCPRemoteServerMenu } from './MCPRemoteServerMenu.js'
 import { MCPStdioServerMenu } from './MCPStdioServerMenu.js'
 import { MCPToolDetailView } from './MCPToolDetailView.js'
 import { MCPToolListView } from './MCPToolListView.js'
-import type { AgentMcpServerInfo, MCPViewState, ServerInfo } from './types.js'
+import type { AgentMcpServerInfo, MCPViewState, RegularServerInfo, ServerInfo } from './types.js'
 
 type Props = {
   onComplete: (
@@ -154,8 +154,8 @@ export function MCPSettings({ onComplete }: Props): React.ReactNode {
         <MCPListPanel
           servers={servers}
           agentServers={agentMcpServers}
-          onSelectServer={server =>
-            setViewState({ type: 'server-menu', server })
+          onSelectServer={(server: ServerInfo) =>
+            setViewState({ type: 'server-menu', server: server as RegularServerInfo })
           }
           onSelectAgentServer={(agentServer: AgentMcpServerInfo) =>
             setViewState({ type: 'agent-server-menu', agentServer })
