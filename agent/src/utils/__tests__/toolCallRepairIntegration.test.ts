@@ -248,7 +248,7 @@ describe('repair system: malformed → valid', () => {
         allTools,
       )
       expect(result.ok).toBe(false)
-      if (!result.ok) {
+      if (result.ok === false) {
         expect(result.error).toBe('schema_mismatch')
       }
     })
@@ -480,7 +480,7 @@ describe('repair system: safety boundaries', () => {
       allTools,
     )
     expect(result.ok).toBe(false)
-    if (!result.ok) {
+    if (result.ok === false) {
       expect(result.error).toBe('unknown_tool_name')
     }
   })
