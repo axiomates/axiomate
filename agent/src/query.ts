@@ -78,6 +78,8 @@ import {
 import { notifyCommandLifecycle } from './utils/commandLifecycle.js'
 import { headlessProfilerCheckpoint } from './utils/headlessProfiler.js'
 import {
+  getFastModel,
+  getMidModel,
   getRuntimeMainLoopModel,
   renderModelName,
 } from './utils/model/model.js'
@@ -255,11 +257,21 @@ async function* queryLoop(
     userContext,
     systemContext,
     canUseTool,
-    fallbackModel,
     querySource,
     maxTurns,
     skipCacheWrite,
   } = params
+  // Auto-resolve fallback model: use explicit config, or pick the best
+  // available cheaper model (midModel → fastModel) that differs from current.
+  const fallbackModel = params.fallbackModel ?? (() => {
+    const currentModel = params.toolUseContext.options.mainLoopModel
+    if (!currentModel) return undefined
+    const mid = getMidModel()
+    if (mid !== currentModel) return mid
+    const fast = getFastModel()
+    if (fast !== currentModel) return fast
+    return undefined
+  })()
   const deps = params.deps ?? productionDeps()
 
   // Mutable cross-iteration state. The loop body destructures this at the top

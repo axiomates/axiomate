@@ -223,7 +223,7 @@ export async function* withRetry<C, T>(
         consecutiveOverloadedErrors++
         if (consecutiveOverloadedErrors >= MAX_OVERLOADED_RETRIES) {
           if (options.fallbackModel) {
-            logEvent('tengu_api_opus_fallback_triggered', {
+            logEvent('tengu_api_overloaded_fallback_triggered', {
               original_model:
                 options.model as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
               fallback_model:
@@ -235,13 +235,11 @@ export async function* withRetry<C, T>(
               options.fallbackModel,
             )
           }
-          if (!process.env.IS_SANDBOX) {
-            logEvent('tengu_api_custom_529_overloaded_error', {})
-            throw new CannotRetryError(
-              new Error(REPEATED_529_ERROR_MESSAGE),
-              retryContext,
-            )
-          }
+          logEvent('tengu_api_overloaded_exhausted', {})
+          throw new CannotRetryError(
+            new Error(REPEATED_529_ERROR_MESSAGE),
+            retryContext,
+          )
         }
       } else {
         consecutiveOverloadedErrors = 0
