@@ -51,10 +51,19 @@ describe('classifyError: HTTP status → reason', () => {
     expect(result.statusCode).toBe(401)
   })
 
-  it('403 → auth', () => {
+  it('403 → auth (transient)', () => {
     const result = classifyError(makeAPIError(403, 'Forbidden'), defaultContext)
     expect(result.reason).toBe('auth')
     expect(result.statusCode).toBe(403)
+  })
+
+  it('401 + "account has been disabled" → auth_permanent', () => {
+    const result = classifyError(
+      makeAPIError(401, 'Your account has been disabled'),
+      defaultContext,
+    )
+    expect(result.reason).toBe('auth_permanent')
+    expect(result.retryable).toBe(false)
   })
 
   it('404 → model_not_found', () => {
@@ -107,6 +116,26 @@ describe('classifyError: HTTP status → reason', () => {
     const result = classifyError(error, defaultContext)
     expect(result.reason).toBe('overloaded')
     expect(result.retryable).toBe(true)
+  })
+
+  it('400 + thinking signature → thinking_signature', () => {
+    const result = classifyError(
+      makeAPIError(400, 'Invalid signature for thinking block'),
+      defaultContext,
+    )
+    expect(result.reason).toBe('thinking_signature')
+    expect(result.retryable).toBe(true)
+    expect(result.shouldCompress).toBe(false)
+  })
+
+  it('429 + extra usage + long context → long_context_tier', () => {
+    const result = classifyError(
+      makeAPIError(429, 'Rate limited: extra usage tier required for long context requests'),
+      defaultContext,
+    )
+    expect(result.reason).toBe('long_context_tier')
+    expect(result.retryable).toBe(true)
+    expect(result.shouldCompress).toBe(true)
   })
 })
 

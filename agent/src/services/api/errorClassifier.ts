@@ -22,19 +22,22 @@ import { getHeader } from './headerUtils.js'
 // ---------------------------------------------------------------------------
 
 export type ErrorFailoverReason =
-  | 'abort'            // User cancelled
-  | 'connection'       // Network / DNS / TLS error
-  | 'timeout'          // Connection or read timeout
-  | 'overloaded'       // 503/529 — provider capacity
-  | 'rate_limit'       // 429 — throttling
-  | 'billing'          // 402 / confirmed credit exhaustion (permanent)
-  | 'auth'             // 401/403 — authentication failure
-  | 'context_overflow' // Prompt too long / context window exceeded
-  | 'payload_too_large'// 413
-  | 'model_not_found'  // 404 / invalid model
-  | 'format_error'     // 400 bad request (not context overflow)
-  | 'server_error'     // 500/502
-  | 'unknown'          // Unclassifiable
+  | 'abort'              // User cancelled
+  | 'connection'         // Network / DNS / TLS error
+  | 'timeout'            // Connection or read timeout
+  | 'overloaded'         // 503/529 — provider capacity
+  | 'rate_limit'         // 429 — throttling
+  | 'billing'            // 402 / confirmed credit exhaustion (permanent)
+  | 'auth'               // 401/403 — transient auth (refresh may fix)
+  | 'auth_permanent'     // Auth failed after refresh — abort
+  | 'context_overflow'   // Prompt too long / context window exceeded
+  | 'payload_too_large'  // 413
+  | 'model_not_found'    // 404 / invalid model
+  | 'format_error'       // 400 bad request (not context overflow)
+  | 'server_error'       // 500/502
+  | 'thinking_signature' // Anthropic thinking block signature invalid
+  | 'long_context_tier'  // Anthropic "extra usage" tier gate (429 + long context)
+  | 'unknown'            // Unclassifiable
 
 export interface ClassifiedError {
   /** Semantic reason for the failure */
@@ -148,7 +151,7 @@ const MODEL_NOT_FOUND_PATTERNS = [
   'unsupported model',
 ]
 
-/** Authentication failures */
+/** Transient authentication failures (refresh/rotate may fix) */
 const AUTH_PATTERNS = [
   'invalid api key',
   'invalid_api_key',
@@ -158,6 +161,19 @@ const AUTH_PATTERNS = [
   'token expired',
   'token revoked',
   'access denied',
+]
+
+/**
+ * Permanent auth failures — refresh won't help, must abort.
+ * If any of these appear in the error message alongside a 401/403,
+ * classify as auth_permanent instead of auth.
+ */
+const AUTH_PERMANENT_PATTERNS = [
+  'account is deactivated',
+  'account has been disabled',
+  'api key has been revoked',
+  'permanently banned',
+  'access has been terminated',
 ]
 
 /** Server disconnect patterns (connection dropped mid-stream) */
@@ -192,13 +208,39 @@ export function classifyError(
   const message = extractMessage(error)
   const lowerMessage = message.toLowerCase()
 
-  // 3. HTTP status dispatch
+  // 3. Provider-specific patterns (highest priority — before generic HTTP dispatch)
+  if (statusCode === 400 && lowerMessage.includes('signature') && lowerMessage.includes('thinking')) {
+    return result('thinking_signature', {
+      statusCode,
+      retryable: true,
+      message,
+    })
+  }
+  if (statusCode === 429 && lowerMessage.includes('extra usage') && lowerMessage.includes('long context')) {
+    return result('long_context_tier', {
+      statusCode,
+      retryable: true,
+      shouldCompress: true,
+      message,
+    })
+  }
+
+  // 4. HTTP status dispatch
   if (statusCode !== undefined) {
     const retryAfterMs = parseRetryAfterMs(error)
 
     switch (statusCode) {
       case 401:
       case 403:
+        // Distinguish transient auth (can refresh) from permanent
+        if (hasAnyPattern(lowerMessage, AUTH_PERMANENT_PATTERNS)) {
+          return result('auth_permanent', {
+            statusCode,
+            retryable: false,
+            shouldFallback: true,
+            message,
+          })
+        }
         return result('auth', {
           statusCode,
           retryable: false,
