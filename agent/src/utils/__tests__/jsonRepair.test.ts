@@ -342,6 +342,9 @@ describe('repairToolCallJsonAgainstSchemas', () => {
         offset: z.number().int().nonnegative().optional(),
         limit: z.number().int().positive().optional(),
       }),
+      propertyAliases: {
+        file_path: ['file', 'filePath', 'filepath', 'filename', 'fileName', 'path'],
+      },
     },
     {
       name: 'Bash',
@@ -350,6 +353,9 @@ describe('repairToolCallJsonAgainstSchemas', () => {
         description: z.string().optional(),
         run_in_background: z.boolean().optional(),
       }),
+      propertyAliases: {
+        command: ['cmd', 'shell', 'script'],
+      },
     },
     {
       name: 'Edit',
@@ -359,6 +365,12 @@ describe('repairToolCallJsonAgainstSchemas', () => {
         new_string: z.string(),
         replace_all: z.boolean().optional(),
       }),
+      propertyAliases: {
+        file_path: ['file', 'filePath', 'filepath', 'filename', 'fileName', 'path'],
+        old_string: ['old', 'oldString', 'oldText', 'search', 'target'],
+        new_string: ['new', 'newString', 'newText', 'replacement', 'replaceWith'],
+        replace_all: ['all', 'replaceAll'],
+      },
     },
   ]
 

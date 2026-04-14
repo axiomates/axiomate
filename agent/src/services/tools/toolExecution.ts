@@ -107,7 +107,7 @@ import {
   processPreMappedToolResultBlock,
   processToolResultBlock,
 } from '../../utils/toolResultStorage.js'
-import { repairToolCallJsonAgainstSchemas } from '../../utils/jsonRepair.js'
+import { repairToolInputAgainstSchema } from '../../utils/jsonRepair.js'
 import { shouldRepairToolCallsForResponseModel } from '../../utils/modelProviderConfig.js'
 import {
   extractDiscoveredToolNames,
@@ -575,40 +575,13 @@ function streamedCheckPermissionsAndCallTool(
   return stream
 }
 
-function buildToolCallJsonForInputRepair(
-  toolName: string,
-  input: unknown,
-  unparsedInput?: string,
-): string {
-  if (unparsedInput && unparsedInput.trim().length > 0) {
-    return `{"type":"tool_use","name":${JSON.stringify(toolName)},"input":${unparsedInput}}`
-  }
-
-  try {
-    return JSON.stringify({
-      type: 'tool_use',
-      name: toolName,
-      input,
-    })
-  } catch {
-    return JSON.stringify({
-      type: 'tool_use',
-      name: toolName,
-      input: {},
-    })
-  }
-}
-
 function repairToolInputForFinalSchemaCheck(
   tool: Tool,
   input: unknown,
   unparsedInput?: string,
 ): unknown {
   try {
-    const repaired = repairToolCallJsonAgainstSchemas(
-      buildToolCallJsonForInputRepair(tool.name, input, unparsedInput),
-      [tool],
-    )
+    const repaired = repairToolInputAgainstSchema(input, unparsedInput, tool)
     return repaired.ok ? repaired.input : input
   } catch {
     return input
@@ -670,6 +643,15 @@ async function checkPermissionsAndCallTool(
       unparsedInput,
     )
     parsedInput = tool.inputSchema.safeParse(repairedInput)
+    logEvent('tengu_tool_call_repair', {
+      toolName: sanitizeToolNameForAnalytics(tool.name),
+      model: (assistantMessage.message.model ?? 'unknown') as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+      repairSucceeded: parsedInput.success,
+      hadUnparsedInput: unparsedInput !== undefined,
+    })
+    if (parsedInput.success) {
+      logForDebugging(`Repaired tool input for ${tool.name}`)
+    }
   }
   if (!parsedInput.success) {
     let errorContent = formatZodValidationError(tool.name, parsedInput.error)
