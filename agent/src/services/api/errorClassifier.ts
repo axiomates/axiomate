@@ -9,13 +9,9 @@
  * decide what to do. It never re-parses the error itself.
  */
 
-import {
-  APIConnectionError,
-  APIError,
-  APIUserAbortError,
-} from '@anthropic-ai/sdk'
 import { extractConnectionErrorDetails } from './errorUtils.js'
 import { getHeader } from './headerUtils.js'
+import { LLMAbortError, LLMAPIError } from './streamTypes.js'
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -196,7 +192,7 @@ export function classifyError(
   context: ErrorClassificationContext,
 ): ClassifiedError {
   // 1. User abort
-  if (error instanceof APIUserAbortError) {
+  if (error instanceof LLMAbortError) {
     return result('abort', {
       retryable: false,
       message: 'User aborted the request',
@@ -332,18 +328,18 @@ export function classifyError(
     })
   }
 
-  // 5. Transport / connection errors
-  if (error instanceof APIConnectionError) {
-    const details = extractConnectionErrorDetails(error)
+  // 5. Transport / connection errors (provider-neutral: walks cause chain)
+  const connectionDetails = extractConnectionErrorDetails(error)
+  if (connectionDetails) {
     if (
-      details?.code === 'ETIMEDOUT' ||
-      details?.code === 'UND_ERR_CONNECT_TIMEOUT'
+      connectionDetails.code === 'ETIMEDOUT' ||
+      connectionDetails.code === 'UND_ERR_CONNECT_TIMEOUT'
     ) {
       return result('timeout', { retryable: true, message })
     }
     // ECONNRESET/EPIPE + large session → likely context overflow (hermes heuristic)
     if (
-      (details?.code === 'ECONNRESET' || details?.code === 'EPIPE') &&
+      (connectionDetails.code === 'ECONNRESET' || connectionDetails.code === 'EPIPE') &&
       isLargeSession(context)
     ) {
       return result('context_overflow', {
@@ -501,7 +497,7 @@ function classify400(
 // ---------------------------------------------------------------------------
 
 function extractStatusCode(error: unknown): number | undefined {
-  if (error instanceof APIError) {
+  if (error instanceof LLMAPIError) {
     return error.status
   }
   // Walk cause chain for wrapped errors (max depth 5)
@@ -520,7 +516,7 @@ function extractStatusCode(error: unknown): number | undefined {
 }
 
 function extractMessage(error: unknown): string {
-  if (error instanceof APIError) {
+  if (error instanceof LLMAPIError) {
     return (error.message ?? String(error)).slice(0, 500)
   }
   if (error instanceof Error) {
@@ -530,7 +526,7 @@ function extractMessage(error: unknown): string {
 }
 
 function parseRetryAfterMs(error: unknown): number | undefined {
-  if (!(error instanceof APIError)) return undefined
+  if (!(error instanceof LLMAPIError)) return undefined
   const header = getHeader(error.headers, 'retry-after')
   if (!header) return undefined
   const seconds = parseInt(header, 10)

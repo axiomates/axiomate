@@ -1,10 +1,4 @@
 import { feature } from 'bun:bundle'
-import type Anthropic from '@anthropic-ai/sdk'
-import {
-  APIConnectionError,
-  APIError,
-  APIUserAbortError,
-} from '@anthropic-ai/sdk'
 import type { QuerySource } from '../../constants/querySource.js'
 import type { SystemAPIErrorMessage } from '../../types/message.js'
 import { logForDebugging } from '../../utils/debug.js'
@@ -31,8 +25,9 @@ import {
 import { REPEATED_529_ERROR_MESSAGE } from './errors.js'
 import { classifyError } from './errorClassifier.js'
 import { extractConnectionErrorDetails } from './errorUtils.js'
+import { LLMAbortError, LLMAPIError } from './streamTypes.js'
 
-const abortError = () => new APIUserAbortError()
+const abortError = () => new LLMAbortError()
 
 const DEFAULT_MAX_RETRIES = 10
 const FLOOR_OUTPUT_TOKENS = 3000
@@ -66,9 +61,6 @@ function isForegroundSource(querySource: QuerySource | undefined): boolean {
 }
 
 function isStaleConnectionError(error: unknown): boolean {
-  if (!(error instanceof APIConnectionError)) {
-    return false
-  }
   const details = extractConnectionErrorDetails(error)
   return details?.code === 'ECONNRESET' || details?.code === 'EPIPE'
 }
@@ -121,10 +113,10 @@ export class FallbackTriggeredError extends Error {
   }
 }
 
-export async function* withRetry<T>(
-  getClient: () => Promise<Anthropic>,
+export async function* withRetry<C, T>(
+  getClient: () => Promise<C>,
   operation: (
-    client: Anthropic,
+    client: C,
     attempt: number,
     context: RetryContext,
   ) => Promise<T>,
@@ -135,12 +127,12 @@ export async function* withRetry<T>(
     model: options.model,
     thinkingConfig: options.thinkingConfig,
   }
-  let client: Anthropic | null = null
+  let client: C | null = null
   let consecutiveOverloadedErrors = options.initialConsecutive529Errors ?? 0
   let lastError: unknown
   for (let attempt = 1; attempt <= maxRetries + 1; attempt++) {
     if (options.signal?.aborted) {
-      throw new APIUserAbortError()
+      throw new LLMAbortError()
     }
 
     try {
@@ -166,7 +158,7 @@ export async function* withRetry<T>(
 
       if (
         client === null ||
-        (lastError instanceof APIError && lastError.status === 401) ||
+        (lastError instanceof LLMAPIError && lastError.status === 401) ||
         isOAuthTokenRevokedError(lastError) ||
         isBedrockAuthError(lastError) ||
         isVertexAuthError(lastError) ||
@@ -174,7 +166,7 @@ export async function* withRetry<T>(
       ) {
         // On 401 "token expired" or 403 "token revoked", force a token refresh
         if (
-          (lastError instanceof APIError && lastError.status === 401) ||
+          (lastError instanceof LLMAPIError && lastError.status === 401) ||
           isOAuthTokenRevokedError(lastError)
         ) {
           const failedAccessToken = getClaudeAIOAuthTokens()?.accessToken
@@ -189,7 +181,7 @@ export async function* withRetry<T>(
     } catch (error) {
       lastError = error
       logForDebugging(
-        `API error (attempt ${attempt}/${maxRetries + 1}): ${error instanceof APIError ? `${error.status} ${error.message}` : errorMessage(error)}`,
+        `API error (attempt ${attempt}/${maxRetries + 1}): ${error instanceof LLMAPIError ? `${error.status} ${error.message}` : errorMessage(error)}`,
         { level: 'error' },
       )
 
@@ -295,7 +287,7 @@ export async function* withRetry<T>(
         }
 
         // Second attempt: adjust max_tokens if we can parse the overflow details
-        if (error instanceof APIError) {
+        if (error instanceof LLMAPIError) {
           const overflowData = parseMaxTokensContextOverflowError(error)
           if (overflowData) {
             const { inputTokens, contextLimit } = overflowData
@@ -343,13 +335,13 @@ export async function* withRetry<T>(
       logEvent('tengu_api_retry', {
         attempt,
         delayMs,
-        error: (error as APIError)
+        error: (error as LLMAPIError)
           .message as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
         status: classified.statusCode,
         provider: getAPIProviderForStatsig(),
       })
 
-      if (error instanceof APIError) {
+      if (error instanceof LLMAPIError) {
         yield createSystemAPIErrorMessage(error, delayMs, attempt, maxRetries)
       }
       await sleep(delayMs, options.signal, { abortError })
@@ -379,7 +371,7 @@ export function getRetryDelay(
   return baseDelay + jitter
 }
 
-export function parseMaxTokensContextOverflowError(error: APIError):
+export function parseMaxTokensContextOverflowError(error: LLMAPIError):
   | {
       inputTokens: number
       maxTokens: number
@@ -427,7 +419,7 @@ export function parseMaxTokensContextOverflowError(error: APIError):
 }
 
 export function is529Error(error: unknown): boolean {
-  if (!(error instanceof APIError)) {
+  if (!(error instanceof LLMAPIError)) {
     return false
   }
 
@@ -441,7 +433,7 @@ export function is529Error(error: unknown): boolean {
 
 function isOAuthTokenRevokedError(error: unknown): boolean {
   return (
-    error instanceof APIError &&
+    error instanceof LLMAPIError &&
     error.status === 403 &&
     (error.message?.includes('OAuth token has been revoked') ?? false)
   )
@@ -454,7 +446,7 @@ function isBedrockAuthError(error: unknown): boolean {
     // "The security token included in the request is invalid"
     if (
       isAwsCredentialsProviderError(error) ||
-      (error instanceof APIError && error.status === 403)
+      (error instanceof LLMAPIError && error.status === 403)
     ) {
       return true
     }
@@ -475,7 +467,7 @@ function isGoogleAuthLibraryCredentialError(error: unknown): boolean {
 function isVertexAuthError(error: unknown): boolean {
   if (isEnvTruthy(process.env.CLAUDE_CODE_USE_VERTEX)) {
     if (isGoogleAuthLibraryCredentialError(error)) return true
-    if (error instanceof APIError && error.status === 401) return true
+    if (error instanceof LLMAPIError && error.status === 401) return true
   }
   return false
 }

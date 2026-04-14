@@ -37,6 +37,7 @@ import {
 import { OpenAIStreamState, type OpenAIChatChunk } from '../adapters/openaiStreamAdapter.js'
 import { mapOpenAIUsage } from '../adapters/openaiUsageMapper.js'
 import { rememberUnparsedToolInputForRepair } from '../toolInputRepairMetadata.js'
+import { withRetry } from '../withRetry.js'
 
 // ---------------------------------------------------------------------------
 // Config
@@ -80,77 +81,82 @@ export class OpenAIProvider implements LLMProvider {
     request: StreamRequest,
   ): AsyncGenerator<SystemAPIErrorMessage, ProviderStreamResult> {
     const { model, signal, intent, hooks } = request
-    const startTime = Date.now()
-    const provider = this // capture for iterator closure
-
-    hooks?.onAttemptStart?.({ attempt: 1, start: startTime })
+    const provider = this
 
     const body = this.buildRequestBody(model, intent)
-    // Stream defaults — set AFTER buildRequestBody (which applies extraParams),
-    // then re-apply extraParams so users can override stream_options if needed
     body.stream = true
     body.stream_options = { include_usage: true }
     if (this.config.modelConfig?.extraParams) {
       Object.assign(body, this.config.modelConfig.extraParams)
     }
 
-    try {
-      const stream = await this.client.chat.completions.create(
-        { ...body, stream: true as const } as OpenAI.ChatCompletionCreateParamsStreaming,
-        { signal },
-      )
+    return yield* withRetry(
+      () => Promise.resolve(this.client),
+      async (client, attempt) => {
+        const startTime = Date.now()
+        hooks?.onAttemptStart?.({ attempt, start: startTime })
 
-      const ttfb = Date.now() - startTime
-      hooks?.onProviderEvent?.({ type: 'ttfb', ms: ttfb })
-      hooks?.onRequestSent?.({ maxOutputTokens: intent.maxOutputTokens })
+        try {
+          const stream = await client.chat.completions.create(
+            { ...body, stream: true as const } as OpenAI.ChatCompletionCreateParamsStreaming,
+            { signal },
+          )
 
-      const state = new OpenAIStreamState(this.config.modelConfig?.usageMapping)
+          const ttfb = Date.now() - startTime
+          hooks?.onProviderEvent?.({ type: 'ttfb', ms: ttfb })
+          hooks?.onRequestSent?.({ maxOutputTokens: intent.maxOutputTokens })
 
-      // The OpenAI SDK stream implements Symbol.asyncIterator
-      const sdkStream = stream as unknown as AsyncIterable<OpenAIChatChunk>
+          const state = new OpenAIStreamState(provider.config.modelConfig?.usageMapping)
+          const sdkStream = stream as unknown as AsyncIterable<OpenAIChatChunk>
 
-      // Wrap the OpenAI SDK stream into our neutral StreamEvent async iterable
-      const neutralStream: AsyncIterable<StreamEvent> = {
-        [Symbol.asyncIterator]: () => {
-          const iter = sdkStream[Symbol.asyncIterator]()
-          const buffer: StreamEvent[] = []
-          let bufferIdx = 0
+          const neutralStream: AsyncIterable<StreamEvent> = {
+            [Symbol.asyncIterator]: () => {
+              const iter = sdkStream[Symbol.asyncIterator]()
+              const buffer: StreamEvent[] = []
+              let bufferIdx = 0
 
-          return {
-            async next(): Promise<IteratorResult<StreamEvent>> {
-              try {
-                while (bufferIdx >= buffer.length) {
-                  buffer.length = 0
-                  bufferIdx = 0
-                  const chunk = await iter.next()
-                  if (chunk.done) {
-                    // Flush unclosed blocks (e.g. thinking block without finish_reason)
-                    const cleanup = state.flush()
-                    if (cleanup.length > 0) {
-                      buffer.push(...cleanup)
-                      break // drain cleanup buffer before returning done
+              return {
+                async next(): Promise<IteratorResult<StreamEvent>> {
+                  try {
+                    while (bufferIdx >= buffer.length) {
+                      buffer.length = 0
+                      bufferIdx = 0
+                      const chunk = await iter.next()
+                      if (chunk.done) {
+                        const cleanup = state.flush()
+                        if (cleanup.length > 0) {
+                          buffer.push(...cleanup)
+                          break
+                        }
+                        return { done: true, value: undefined }
+                      }
+                      buffer.push(...state.mapChunk(chunk.value))
                     }
-                    return { done: true, value: undefined }
+                    return { done: false, value: buffer[bufferIdx++]! }
+                  } catch (error) {
+                    throw provider.wrapError(error)
                   }
-                  buffer.push(...state.mapChunk(chunk.value))
-                }
-                return { done: false, value: buffer[bufferIdx++]! }
-              } catch (error) {
-                throw provider.wrapError(error)
+                },
               }
             },
           }
-        },
-      }
 
-      return {
-        stream: neutralStream,
-        requestId: undefined,
-        maxOutputTokens: intent.maxOutputTokens,
-      }
-    } catch (error) {
-      throw this.wrapError(error)
-    }
+          return {
+            stream: neutralStream,
+            requestId: undefined,
+            maxOutputTokens: intent.maxOutputTokens,
+          }
+        } catch (error) {
+          // Normalize OpenAI SDK errors to neutral types before withRetry classifies them
+          throw provider.wrapError(error)
+        }
+      },
+      {
+        model: model ?? this.config.modelConfig?.model ?? 'unknown',
+        thinkingConfig: { type: 'disabled' as const },
+        signal,
+      },
+    )
   }
 
   classifyError(error: unknown): ErrorClassification {

@@ -7,24 +7,20 @@
  * 3. Disambiguation — 402 billing vs transient, 400 context_overflow vs format_error
  */
 import { describe, expect, it } from 'vitest'
-import {
-  APIConnectionError,
-  APIError,
-  APIUserAbortError,
-} from '@anthropic-ai/sdk'
 
 import {
   classifyError,
   type ClassifiedError,
   type ErrorClassificationContext,
 } from '../errorClassifier.js'
+import { LLMAbortError, LLMAPIError } from '../streamTypes.js'
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-function makeAPIError(status: number, message: string): APIError {
-  return new APIError(status, { message }, message, {})
+function makeAPIError(status: number, message: string): LLMAPIError {
+  return new LLMAPIError(message, { status })
 }
 
 const defaultContext: ErrorClassificationContext = {
@@ -205,7 +201,7 @@ describe('classifyError: recovery hints', () => {
   })
 
   it('user abort → not retryable, no fallback, no compress', () => {
-    const result = classifyError(new APIUserAbortError(), defaultContext)
+    const result = classifyError(new LLMAbortError(), defaultContext)
     expect(result.reason).toBe('abort')
     expect(result.retryable).toBe(false)
     expect(result.shouldFallback).toBe(false)
@@ -324,8 +320,10 @@ describe('classifyError: 400 context_overflow vs format_error', () => {
 // ---------------------------------------------------------------------------
 
 describe('classifyError: transport errors', () => {
-  it('APIConnectionError → connection (retryable)', () => {
-    const error = new APIConnectionError({ cause: new Error('ENOTFOUND') })
+  it('connection error with cause chain → connection (retryable)', () => {
+    const cause = new Error('ENOTFOUND')
+    ;(cause as any).code = 'ENOTFOUND'
+    const error = new LLMAPIError('Connection failed', { cause })
     const result = classifyError(error, defaultContext)
     expect(result.reason).toBe('connection')
     expect(result.retryable).toBe(true)

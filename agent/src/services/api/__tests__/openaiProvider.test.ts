@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
 
+// Mock withRetry to avoid transitive auth/model imports in test environment
+vi.mock('../withRetry.js', () => ({ withRetry: vi.fn() }))
+
 import { OpenAIProvider } from '../providers/openaiProvider.js'
 import { getUnparsedToolInputForRepair } from '../toolInputRepairMetadata.js'
 
