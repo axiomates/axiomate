@@ -1,0 +1,657 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Harness Engineering Report: Hermes-Agent vs Axiomate</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --surface: #161b22;
+    --surface2: #1c2333;
+    --border: #30363d;
+    --text: #e6edf3;
+    --text2: #8b949e;
+    --accent: #58a6ff;
+    --green: #3fb950;
+    --yellow: #d29922;
+    --red: #f85149;
+    --orange: #db6d28;
+    --purple: #bc8cff;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    padding: 2rem;
+    max-width: 1400px;
+    margin: 0 auto;
+  }
+  h1 { font-size: 2rem; margin-bottom: 0.5rem; color: var(--accent); }
+  h2 { font-size: 1.5rem; margin: 2.5rem 0 1rem; color: var(--text); border-bottom: 1px solid var(--border); padding-bottom: 0.5rem; }
+  h3 { font-size: 1.15rem; margin: 1.5rem 0 0.5rem; color: var(--purple); }
+  h4 { font-size: 1rem; margin: 1rem 0 0.3rem; color: var(--text2); }
+  p, li { color: var(--text); font-size: 0.95rem; }
+  .subtitle { color: var(--text2); margin-bottom: 2rem; font-size: 1.05rem; }
+  .date { color: var(--text2); font-size: 0.85rem; }
+
+  /* Summary cards */
+  .summary-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+    margin: 1.5rem 0;
+  }
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1.2rem;
+    text-align: center;
+  }
+  .card .num { font-size: 2.5rem; font-weight: 700; }
+  .card .label { color: var(--text2); font-size: 0.85rem; margin-top: 0.3rem; }
+  .card.green .num { color: var(--green); }
+  .card.yellow .num { color: var(--yellow); }
+  .card.red .num { color: var(--red); }
+  .card.blue .num { color: var(--accent); }
+
+  /* Main comparison table */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 1rem 0;
+    font-size: 0.9rem;
+  }
+  th, td {
+    border: 1px solid var(--border);
+    padding: 0.6rem 0.8rem;
+    text-align: left;
+    vertical-align: top;
+  }
+  th {
+    background: var(--surface2);
+    color: var(--accent);
+    font-weight: 600;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+  tr:nth-child(even) { background: var(--surface); }
+  tr:hover { background: var(--surface2); }
+
+  /* Status badges */
+  .badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .badge-adv { background: rgba(63,185,80,0.15); color: var(--green); border: 1px solid rgba(63,185,80,0.3); }
+  .badge-int { background: rgba(88,166,255,0.15); color: var(--accent); border: 1px solid rgba(88,166,255,0.3); }
+  .badge-basic { background: rgba(210,153,34,0.15); color: var(--yellow); border: 1px solid rgba(210,153,34,0.3); }
+  .badge-none { background: rgba(248,81,73,0.15); color: var(--red); border: 1px solid rgba(248,81,73,0.3); }
+  .badge-better { background: rgba(188,140,255,0.15); color: var(--purple); border: 1px solid rgba(188,140,255,0.3); }
+
+  /* Priority tags */
+  .pri { display: inline-block; padding: 2px 6px; border-radius: 4px; font-size: 0.7rem; font-weight: 700; margin-right: 4px; }
+  .pri-1 { background: var(--red); color: #fff; }
+  .pri-2 { background: var(--orange); color: #fff; }
+  .pri-3 { background: var(--yellow); color: #000; }
+
+  /* Detail sections */
+  .detail-section {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1.5rem;
+    margin: 1rem 0;
+  }
+  .detail-section h3 { margin-top: 0; }
+  .detail-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+  }
+  @media (max-width: 900px) { .detail-grid { grid-template-columns: 1fr; } }
+  .detail-col h4 { color: var(--accent); margin-bottom: 0.5rem; }
+  .detail-col.hermes h4 { color: var(--green); }
+  .detail-col.axiomate h4 { color: var(--purple); }
+
+  ul { padding-left: 1.2rem; margin: 0.3rem 0; }
+  li { margin: 0.2rem 0; }
+  code {
+    background: var(--surface2);
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-size: 0.85em;
+    color: var(--accent);
+  }
+  .highlight { color: var(--yellow); font-weight: 600; }
+  .gap-tag { color: var(--red); font-weight: 600; }
+  .ok-tag { color: var(--green); }
+
+  /* TOC */
+  .toc {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1rem 1.5rem;
+    margin: 1.5rem 0;
+  }
+  .toc a { color: var(--accent); text-decoration: none; }
+  .toc a:hover { text-decoration: underline; }
+  .toc ul { list-style: none; padding-left: 0; }
+  .toc li { padding: 0.15rem 0; }
+</style>
+</head>
+<body>
+
+<h1>Harness Engineering Report</h1>
+<p class="subtitle">Hermes-Agent vs Axiomate &mdash; 全面对比分析</p>
+<p class="date">Generated: 2026-04-14</p>
+
+<!-- ============================================================ -->
+<h2>Executive Summary</h2>
+
+<div class="summary-grid">
+  <div class="card blue"><div class="num">18</div><div class="label">Hermes 模式总数</div></div>
+  <div class="card green"><div class="num">10</div><div class="label">Axiomate 已实现</div></div>
+  <div class="card yellow"><div class="num">3</div><div class="label">Axiomate 部分实现</div></div>
+  <div class="card red"><div class="num">5</div><div class="label">Axiomate 缺失</div></div>
+</div>
+
+<p>Hermes-agent 是一个 production-grade 的 AI agent harness，实现了 18 个核心 harness engineering 模式。Axiomate 已经覆盖了其中 10 个（包括 tool call repair 比 hermes 更强），3 个部分实现，5 个完全缺失。</p>
+
+<!-- ============================================================ -->
+<h2>Table of Contents</h2>
+<div class="toc">
+<ul>
+  <li><a href="#overview">1. 全局对比表</a></li>
+  <li><a href="#gap-detail">2. 缺失模式详解 (5 items)</a></li>
+  <li><a href="#partial-detail">3. 部分实现模式详解 (3 items)</a></li>
+  <li><a href="#axiomate-better">4. Axiomate 更强的领域</a></li>
+  <li><a href="#hermes-detail">5. Hermes 所有模式全量清单</a></li>
+  <li><a href="#priority">6. 建议优先级</a></li>
+</ul>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="overview">1. 全局对比表</h2>
+
+<table>
+<thead>
+<tr>
+  <th style="width:4%">#</th>
+  <th style="width:18%">Harness 模式</th>
+  <th style="width:12%">Hermes</th>
+  <th style="width:12%">Axiomate</th>
+  <th style="width:54%">差异说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>1</td>
+  <td>Tool Call Repair</td>
+  <td><span class="badge badge-int">Intermediate</span></td>
+  <td><span class="badge badge-better">更强</span></td>
+  <td>Hermes: fuzzy match + JSON validation (3 tier)。Axiomate: schema-guided repair with tolerant JSON parser, property alias matching, type coercion, Levenshtein fuzzy</td>
+</tr>
+<tr>
+  <td>2</td>
+  <td>Error Classification</td>
+  <td><span class="badge badge-adv">Advanced</span></td>
+  <td><span class="badge badge-int">Intermediate</span></td>
+  <td>Hermes: 14 种 FailoverReason + recovery hints (retryable/compress/rotate/fallback)。Axiomate: 20+ error types 但没有结构化 recovery hints</td>
+</tr>
+<tr>
+  <td>3</td>
+  <td>Retry + Backoff</td>
+  <td><span class="badge badge-adv">Advanced</span></td>
+  <td><span class="badge badge-adv">Advanced</span></td>
+  <td>两者都有 exponential backoff + jitter。Axiomate 额外有 persistent retry mode (unattended) 和 consecutive 529 tracking</td>
+</tr>
+<tr>
+  <td>4</td>
+  <td>Context Compression</td>
+  <td><span class="badge badge-adv">Advanced</span></td>
+  <td><span class="badge badge-int">Partial</span></td>
+  <td><span class="gap-tag">GAP</span> Hermes: LLM-assisted summarization (保头保尾, summarize 中间)。Axiomate: 只有 token 裁剪 + micro-compact，无语义压缩</td>
+</tr>
+<tr>
+  <td>5</td>
+  <td>Prompt Caching</td>
+  <td><span class="badge badge-int">Intermediate</span></td>
+  <td><span class="badge badge-adv">Advanced</span></td>
+  <td>Axiomate 更强: cache break detection with hash tracking, beta header latching, per-tool schema diff。Hermes: system_and_3 breakpoints</td>
+</tr>
+<tr>
+  <td>6</td>
+  <td>Credential Pooling</td>
+  <td><span class="badge badge-adv">Advanced</span></td>
+  <td><span class="badge badge-none">缺失</span></td>
+  <td><span class="gap-tag">GAP</span> Hermes: 多 credential per provider, 4 种 rotation strategy, exhaustion TTL tracking, OAuth refresh。Axiomate: 单 key per model</td>
+</tr>
+<tr>
+  <td>7</td>
+  <td>Dangerous Command Detection</td>
+  <td><span class="badge badge-adv">Advanced</span></td>
+  <td><span class="badge badge-adv">Advanced</span></td>
+  <td>两者都有 90+ regex patterns。Hermes 额外有 LLM-assisted smart approval。Axiomate 有 auto-mode classifier + denial tracking</td>
+</tr>
+<tr>
+  <td>8</td>
+  <td>Secret Redaction</td>
+  <td><span class="badge badge-adv">Advanced</span></td>
+  <td><span class="badge badge-int">Intermediate</span></td>
+  <td>Hermes: 50+ patterns, 全局 log formatter, masking strategy。Axiomate: gitleaks-based scanner, 主要用于 team sync 上传前扫描</td>
+</tr>
+<tr>
+  <td>9</td>
+  <td>Smart Model Routing</td>
+  <td><span class="badge badge-int">Intermediate</span></td>
+  <td><span class="badge badge-none">缺失</span></td>
+  <td><span class="gap-tag">GAP</span> Hermes: 简单请求路由到便宜模型 (char/word/keyword heuristics)。Axiomate: 所有请求走同一模型</td>
+</tr>
+<tr>
+  <td>10</td>
+  <td>Tool Result Size Mgmt</td>
+  <td><span class="badge badge-int">Intermediate</span></td>
+  <td><span class="badge badge-adv">Advanced</span></td>
+  <td>Axiomate 更强: per-tool limits (50K), per-message budget (200K), disk overflow with file refs。Hermes: max_result_size_chars per tool entry</td>
+</tr>
+<tr>
+  <td>11</td>
+  <td>Parallel Tool Execution</td>
+  <td><span class="badge badge-adv">Advanced</span></td>
+  <td><span class="badge badge-adv">Advanced</span></td>
+  <td>Hermes: path-overlap detection for write safety, 8 workers。Axiomate: StreamingToolExecutor with concurrent-safe classification, sibling abort</td>
+</tr>
+<tr>
+  <td>12</td>
+  <td>Prompt Injection Detection</td>
+  <td><span class="badge badge-int">Intermediate</span></td>
+  <td><span class="badge badge-none">缺失</span></td>
+  <td><span class="gap-tag">GAP</span> Hermes: context file 注入检测 (20+ patterns, invisible unicode, exfiltration curl)。Axiomate: 没有</td>
+</tr>
+<tr>
+  <td>13</td>
+  <td>Iteration Budget</td>
+  <td><span class="badge badge-int">Intermediate</span></td>
+  <td><span class="badge badge-adv">Advanced</span></td>
+  <td>Axiomate 更强: diminishing returns detection, continuation heuristics, budget exhaustion。Hermes: simple counter (max 90)</td>
+</tr>
+<tr>
+  <td>14</td>
+  <td>Stale Connection Detection</td>
+  <td><span class="badge badge-int">Intermediate</span></td>
+  <td><span class="badge badge-int">Intermediate</span></td>
+  <td>两者功能相当。Hermes: last_chunk_time, dynamic stale timeout。Axiomate: ECONNRESET/EPIPE detection, keep-alive disable</td>
+</tr>
+<tr>
+  <td>15</td>
+  <td>Provider Abstraction</td>
+  <td><span class="badge badge-adv">Advanced</span></td>
+  <td><span class="badge badge-int">Intermediate</span></td>
+  <td>Hermes: 统一 chat_completions/anthropic_messages/codex_responses + auxiliary fallback chain。Axiomate: LLMProvider interface (neutral types) 但 fallback 链不如 hermes 深</td>
+</tr>
+<tr>
+  <td>16</td>
+  <td>Subagent / Delegation</td>
+  <td><span class="badge badge-adv">Advanced</span></td>
+  <td><span class="badge badge-int">Intermediate</span></td>
+  <td>Hermes: credential inheritance, toolset restriction, heartbeat, depth limit=2, concurrent children。Axiomate: AgentTool + forked agents, state isolation</td>
+</tr>
+<tr>
+  <td>17</td>
+  <td>Cross-Session Memory</td>
+  <td><span class="badge badge-adv">Advanced</span></td>
+  <td><span class="badge badge-int">Partial</span></td>
+  <td>Hermes: pluggable memory providers, lifecycle hooks (on_turn_start/on_pre_compress/on_delegation), provider isolation。Axiomate: file-based auto-memory 但无 provider 架构</td>
+</tr>
+<tr>
+  <td>18</td>
+  <td>Auxiliary LLM Client</td>
+  <td><span class="badge badge-adv">Advanced</span></td>
+  <td><span class="badge badge-none">缺失</span></td>
+  <td><span class="gap-tag">GAP</span> Hermes: 独立辅助 LLM client 用于 compression/vision/search, 6 级 fallback chain, per-task override。Axiomate: 没有 auxiliary model 概念</td>
+</tr>
+</tbody>
+</table>
+
+<!-- ============================================================ -->
+<h2 id="gap-detail">2. 缺失模式详解</h2>
+
+<!-- GAP 1 -->
+<div class="detail-section">
+<h3><span class="pri pri-1">P1</span> Structured Error Taxonomy + Recovery Hints</h3>
+<div class="detail-grid">
+<div class="detail-col hermes">
+  <h4>Hermes 实现</h4>
+  <p><code>agent/error_classifier.py</code> (809 lines)</p>
+  <ul>
+    <li><strong>14 种 FailoverReason</strong>: auth, auth_permanent, billing, rate_limit, overloaded, server_error, timeout, context_overflow, payload_too_large, model_not_found, format_error, thinking_signature, long_context_tier, unknown</li>
+    <li><strong>ClassifiedError</strong> 携带 4 个 recovery hints:
+      <ul>
+        <li><code>retryable</code>: 是否重试</li>
+        <li><code>should_compress</code>: 重试前是否压缩 context</li>
+        <li><code>should_rotate_credential</code>: 是否换 credential</li>
+        <li><code>should_fallback</code>: 是否降级模型</li>
+      </ul>
+    </li>
+    <li><strong>智能分类</strong>: 402 区分 billing vs transient rate_limit (通过 "try again" / "insufficient credits" 关键词); 大 session + disconnect → context_overflow; 400 + >80K tokens → compress</li>
+    <li>支持 <strong>中文错误信息</strong> 识别 ("超过最大长度", "上下文长度")</li>
+  </ul>
+</div>
+<div class="detail-col axiomate">
+  <h4>Axiomate 现状</h4>
+  <p><code>services/api/errors.ts</code> (1173 lines) + <code>withRetry.ts</code></p>
+  <ul>
+    <li>有 20+ error types 但是 <strong>平铺的</strong>，没有 recovery hints</li>
+    <li>retry 逻辑直接检查 HTTP status code，没有语义分类</li>
+    <li>没有 "should_compress" / "should_rotate" 的概念</li>
+    <li>529 fallback 是 hardcoded（连续 3 次 → 降级模型），不是通用机制</li>
+  </ul>
+</div>
+</div>
+<p><strong>价值</strong>: 多模型场景下，不同 provider 的错误语义不同。结构化分类让 retry/fallback/compress 决策精确，减少无效重试和 token 浪费。</p>
+</div>
+
+<!-- GAP 2 -->
+<div class="detail-section">
+<h3><span class="pri pri-1">P1</span> LLM-Assisted Context Compression</h3>
+<div class="detail-grid">
+<div class="detail-col hermes">
+  <h4>Hermes 实现</h4>
+  <p><code>agent/context_compressor.py</code> (37KB)</p>
+  <ul>
+    <li><strong>5 阶段算法</strong>:
+      <ol>
+        <li>Pre-pass: 用 placeholder 替换旧 tool results (>200 chars)</li>
+        <li>Boundary protection: 保护 head (前 3 条) + tail (~20K tokens)</li>
+        <li>LLM Summarization: 用便宜模型 summarize 中间部分</li>
+        <li>Tool pair sanitization: 修复孤立的 tool_call/result</li>
+        <li>Assembly: head + summary + tail 拼接</li>
+      </ol>
+    </li>
+    <li><strong>Summary 结构</strong>: Goal / Constraints / Progress (Done/In Progress/Blocked) / Key Decisions / Resolved Questions / Pending User Asks / Relevant Files / Remaining Work / Critical Context</li>
+    <li><strong>迭代更新</strong>: 多次压缩时保留并更新 previous summary</li>
+    <li><strong>Budget</strong>: summary tokens = min(content_tokens * 0.20, 12K)</li>
+    <li><strong>失败 cooldown</strong>: LLM 失败后 600s 内不再尝试</li>
+  </ul>
+</div>
+<div class="detail-col axiomate">
+  <h4>Axiomate 现状</h4>
+  <p><code>services/compact/</code> (compact.ts 1704 lines)</p>
+  <ul>
+    <li>有 <strong>4 种 compaction 策略</strong>: full, micro, reactive, snip</li>
+    <li>Full compact 调用 API 做 summary 但 <strong>不如 hermes 的结构化</strong></li>
+    <li>Micro-compact 是增量的，保留 tool interactions</li>
+    <li>Post-compact 会恢复文件 + skills</li>
+    <li><strong>缺少</strong>: iterative summary update、structured template、tool pair sanitization</li>
+  </ul>
+</div>
+</div>
+<p><strong>价值</strong>: 长对话 (>50 轮) 会丢失关键上下文。结构化 summary 保留语义信息，成本很低（用便宜模型）。</p>
+</div>
+
+<!-- GAP 3 -->
+<div class="detail-section">
+<h3><span class="pri pri-1">P1</span> Prompt Injection Detection</h3>
+<div class="detail-grid">
+<div class="detail-col hermes">
+  <h4>Hermes 实现</h4>
+  <p><code>agent/prompt_builder.py</code> (lines 35-73)</p>
+  <ul>
+    <li><strong>20+ 注入模式检测</strong>:
+      <ul>
+        <li>"ignore previous instructions" / "disregard rules"</li>
+        <li>"do not tell the user" / "hide this from"</li>
+        <li>System prompt override attempts</li>
+        <li>Hidden div CSS exploits</li>
+        <li>Exfiltration curls (API keys in URLs)</li>
+        <li>Secret file reads (.env, credentials, .pgpass)</li>
+      </ul>
+    </li>
+    <li><strong>不可见 Unicode 检测</strong>: U+200B-U+202E (零宽空格等), U+FEFF (BOM)</li>
+    <li>匹配到 → 返回 <code>[BLOCKED: suspicious content]</code></li>
+    <li>扫描 context files (.hermes.md) 在注入到 system prompt 之前</li>
+  </ul>
+</div>
+<div class="detail-col axiomate">
+  <h4>Axiomate 现状</h4>
+  <ul>
+    <li><strong>完全没有</strong> context file 注入检测</li>
+    <li>CLAUDE.md / .claude/ 文件直接注入 system prompt，无安全扫描</li>
+  </ul>
+</div>
+</div>
+<p><strong>价值</strong>: 安全防线。用户 clone 的项目可能包含恶意 CLAUDE.md。实现成本低（纯正则）。</p>
+</div>
+
+<!-- GAP 4 -->
+<div class="detail-section">
+<h3><span class="pri pri-2">P2</span> Smart Model Routing (便宜模型分流)</h3>
+<div class="detail-grid">
+<div class="detail-col hermes">
+  <h4>Hermes 实现</h4>
+  <p><code>agent/smart_model_routing.py</code></p>
+  <ul>
+    <li><strong>Heuristic classifier</strong>: 所有条件必须满足才路由到便宜模型:
+      <ul>
+        <li>&le; 160 chars, &le; 28 words, &le; 1 newline</li>
+        <li>不含 code markers (backticks)</li>
+        <li>不含 URLs</li>
+        <li>不含复杂关键词 ("debug", "implement", "refactor", "patch", "error", "test", "plan", "delegate" 等)</li>
+      </ul>
+    </li>
+    <li>失败时静默 fallback 到主模型</li>
+  </ul>
+</div>
+<div class="detail-col axiomate">
+  <h4>Axiomate 现状</h4>
+  <ul>
+    <li>没有 cheap model routing</li>
+    <li>所有请求走同一模型配置</li>
+    <li>需要先支持 auxiliary model 概念</li>
+  </ul>
+</div>
+</div>
+<p><strong>价值</strong>: 降低成本 30-50%（简单问题用 Haiku 而非 Opus）。但需要先实现 auxiliary model 基础设施。</p>
+</div>
+
+<!-- GAP 5 -->
+<div class="detail-section">
+<h3><span class="pri pri-2">P2</span> Credential Pooling + Rotation</h3>
+<div class="detail-grid">
+<div class="detail-col hermes">
+  <h4>Hermes 实现</h4>
+  <p><code>agent/credential_pool.py</code> (1,364 lines)</p>
+  <ul>
+    <li><strong>PooledCredential</strong>: id, label, auth_type (oauth/api_key), priority, source, status tracking</li>
+    <li><strong>4 种 rotation strategy</strong>: fill_first (default), round_robin, random, least_used</li>
+    <li><strong>Exhaustion tracking</strong>: last_status (OK/EXHAUSTED), TTL cooldown (1h for 429), provider-supplied reset_at override</li>
+    <li><strong>Recovery flow</strong>:
+      <ul>
+        <li>429 rate_limit: retry same once → rotate on second</li>
+        <li>402 billing: immediate rotation</li>
+        <li>401 auth: try refresh → rotate if fails</li>
+      </ul>
+    </li>
+    <li><strong>OAuth refresh</strong>: Anthropic, Codex, Nous 各自的 refresh 逻辑</li>
+    <li><strong>6+ seeding sources</strong>: manual, env vars, OAuth flows, Claude Code creds</li>
+  </ul>
+</div>
+<div class="detail-col axiomate">
+  <h4>Axiomate 现状</h4>
+  <ul>
+    <li>单 API key per model config</li>
+    <li>OAuth refresh 存在 (handleOAuth401Error) 但没有 pool</li>
+    <li>没有 rotation / exhaustion tracking</li>
+  </ul>
+</div>
+</div>
+<p><strong>价值</strong>: 对多用户/高负载场景重要。单用户 CLI 场景优先级低。</p>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="partial-detail">3. 部分实现模式详解</h2>
+
+<div class="detail-section">
+<h3>Context Compression (部分实现)</h3>
+<p>Axiomate 有 4 种 compact 策略 (full/micro/reactive/snip) 和 post-compact restoration，但缺少 hermes 的 <strong>iterative summary update</strong>（多次压缩时保留前一次 summary 并更新）和 <strong>structured template</strong>（Goal/Progress/Pending/Remaining）。</p>
+</div>
+
+<div class="detail-section">
+<h3>Cross-Session Memory (部分实现)</h3>
+<p>Axiomate 有 file-based auto-memory (MEMORY.md + individual memory files)，但没有 hermes 的 <strong>pluggable provider architecture</strong>（built-in + 1 external，lifecycle hooks, failure isolation）。</p>
+</div>
+
+<div class="detail-section">
+<h3>Error Classification (部分实现)</h3>
+<p>Axiomate 有 20+ error types 和 detailed parsing，但缺少 hermes 的 <strong>recovery hints</strong>（retryable/should_compress/should_rotate/should_fallback）。当前 retry 逻辑直接检查 HTTP code 而非语义分类。</p>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="axiomate-better">4. Axiomate 更强的领域</h2>
+
+<table>
+<thead>
+<tr><th>领域</th><th>Axiomate 优势</th></tr>
+</thead>
+<tbody>
+<tr>
+  <td><strong>Tool Call Repair</strong></td>
+  <td>Schema-guided repair with tolerant JSON parser (2800 行), property aliases, type coercion, Levenshtein matching。Hermes 只做 fuzzy tool name match + basic JSON validation</td>
+</tr>
+<tr>
+  <td><strong>Prompt Cache Break Detection</strong></td>
+  <td>Hash-based tracking (system, tool schemas, beta headers, model, effort), diff logging to temp dir, sticky-on latching for auto-mode。Hermes 只做 system_and_3 breakpoint injection</td>
+</tr>
+<tr>
+  <td><strong>Tool Result Size Management</strong></td>
+  <td>Per-tool limits (50K chars), per-message budget (200K), disk overflow with file references, token budget enforcement。Hermes 只有 per-tool max_result_size_chars</td>
+</tr>
+<tr>
+  <td><strong>Iteration Budget / Loop Prevention</strong></td>
+  <td>Diminishing returns detection, continuation heuristics, multi-factor budget exhaustion。Hermes 只有 simple counter (max 90)</td>
+</tr>
+<tr>
+  <td><strong>Permission System</strong></td>
+  <td>Auto-mode classifier (speculative check), multi-source rule merging (user/settings/MDM), denial rate limiting, pre/post hooks。Hermes 依赖 pattern matching + LLM approval</td>
+</tr>
+</tbody>
+</table>
+
+<!-- ============================================================ -->
+<h2 id="hermes-detail">5. Hermes 所有模式全量清单</h2>
+
+<table>
+<thead>
+<tr><th>#</th><th>模式</th><th>关键文件</th><th>核心机制</th></tr>
+</thead>
+<tbody>
+<tr><td>1</td><td>Tool Call Repair</td><td><code>run_agent.py</code></td><td>3-tier: fuzzy name match (difflib, 0.7 cutoff) → JSON validation → truncation detection; 3 retries before abort</td></tr>
+<tr><td>2</td><td>Error Classification</td><td><code>error_classifier.py</code></td><td>14 FailoverReason + ClassifiedError with recovery hints; HTTP code → message pattern → transport heuristic pipeline</td></tr>
+<tr><td>3</td><td>Retry + Backoff</td><td><code>retry_utils.py</code></td><td>Exponential 2^(n-1) * 5s, cap 120s, 50% uniform jitter, decorrelated seed (time_ns XOR Fibonacci hash)</td></tr>
+<tr><td>4</td><td>Context Compression</td><td><code>context_compressor.py</code></td><td>5-phase: tool pruning → boundary protect → LLM summarize → pair sanitize → assemble; iterative updates</td></tr>
+<tr><td>5</td><td>Prompt Caching</td><td><code>prompt_caching.py</code></td><td>system_and_3 strategy: 4 cache_control breakpoints (system + last 3 messages); ephemeral 5m TTL</td></tr>
+<tr><td>6</td><td>Credential Pooling</td><td><code>credential_pool.py</code></td><td>Multi-credential per provider; 4 strategies; exhaustion TTL; OAuth refresh (Anthropic/Codex/Nous)</td></tr>
+<tr><td>7</td><td>Dangerous Command Detection</td><td><code>approval.py</code></td><td>90+ regex patterns; LLM-assisted smart approval; per-session allowlist; interactive + async gateway prompting</td></tr>
+<tr><td>8</td><td>Secret Redaction</td><td><code>redact.py</code></td><td>50+ API key patterns; env var / JSON field / auth header / private key detection; RedactingFormatter for logs</td></tr>
+<tr><td>9</td><td>Smart Model Routing</td><td><code>smart_model_routing.py</code></td><td>Heuristic: &le;160 chars, &le;28 words, &le;1 newline, no code/URLs/complex keywords → cheap model</td></tr>
+<tr><td>10</td><td>Tool Result Size Mgmt</td><td><code>tools/registry.py</code></td><td>Per-tool max_result_size_chars in ToolEntry</td></tr>
+<tr><td>11</td><td>Parallel Tool Execution</td><td><code>run_agent.py</code></td><td>Path-overlap detection for write safety; ThreadPoolExecutor 8 workers; checkpoint before mutations</td></tr>
+<tr><td>12</td><td>Prompt Injection Detection</td><td><code>prompt_builder.py</code></td><td>20+ injection patterns; invisible Unicode detection; context file scanning before system prompt injection</td></tr>
+<tr><td>13</td><td>Iteration Budget</td><td><code>run_agent.py</code></td><td>IterationBudget: thread-safe counter, max 90 parent / 50 child; refund for code-exec calls</td></tr>
+<tr><td>14</td><td>Stale Connection Detection</td><td><code>run_agent.py</code></td><td>last_chunk_time tracking; dynamic stale timeout (300-600s based on token count); inf for local models</td></tr>
+<tr><td>15</td><td>Provider Abstraction</td><td><code>anthropic_adapter.py</code> + <code>auxiliary_client.py</code></td><td>3 API modes (chat_completions/anthropic_messages/codex_responses); 6-level auxiliary fallback chain</td></tr>
+<tr><td>16</td><td>Subagent / Delegation</td><td><code>delegate_tool.py</code></td><td>Fresh conversation; credential inheritance; toolset restriction; heartbeat (30s); depth limit=2; concurrent children</td></tr>
+<tr><td>17</td><td>Cross-Session Memory</td><td><code>memory_manager.py</code></td><td>Pluggable providers (1 built-in + 1 external); lifecycle hooks (on_turn/on_compress/on_delegation); failure isolation</td></tr>
+<tr><td>18</td><td>Auxiliary LLM Client</td><td><code>auxiliary_client.py</code></td><td>Dedicated client for compression/vision/search; 6-level provider fallback; per-task config overrides; credit exhaustion auto-fallback</td></tr>
+</tbody>
+</table>
+
+<h3>Hermes 额外基础设施 (非 harness 核心但值得注意)</h3>
+<table>
+<thead><tr><th>模块</th><th>说明</th></tr></thead>
+<tbody>
+<tr><td><code>hermes_state.py</code> — SessionDB</td><td>SQLite WAL + FTS5; jittered retry on write contention (20-150ms random, 15 retries); periodic passive checkpoint</td></tr>
+<tr><td><code>rate_limit_tracker.py</code></td><td>解析 12 种 x-ratelimit-* headers; RPM/RPH/TPM/TPH 四象限跟踪; >80% 利用率告警</td></tr>
+<tr><td><code>model_metadata.py</code></td><td>Context length probing: models.dev API → OpenRouter → local fallback → descending tiers (128K→8K); 1h cache TTL</td></tr>
+<tr><td><code>usage_pricing.py</code> + <code>insights.py</code></td><td>CanonicalUsage model; InsightsEngine for historical analysis; model/platform cost breakdowns</td></tr>
+<tr><td><code>display.py</code> — KawaiiSpinner</td><td>Animated spinner with kawaii faces; non-TTY detection; prompt_toolkit context handling; skin-based theming</td></tr>
+<tr><td>Code Execution Sandbox</td><td>UDS + file-based RPC; 7-tool whitelist; 5min timeout; 50KB stdout cap; auto-generated hermes_tools.py stub</td></tr>
+<tr><td>MCP Integration</td><td>Background event loop; exponential backoff reconnection (5 retries); env filtering; credential stripping from results; sampling support</td></tr>
+</tbody>
+</table>
+
+<!-- ============================================================ -->
+<h2 id="priority">6. 建议优先级</h2>
+
+<table>
+<thead>
+<tr><th>优先级</th><th>模式</th><th>预估工作量</th><th>价值</th><th>理由</th></tr>
+</thead>
+<tbody>
+<tr>
+  <td><span class="pri pri-1">P1</span></td>
+  <td>Error Taxonomy + Recovery Hints</td>
+  <td>2-3 天</td>
+  <td>高</td>
+  <td>直接提升多模型可靠性; 减少无效重试; 为后续 credential rotation 铺路</td>
+</tr>
+<tr>
+  <td><span class="pri pri-1">P1</span></td>
+  <td>Prompt Injection Detection</td>
+  <td>0.5-1 天</td>
+  <td>高</td>
+  <td>安全防线; 实现简单 (纯正则); CLAUDE.md 是高风险注入点</td>
+</tr>
+<tr>
+  <td><span class="pri pri-1">P1</span></td>
+  <td>Context Compression 增强 (iterative summary)</td>
+  <td>2-3 天</td>
+  <td>高</td>
+  <td>长对话质量关键瓶颈; Axiomate 已有 compact 基础设施, 只需增加 structured template + iterative update</td>
+</tr>
+<tr>
+  <td><span class="pri pri-2">P2</span></td>
+  <td>Auxiliary LLM Client</td>
+  <td>3-5 天</td>
+  <td>中</td>
+  <td>是 smart routing 和 LLM compression 的前置依赖; 需要新增 model config 概念</td>
+</tr>
+<tr>
+  <td><span class="pri pri-2">P2</span></td>
+  <td>Smart Model Routing</td>
+  <td>1-2 天 (依赖 auxiliary client)</td>
+  <td>中</td>
+  <td>降低成本; 但需要 auxiliary model 基础设施</td>
+</tr>
+<tr>
+  <td><span class="pri pri-3">P3</span></td>
+  <td>Credential Pooling</td>
+  <td>5-7 天</td>
+  <td>低 (单用户)</td>
+  <td>Axiomate 目前是单用户 CLI, 多 credential 需求不强</td>
+</tr>
+</tbody>
+</table>
+
+<div class="detail-section" style="margin-top: 2rem; border-color: var(--accent);">
+<h3 style="color: var(--accent);">关键洞察</h3>
+<ul>
+  <li><strong>Axiomate 在 tool 层已经很强</strong>: tool call repair (schema-guided) 和 tool result management 都比 hermes 更成熟</li>
+  <li><strong>最大差距在 "模型层" 和 "安全层"</strong>: error recovery hints, LLM-assisted compression, prompt injection detection</li>
+  <li><strong>Hermes 的 auxiliary LLM 是关键架构</strong>: 它让 compression 和 smart routing 成为可能 &mdash; 是很多高级 harness 模式的基础设施</li>
+  <li><strong>最低成本高回报</strong>: prompt injection detection (0.5 天, 纯正则, 安全影响大)</li>
+</ul>
+</div>
+
+</body>
+</html>

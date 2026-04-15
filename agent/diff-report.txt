@@ -1,0 +1,492 @@
+=== Axiomate vs Claude-Code Package Diff Report ===
+Generated: Sun Apr  5 09:21:09     2026
+
+================================================================
+Package: yoga-axiomate
+Left:  /c/public/workspace/axiomate/yoga-axiomate/src
+Right: /c/public/workspace/claude-code-sourcemap/restored-src/src/native-ts/yoga-layout
+----------------------------------------------------------------
+
+================================================================
+Package: utils-axiomate
+Left:  /c/public/workspace/axiomate/utils-axiomate/src
+Right: /c/public/workspace/claude-code-sourcemap/restored-src/src/utils
+----------------------------------------------------------------
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: CircularBuffer.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: Cursor.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: QueryGuard.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: Shell.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: ShellCommand.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: abortController.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: activityManager.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: advisor.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: agentContext.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: agentId.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: agentSwarmsEnabled.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: agenticSessionSearch.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: analyzeContext.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: ansiToPng.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: ansiToSvg.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: api.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: apiPreconnect.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: appleTerminalBackup.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: argumentSubstitution.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: array.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: asciicast.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: attachments.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: attribution.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: auth.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: authFileDescriptor.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: authPortable.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: autoModeDenials.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: autoRunIssue.tsx
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: autoUpdater.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: aws.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: awsAuthStatusManager.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: background
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: backgroundHousekeeping.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: bash
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: betas.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: billing.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: binaryCheck.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: browser.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: bufferedWriter.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: bundledMode.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: caCerts.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: caCertsConfig.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: cachePaths.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: classifierApprovals.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: classifierApprovalsHook.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: claudeCodeHints.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: claudeDesktop.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: claudeInChrome
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: claudemd.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: cleanup.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: cleanupRegistry.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: cliArgs.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: cliHighlight.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: codeIndexing.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: collapseBackgroundBashNotifications.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: collapseHookSummaries.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: collapseReadSearch.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: collapseTeammateShutdowns.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: combinedAbortSignal.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: commandLifecycle.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: commitAttribution.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: completionCache.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: computerUse
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: concurrentSessions.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: config.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: configConstants.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: contentArray.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: context.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: contextAnalysis.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: contextSuggestions.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: controlMessageCompat.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: conversationRecovery.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: cron.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: cronJitterConfig.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: cronScheduler.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: cronTasks.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: cronTasksLock.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: crossProjectResume.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: crypto.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: cwd.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: debug.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: debugFilter.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: deepLink
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: desktopDeepLink.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: detectRepository.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: diagLogs.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: diff.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: directMemberMessage.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: displayTags.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: doctorContextWarnings.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: doctorDiagnostic.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: dxt
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: earlyInput.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: editor.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: effort.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: embeddedTools.ts
+Files /c/public/workspace/axiomate/utils-axiomate/src/env.ts and /c/public/workspace/claude-code-sourcemap/restored-src/src/utils/env.ts differ
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: envDynamic.ts
+Files /c/public/workspace/axiomate/utils-axiomate/src/envUtils.ts and /c/public/workspace/claude-code-sourcemap/restored-src/src/utils/envUtils.ts differ
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: envValidation.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: errorLogSink.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: errors.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: exampleCommands.ts
+Files /c/public/workspace/axiomate/utils-axiomate/src/execFileNoThrow.ts and /c/public/workspace/claude-code-sourcemap/restored-src/src/utils/execFileNoThrow.ts differ
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: execFileNoThrowPortable.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: execSyncWrapper.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: exportRenderer.tsx
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: extraUsage.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: fastMode.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: file.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: fileHistory.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: fileOperationAnalytics.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: filePersistence
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: fileRead.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: fileReadCache.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: fileStateCache.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: findExecutable.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: fingerprint.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: forkedAgent.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: format.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: formatBriefTimestamp.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: fpsTracker.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: frontmatterParser.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: fsOperations.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: fullscreen.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: generatedFiles.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: generators.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: genericProcessUtils.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: getWorktreePaths.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: getWorktreePathsPortable.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: ghPrStatus.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: git
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: git.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: gitDiff.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: gitSettings.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: github
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: githubRepoPathMapping.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: glob.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: gracefulShutdown.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: groupToolUses.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: handlePromptSubmit.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: hash.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: headlessProfiler.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: heapDumpService.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: heatmap.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: highlightMatch.tsx
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: hooks
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: hooks.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: horizontalScroll.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: http.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: hyperlink.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: iTermBackup.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: ide.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: idePathConversion.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: idleTimeout.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: imagePaste.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: imageResizer.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: imageStore.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: imageValidation.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: immediateCommand.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: inProcessTeammateHelpers.ts
+Only in /c/public/workspace/axiomate/utils-axiomate/src: index.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: ink.ts
+Files /c/public/workspace/axiomate/utils-axiomate/src/intl.ts and /c/public/workspace/claude-code-sourcemap/restored-src/src/utils/intl.ts differ
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: jetbrains.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: json.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: jsonRead.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: keyboardShortcuts.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: lazySchema.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: listSessionsImpl.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: localInstaller.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: lockfile.ts
+Files /c/public/workspace/axiomate/utils-axiomate/src/log.ts and /c/public/workspace/claude-code-sourcemap/restored-src/src/utils/log.ts differ
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: logoV2Utils.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: mailbox.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: managedEnv.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: managedEnvConstants.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: markdown.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: markdownConfigLoader.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: mcp
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: mcpInstructionsDelta.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: mcpOutputStorage.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: mcpValidation.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: mcpWebSocketTransport.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: memoize.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: memory
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: memoryFileDetection.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: messagePredicates.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: messageQueueManager.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: messages
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: messages.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: model
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: modelCost.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: modifiers.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: mtls.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: nativeInstaller
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: notebook.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: objectGroupBy.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: pasteStore.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: path.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: pdf.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: pdfUtils.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: peerAddress.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: permissions
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: planModeV2.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: plans.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: platform.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: plugins
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: powershell
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: preflightChecks.tsx
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: privacyLevel.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: process.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: processUserInput
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: profilerBase.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: promptCategory.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: promptEditor.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: promptShellExecution.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: proxy.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: queryContext.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: queryHelpers.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: queryProfiler.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: queueProcessor.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: readEditContext.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: readFileInRange.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: releaseNotes.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: renderOptions.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: ripgrep.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: sandbox
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: sanitization.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: screenshotClipboard.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: sdkEventQueue.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: secureStorage
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: semanticBoolean.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: semanticNumber.ts
+Files /c/public/workspace/axiomate/utils-axiomate/src/semver.ts and /c/public/workspace/claude-code-sourcemap/restored-src/src/utils/semver.ts differ
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: sequential.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: sessionActivity.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: sessionEnvVars.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: sessionEnvironment.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: sessionFileAccessHooks.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: sessionIngressAuth.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: sessionRestore.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: sessionStart.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: sessionState.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: sessionStorage.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: sessionStoragePortable.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: sessionTitle.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: sessionUrl.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: set.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: settings
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: shell
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: shellConfig.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: sideQuery.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: sideQuestion.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: signal.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: sinks.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: skills
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: slashCommandParsing.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: sleep.ts
+Files /c/public/workspace/axiomate/utils-axiomate/src/sliceAnsi.ts and /c/public/workspace/claude-code-sourcemap/restored-src/src/utils/sliceAnsi.ts differ
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: slowOperations.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: standaloneAgent.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: startupProfiler.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: staticRender.tsx
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: stats.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: statsCache.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: status.tsx
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: statusNoticeDefinitions.tsx
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: statusNoticeHelpers.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: stream.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: streamJsonStdoutGuard.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: streamlinedTransform.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: stringUtils.ts
+Only in /c/public/workspace/axiomate/utils-axiomate/src: stringWidth.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: subprocessEnv.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: suggestions
+Only in /c/public/workspace/axiomate/utils-axiomate/src: supportsHyperlinks.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: swarm
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: systemDirectories.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: systemPrompt.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: systemPromptType.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: systemTheme.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: taggedId.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: task
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: tasks.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: teamDiscovery.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: teamMemoryOps.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: teammate.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: teammateContext.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: teammateMailbox.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: telemetry
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: telemetryAttributes.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: teleport
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: teleport.tsx
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: tempfile.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: terminal.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: terminalPanel.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: textHighlighting.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: theme.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: thinking.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: timeouts.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: tmuxSocket.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: todo
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: tokenBudget.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: tokens.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: toolErrors.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: toolPool.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: toolResultStorage.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: toolSchemaCache.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: toolSearch.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: transcriptSearch.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: treeify.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: truncate.ts
+Only in /c/public/workspace/axiomate/utils-axiomate/src: types.d.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: ultraplan
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: unaryLogging.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: undercover.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: user.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: userAgent.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: userPromptKeywords.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: uuid.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: warningHandler.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: which.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: windowsPaths.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: withResolvers.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: words.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: workloadContext.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: worktree.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: worktreeModeEnabled.ts
+Only in /c/public/workspace/axiomate/utils-axiomate/src: wrapAnsi.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: xdg.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: xml.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: yaml.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/utils: zodToJsonSchema.ts
+
+================================================================
+Package: ink-axiomate
+Left:  /c/public/workspace/axiomate/ink-axiomate/src
+Right: /c/public/workspace/claude-code-sourcemap/restored-src/src/ink
+----------------------------------------------------------------
+Files /c/public/workspace/axiomate/ink-axiomate/src/Ansi.tsx and /c/public/workspace/claude-code-sourcemap/restored-src/src/ink/Ansi.tsx differ
+Only in /c/public/workspace/axiomate/ink-axiomate/src: adapters.ts
+Files /c/public/workspace/axiomate/ink-axiomate/src/components/App.tsx and /c/public/workspace/claude-code-sourcemap/restored-src/src/ink/components/App.tsx differ
+Files /c/public/workspace/axiomate/ink-axiomate/src/components/Button.tsx and /c/public/workspace/claude-code-sourcemap/restored-src/src/ink/components/Button.tsx differ
+Files /c/public/workspace/axiomate/ink-axiomate/src/components/Link.tsx and /c/public/workspace/claude-code-sourcemap/restored-src/src/ink/components/Link.tsx differ
+Files /c/public/workspace/axiomate/ink-axiomate/src/components/ScrollBox.tsx and /c/public/workspace/claude-code-sourcemap/restored-src/src/ink/components/ScrollBox.tsx differ
+Only in /c/public/workspace/axiomate/ink-axiomate/src: cursor.ts
+Only in /c/public/workspace/axiomate/ink-axiomate/src: devtools.ts
+Files /c/public/workspace/axiomate/ink-axiomate/src/events/dispatcher.ts and /c/public/workspace/claude-code-sourcemap/restored-src/src/ink/events/dispatcher.ts differ
+Only in /c/public/workspace/axiomate/ink-axiomate/src/events: paste-event.ts
+Only in /c/public/workspace/axiomate/ink-axiomate/src/events: resize-event.ts
+Only in /c/public/workspace/axiomate/ink-axiomate/src: index.ts
+Files /c/public/workspace/axiomate/ink-axiomate/src/ink.tsx and /c/public/workspace/claude-code-sourcemap/restored-src/src/ink/ink.tsx differ
+Only in /c/public/workspace/axiomate/ink-axiomate/src: jsx.d.ts
+Files /c/public/workspace/axiomate/ink-axiomate/src/layout/yoga.ts and /c/public/workspace/claude-code-sourcemap/restored-src/src/ink/layout/yoga.ts differ
+Files /c/public/workspace/axiomate/ink-axiomate/src/line-width-cache.ts and /c/public/workspace/claude-code-sourcemap/restored-src/src/ink/line-width-cache.ts differ
+Files /c/public/workspace/axiomate/ink-axiomate/src/log-update.ts and /c/public/workspace/claude-code-sourcemap/restored-src/src/ink/log-update.ts differ
+Files /c/public/workspace/axiomate/ink-axiomate/src/output.ts and /c/public/workspace/claude-code-sourcemap/restored-src/src/ink/output.ts differ
+Files /c/public/workspace/axiomate/ink-axiomate/src/reconciler.ts and /c/public/workspace/claude-code-sourcemap/restored-src/src/ink/reconciler.ts differ
+Files /c/public/workspace/axiomate/ink-axiomate/src/render-border.ts and /c/public/workspace/claude-code-sourcemap/restored-src/src/ink/render-border.ts differ
+Files /c/public/workspace/axiomate/ink-axiomate/src/render-to-screen.ts and /c/public/workspace/claude-code-sourcemap/restored-src/src/ink/render-to-screen.ts differ
+Files /c/public/workspace/axiomate/ink-axiomate/src/renderer.ts and /c/public/workspace/claude-code-sourcemap/restored-src/src/ink/renderer.ts differ
+Files /c/public/workspace/axiomate/ink-axiomate/src/root.ts and /c/public/workspace/claude-code-sourcemap/restored-src/src/ink/root.ts differ
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/ink: stringWidth.ts
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/ink: supports-hyperlinks.ts
+Files /c/public/workspace/axiomate/ink-axiomate/src/tabstops.ts and /c/public/workspace/claude-code-sourcemap/restored-src/src/ink/tabstops.ts differ
+Files /c/public/workspace/axiomate/ink-axiomate/src/terminal.ts and /c/public/workspace/claude-code-sourcemap/restored-src/src/ink/terminal.ts differ
+Files /c/public/workspace/axiomate/ink-axiomate/src/termio/osc.ts and /c/public/workspace/claude-code-sourcemap/restored-src/src/ink/termio/osc.ts differ
+Files /c/public/workspace/axiomate/ink-axiomate/src/termio/parser.ts and /c/public/workspace/claude-code-sourcemap/restored-src/src/ink/termio/parser.ts differ
+Only in /c/public/workspace/axiomate/ink-axiomate/src: types.d.ts
+Only in /c/public/workspace/axiomate/ink-axiomate/src: utils
+Files /c/public/workspace/axiomate/ink-axiomate/src/warn.ts and /c/public/workspace/claude-code-sourcemap/restored-src/src/ink/warn.ts differ
+Files /c/public/workspace/axiomate/ink-axiomate/src/wrap-text.ts and /c/public/workspace/claude-code-sourcemap/restored-src/src/ink/wrap-text.ts differ
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/src/ink: wrapAnsi.ts
+
+================================================================
+Package: file-index-axiomate
+Left:  /c/public/workspace/axiomate/file-index-axiomate/src
+Right: /c/public/workspace/claude-code-sourcemap/restored-src/src/native-ts/file-index
+----------------------------------------------------------------
+
+================================================================
+Package: color-diff-axiomate
+Left:  /c/public/workspace/axiomate/color-diff-axiomate/src
+Right: /c/public/workspace/claude-code-sourcemap/restored-src/src/native-ts/color-diff
+----------------------------------------------------------------
+Files /c/public/workspace/axiomate/color-diff-axiomate/src/index.ts and /c/public/workspace/claude-code-sourcemap/restored-src/src/native-ts/color-diff/index.ts differ
+
+================================================================
+Package: image-processor-axiomate
+Left:  /c/public/workspace/axiomate/image-processor-axiomate/src
+Right: /c/public/workspace/claude-code-sourcemap/restored-src/vendor/image-processor-src
+----------------------------------------------------------------
+Only in /c/public/workspace/axiomate/image-processor-axiomate/src: clipboard.ts
+Files /c/public/workspace/axiomate/image-processor-axiomate/src/index.ts and /c/public/workspace/claude-code-sourcemap/restored-src/vendor/image-processor-src/index.ts differ
+Only in /c/public/workspace/axiomate/image-processor-axiomate/src: sharp.ts
+Only in /c/public/workspace/axiomate/image-processor-axiomate/src: types.ts
+
+================================================================
+Package: audio-capture-axiomate
+Left:  /c/public/workspace/axiomate/audio-capture-axiomate
+Right: /c/public/workspace/claude-code-sourcemap/restored-src/vendor/audio-capture-src
+----------------------------------------------------------------
+Only in /c/public/workspace/axiomate/audio-capture-axiomate: .gitignore
+Only in /c/public/workspace/axiomate/audio-capture-axiomate: Cargo.lock
+Only in /c/public/workspace/axiomate/audio-capture-axiomate: Cargo.toml
+Only in /c/public/workspace/axiomate/audio-capture-axiomate: __test__
+Only in /c/public/workspace/axiomate/audio-capture-axiomate: build.rs
+Only in /c/public/workspace/axiomate/audio-capture-axiomate: index.d.ts
+Only in /c/public/workspace/axiomate/audio-capture-axiomate: index.js
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/vendor/audio-capture-src: index.ts
+Only in /c/public/workspace/axiomate/audio-capture-axiomate: package.json
+Only in /c/public/workspace/axiomate/audio-capture-axiomate: src
+
+================================================================
+Package: modifiers-mac-napi-axiomate
+Left:  /c/public/workspace/axiomate/modifiers-mac-napi-axiomate
+Right: /c/public/workspace/claude-code-sourcemap/restored-src/vendor/modifiers-napi-src
+----------------------------------------------------------------
+Only in /c/public/workspace/axiomate/modifiers-mac-napi-axiomate: .gitignore
+Only in /c/public/workspace/axiomate/modifiers-mac-napi-axiomate: Cargo.lock
+Only in /c/public/workspace/axiomate/modifiers-mac-napi-axiomate: Cargo.toml
+Only in /c/public/workspace/axiomate/modifiers-mac-napi-axiomate: __test__
+Only in /c/public/workspace/axiomate/modifiers-mac-napi-axiomate: build.rs
+Only in /c/public/workspace/axiomate/modifiers-mac-napi-axiomate: index.d.ts
+Only in /c/public/workspace/axiomate/modifiers-mac-napi-axiomate: index.js
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/vendor/modifiers-napi-src: index.ts
+Only in /c/public/workspace/axiomate/modifiers-mac-napi-axiomate: package.json
+Only in /c/public/workspace/axiomate/modifiers-mac-napi-axiomate: src
+
+================================================================
+Package: url-handler-mac-napi-axiomate
+Left:  /c/public/workspace/axiomate/url-handler-mac-napi-axiomate
+Right: /c/public/workspace/claude-code-sourcemap/restored-src/vendor/url-handler-src
+----------------------------------------------------------------
+Only in /c/public/workspace/axiomate/url-handler-mac-napi-axiomate: .gitignore
+Only in /c/public/workspace/axiomate/url-handler-mac-napi-axiomate: Cargo.lock
+Only in /c/public/workspace/axiomate/url-handler-mac-napi-axiomate: Cargo.toml
+Only in /c/public/workspace/axiomate/url-handler-mac-napi-axiomate: __test__
+Only in /c/public/workspace/axiomate/url-handler-mac-napi-axiomate: build.rs
+Only in /c/public/workspace/axiomate/url-handler-mac-napi-axiomate: index.d.ts
+Only in /c/public/workspace/axiomate/url-handler-mac-napi-axiomate: index.js
+Only in /c/public/workspace/claude-code-sourcemap/restored-src/vendor/url-handler-src: index.ts
+Only in /c/public/workspace/axiomate/url-handler-mac-napi-axiomate: package.json
+Only in /c/public/workspace/axiomate/url-handler-mac-napi-axiomate: src
+
+================================================================
+Package: sandbox-axiomate
+Left:  /c/public/workspace/axiomate/sandbox-axiomate/src
+Right: /c/public/workspace/claude-code-sourcemap/restored-src/node_modules/@anthropic-ai/sandbox-runtime/src
+----------------------------------------------------------------
+  SKIPPED: directory not found
+
+================================================================
+Package: computer-use-mcp-axiomate
+Left:  /c/public/workspace/axiomate/computer-use-mcp-axiomate/src
+Right: /c/public/workspace/claude-code-sourcemap/restored-src/node_modules/@ant/computer-use-mcp/src
+----------------------------------------------------------------
+Only in /c/public/workspace/axiomate/computer-use-mcp-axiomate/src: executor.ts
+Files /c/public/workspace/axiomate/computer-use-mcp-axiomate/src/index.ts and /c/public/workspace/claude-code-sourcemap/restored-src/node_modules/@ant/computer-use-mcp/src/index.ts differ
+Files /c/public/workspace/axiomate/computer-use-mcp-axiomate/src/keyBlocklist.ts and /c/public/workspace/claude-code-sourcemap/restored-src/node_modules/@ant/computer-use-mcp/src/keyBlocklist.ts differ
+Only in /c/public/workspace/axiomate/computer-use-mcp-axiomate/src: subGates.ts
+Files /c/public/workspace/axiomate/computer-use-mcp-axiomate/src/tools.ts and /c/public/workspace/claude-code-sourcemap/restored-src/node_modules/@ant/computer-use-mcp/src/tools.ts differ
+Files /c/public/workspace/axiomate/computer-use-mcp-axiomate/src/types.ts and /c/public/workspace/claude-code-sourcemap/restored-src/node_modules/@ant/computer-use-mcp/src/types.ts differ
+
+================================================================
+Package: chrome-mcp-axiomate
+Left:  /c/public/workspace/axiomate/chrome-mcp-axiomate/src
+Right: /c/public/workspace/claude-code-sourcemap/restored-src/node_modules/@ant/claude-for-chrome-mcp/src
+----------------------------------------------------------------
+
+================================================================
+Package: mcpb-axiomate
+Left:  /c/public/workspace/axiomate/mcpb-axiomate/src
+Right: /c/public/workspace/claude-code-sourcemap/restored-src/node_modules/@anthropic-ai/mcpb/src
+----------------------------------------------------------------
+  SKIPPED: directory not found
+
