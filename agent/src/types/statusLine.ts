@@ -46,13 +46,13 @@ export type StatusLineCommandInput = {
   }
   exceeds_200k_tokens: boolean
   rate_limits?: {
-    five_hour?: {
+    requests?: {
       used_percentage: number
-      resets_at: string | number
+      resets_at?: string | number
     }
-    seven_day?: {
+    tokens?: {
       used_percentage: number
-      resets_at: string | number
+      resets_at?: string | number
     }
   }
   vim?: {

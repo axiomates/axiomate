@@ -10,6 +10,8 @@ import { neutralUsageToDeltaUsage, updateUsage } from './usageUtils.js'
 import { withStallDetection } from './middleware/stallDetection.js'
 import { getProviderForModel } from './providerRegistry.js'
 import { checkResponseForCacheBreak, recordPromptState } from './promptCacheBreakDetection.js'
+import { parseRateLimitHeaders, updateRateLimitInfo } from './rateLimitTracker.js'
+import { getAPIProviderForStatsig } from '../../utils/model/providers.js'
 import { processStream } from './streamAccumulator.js'
 import {
   getAPIProvider,
@@ -1641,11 +1643,13 @@ async function* queryModel(
         streamRequestId,
       )
 
-      // Process fallback percentage header and quota status if available
-      // streamResponse is set in the onRequestSent callback above
+      // Process response headers for rate limit tracking and gateway detection
       const resp = streamResponse
       if (resp) {
         extractQuotaStatusFromHeaders(resp.headers)
+        // Track rate limit state from provider headers (OpenAI x-ratelimit-* or Anthropic anthropic-ratelimit-*)
+        const rlInfo = parseRateLimitHeaders(resp.headers, getAPIProviderForStatsig())
+        if (rlInfo) updateRateLimitInfo(rlInfo)
         // Store headers for gateway detection
         responseHeaders = resp.headers
       }

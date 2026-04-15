@@ -11,9 +11,7 @@ import { getTotalAPIDuration, getTotalCost, getTotalDuration, getTotalInputToken
 import { useMainLoopModel } from '../hooks/useMainLoopModel.js';
 import { type ReadonlySettings, useSettings } from '../hooks/useSettings.js';
 import { Ansi, Box, Text } from '../ink.js';
-// apiLimits stub inlined
-type RawUtilization = { five_hour?: { utilization: number; resets_at: number }; seven_day?: { utilization: number; resets_at: number } }
-function getRawUtilization(): RawUtilization | undefined { return undefined }
+import { getRateLimitInfo } from '../services/api/rateLimitTracker.js'
 import type { Message } from '../types/message.js';
 import type { StatusLineCommandInput } from '../types/statusLine.js';
 import type { VimMode } from '../types/textInputTypes.js';
@@ -49,20 +47,20 @@ function buildStatusLineCommandInput(permissionMode: PermissionMode, exceeds200k
   const contextPercentages = calculateContextPercentages(currentUsage, contextWindowSize);
   const sessionId = getSessionId();
   const sessionName = getCurrentSessionTitle(sessionId);
-  const rawUtil = getRawUtilization();
+  const rlInfo = getRateLimitInfo();
   const rateLimits: StatusLineCommandInput['rate_limits'] = {
-    ...(rawUtil?.five_hour && {
-      five_hour: {
-        used_percentage: rawUtil.five_hour.utilization * 100,
-        resets_at: rawUtil.five_hour.resets_at
+    ...(rlInfo?.requestsRemaining != null && rlInfo?.requestsLimit && {
+      requests: {
+        used_percentage: Math.round((1 - rlInfo.requestsRemaining / rlInfo.requestsLimit) * 100),
+        resets_at: rlInfo.requestsResetMs ? Date.now() + rlInfo.requestsResetMs : undefined,
       }
     }),
-    ...(rawUtil?.seven_day && {
-      seven_day: {
-        used_percentage: rawUtil.seven_day.utilization * 100,
-        resets_at: rawUtil.seven_day.resets_at
+    ...(rlInfo?.tokensRemaining != null && rlInfo?.tokensLimit && {
+      tokens: {
+        used_percentage: Math.round((1 - rlInfo.tokensRemaining / rlInfo.tokensLimit) * 100),
+        resets_at: rlInfo.tokensResetMs ? Date.now() + rlInfo.tokensResetMs : undefined,
       }
-    })
+    }),
   };
   return {
     ...createBaseHookInput(),
@@ -98,7 +96,7 @@ function buildStatusLineCommandInput(permissionMode: PermissionMode, exceeds200k
       remaining_percentage: contextPercentages.remaining
     },
     exceeds_200k_tokens: exceeds200kTokens,
-    ...((rateLimits.five_hour || rateLimits.seven_day) && {
+    ...((rateLimits.requests || rateLimits.tokens) && {
       rate_limits: rateLimits
     }),
     ...(isVimModeEnabled() && {
