@@ -152,7 +152,7 @@ export function getApiBaseUrlHost(): string | undefined {
   if (!baseUrl) return undefined
   try {
     const host = new URL(baseUrl).host
-    if (host === 'api.anthropic.com') return undefined
+    if (host === 'the API endpoint') return undefined
     return host
   } catch {
     return undefined

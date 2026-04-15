@@ -226,7 +226,7 @@ export type GrowthBookExperimentData = {
   experimentMetadata?: Record<string, unknown>
 }
 
-// api.anthropic.com only serves the "production" GrowthBook environment
+// the API endpoint only serves the "production" GrowthBook environment
 // (see starling/starling/cli/cli.py DEFAULT_ENVIRONMENTS). Staging and
 // development environments are not exported to the prod API.
 function getEnvironmentForGrowthBook(): string {
@@ -319,7 +319,7 @@ export function initialize1PEventLogging(): void {
   // Build our own resource for 1P event logging with minimal attributes
   const platform = getPlatform()
   const attributes: Record<string, string> = {
-    [ATTR_SERVICE_NAME]: 'claude-code',
+    [ATTR_SERVICE_NAME]: 'axiomate',
     [ATTR_SERVICE_VERSION]: MACRO.VERSION,
   }
 

@@ -36,14 +36,14 @@ export function getMacOsKeychainStorageServiceName(
   const dirHash = isDefaultDir
     ? ''
     : `-${createHash('sha256').update(configDir).digest('hex').substring(0, 8)}`
-  return `Claude Code${serviceSuffix}${dirHash}`
+  return `Axiomate${serviceSuffix}${dirHash}`
 }
 
 export function getUsername(): string {
   try {
     return process.env.USER || userInfo().username
   } catch {
-    return 'claude-code-user'
+    return 'axiomate-user'
   }
 }
 

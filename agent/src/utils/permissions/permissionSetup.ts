@@ -1005,7 +1005,7 @@ export function getAutoModeUnavailableNotification(
       break
   }
   return feature('DEV')
-    ? `${base} · #claude-code-feedback`
+    ? `${base} · #axiomate-feedback`
     : base
 }
 

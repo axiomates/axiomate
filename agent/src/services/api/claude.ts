@@ -54,7 +54,6 @@ import { getGlobalConfig, getOrCreateUserID } from '../../utils/config.js'
 import {
   CAPPED_DEFAULT_MAX_TOKENS,
   getModelMaxOutputTokens,
-  getSonnet1mExpTreatmentEnabled,
 } from '../../utils/context.js'
 import { resolveAppliedEffort } from '../../utils/effort.js'
 import { isEnvTruthy } from '../../utils/envUtils.js'
@@ -105,15 +104,6 @@ import {
   setLastMainRequestId,
   setThinkingClearLatched,
 } from '../../bootstrap/state.js'
-import {
-  AFK_MODE_BETA_HEADER,
-  CONTEXT_1M_BETA_HEADER,
-  CONTEXT_MANAGEMENT_BETA_HEADER,
-  EFFORT_BETA_HEADER,
-  PROMPT_CACHING_SCOPE_BETA_HEADER,
-  REDACT_THINKING_BETA_HEADER,
-  STRUCTURED_OUTPUTS_BETA_HEADER,
-} from '../../constants/betas.js'
 import type { QuerySource } from '../../constants/querySource.js'
 import type { Notification } from '../../context/notifications.js'
 import { addToTotalSessionCost } from '../../cost-tracker.js'
@@ -122,7 +112,6 @@ import type { AgentId } from '../../types/ids.js'
 import { getAgentContext } from '../../utils/agentContext.js'
 import {
   getToolSearchBetaHeader,
-  modelSupportsStructuredOutputs,
   shouldIncludeFirstPartyOnlyBetas,
   shouldUseGlobalCacheScope,
 } from '../../utils/betas.js'
@@ -347,11 +336,10 @@ function configureEffortParams(
   }
 
   if (effortValue === undefined) {
-    betas.push(EFFORT_BETA_HEADER)
+    // No effort override — use server default
   } else if (typeof effortValue === 'string') {
     // Send string effort level as is
     outputConfig.effort = effortValue
-    betas.push(EFFORT_BETA_HEADER)
   }
 }
 
@@ -783,13 +771,6 @@ async function* queryModel(
     useGlobalCacheFeature &&
     filteredTools.some(t => t.isMcp === true && !willDefer(t))
 
-  // Ensure prompt_caching_scope beta header is present when global cache is enabled.
-  if (
-    useGlobalCacheFeature &&
-    !betas.includes(PROMPT_CACHING_SCOPE_BETA_HEADER)
-  ) {
-    betas.push(PROMPT_CACHING_SCOPE_BETA_HEADER)
-  }
 
   // Determine global cache strategy for logging
   const globalCacheStrategy: GlobalCacheStrategy = useGlobalCacheFeature
@@ -1042,13 +1023,6 @@ async function* queryModel(
   const paramsFromContext = (retryContext: RetryContext) => {
     const betasParams = [...betas]
 
-    // Append 1M beta dynamically for the Sonnet 1M experiment.
-    if (
-      !betasParams.includes(CONTEXT_1M_BETA_HEADER) &&
-      getSonnet1mExpTreatmentEnabled(retryContext.model)
-    ) {
-      betasParams.push(CONTEXT_1M_BETA_HEADER)
-    }
 
     // For Bedrock, include both model-based betas and dynamically-added tool search header
     const bedrockBetas =
@@ -1076,13 +1050,6 @@ async function* queryModel(
     // Requires structured-outputs beta header per SDK (see parse() in messages.mjs)
     if (options.outputFormat && !('format' in outputConfig)) {
       outputConfig.format = options.outputFormat
-      // Add beta header if not already present and provider supports it
-      if (
-        modelSupportsStructuredOutputs(options.model) &&
-        !betasParams.includes(STRUCTURED_OUTPUTS_BETA_HEADER)
-      ) {
-        betasParams.push(STRUCTURED_OUTPUTS_BETA_HEADER)
-      }
     }
 
     // Retry context gets preference because it tries to course correct if we exceed the context window limit
@@ -1130,25 +1097,13 @@ async function* queryModel(
     // Get API context management strategies if enabled
     const contextManagement = getAPIContextManagement({
       hasThinking,
-      isRedactThinkingActive: betasParams.includes(REDACT_THINKING_BETA_HEADER),
+      isRedactThinkingActive: false,
       clearAllThinking: thinkingClearLatched,
     })
 
     const enablePromptCaching =
       options.enablePromptCaching ?? getPromptCachingEnabled(retryContext.model)
 
-    // AFK mode beta: latched once auto mode is first activated. Still gated
-    // by isAgenticQuery per-call so classifiers/compaction don't get it.
-    if (feature('TRANSCRIPT_CLASSIFIER')) {
-      if (
-        afkHeaderLatched &&
-        shouldIncludeFirstPartyOnlyBetas() &&
-        isAgenticQuery &&
-        !betasParams.includes(AFK_MODE_BETA_HEADER)
-      ) {
-        betasParams.push(AFK_MODE_BETA_HEADER)
-      }
-    }
 
     // Only send temperature when thinking is disabled — the API requires
     // temperature: 1 when thinking is enabled, which is already the default.
@@ -1198,8 +1153,7 @@ async function* queryModel(
       thinking,
       ...(temperature !== undefined && { temperature }),
       ...(contextManagement &&
-        useBetas &&
-        betasParams.includes(CONTEXT_MANAGEMENT_BETA_HEADER) && {
+        useBetas && {
           context_management: contextManagement,
         }),
       ...extraBodyParams,
@@ -2240,7 +2194,7 @@ export async function queryHaiku({
 type QueryWithModelOptions = Omit<Options, 'getToolPermissionContext'>
 
 /**
- * Query a specific model through the Claude Code infrastructure.
+ * Query a specific model through the Axiomate infrastructure.
  * This goes through the full query pipeline including proper authentication,
  * betas, and headers - unlike direct API calls.
  */
@@ -2295,7 +2249,7 @@ export async function queryWithModel({
 }
 
 // Non-streaming requests have a 10min max per the docs:
-// https://platform.claude.com/docs/en/api/errors#long-requests
+// Long request error handling
 // The SDK's 21333-token cap is derived from 10min × 128k tokens/hour, but we
 // bypass it by setting a client-level timeout, so we can cap higher.
 export const MAX_NON_STREAMING_TOKENS = 64_000

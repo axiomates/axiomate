@@ -58,8 +58,8 @@ describe('providerRegistry', () => {
         'claude-sonnet-4-6': {
           model: 'claude-sonnet-4-6',
           protocol: 'anthropic',
-          baseUrl: 'https://api.anthropic.com',
-          apiKey: 'sk-ant-test',
+          baseUrl: 'https://api.example.com',
+          apiKey: 'test-api-key',
         },
       },
     })
@@ -73,14 +73,14 @@ describe('providerRegistry', () => {
         'model-a': {
           model: 'model-a',
           protocol: 'anthropic',
-          baseUrl: 'https://api.anthropic.com',
-          apiKey: 'sk-ant-test',
+          baseUrl: 'https://api.example.com',
+          apiKey: 'test-api-key',
         },
         'model-b': {
           model: 'model-b',
           protocol: 'anthropic',
-          baseUrl: 'https://api.anthropic.com',
-          apiKey: 'sk-ant-test',
+          baseUrl: 'https://api.example.com',
+          apiKey: 'test-api-key',
         },
       },
     })

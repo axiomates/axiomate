@@ -108,7 +108,7 @@ export function ApiKeyStep({
               {selectedOption === 'existing'
                 ? color('success', theme)('> ')
                 : '  '}
-              Use your existing Claude Code API key
+              Use your existing Axiomate API key
             </Text>
           </Box>
         )}
@@ -135,7 +135,7 @@ export function ApiKeyStep({
             onSubmit={onSubmit}
             onPaste={onApiKeyChange}
             focus={true}
-            placeholder="sk-ant… (Create a new key at https://platform.claude.com/settings/keys)"
+            placeholder="Paste your API key here"
             mask="*"
             columns={terminalSize.columns}
             cursorOffset={cursorOffset}

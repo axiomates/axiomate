@@ -23,7 +23,7 @@ import {
   type ModelShortName,
 } from './model/model.js'
 
-// @see https://platform.claude.com/docs/en/about-claude/pricing
+// Model pricing reference
 export type ModelCosts = {
   inputTokens: number
   outputTokens: number
@@ -80,7 +80,7 @@ export const COST_HAIKU_45 = {
 const DEFAULT_UNKNOWN_MODEL_COST = COST_TIER_5_25
 
 // @[MODEL LAUNCH]: Add a pricing entry for the new model below.
-// Costs from https://platform.claude.com/docs/en/about-claude/pricing
+// Model pricing reference
 // Web search cost: $10 per 1000 requests = $0.01 per request
 export const MODEL_COSTS: Record<ModelShortName, ModelCosts> = {
   [firstPartyNameToCanonical(CLAUDE_3_5_HAIKU_CONFIG.firstParty)]:

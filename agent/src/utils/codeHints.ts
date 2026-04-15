@@ -1,8 +1,8 @@
 /**
- * Claude Code hints protocol.
+ * Axiomate hints protocol.
  *
- * CLIs and SDKs running under Claude Code can emit a self-closing
- * `<claude-code-hint />` tag to stderr (merged into stdout by the shell
+ * CLIs and SDKs running under Axiomate can emit a self-closing
+ * `<axiomate-hint />` tag to stderr (merged into stdout by the shell
  * tools). The harness scans tool output for these tags, strips them before
  * the output reaches the model, and surfaces an install prompt to the
  * user — no inference, no proactive execution.
@@ -50,7 +50,7 @@ const SUPPORTED_TYPES = new Set<string>(['plugin'])
  * tag — is ignored. Leading and trailing whitespace on the line is
  * tolerated since some SDKs pad stderr.
  */
-const HINT_TAG_RE = /^[ \t]*<claude-code-hint\s+([^>]*?)\s*\/>[ \t]*$/gm
+const HINT_TAG_RE = /^[ \t]*<axiomate-hint\s+([^>]*?)\s*\/>[ \t]*$/gm
 
 /**
  * Attribute matcher. Accepts `key="value"` and `key=value` (terminated by
@@ -74,7 +74,7 @@ export function extractAxiomateHints(
   command: string,
 ): { hints: AxiomateHint[]; stripped: string } {
   // Fast path: no tag open sequence → no work, no allocation.
-  if (!output.includes('<claude-code-hint')) {
+  if (!output.includes('<axiomate-hint')) {
     return { hints: [], stripped: output }
   }
 

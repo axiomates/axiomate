@@ -1,7 +1,7 @@
 /**
  * Files are loaded in the following order:
  *
- * 1. Managed memory (eg. /etc/claude-code/AXIOMATE.md) - Global instructions for all users
+ * 1. Managed memory (eg. /etc/axiomate/AXIOMATE.md) - Global instructions for all users
  * 2. User memory (~/.axiomate/AXIOMATE.md) - Private global instructions for all projects
  * 3. Project memory (AXIOMATE.md, .axiomate/AXIOMATE.md, and .axiomate/rules/*.md in project roots) - Instructions checked into the codebase
  * 4. Local memory (AXIOMATE.local.md in project roots) - Private project-specific instructions

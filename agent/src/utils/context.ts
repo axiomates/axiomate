@@ -1,5 +1,3 @@
-// biome-ignore-all assist/source/organizeImports: ANT-ONLY import markers must not be reordered
-import { CONTEXT_1M_BETA_HEADER } from '../constants/betas.js'
 import { getGlobalConfig } from './config.js'
 import { isEnvTruthy } from './envUtils.js'
 import { getCanonicalName } from './model/model.js'
@@ -49,7 +47,7 @@ export function modelSupports1M(model: string): boolean {
 
 export function getContextWindowForModel(
   model: string,
-  betas?: string[],
+  _betas?: string[],
 ): number {
   // Config-driven: check ModelProviderConfig.contextWindow (for OpenAI/custom models)
   const modelConfig = getGlobalConfig().models?.[model]
@@ -62,9 +60,6 @@ export function getContextWindowForModel(
     return 1_000_000
   }
 
-  if (betas?.includes(CONTEXT_1M_BETA_HEADER) && modelSupports1M(model)) {
-    return 1_000_000
-  }
   if (getSonnet1mExpTreatmentEnabled(model)) {
     return 1_000_000
   }

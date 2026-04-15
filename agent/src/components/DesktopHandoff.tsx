@@ -12,7 +12,7 @@ import { gracefulShutdown } from '../utils/gracefulShutdown.js'
 import { flushSessionStorage } from '../utils/sessionStorage.js'
 import { LoadingState } from './design-system/LoadingState.js'
 
-const DESKTOP_DOCS_URL = 'https://clau.de/desktop'
+const DESKTOP_DOCS_URL = ''
 
 export function getDownloadUrl(): string {
   switch (process.platform) {

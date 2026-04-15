@@ -495,7 +495,7 @@ function initializeEntrypoint(isNonInteractive: boolean): void {
     return;
   }
   if (isEnvTruthy(process.env.CLAUDE_CODE_ACTION)) {
-    process.env.CLAUDE_CODE_ENTRYPOINT = 'claude-code-github-action';
+    process.env.CLAUDE_CODE_ENTRYPOINT = 'axiomate-github-action';
     return;
   }
 

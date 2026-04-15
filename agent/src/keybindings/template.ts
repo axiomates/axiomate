@@ -43,7 +43,7 @@ export function generateKeybindingsTemplate(): string {
 
   // Format as object wrapper with bindings array
   const config = {
-    $schema: 'https://www.schemastore.org/claude-code-keybindings.json',
+    $schema: 'https://www.schemastore.org/axiomate-keybindings.json',
     $docs: 'https://code.claude.com/docs/en/keybindings',
     bindings,
   }

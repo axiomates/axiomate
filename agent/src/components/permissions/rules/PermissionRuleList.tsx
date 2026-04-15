@@ -760,7 +760,7 @@ export function PermissionRuleList({
           <Tab id="workspace" title="Workspace">
             <Box flexDirection="column">
               <Text>
-                Claude Code can read files in the workspace, and make edits when
+                Axiomate can read files in the workspace, and make edits when
                 auto-accept edits is on.
               </Text>
               <WorkspaceTab

@@ -54,7 +54,7 @@ export function ApproveApiKey({
     >
       <Text>
         <Text bold>ANTHROPIC_API_KEY</Text>
-        <Text>: sk-ant-...{customApiKeyTruncated}</Text>
+        <Text>: ***...{customApiKeyTruncated}</Text>
       </Text>
       <Text>Do you want to use this API key?</Text>
       <Select

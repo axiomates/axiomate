@@ -9,7 +9,6 @@ import {
   getLastApiCompletionTimestamp,
   setLastApiCompletionTimestamp,
 } from '../../../../bootstrap/state.js'
-import { STRUCTURED_OUTPUTS_BETA_HEADER } from '../../../../constants/betas.js'
 import {
   getAttributionHeader,
   getCLISyspromptPrefix,
@@ -17,7 +16,7 @@ import {
 import { logEvent } from '../../../../services/analytics/index.js'
 import type { AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS } from '../../../../services/analytics/metadata.js'
 import { getAPIMetadata } from '../../claude.js'
-import { getModelBetas, modelSupportsStructuredOutputs } from '../../../../utils/betas.js'
+import { getModelBetas } from '../../../../utils/betas.js'
 import { computeFingerprint } from '../../../../utils/fingerprint.js'
 import type { LLMProvider } from '../../provider.js'
 import type {
@@ -62,13 +61,6 @@ export async function anthropicSideQuery(
 
   // Anthropic-specific: betas management
   const betas = [...getModelBetas(model)]
-  if (
-    outputFormat &&
-    modelSupportsStructuredOutputs(model) &&
-    !betas.includes(STRUCTURED_OUTPUTS_BETA_HEADER)
-  ) {
-    betas.push(STRUCTURED_OUTPUTS_BETA_HEADER)
-  }
 
   // Anthropic-specific: fingerprint attribution for OAuth
   const messageText = extractFirstUserMessageText(messages)

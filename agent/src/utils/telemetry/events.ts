@@ -69,7 +69,7 @@ export async function logOTelEvent(
 
   // Emit log record as an event
   eventLogger.emit({
-    body: `claude_code.${eventName}`,
+    body: `axiomate.${eventName}`,
     attributes,
   })
 }

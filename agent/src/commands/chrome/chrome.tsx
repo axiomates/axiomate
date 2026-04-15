@@ -17,8 +17,8 @@ import { env } from '../../utils/env.js'
 import { isRunningOnHomespace } from '../../utils/envUtils.js'
 
 const CHROME_EXTENSION_URL = ''
-const CHROME_PERMISSIONS_URL = 'https://clau.de/chrome/permissions'
-const CHROME_RECONNECT_URL = 'https://clau.de/chrome/reconnect'
+const CHROME_PERMISSIONS_URL = ''
+const CHROME_RECONNECT_URL = ''
 
 type MenuAction =
   | 'install-extension'
@@ -143,7 +143,7 @@ function ClaudeInChromeMenu({
       <Box flexDirection="column" gap={1}>
         <Text>
           Claude in Chrome works with the Chrome extension to let you control
-          your browser directly from Claude Code. Navigate websites, fill forms,
+          your browser directly from Axiomate. Navigate websites, fill forms,
           capture screenshots, record GIFs, and debug with console logs and
           network requests.
         </Text>

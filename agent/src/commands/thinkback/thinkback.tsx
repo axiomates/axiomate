@@ -29,8 +29,8 @@ import { loadAllPlugins } from '../../utils/plugins/pluginLoader.js'
 import { installSelectedPlugins } from '../../utils/plugins/pluginStartupCheck.js'
 
 // Marketplace and plugin identifiers - varies by user type
-const INTERNAL_MARKETPLACE_NAME = 'claude-code-marketplace'
-const INTERNAL_MARKETPLACE_REPO = 'anthropics/claude-code-marketplace'
+const INTERNAL_MARKETPLACE_NAME = 'axiomate-marketplace'
+const INTERNAL_MARKETPLACE_REPO = 'anthropics/axiomate-marketplace'
 const OFFICIAL_MARKETPLACE_REPO = 'anthropics/claude-plugins-official'
 
 function getMarketplaceName(): string {
@@ -367,8 +367,8 @@ function ThinkbackMenu({
 
   return (
     <Dialog
-      title="Think Back on 2025 with Claude Code"
-      subtitle="Generate your 2025 Claude Code Think Back (takes a few minutes to run)"
+      title="Think Back on 2025 with Axiomate"
+      subtitle="Generate your 2025 Axiomate Think Back (takes a few minutes to run)"
       onCancel={handleCancel}
       color="claude"
     >
@@ -397,13 +397,13 @@ function ThinkbackMenu({
 }
 
 const EDIT_PROMPT =
-  'Use the Skill tool to invoke the "thinkback" skill with mode=edit to modify my existing Claude Code year in review animation. Ask me what I want to change. When the animation is ready, tell the user to run /think-back again to play it.'
+  'Use the Skill tool to invoke the "thinkback" skill with mode=edit to modify my existing Axiomate year in review animation. Ask me what I want to change. When the animation is ready, tell the user to run /think-back again to play it.'
 
 const FIX_PROMPT =
-  'Use the Skill tool to invoke the "thinkback" skill with mode=fix to fix validation or rendering errors in my existing Claude Code year in review animation. Run the validator, identify errors, and fix them. When the animation is ready, tell the user to run /think-back again to play it.'
+  'Use the Skill tool to invoke the "thinkback" skill with mode=fix to fix validation or rendering errors in my existing Axiomate year in review animation. Run the validator, identify errors, and fix them. When the animation is ready, tell the user to run /think-back again to play it.'
 
 const REGENERATE_PROMPT =
-  'Use the Skill tool to invoke the "thinkback" skill with mode=regenerate to create a completely new Claude Code year in review animation from scratch. Delete the existing animation and start fresh. When the animation is ready, tell the user to run /think-back again to play it.'
+  'Use the Skill tool to invoke the "thinkback" skill with mode=regenerate to create a completely new Axiomate year in review animation from scratch. Delete the existing animation and start fresh. When the animation is ready, tell the user to run /think-back again to play it.'
 
 function ThinkbackFlow({
   onDone,

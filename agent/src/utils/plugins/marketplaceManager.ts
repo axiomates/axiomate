@@ -1,5 +1,5 @@
 /**
- * Marketplace manager for Claude Code plugins
+ * Marketplace manager for Axiomate plugins
  *
  * This module provides functionality to:
  * - Manage known marketplace sources (URLs, GitHub repos, npm packages, local files)
@@ -311,7 +311,7 @@ export async function loadKnownMarketplacesConfigSafe(): Promise<KnownMarketplac
     return await loadKnownMarketplacesConfig()
   } catch {
     // Inner function already logged via logForDebugging. Don't logError here —
-    // corrupted user config isn't a Claude Code bug, shouldn't hit the error file.
+    // corrupted user config isn't a Axiomate bug, shouldn't hit the error file.
     return {}
   }
 }
@@ -2141,7 +2141,7 @@ export const getMarketplace = memoize(
       throw new Error(
         `Marketplace "${name}" has a relative source path (${entry.source.path}) ` +
           `in known_marketplaces.json — this is stale state from an older ` +
-          `Claude Code version. Run 'claude marketplace remove ${name}' and ` +
+          `Axiomate version. Run 'claude marketplace remove ${name}' and ` +
           `re-add it from the original project directory.`,
       )
     }
@@ -2533,8 +2533,8 @@ export async function refreshMarketplace(
             ? source.repo
             : redactUrlCredentials(source.url)
         const reason =
-          name === 'claude-code-plugins'
-            ? `We've deprecated "claude-code-plugins" in favor of "claude-plugins-official".`
+          name === 'axiomate-plugins'
+            ? `We've deprecated "axiomate-plugins" in favor of "claude-plugins-official".`
             : `This marketplace may have been deprecated or moved to a new location.`
         throw new Error(
           `The marketplace.json file is no longer present in this repository.\n\n` +

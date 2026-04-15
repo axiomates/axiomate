@@ -1,6 +1,6 @@
 /**
- * Surfaces plugin-install prompts driven by `<claude-code-hint />` tags
- * that CLIs/SDKs emit to stderr. See docs/claude-code-hints.md.
+ * Surfaces plugin-install prompts driven by `<axiomate-hint />` tags
+ * that CLIs/SDKs emit to stderr. See docs/axiomate-hints.md.
  *
  * Show-once semantics: each plugin is prompted for at most once ever,
  * recorded in config regardless of yes/no. The pre-store gate in

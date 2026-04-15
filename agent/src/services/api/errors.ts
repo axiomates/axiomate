@@ -7,7 +7,6 @@ import type {
   BetaMessage,
   BetaStopReason,
 } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
-import { AFK_MODE_BETA_HEADER } from '../../constants/betas.js'
 import { getHeader } from './headerUtils.js'
 import type { SDKAssistantMessageError } from '../../entrypoints/agentSdkTypes.js'
 import type {
@@ -188,7 +187,7 @@ export function getRequestTooLargeErrorMessage(): string {
     : `Request too large (${limits}). Double press esc to go back and try with a smaller file.`
 }
 export const OAUTH_ORG_NOT_ALLOWED_ERROR_MESSAGE =
-  'Your account does not have access to Claude Code. Please run /login.'
+  'Your account does not have access to Axiomate. Please run /login.'
 
 export function getTokenRevokedErrorMessage(): string {
   return getIsNonInteractiveSession()
@@ -203,7 +202,7 @@ export function getOauthOrgNotAllowedErrorMessage(): string {
 }
 
 /**
- * Check if we're in CCR (Claude Code Remote) mode.
+ * Check if we're in CCR (Axiomate Remote) mode.
  * In CCR mode, auth is handled via JWTs provided by the infrastructure,
  * not via /login. Transient auth errors should suggest retrying, not logging in.
  */
@@ -545,7 +544,7 @@ export function getAssistantMessageFromError(
     const innerMessage = stripped.match(/"message"\s*:\s*"([^"]*)"/)?.[1]
     const detail = innerMessage || stripped
     return createAssistantAPIErrorMessage({
-      content: `${API_ERROR_MESSAGE_PREFIX}: Request rejected (429) · ${detail || 'this may be a temporary capacity issue — check status.anthropic.com'}`,
+      content: `${API_ERROR_MESSAGE_PREFIX}: Request rejected (429) · ${detail || 'this may be a temporary capacity issue — check your API provider status page'}`,
       error: 'rate_limit',
     })
   }
@@ -628,22 +627,6 @@ export function getAssistantMessageFromError(
         : 'An image in the conversation exceeds the dimension limit for many-image requests (2000px). Run /compact to remove old images from context, or start a new session.',
       error: 'invalid_request',
       errorDetails: error.message,
-    })
-  }
-
-  // Server rejected the afk-mode beta header (plan does not include auto
-  // mode). AFK_MODE_BETA_HEADER is '' in non-TRANSCRIPT_CLASSIFIER builds,
-  // so the truthy guard keeps this inert there.
-  if (
-    AFK_MODE_BETA_HEADER &&
-    error instanceof APIError &&
-    error.status === 400 &&
-    error.message.includes(AFK_MODE_BETA_HEADER) &&
-    error.message.includes('anthropic-beta')
-  ) {
-    return createAssistantAPIErrorMessage({
-      content: 'Auto mode is unavailable for your plan',
-      error: 'invalid_request',
     })
   }
 
@@ -1127,8 +1110,8 @@ export function getErrorMessageIfRefusal(
   logEvent('ax_refusal_api_response', {})
 
   const baseMessage = getIsNonInteractiveSession()
-    ? `${API_ERROR_MESSAGE_PREFIX}: Claude Code is unable to respond to this request, which appears to violate our Usage Policy (https://www.anthropic.com/legal/aup). Try rephrasing the request or attempting a different approach.`
-    : `${API_ERROR_MESSAGE_PREFIX}: Claude Code is unable to respond to this request, which appears to violate our Usage Policy (https://www.anthropic.com/legal/aup). Please double press esc to edit your last message or start a new session for Claude Code to assist with a different task.`
+    ? `${API_ERROR_MESSAGE_PREFIX}: Axiomate is unable to respond to this request, which appears to violate the model provider Usage Policy. Try rephrasing the request or attempting a different approach.`
+    : `${API_ERROR_MESSAGE_PREFIX}: Axiomate is unable to respond to this request, which appears to violate the model provider Usage Policy. Please double press esc to edit your last message or start a new session for Axiomate to assist with a different task.`
 
   const modelSuggestion =
     model !== 'claude-sonnet-4-20250514'

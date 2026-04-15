@@ -1,6 +1,6 @@
 /**
  * Shared state machine + install helper for plugin-recommendation hooks
- * (LSP, claude-code-hint). Centralizes the gate chain, async-guard,
+ * (LSP, axiomate-hint). Centralizes the gate chain, async-guard,
  * and success/failure notification JSX so new sources stay small.
  */
 

@@ -4,7 +4,7 @@
  *
  * isRemoteManagedSettingsEligible() reads two separate keychain entries
  * SEQUENTIALLY via sync execSync during applySafeConfigEnvironmentVariables():
- *   1. "Claude Code-credentials" (OAuth tokens)  — ~32ms
+ *   1. "Axiomate-credentials" (OAuth tokens)  — ~32ms
  *   2. "Axiomate" (legacy API key)            — ~33ms
  * Sequential cost: ~65ms on every macOS startup.
  *

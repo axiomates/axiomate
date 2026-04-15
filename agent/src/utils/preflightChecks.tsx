@@ -14,7 +14,7 @@ export function PreflightStep({
   onSuccess,
 }: PreflightStepProps): React.ReactNode {
   useEffect(() => {
-    // Axiomate doesn't connect to api.anthropic.com, skip health checks
+    // Axiomate doesn't connect to the API endpoint, skip health checks
     onSuccess()
   }, [onSuccess])
 
