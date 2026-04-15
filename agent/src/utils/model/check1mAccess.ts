@@ -48,11 +48,6 @@ export function checkOpus1mAccess(): boolean {
     return false
   }
 
-  if (false) {
-    // Subscribers have access if extra usage is enabled for their account
-    return isExtraUsageEnabled()
-  }
-
   // Non-subscribers (API/PAYG) have access
   return true
 }
@@ -60,11 +55,6 @@ export function checkOpus1mAccess(): boolean {
 export function checkSonnet1mAccess(): boolean {
   if (is1mContextDisabled()) {
     return false
-  }
-
-  if (false) {
-    // Subscribers have access if extra usage is enabled for their account
-    return isExtraUsageEnabled()
   }
 
   // Non-subscribers (API/PAYG) have access

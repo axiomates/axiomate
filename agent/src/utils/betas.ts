@@ -64,14 +64,6 @@ export function filterAllowedSdkBetas(
     return undefined
   }
 
-  if (false) {
-    // biome-ignore lint/suspicious/noConsole: intentional warning
-    console.warn(
-      'Warning: Custom betas are only available for API key users. Ignoring provided betas.',
-    )
-    return undefined
-  }
-
   const { allowed, disallowed } = partitionBetasByAllowlist(sdkBetas)
   for (const beta of disallowed) {
     // biome-ignore lint/suspicious/noConsole: intentional warning
@@ -221,9 +213,6 @@ export const getAllModelBetas = memoize((model: string): string[] => {
 
   if (!isHaiku) {
     betaHeaders.push(CLAUDE_CODE_20250219_BETA_HEADER)
-  }
-  if (false) {
-    betaHeaders.push(OAUTH_BETA_HEADER)
   }
   if (has1mContext(model)) {
     betaHeaders.push(CONTEXT_1M_BETA_HEADER)

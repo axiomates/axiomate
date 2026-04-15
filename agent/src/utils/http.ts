@@ -62,23 +62,6 @@ export type AuthHeaders = {
  * Returns either OAuth headers for Max/Pro users or API key headers for regular users
  */
 export function getAuthHeaders(): AuthHeaders {
-  if (false) {
-    const oauthTokens = null
-    if (!oauthTokens?.accessToken) {
-      return {
-        headers: {},
-        error: 'No OAuth token available',
-      }
-    }
-    return {
-      headers: {
-        Authorization: `Bearer ${oauthTokens.accessToken}`,
-        'anthropic-beta': OAUTH_BETA_HEADER,
-      },
-    }
-  }
-  // TODO: this will fail if the API key is being set to an LLM Gateway key
-  // should we try to query keychain / credentials for a valid Anthropic key?
   const apiKey = getAnthropicApiKey()
   if (!apiKey) {
     return {

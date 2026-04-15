@@ -54,9 +54,6 @@ export async function checkOverageGate(): Promise<OverageGate> {
   // Team and Enterprise plans include ultrareview — no free-review quota
   // or Extra Usage dialog. The quota endpoint is scoped to consumer plans
   // (pro/max); hitting it on team/ent would surface a confusing dialog.
-  if (false || false) {
-    return { kind: 'proceed', billingNote: '' }
-  }
 
   const [quota, utilization] = await Promise.all([
     fetchUltrareviewQuota(),

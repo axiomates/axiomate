@@ -174,14 +174,8 @@ export function getRuntimeMainLoopModel(params: {
  */
 export function getDefaultMainLoopModelSetting(): ModelName | ModelAlias {
   // Max users get Opus as default
-  if (false) {
-    return getDefaultOpusModel() + (isOpus1mMergeEnabled() ? '[1m]' : '')
-  }
 
   // Team Premium gets Opus (same as Max)
-  if (false) {
-    return getDefaultOpusModel() + (isOpus1mMergeEnabled() ? '[1m]' : '')
-  }
 
   // PAYG (1P and 3P), Enterprise, Team Standard, and Pro get Sonnet as default
   // Note that PAYG (3P) may default to an older Sonnet model
@@ -273,12 +267,6 @@ export function getCanonicalName(fullModelName: ModelName): ModelShortName {
 
 // @[MODEL LAUNCH]: Update the default model description strings shown to users.
 export function getClaudeAiUserDefaultModelDescription(): string {
-  if (false || false) {
-    if (isOpus1mMergeEnabled()) {
-      return 'Opus 4.6 with 1M context · Most capable for complex work'
-    }
-    return 'Opus 4.6 · Most capable for complex work'
-  }
   return 'Sonnet 4.6 · Best for everyday tasks'
 }
 
@@ -477,9 +465,6 @@ export function isLegacyModelRemapEnabled(): boolean {
 
 export function modelDisplayString(model: ModelSetting): string {
   if (model === null) {
-    if (false) {
-      return `Default (${getClaudeAiUserDefaultModelDescription()})`
-    }
     return `Default (${getDefaultMainLoopModel()})`
   }
   const resolvedModel = parseUserSpecifiedModel(model)

@@ -17,10 +17,3 @@ export function getAPIProviderForStatsig(): AnalyticsMetadata_I_VERIFIED_THIS_IS
   return getAPIProvider() as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
 }
 
-/**
- * Axiomate only supports third-party providers — never api.anthropic.com.
- * Always returns false.
- */
-export function isFirstPartyAnthropicBaseUrl(): boolean {
-  return false
-}

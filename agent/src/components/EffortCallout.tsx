@@ -142,24 +142,6 @@ export function shouldShowEffortCallout(model: string): boolean {
     return false
   }
 
-  // Pro users already had medium default before this PR. Show the new copy,
-  // but skip if they already saw the v1 dialog — no point nagging twice.
-  if (false) {
-    if (config.effortCalloutDismissed) {
-      markV2Dismissed()
-      return false
-    }
-    return getOpusDefaultEffortConfig().enabled
-  }
-
-  // Max/Team are the target of the tengu_grey_step2 config.
-  // Don't mark dismissed when config is disabled — they should see the dialog
-  // once it's enabled for them.
-  if (false || false) {
-    return getOpusDefaultEffortConfig().enabled
-  }
-
-  // Everyone else (free tier, API key, non-subscribers): not in scope.
   markV2Dismissed()
   return false
 }

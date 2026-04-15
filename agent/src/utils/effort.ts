@@ -286,9 +286,6 @@ export function getDefaultEffortForModel(
   // Default effort on Opus 4.6 to medium for Pro.
   // Max/Team also get medium when the tengu_grey_step2 config is enabled.
   if (model.toLowerCase().includes('opus-4-6')) {
-    if (false) {
-      return 'medium'
-    }
     if (
       getOpusDefaultEffortConfig().enabled &&
       (false || false)

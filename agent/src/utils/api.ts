@@ -42,7 +42,6 @@ import { isEnvTruthy } from './envUtils.js'
 import { createUserMessage } from './messages.js'
 import {
   getAPIProvider,
-  isFirstPartyAnthropicBaseUrl,
 } from './model/providers.js'
 import {
   getFileReadIgnorePatterns,

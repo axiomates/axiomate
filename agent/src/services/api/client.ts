@@ -11,7 +11,6 @@ import { getUserAgent } from '../../utils/http.js'
 import { getFastModel } from '../../utils/model/model.js'
 import {
   getAPIProvider,
-  isFirstPartyAnthropicBaseUrl,
 } from '../../utils/model/providers.js'
 import { getProxyFetchOptions } from '../../utils/proxy.js'
 import {

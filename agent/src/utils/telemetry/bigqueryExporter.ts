@@ -157,16 +157,7 @@ export class BigQueryMetricsExporter implements PushMetricExporter {
       resourceAttributes['wsl.version'] = attrs['wsl.version'] as string
     }
 
-    // Add customer type and subscription type
-    if (false) {
-      resourceAttributes['user.customer_type'] = 'claude_ai'
-      const subscriptionType = null
-      if (subscriptionType) {
-        resourceAttributes['user.subscription_type'] = subscriptionType
-      }
-    } else {
-      resourceAttributes['user.customer_type'] = 'api'
-    }
+    resourceAttributes['user.customer_type'] = 'api'
 
     const transformed = {
       resource_attributes: resourceAttributes,

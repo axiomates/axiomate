@@ -30,7 +30,6 @@ type Props = {
   onDone: (result?: string) => void
   isExtensionInstalled: boolean
   configEnabled: boolean | undefined
-  isClaudeAISubscriber: boolean
   isWSL: boolean
 }
 
@@ -38,7 +37,6 @@ function ClaudeInChromeMenu({
   onDone,
   isExtensionInstalled: installed,
   configEnabled,
-  isClaudeAISubscriber,
   isWSL,
 }: Props): React.ReactNode {
   const mcpClients = useAppState(s => s.mcp.clients)
@@ -134,8 +132,7 @@ function ClaudeInChromeMenu({
     },
   )
 
-  const isDisabled =
-    isWSL || !isClaudeAISubscriber
+  const isDisabled = isWSL
 
   return (
     <Dialog
@@ -157,12 +154,6 @@ function ClaudeInChromeMenu({
           </Text>
         )}
 
-
-        {!isClaudeAISubscriber && (
-          <Text color="error">
-            Claude in Chrome requires a claude.ai subscription.
-          </Text>
-        )}
 
         {!isDisabled && (
           <>
@@ -224,7 +215,6 @@ export const call = async function (
 ): Promise<React.ReactNode> {
   const isExtensionInstalled = await isChromeExtensionInstalled()
   const config = getGlobalConfig()
-  const isSubscriber = false
   const isWSL = env.isWslEnvironment()
 
   return (
@@ -232,7 +222,6 @@ export const call = async function (
       onDone={onDone}
       isExtensionInstalled={isExtensionInstalled}
       configEnabled={config.claudeInChromeDefaultEnabled}
-      isClaudeAISubscriber={isSubscriber}
       isWSL={isWSL}
     />
   )
