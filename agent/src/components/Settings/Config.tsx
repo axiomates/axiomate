@@ -49,7 +49,6 @@ import {
   logEvent,
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
 } from '../../services/analytics/index.js'
-const isBridgeEnabled = () => false // bridge module removed
 import { ThemePicker } from '../ThemePicker.js'
 import {
   useAppState,
@@ -1014,8 +1013,8 @@ export function Config({
           ]
         })()
       : []),
-    // Remote at startup toggle — gated on build flag + GrowthBook + policy
-    ...(feature('BRIDGE_MODE') && isBridgeEnabled()
+    // Remote at startup toggle — gated on build flag
+    ...(false
       ? [
           {
             id: 'remoteControlAtStartup',

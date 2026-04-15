@@ -1,7 +1,5 @@
 import { feature } from 'bun:bundle'
 import { z } from 'zod/v4'
-import { isReplBridgeActive } from '../../bootstrap/state.js'
-const getReplBridgeHandle = () => null // replBridgeHandle removed
 import type { Tool, ToolUseContext } from '../../Tool.js'
 import { buildTool, type ToolDef } from '../../Tool.js'
 import { findTeammateTaskByAgentId } from '../../tasks/InProcessTeammateTask/InProcessTeammateTask.js'
@@ -640,19 +638,13 @@ export const SendMessageTool: Tool<InputSchema, SendMessageToolOutput> =
             errorCode: 9,
           }
         }
-        // postInterClaudeMessage derives from= via getReplBridgeHandle() —
-        // check handle directly for the init-timing window. Also check
-        // isReplBridgeActive() to reject outbound-only (CCR mirror) mode
-        // where the bridge is write-only and peer messaging is unsupported.
-        if (!getReplBridgeHandle() || !isReplBridgeActive()) {
-          return {
-            result: false,
-            message:
-              'Remote Control is not connected — cannot send to a bridge: target. Reconnect with /remote-control first.',
-            errorCode: 9,
-          }
+        // Bridge handle removed — always reject bridge targets
+        return {
+          result: false,
+          message:
+            'Remote Control is not connected — cannot send to a bridge: target. Reconnect with /remote-control first.',
+          errorCode: 9,
         }
-        return { result: true }
       }
       if (
         feature('UDS_INBOX') &&
@@ -742,31 +734,11 @@ export const SendMessageTool: Tool<InputSchema, SendMessageToolOutput> =
       if (feature('UDS_INBOX') && typeof input.message === 'string') {
         const addr = parseAddress(input.to)
         if (addr.scheme === 'bridge') {
-          // Re-check handle — checkPermissions blocks on user approval (can be
-          // minutes). validateInput's check is stale if the bridge dropped
-          // during the prompt wait; without this, from="unknown" ships.
-          // Also re-check isReplBridgeActive for outbound-only mode.
-          if (!getReplBridgeHandle() || !isReplBridgeActive()) {
-            return {
-              data: {
-                success: false,
-                message: `Remote Control disconnected before send — cannot deliver to ${input.to}`,
-              },
-            }
-          }
-          // peerSessions module removed — stub
-          const postInterClaudeMessage = async (_target: unknown, _msg: unknown) => ({ ok: false, error: 'Peer sessions removed' })
-          const result = await postInterClaudeMessage(
-            addr.target,
-            input.message,
-          )
-          const preview = input.summary || truncate(input.message, 50)
+          // Bridge handle removed — always reject bridge targets
           return {
             data: {
-              success: result.ok,
-              message: result.ok
-                ? `“${preview}” → ${input.to}`
-                : `Failed to send to ${input.to}: ${result.error ?? 'unknown'}`,
+              success: false,
+              message: `Remote Control disconnected before send — cannot deliver to ${input.to}`,
             },
           }
         }

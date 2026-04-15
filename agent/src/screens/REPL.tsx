@@ -45,8 +45,8 @@ import { isLocalAgentTask, queuePendingMessage, appendMessageToLocalAgent, type 
 import { registerLeaderToolUseConfirmQueue, unregisterLeaderToolUseConfirmQueue, registerLeaderSetToolPermissionContext, unregisterLeaderSetToolPermissionContext } from '../utils/swarm/leaderPermissionBridge.js';
 import { endInteractionSpan } from '../utils/telemetry/sessionTracing.js';
 import { useLogMessages } from '../hooks/useLogMessages.js';
-// useReplBridge removed — stub
-const useReplBridge = (..._args: unknown[]) => ({ bridgeEnabled: false, bridgeSessionId: null, sessionIngressUrl: null, environmentId: null, sendBridgeResult: (..._a: unknown[]) => {} });
+// useReplBridge removed — no-op inline
+const useReplBridge = (..._args: unknown[]) => ({ sendBridgeResult: () => {} });
 import { type Command, type CommandResultDisplay, type ResumeEntrypoint, getCommandName, isCommandEnabled } from '../commands.js';
 import type { PromptInputMode, QueuedCommand, VimMode } from '../types/textInputTypes.js';
 import { MessageSelector, selectableUserMessagesFilter, messagesAfterAreOnlySynthetic } from '../components/MessageSelector.js';
@@ -57,11 +57,11 @@ import { PromptDialog } from '../components/hooks/PromptDialog.js';
 import type { PromptRequest, PromptResponse } from '../types/hooks.js';
 import PromptInput from '../components/PromptInput/PromptInput.js';
 import { PromptInputQueuedCommands } from '../components/PromptInput/PromptInputQueuedCommands.js';
-// Remote hooks removed — stubs
-const useRemoteSession = (..._args: unknown[]) => ({ isRemoteMode: false as boolean, cancelRequest: () => {}, sendMessage: (..._a: unknown[]) => {} })
-const useDirectConnect = (..._args: unknown[]) => ({ isRemoteMode: false as boolean, cancelRequest: () => {}, sendMessage: async (..._a: unknown[]) => {} })
+// Remote hooks removed — no-op inlines
+const useRemoteSession = (..._args: unknown[]) => ({ isRemoteMode: false as const, cancelRequest: () => {}, sendMessage: (..._a: unknown[]) => {} })
+const useDirectConnect = (..._args: unknown[]) => ({ isRemoteMode: false as const, cancelRequest: () => {}, sendMessage: async (..._a: unknown[]) => {} })
 type DirectConnectConfig = Record<string, unknown>
-const useSSHSession = (..._args: unknown[]) => ({ isRemoteMode: false as boolean, cancelRequest: () => {}, sendMessage: async (..._a: unknown[]) => {} })
+const useSSHSession = (..._args: unknown[]) => ({ isRemoteMode: false as const, cancelRequest: () => {}, sendMessage: async (..._a: unknown[]) => {} })
 const useAssistantHistory = (..._args: unknown[]) => ({ maybeLoadOlder: (_h: unknown) => {} })
 import type { SSHSession } from '../ssh/createSSHSession.js';
 import { SkillImprovementSurvey } from '../components/SkillImprovementSurvey.js';

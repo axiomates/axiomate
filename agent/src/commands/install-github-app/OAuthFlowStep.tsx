@@ -7,8 +7,6 @@ import { useTerminalSize } from '../../hooks/useTerminalSize.js';
 import type { KeyboardEvent } from '../../ink/events/keyboard-event.js';
 import { setClipboard } from '../../ink/termio/osc.js';
 import { Box, Link, Text } from '../../ink.js';
-// OAuthService removed — OAuth infrastructure deleted
-const OAuthService = class { static async startFlow() { return null } cleanup() {} async startOAuthFlow(_u?: unknown, _o?: unknown): Promise<{ accessToken: string } | null> { return null } handleManualAuthCodeInput(_i: unknown) {} }
 import { logError } from '../../utils/log.js';
 interface OAuthFlowStepProps {
   onSuccess: (token: string) => void;
@@ -38,9 +36,10 @@ export function OAuthFlowStep({
   onCancel
 }: OAuthFlowStepProps): React.ReactNode {
   const [oauthStatus, setOAuthStatus] = useState<OAuthStatus>({
-    state: 'starting'
+    state: 'error',
+    message: 'OAuth authentication is not available',
   });
-  const [oauthService] = useState(() => new OAuthService());
+  void onSuccess; // suppress unused warning
   const [pastedCode, setPastedCode] = useState('');
   const [cursorOffset, setCursorOffset] = useState(0);
   const [showPastePrompt, setShowPastePrompt] = useState(false);
@@ -82,10 +81,9 @@ export function OAuthFlowStep({
 
       // Track which path the user is taking (manual code entry)
       logEvent('tengu_oauth_manual_entry', {});
-      oauthService.handleManualAuthCodeInput({
-        authorizationCode,
-        state
-      });
+      // OAuth service removed — manual code entry is a no-op
+      void authorizationCode;
+      void state;
     } catch (err: unknown) {
       logError(err);
       setOAuthStatus({
@@ -98,61 +96,13 @@ export function OAuthFlowStep({
       });
     }
   }
+  // OAuth service removed — startOAuth is a no-op
   const startOAuth = useCallback(async () => {
-    // Clear any existing timers when starting new OAuth flow
-    timersRef.current.forEach(timer => clearTimeout(timer));
-    timersRef.current.clear();
-    try {
-      const result = await oauthService.startOAuthFlow(async url_0 => {
-        setOAuthStatus({
-          state: 'waiting_for_login',
-          url: url_0
-        });
-        const timer_0 = setTimeout(setShowPastePrompt, 3000, true);
-        timersRef.current.add(timer_0);
-      }, {
-        loginWithClaudeAi: true,
-        // Always use Claude AI for subscription tokens
-        inferenceOnly: true,
-        expiresIn: 365 * 24 * 60 * 60 // 1 year
-      });
-
-      // Show processing state
-      setOAuthStatus({
-        state: 'processing'
-      });
-
-      // OAuthFlowStep creates inference-only tokens for GitHub Actions, not a
-      // replacement login. Use saveOAuthTokensIfNeeded directly to avoid
-      // performLogout which would destroy the user's existing auth session.
-      ({ success: true });
-
-      // For OAuth flow, the access token can be used as an API key
-      const timer1 = setTimeout((setOAuthStatus_0, accessToken, onSuccess_0, timersRef_0) => {
-        setOAuthStatus_0({
-          state: 'success',
-          token: accessToken
-        });
-        // Auto-continue after brief delay to show success
-        const timer2 = setTimeout(onSuccess_0, 1000, accessToken);
-        timersRef_0.current.add(timer2);
-      }, 100, setOAuthStatus, result.accessToken, onSuccess, timersRef);
-      timersRef.current.add(timer1);
-    } catch (err_0) {
-      const errorMessage = (err_0 as Error).message;
-      setOAuthStatus({
-        state: 'error',
-        message: errorMessage,
-        toRetry: {
-          state: 'starting'
-        } // Allow retry by starting fresh OAuth flow
-      });
-      logError(err_0);
-      logEvent('tengu_oauth_error', {
-        error: errorMessage as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
-      });
-    }
-  }, [oauthService, onSuccess]);
+    setOAuthStatus({
+      state: 'error',
+      message: 'OAuth authentication is not available',
+    });
+  }, []);
   useEffect(() => {
     if (oauthStatus.state === 'starting') {
       void startOAuth();
@@ -182,17 +132,16 @@ export function OAuthFlowStep({
     }
   }, [pastedCode, oauthStatus, showPastePrompt, urlCopied]);
 
-  // Cleanup OAuth service and timers when component unmounts
+  // Cleanup timers when component unmounts
   useEffect(() => {
     const timers = timersRef.current;
     return () => {
-      oauthService.cleanup();
       // Clear all timers
       timers.forEach(timer_2 => clearTimeout(timer_2));
       timers.clear();
       clearTimeout(urlCopiedTimerRef.current);
     };
-  }, [oauthService]);
+  }, []);
 
   // Helper function to render the appropriate status message
   function renderStatusMessage(): React.ReactNode {
