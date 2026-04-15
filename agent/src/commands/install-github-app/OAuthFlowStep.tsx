@@ -9,7 +9,6 @@ import { setClipboard } from '../../ink/termio/osc.js';
 import { Box, Link, Text } from '../../ink.js';
 // OAuthService removed — OAuth infrastructure deleted
 const OAuthService = class { static async startFlow() { return null } cleanup() {} async startOAuthFlow(_u?: unknown, _o?: unknown): Promise<{ accessToken: string } | null> { return null } handleManualAuthCodeInput(_i: unknown) {} }
-import { saveOAuthTokensIfNeeded } from '../../utils/auth.js';
 import { logError } from '../../utils/log.js';
 interface OAuthFlowStepProps {
   onSuccess: (token: string) => void;
@@ -126,7 +125,7 @@ export function OAuthFlowStep({
       // OAuthFlowStep creates inference-only tokens for GitHub Actions, not a
       // replacement login. Use saveOAuthTokensIfNeeded directly to avoid
       // performLogout which would destroy the user's existing auth session.
-      saveOAuthTokensIfNeeded(result);
+      ({ success: true });
 
       // For OAuth flow, the access token can be used as an API key
       const timer1 = setTimeout((setOAuthStatus_0, accessToken, onSuccess_0, timersRef_0) => {

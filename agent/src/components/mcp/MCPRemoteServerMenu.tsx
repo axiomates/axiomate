@@ -9,12 +9,11 @@ import { setClipboard } from '../../ink/termio/osc.js';
 // eslint-disable-next-line custom-rules/prefer-use-keybindings -- raw j/k/arrow menu navigation
 import { Box, color, Link, Text, useInput, useTheme } from '../../ink.js';
 import { useKeybinding } from '../../keybindings/useKeybinding.js';
-import { AuthenticationCancelledError, performMCPOAuthFlow, revokeServerTokens } from '../../services/mcp/auth.js';
+import { AuthenticationCancelledError, performMCPOAuthFlow, revokeServerTokens } from '../../services/mcp/auth.js'
 import { clearServerCache } from '../../services/mcp/client.js';
 import { useMcpReconnect, useMcpToggleEnabled } from '../../services/mcp/MCPConnectionManager.js';
 import { describeMcpConfigFilePath, excludeCommandsByServer, excludeResourcesByServer, excludeToolsByServer, filterMcpPromptsByServer } from '../../services/mcp/utils.js';
 import { useAppState, useSetAppState } from '../../state/AppState.js';
-import { getOauthAccountInfo } from '../../utils/auth.js';
 import { openBrowser } from '../../utils/browser.js';
 import { errorMessage } from '../../utils/errors.js';
 import { logMCPDebug } from '../../utils/log.js';
@@ -214,7 +213,7 @@ export function MCPRemoteServerMenu({
   const toggleMcpServer = useMcpToggleEnabled();
   const handleClaudeAIAuth = React.useCallback(async () => {
     const claudeAiBaseUrl = getOauthConfig().CLAUDE_AI_ORIGIN;
-    const accountInfo = getOauthAccountInfo();
+    const accountInfo = undefined;
     const orgUuid = accountInfo?.organizationUuid;
     let authUrl: string;
     if (orgUuid && server.config.type === 'claudeai-proxy' && server.config.id) {

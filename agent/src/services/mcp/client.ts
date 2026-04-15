@@ -56,11 +56,6 @@ import { createMcpAuthTool } from '../../tools/McpAuthTool/McpAuthTool.js'
 import { ReadMcpResourceTool } from '../../tools/ReadMcpResourceTool/ReadMcpResourceTool.js'
 import { createAbortController } from '../../utils/abortController.js'
 import { count } from '../../utils/array.js'
-import {
-  checkAndRefreshOAuthTokenIfNeeded,
-  getClaudeAIOAuthTokens,
-  handleOAuth401Error,
-} from '../../utils/auth.js'
 import { registerCleanup } from '../../utils/cleanupRegistry.js'
 import { detectCodeIndexingFromMcpServerName } from '../../utils/codeIndexing.js'
 import { logForDebugging } from '../../utils/debug.js'
@@ -126,11 +121,7 @@ import type { AssistantMessage } from '../../types/message.js'
 import { classifyMcpToolForCollapse } from '../../tools/MCPTool/classifyForCollapse.js'
 import { clearKeychainCache } from '../../utils/secureStorage/macOsKeychainHelpers.js'
 import { sleep } from '../../utils/sleep.js'
-import {
-  AxiomateAuthProvider,
-  hasMcpDiscoveryButNoToken,
-  wrapFetchWithStepUpDetection,
-} from './auth.js'
+import { AxiomateAuthProvider, hasMcpDiscoveryButNoToken, wrapFetchWithStepUpDetection } from './auth.js'
 import { markClaudeAiMcpConnected } from './cloudConfig.js'
 import { getAllMcpConfigs, isMcpServerDisabled } from './config.js'
 import { getMcpServerHeaders } from './headersHelper.js'
@@ -369,55 +360,9 @@ function handleRemoteAuthFailure(
  * stale token mass-401s every claude.ai connector and sticks them all in the
  * 15-min needs-auth cache.
  */
-export function createClaudeAiProxyFetch(innerFetch: FetchLike): FetchLike {
-  return async (url, init) => {
-    const doRequest = async () => {
-      await checkAndRefreshOAuthTokenIfNeeded()
-      const currentTokens = getClaudeAIOAuthTokens()
-      if (!currentTokens) {
-        throw new Error('No claude.ai OAuth token available')
-      }
-      // eslint-disable-next-line eslint-plugin-n/no-unsupported-features/node-builtins
-      const headers = new Headers(init?.headers)
-      headers.set('Authorization', `Bearer ${currentTokens.accessToken}`)
-      const response = await innerFetch(url, { ...init, headers })
-      // Return the exact token that was sent. Reading getClaudeAIOAuthTokens()
-      // again after the request is wrong under concurrent 401s: another
-      // connector's handleOAuth401Error clears the memoize cache, so we'd read
-      // the NEW token from keychain, pass it to handleOAuth401Error, which
-      // finds same-as-keychain → returns false → skips retry. Same pattern as
-      // bridgeApi.ts withOAuthRetry (token passed as fn param).
-      return { response, sentToken: currentTokens.accessToken }
-    }
-
-    const { response, sentToken } = await doRequest()
-    if (response.status !== 401) {
-      return response
-    }
-    // handleOAuth401Error returns true only if the token actually changed
-    // (keychain had a newer one, or force-refresh succeeded). Gate retry on
-    // that — otherwise we double round-trip time for every connector whose
-    // downstream service genuinely needs auth (the common case: 30+ servers
-    // with "MCP server requires authentication but no OAuth token configured").
-    const tokenChanged = await handleOAuth401Error(sentToken).catch(() => false)
-    logEvent('tengu_mcp_claudeai_proxy_401', {
-      tokenChanged:
-        tokenChanged as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-    })
-    if (!tokenChanged) {
-      // ELOCKED contention: another connector may have won the lockfile and refreshed — check if token changed underneath us
-      const now = getClaudeAIOAuthTokens()?.accessToken
-      if (!now || now === sentToken) {
-        return response
-      }
-    }
-    try {
-      return (await doRequest()).response
-    } catch {
-      // Retry itself failed (network error). Return the original 401 so the
-      // outer handler can classify it.
-      return response
-    }
+export function createClaudeAiProxyFetch(_innerFetch: FetchLike): FetchLike {
+  return async () => {
+    throw new Error('No claude.ai OAuth token available — OAuth infrastructure removed')
   }
 }
 
@@ -871,7 +816,7 @@ export const connectToServer = memoize(
           `Initializing claude.ai proxy transport for server ${serverRef.id}`,
         )
 
-        const tokens = getClaudeAIOAuthTokens()
+        const tokens = null
         if (!tokens) {
           throw new Error('No claude.ai OAuth token found')
         }

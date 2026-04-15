@@ -1,10 +1,5 @@
 import React, { useCallback, useEffect, useRef } from 'react'
 import { Box, Text } from '../ink.js'
-import {
-  isMaxSubscriber,
-  isProSubscriber,
-  isTeamSubscriber,
-} from '../utils/auth.js'
 import { getGlobalConfig, saveGlobalConfig } from '../utils/config.js'
 import type { EffortLevel } from '../utils/effort.js'
 import {
@@ -149,7 +144,7 @@ export function shouldShowEffortCallout(model: string): boolean {
 
   // Pro users already had medium default before this PR. Show the new copy,
   // but skip if they already saw the v1 dialog — no point nagging twice.
-  if (isProSubscriber()) {
+  if (false) {
     if (config.effortCalloutDismissed) {
       markV2Dismissed()
       return false
@@ -160,7 +155,7 @@ export function shouldShowEffortCallout(model: string): boolean {
   // Max/Team are the target of the tengu_grey_step2 config.
   // Don't mark dismissed when config is disabled — they should see the dialog
   // once it's enabled for them.
-  if (isMaxSubscriber() || isTeamSubscriber()) {
+  if (false || false) {
     return getOpusDefaultEffortConfig().enabled
   }
 

@@ -1,10 +1,5 @@
 // biome-ignore-all assist/source/organizeImports: ANT-ONLY import markers must not be reordered
 import { getInitialMainLoopModel } from '../../bootstrap/state.js'
-import {
-  isClaudeAISubscriber,
-  isMaxSubscriber,
-  isTeamPremiumSubscriber,
-} from '../auth.js'
 import { getModelStrings } from './modelStrings.js'
 import {
   COST_TIER_3_15,
@@ -44,7 +39,7 @@ export type ModelOption = {
 
 export function getDefaultOptionForUser(): ModelOption {
   // Subscribers
-  if (isClaudeAISubscriber()) {
+  if (false) {
     return {
       value: null,
       label: 'Default (recommended)',
@@ -53,7 +48,7 @@ export function getDefaultOptionForUser(): ModelOption {
   }
 
   // PAYG
-  const is3P = getAPIProvider() !== 'firstParty'
+  const is3P = true
   return {
     value: null,
     label: 'Default (recommended)',
@@ -62,27 +57,13 @@ export function getDefaultOptionForUser(): ModelOption {
 }
 
 function getCustomSonnetOption(): ModelOption | undefined {
-  const is3P = getAPIProvider() !== 'firstParty'
-  const customSonnetModel = process.env.ANTHROPIC_DEFAULT_SONNET_MODEL
-  // When a 3P user has a custom sonnet model string, show it directly
-  if (is3P && customSonnetModel) {
-    const is1m = has1mContext(customSonnetModel)
-    return {
-      value: 'sonnet',
-      label:
-        process.env.ANTHROPIC_DEFAULT_SONNET_MODEL_NAME ?? customSonnetModel,
-      description:
-        process.env.ANTHROPIC_DEFAULT_SONNET_MODEL_DESCRIPTION ??
-        `Custom Sonnet model${is1m ? ' (1M context)' : ''}`,
-      descriptionForModel: `${process.env.ANTHROPIC_DEFAULT_SONNET_MODEL_DESCRIPTION ?? `Custom Sonnet model${is1m ? ' with 1M context' : ''}`} (${customSonnetModel})`,
-    }
-  }
+  return undefined
 }
 
 // @[MODEL LAUNCH]: Update or add model option functions (getSonnetXXOption, getOpusXXOption, etc.)
 // with the new model's label and description. These appear in the /model picker.
 function getSonnet46Option(): ModelOption {
-  const is3P = getAPIProvider() !== 'firstParty'
+  const is3P = true
   return {
     value: is3P ? getModelStrings().sonnet46 : 'sonnet',
     label: 'Sonnet',
@@ -93,7 +74,7 @@ function getSonnet46Option(): ModelOption {
 }
 
 function getCustomOpusOption(): ModelOption | undefined {
-  const is3P = getAPIProvider() !== 'firstParty'
+  const is3P = true
   const customOpusModel = process.env.ANTHROPIC_DEFAULT_OPUS_MODEL
   // When a 3P user has a custom opus model string, show it directly
   if (is3P && customOpusModel) {
@@ -119,7 +100,7 @@ function getOpus41Option(): ModelOption {
 }
 
 function getOpus46Option(): ModelOption {
-  const is3P = getAPIProvider() !== 'firstParty'
+  const is3P = true
   return {
     value: is3P ? getModelStrings().opus46 : 'opus',
     label: 'Opus',
@@ -129,7 +110,7 @@ function getOpus46Option(): ModelOption {
 }
 
 export function getSonnet46_1MOption(): ModelOption {
-  const is3P = getAPIProvider() !== 'firstParty'
+  const is3P = true
   return {
     value: is3P ? getModelStrings().sonnet46 + '[1m]' : 'sonnet[1m]',
     label: 'Sonnet (1M context)',
@@ -140,7 +121,7 @@ export function getSonnet46_1MOption(): ModelOption {
 }
 
 export function getOpus46_1MOption(): ModelOption {
-  const is3P = getAPIProvider() !== 'firstParty'
+  const is3P = true
   return {
     value: is3P ? getModelStrings().opus46 + '[1m]' : 'opus[1m]',
     label: 'Opus (1M context)',
@@ -151,23 +132,11 @@ export function getOpus46_1MOption(): ModelOption {
 }
 
 function getCustomHaikuOption(): ModelOption | undefined {
-  const is3P = getAPIProvider() !== 'firstParty'
-  const customHaikuModel = process.env.ANTHROPIC_DEFAULT_HAIKU_MODEL
-  // When a 3P user has a custom haiku model string, show it directly
-  if (is3P && customHaikuModel) {
-    return {
-      value: 'haiku',
-      label: process.env.ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME ?? customHaikuModel,
-      description:
-        process.env.ANTHROPIC_DEFAULT_HAIKU_MODEL_DESCRIPTION ??
-        'Custom Haiku model',
-      descriptionForModel: `${process.env.ANTHROPIC_DEFAULT_HAIKU_MODEL_DESCRIPTION ?? 'Custom Haiku model'} (${customHaikuModel})`,
-    }
-  }
+  return undefined
 }
 
 function getHaiku45Option(): ModelOption {
-  const is3P = getAPIProvider() !== 'firstParty'
+  const is3P = true
   return {
     value: 'haiku',
     label: 'Haiku',
@@ -178,7 +147,7 @@ function getHaiku45Option(): ModelOption {
 }
 
 function getHaiku35Option(): ModelOption {
-  const is3P = getAPIProvider() !== 'firstParty'
+  const is3P = true
   return {
     value: 'haiku',
     label: 'Haiku',
@@ -205,8 +174,8 @@ function getMaxOpusOption(): ModelOption {
 }
 
 export function getMaxSonnet46_1MOption(): ModelOption {
-  const is3P = getAPIProvider() !== 'firstParty'
-  const billingInfo = isClaudeAISubscriber() ? ' · Billed as extra usage' : ''
+  const is3P = true
+  const billingInfo = false ? ' · Billed as extra usage' : ''
   return {
     value: 'sonnet[1m]',
     label: 'Sonnet (1M context)',
@@ -215,7 +184,7 @@ export function getMaxSonnet46_1MOption(): ModelOption {
 }
 
 export function getMaxOpus46_1MOption(): ModelOption {
-  const billingInfo = isClaudeAISubscriber() ? ' · Billed as extra usage' : ''
+  const billingInfo = false ? ' · Billed as extra usage' : ''
   return {
     value: 'opus[1m]',
     label: 'Opus (1M context)',
@@ -224,7 +193,7 @@ export function getMaxOpus46_1MOption(): ModelOption {
 }
 
 function getMergedOpus1MOption(): ModelOption {
-  const is3P = getAPIProvider() !== 'firstParty'
+  const is3P = true
   return {
     value: is3P ? getModelStrings().opus46 + '[1m]' : 'opus[1m]',
     label: 'Opus (1M context)',
@@ -257,8 +226,8 @@ function getOpusPlanOption(): ModelOption {
 // @[MODEL LAUNCH]: Update the model picker lists below to include/reorder options for the new model.
 // Each user tier (ant, Max/Team Premium, Pro/Team Standard/Enterprise, PAYG 1P, PAYG 3P) has its own list.
 function getModelOptionsBase(): ModelOption[] {
-  if (isClaudeAISubscriber()) {
-    if (isMaxSubscriber() || isTeamPremiumSubscriber()) {
+  if (false) {
+    if (false || false) {
       // Max and Team Premium users: Opus is default, show Sonnet as alternative
       const premiumOptions = [getDefaultOptionForUser()]
       if (!isOpus1mMergeEnabled() && checkOpus1mAccess()) {
@@ -291,24 +260,6 @@ function getModelOptionsBase(): ModelOption[] {
 
     standardOptions.push(MaxHaiku45Option)
     return standardOptions
-  }
-
-  // PAYG 1P API: Default (Sonnet) + Sonnet 1M + Opus 4.6 + Opus 1M + Haiku
-  if (getAPIProvider() === 'firstParty') {
-    const payg1POptions = [getDefaultOptionForUser()]
-    if (checkSonnet1mAccess()) {
-      payg1POptions.push(getSonnet46_1MOption())
-    }
-    if (isOpus1mMergeEnabled()) {
-      payg1POptions.push(getMergedOpus1MOption())
-    } else {
-      payg1POptions.push(getOpus46Option())
-      if (checkOpus1mAccess()) {
-        payg1POptions.push(getOpus46_1MOption())
-      }
-    }
-    payg1POptions.push(getHaiku45Option())
-    return payg1POptions
   }
 
   // PAYG 3P: Default (Sonnet 4.5) + Sonnet (3P custom) or Sonnet 4.6/1M + Opus (3P custom) or Opus 4.1/Opus 4.6/Opus1M + Haiku + Opus 4.1
@@ -475,16 +426,6 @@ export function getModelOptions(): ModelOption[] {
     return filterModelOptionsByAllowlist(options)
   } else if (customModel === 'opusplan') {
     return filterModelOptionsByAllowlist([...options, getOpusPlanOption()])
-  } else if (customModel === 'opus' && getAPIProvider() === 'firstParty') {
-    return filterModelOptionsByAllowlist([
-      ...options,
-      getMaxOpusOption(),
-    ])
-  } else if (customModel === 'opus[1m]' && getAPIProvider() === 'firstParty') {
-    return filterModelOptionsByAllowlist([
-      ...options,
-      getMergedOpus1MOption(),
-    ])
   } else {
     // Try to show a human-readable label for known Anthropic models, with an
     // upgrade hint if the alias now resolves to a newer version.

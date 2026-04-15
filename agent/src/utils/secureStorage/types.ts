@@ -1,7 +1,5 @@
 // Stub: secureStorage types — imported by services/mcp/auth.ts, etc.
 
-import type { OAuthTokens } from '../auth.js'
-
 export interface OAuthDiscoveryState {
   authorizationServerUrl?: string
   resourceMetadataUrl?: string
@@ -22,7 +20,7 @@ export interface McpOAuthEntry {
 }
 
 export interface SecureStorageData {
-  claudeAiOauth?: OAuthTokens | null
+  claudeAiOauth?: Record<string, unknown> | null
   trustedDeviceToken?: string | null
   mcpOAuth?: Record<string, McpOAuthEntry>
   mcpOAuthClientConfig?: Record<string, { clientSecret?: string; [key: string]: unknown }>

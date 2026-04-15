@@ -5,7 +5,6 @@ import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
 } from '../analytics/index.js'
-import { getClaudeAIOAuthTokens } from '../../utils/auth.js'
 import { getGlobalConfig, saveGlobalConfig } from '../../utils/config.js'
 import { logForDebugging } from '../../utils/debug.js'
 import { isEnvDefinedFalsy } from '../../utils/envUtils.js'
@@ -48,7 +47,7 @@ export const fetchClaudeAIMcpConfigsIfEligible = memoize(
         return {}
       }
 
-      const tokens = getClaudeAIOAuthTokens()
+      const tokens = null
       if (!tokens?.accessToken) {
         logForDebugging('[claudeai-mcp] No access token')
         logEvent('tengu_claudeai_mcp_eligibility', {
@@ -58,8 +57,8 @@ export const fetchClaudeAIMcpConfigsIfEligible = memoize(
         return {}
       }
 
-      // Check for user:mcp_servers scope directly instead of isClaudeAISubscriber().
-      // In non-interactive mode, isClaudeAISubscriber() returns false when ANTHROPIC_API_KEY
+      // Check for user:mcp_servers scope directly instead of false.
+      // In non-interactive mode, false returns false when ANTHROPIC_API_KEY
       // is set (even with valid OAuth tokens) because preferThirdPartyAuthentication() causes
       // isAnthropicAuthEnabled() to return false. Checking the scope directly allows users
       // with both API keys and OAuth tokens to access claude.ai MCPs in print mode.

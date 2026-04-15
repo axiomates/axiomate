@@ -1,6 +1,5 @@
 import axios from 'axios'
 import { getOauthConfig } from '../../constants/oauth.js'
-import { getOauthAccountInfo } from '../../utils/auth.js'
 import { getGlobalConfig, saveGlobalConfig } from '../../utils/config.js'
 import { logError } from '../../utils/log.js'
 import { isEssentialTrafficOnly } from '../../utils/privacyLevel.js'
@@ -46,12 +45,7 @@ async function fetchOverageCreditGrant(): Promise<OverageCreditGrantInfo | null>
  * refreshOverageCreditGrantCache fires lazily to populate it.
  */
 export function getCachedOverageCreditGrant(): OverageCreditGrantInfo | null {
-  const orgId = getOauthAccountInfo()?.organizationUuid
-  if (!orgId) return null
-  const cached = getGlobalConfig().overageCreditGrantCache?.[orgId]
-  if (!cached) return null
-  if (Date.now() - cached.timestamp > CACHE_TTL_MS) return null
-  return cached.info
+  return null
 }
 
 /**
@@ -59,15 +53,6 @@ export function getCachedOverageCreditGrant(): OverageCreditGrantInfo | null {
  * Leaves other orgs' entries intact.
  */
 export function invalidateOverageCreditGrantCache(): void {
-  const orgId = getOauthAccountInfo()?.organizationUuid
-  if (!orgId) return
-  const cache = getGlobalConfig().overageCreditGrantCache
-  if (!cache || !(orgId in cache)) return
-  saveGlobalConfig(prev => {
-    const next = { ...prev.overageCreditGrantCache }
-    delete next[orgId]
-    return { ...prev, overageCreditGrantCache: next }
-  })
 }
 
 /**
@@ -75,49 +60,6 @@ export function invalidateOverageCreditGrantCache(): void {
  * is about to render and the cache is empty.
  */
 export async function refreshOverageCreditGrantCache(): Promise<void> {
-  if (isEssentialTrafficOnly()) return
-  const orgId = getOauthAccountInfo()?.organizationUuid
-  if (!orgId) return
-  const info = await fetchOverageCreditGrant()
-  if (!info) return
-  // Skip rewriting info if grant data is unchanged — avoids config write
-  // amplification (inc-4552 pattern). Still refresh the timestamp so the
-  // TTL-based staleness check in getCachedOverageCreditGrant doesn't keep
-  // re-triggering API calls on every component mount.
-  saveGlobalConfig(prev => {
-    // Derive from prev (lock-fresh) rather than a pre-lock getGlobalConfig()
-    // read — saveConfigWithLock re-reads config from disk under the file lock,
-    // so another CLI instance may have written between any outer read and lock
-    // acquire.
-    const prevCached = prev.overageCreditGrantCache?.[orgId]
-    const existing = prevCached?.info
-    const dataUnchanged =
-      existing &&
-      existing.available === info.available &&
-      existing.eligible === info.eligible &&
-      existing.granted === info.granted &&
-      existing.amount_minor_units === info.amount_minor_units &&
-      existing.currency === info.currency
-    // When data is unchanged and timestamp is still fresh, skip the write entirely
-    if (
-      dataUnchanged &&
-      prevCached &&
-      Date.now() - prevCached.timestamp <= CACHE_TTL_MS
-    ) {
-      return prev
-    }
-    const entry: CachedGrantEntry = {
-      info: dataUnchanged ? existing : info,
-      timestamp: Date.now(),
-    }
-    return {
-      ...prev,
-      overageCreditGrantCache: {
-        ...prev.overageCreditGrantCache,
-        [orgId]: entry,
-      },
-    }
-  })
 }
 
 /**

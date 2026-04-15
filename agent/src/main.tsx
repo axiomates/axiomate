@@ -49,7 +49,7 @@ import { isAgentSwarmsEnabled } from './utils/agentSwarmsEnabled.js';
 import { count, uniq } from './utils/array.js';
 // Side-effect import: asciicast module registers terminal recording hooks
 import './utils/asciicast.js';
-import { getSubscriptionType, isClaudeAISubscriber, prefetchAwsCredentialsAndBedRockInfoIfSafe, prefetchGcpCredentialsIfSafe, validateForceLoginOrg } from './utils/auth.js';
+import { prefetchAwsCredentialsAndBedRockInfoIfSafe, prefetchGcpCredentialsIfSafe } from './utils/auth.js'
 import { checkHasTrustDialogAccepted, getGlobalConfig, getRemoteControlAtStartup, isAutoUpdaterDisabled, saveGlobalConfig } from './utils/config.js';
 import { seedEarlyInput, stopCapturingEarlyInput } from './utils/earlyInput.js';
 import { getInitialEffortSetting, parseEffortValue } from './utils/effort.js';
@@ -1245,7 +1245,7 @@ async function run(): Promise<CommanderCommand> {
         // Use ANTHROPIC_BASE_URL if set (by EnvManager), otherwise use OAuth config
         // This ensures consistency with session ingress API in all environments
         const config: FilesApiConfig = {
-          baseUrl: process.env.ANTHROPIC_BASE_URL || getOauthConfig().BASE_API_URL,
+          baseUrl: getOauthConfig().BASE_API_URL,
           oauthToken: sessionToken,
           sessionId: fileSessionId
         };
@@ -1452,7 +1452,7 @@ async function run(): Promise<CommanderCommand> {
     };
     // Store the explicit CLI flag so teammates can inherit it
     setChromeFlagOverride(chromeOpts.chrome);
-    const enableClaudeInChrome = shouldEnableClaudeInChrome(chromeOpts.chrome) && isClaudeAISubscriber();
+    const enableClaudeInChrome = shouldEnableClaudeInChrome(chromeOpts.chrome) && false;
     const autoEnableClaudeInChrome = !enableClaudeInChrome && shouldAutoEnableClaudeInChrome();
     if (enableClaudeInChrome) {
       const platform = getPlatform();
@@ -1961,7 +1961,7 @@ async function run(): Promise<CommanderCommand> {
     //  - explicit model via --model or ANTHROPIC_MODEL (both feed alias resolution)
     //  - no env override (which short-circuits _CACHED_MAY_BE_STALE before disk)
     //  - flag absent from disk (== null also catches pre-#22279 poisoned null)
-    const explicitModel = options.model || process.env.ANTHROPIC_MODEL;
+    const explicitModel = options.model;
     // Special case the default model with the null keyword
     // NOTE: Model resolution happens after setup() to ensure trust is established before AWS auth
     const userSpecifiedModel = options.model === 'default' ? getDefaultMainLoopModel() : options.model;
@@ -2233,13 +2233,6 @@ async function run(): Promise<CommanderCommand> {
         });
       }
 
-      // Validate that the active token's org matches forceLoginOrgUUID (if set
-      // in managed settings). Runs after onboarding so managed settings and
-      // login state are fully loaded.
-      const orgValidation = await validateForceLoginOrg();
-      if (!orgValidation.valid) {
-        await exitWithError(root, orgValidation.message);
-      }
     }
 
     // If gracefulShutdown was initiated (e.g., user rejected trust dialog),
@@ -2528,14 +2521,6 @@ async function run(): Promise<CommanderCommand> {
       // loadInitialMessages awaits it. Downstream await still observes the
       // rejection — this just prevents the spurious global handler fire.
       sessionStartHooksPromise?.catch(() => {});
-      profileCheckpoint('before_validateForceLoginOrg');
-      // Validate org restriction for non-interactive sessions
-      const orgValidation = await validateForceLoginOrg();
-      if (!orgValidation.valid) {
-        process.stderr.write(orgValidation.message + '\n');
-        process.exit(1);
-      }
-
       // Headless mode supports all prompt commands and some local commands
       // If disableSlashCommands is true, return empty array
       const commandsHeadless = disableSlashCommands ? [] : commands.filter(command => command.type === 'prompt' && !command.disableNonInteractive || command.type === 'local' && command.supportsNonInteractive);
@@ -2767,9 +2752,9 @@ async function run(): Promise<CommanderCommand> {
     // Log model config at startup
     logEvent('tengu_startup_manual_model_config', {
       cli_flag: options.model as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-      env_var: process.env.ANTHROPIC_MODEL as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+      env_var: undefined as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
       settings_file: (getInitialSettings() || {}).model as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-      subscriptionType: getSubscriptionType() as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+      subscriptionType: null as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
       agent: agentSetting as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
     });
 
@@ -3208,18 +3193,13 @@ async function run(): Promise<CommanderCommand> {
 
       // Auth — call prepareApiRequest() once for orgUUID, but use a
       // getAccessToken closure for the token so reconnects get fresh tokens.
-      const {
-        checkAndRefreshOAuthTokenIfNeeded,
-        getClaudeAIOAuthTokens
-      } = await import('./utils/auth.js');
-      await checkAndRefreshOAuthTokenIfNeeded();
       let apiCreds;
       try {
         apiCreds = await prepareApiRequest();
       } catch (e) {
         return await exitWithError(root, `Error: ${e instanceof Error ? e.message : 'Failed to authenticate'}`, () => gracefulShutdown(1));
       }
-      const getAccessToken = (): string => getClaudeAIOAuthTokens()?.accessToken ?? apiCreds.accessToken;
+      const getAccessToken = (): string => apiCreds.accessToken;
 
       // Brief mode activation: setKairosActive(true) satisfies BOTH opt-in
       // and entitlement for isBriefEnabled() (BriefTool.ts:124-132).
@@ -3360,10 +3340,7 @@ async function run(): Promise<CommanderCommand> {
         }
 
         // Create remote session config for the REPL
-        const {
-          getClaudeAIOAuthTokens: getTokensForRemote
-        } = await import('./utils/auth.js');
-        const getAccessTokenForRemote = (): string => getTokensForRemote()?.accessToken ?? apiCreds.accessToken;
+        const getAccessTokenForRemote = (): string => apiCreds.accessToken;
         const remoteSessionConfig = createRemoteSessionConfig(createdSession.id, getAccessTokenForRemote, apiCreds.orgUUID, hasInitialPrompt);
 
         // Add remote session info as initial system message

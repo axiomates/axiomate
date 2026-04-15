@@ -22,11 +22,7 @@ import {
   getOauthConfig,
   OAUTH_BETA_HEADER,
 } from '../../constants/oauth.js'
-import {
-  checkAndRefreshOAuthTokenIfNeeded,
-  getAnthropicApiKeyWithSource,
-  getClaudeAIOAuthTokens,
-} from '../../utils/auth.js'
+import { getAnthropicApiKeyWithSource } from '../../utils/auth.js'
 import { registerCleanup } from '../../utils/cleanupRegistry.js'
 import { logForDebugging } from '../../utils/debug.js'
 import { getConfigHomeDir } from '../../utils/envUtils.js'
@@ -165,10 +161,8 @@ function computeChecksum(
  * getSettings() to avoid circular dependencies during settings loading.
  */
 export function isPolicyLimitsEligible(): boolean {
-  // 3p provider users should not hit the policy limits endpoint
-  if (getAPIProvider() !== 'firstParty') {
-    return false
-  }
+  // axiomate: not using first-party Anthropic base URL
+  return false
 
   // Custom base URL users should not hit the policy limits endpoint
   if (!isFirstPartyAnthropicBaseUrl()) {
@@ -188,7 +182,7 @@ export function isPolicyLimitsEligible(): boolean {
   }
 
   // For OAuth users, check if they have Claude.ai tokens
-  const tokens = getClaudeAIOAuthTokens()
+  const tokens = null
   if (!tokens?.accessToken) {
     return false
   }
@@ -245,7 +239,7 @@ function getAuthHeaders(): {
   }
 
   // Fall back to OAuth tokens (for Claude.ai users)
-  const oauthTokens = getClaudeAIOAuthTokens()
+  const oauthTokens = null
   if (oauthTokens?.accessToken) {
     return {
       headers: {
@@ -301,7 +295,7 @@ async function fetchPolicyLimits(
   cachedChecksum?: string,
 ): Promise<PolicyLimitsFetchResult> {
   try {
-    await checkAndRefreshOAuthTokenIfNeeded()
+    
 
     const authHeaders = getAuthHeaders()
     if (authHeaders.error) {

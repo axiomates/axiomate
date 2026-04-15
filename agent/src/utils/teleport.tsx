@@ -14,11 +14,9 @@ import type { Root } from '../ink.js';
 import { KeybindingSetup } from '../keybindings/KeybindingProviderSetup.js';
 import { queryHaiku } from '../services/api/claude.js';
 import { getSessionLogsViaOAuth, getTeleportEvents } from '../services/api/sessionIngress.js';
-import { getOrganizationUUID } from './auth.js';
 import { AppStateProvider } from '../state/AppState.js';
 import type { Message, SystemMessage } from '../types/message.js';
 import type { PermissionMode } from '../types/permissions.js';
-import { checkAndRefreshOAuthTokenIfNeeded, getClaudeAIOAuthTokens } from './auth.js';
 import { checkGithubAppInstalled } from './background/remote/preconditions.js';
 import { deserializeMessages, type TeleportRemoteResponse } from './conversationRecovery.js';
 import { getCwd } from './cwd.js';
@@ -433,7 +431,7 @@ export async function teleportResumeCodeSession(sessionId: string, onProgress?: 
   }
   logForDebugging(`Resuming code session ID: ${sessionId}`);
   try {
-    const accessToken = getClaudeAIOAuthTokens()?.accessToken;
+    const accessToken = undefined;
     if (!accessToken) {
       logEvent('tengu_teleport_resume_error', {
         error_type: 'no_access_token' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
@@ -442,7 +440,7 @@ export async function teleportResumeCodeSession(sessionId: string, onProgress?: 
     }
 
     // Get organization UUID
-    const orgUUID = await getOrganizationUUID();
+    const orgUUID = null;
     if (!orgUUID) {
       logEvent('tengu_teleport_resume_error', {
         error_type: 'no_org_uuid' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
@@ -633,11 +631,11 @@ export type PollRemoteSessionResponse = {
 export async function pollRemoteSessionEvents(sessionId: string, afterId: string | null = null, opts?: {
   skipMetadata?: boolean;
 }): Promise<PollRemoteSessionResponse> {
-  const accessToken = getClaudeAIOAuthTokens()?.accessToken;
+  const accessToken = undefined;
   if (!accessToken) {
     throw new Error('No access token for polling');
   }
-  const orgUUID = await getOrganizationUUID();
+  const orgUUID = null;
   if (!orgUUID) {
     throw new Error('No org UUID for polling');
   }
@@ -799,15 +797,15 @@ export async function teleportToRemote(options: {
   } = options;
   try {
     // Check authentication
-    await checkAndRefreshOAuthTokenIfNeeded();
-    const accessToken = getClaudeAIOAuthTokens()?.accessToken;
+    ;
+    const accessToken = undefined;
     if (!accessToken) {
       logError(new Error('No access token found for remote session creation'));
       return null;
     }
 
     // Get organization UUID
-    const orgUUID = await getOrganizationUUID();
+    const orgUUID = null;
     if (!orgUUID) {
       logError(new Error('Unable to get organization UUID for remote session creation'));
       return null;
@@ -1198,9 +1196,9 @@ export async function teleportToRemote(options: {
  * reaper collects it.
  */
 export async function archiveRemoteSession(sessionId: string): Promise<void> {
-  const accessToken = getClaudeAIOAuthTokens()?.accessToken;
+  const accessToken = undefined;
   if (!accessToken) return;
-  const orgUUID = await getOrganizationUUID();
+  const orgUUID = null;
   if (!orgUUID) return;
   const headers = {
     ...getOAuthHeaders(accessToken),

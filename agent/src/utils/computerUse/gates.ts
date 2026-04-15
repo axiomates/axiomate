@@ -2,7 +2,6 @@ import { feature } from 'bun:bundle'
 import type { CoordinateMode, CuSubGates } from 'computer-use-mcp-axiomate'
 
 import { getDynamicConfig_CACHED_MAY_BE_STALE } from '../../services/analytics/growthbook.js'
-import { getSubscriptionType } from '../auth.js'
 import { isEnvTruthy } from '../envUtils.js'
 
 type ChicagoConfig = CuSubGates & {
@@ -39,7 +38,7 @@ function readConfig(): ChicagoConfig {
 // AXIOMATE.md:281, USER_TYPE !== 'ant' branches get zero antfooding.
 function hasRequiredSubscription(): boolean {
   if (feature('DEV')) return true
-  const tier = getSubscriptionType()
+  const tier = null
   return tier === 'max' || tier === 'pro'
 }
 

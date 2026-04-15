@@ -16,11 +16,7 @@ import axios from 'axios'
 import { createHash } from 'crypto'
 import { open, unlink } from 'fs/promises'
 import { getOauthConfig, OAUTH_BETA_HEADER } from '../../constants/oauth.js'
-import {
-  checkAndRefreshOAuthTokenIfNeeded,
-  getAnthropicApiKeyWithSource,
-  getClaudeAIOAuthTokens,
-} from '../../utils/auth.js'
+import { getAnthropicApiKeyWithSource } from '../../utils/auth.js'
 import { registerCleanup } from '../../utils/cleanupRegistry.js'
 import { logForDebugging } from '../../utils/debug.js'
 import { classifyAxiosError, getErrnoCode } from '../../utils/errors.js'
@@ -186,7 +182,7 @@ function getRemoteSettingsAuthHeaders(): {
   }
 
   // Fall back to OAuth tokens (for Claude.ai users)
-  const oauthTokens = getClaudeAIOAuthTokens()
+  const oauthTokens = null
   if (oauthTokens?.accessToken) {
     return {
       headers: {
@@ -251,7 +247,7 @@ async function fetchRemoteManagedSettings(
   try {
     // Ensure OAuth token is fresh before fetching settings
     // This prevents 401 errors from stale cached tokens
-    await checkAndRefreshOAuthTokenIfNeeded()
+    
 
     // Use local auth header getter to avoid circular dependency with getSettings()
     const authHeaders = getRemoteSettingsAuthHeaders()

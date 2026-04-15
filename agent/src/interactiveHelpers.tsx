@@ -248,19 +248,11 @@ export async function showSetupScreens(root: Root, permissionMode: PermissionMod
       await checkGate_CACHED_OR_BLOCKING('tengu_harbor');
     }
     if (devChannels && devChannels.length > 0) {
-      const [{
+      const {
         isChannelsEnabled
-      }, {
-        getClaudeAIOAuthTokens
-      }] = await Promise.all([import('./services/mcp/channelAllowlist.js'), import('./utils/auth.js')]);
-      // Skip the dialog when channels are blocked (tengu_harbor off or no
-      // OAuth) — accepting then immediately seeing "not available" in
-      // ChannelsNotice is worse than no dialog. Append entries anyway so
-      // ChannelsNotice renders the blocked branch with the dev entries
-      // named. dev:true here is for the flag label in ChannelsNotice
-      // (hasNonDev check); the allowlist bypass it also grants is moot
-      // since the gate blocks upstream.
-      if (!isChannelsEnabled() || !getClaudeAIOAuthTokens()?.accessToken) {
+      } = await import('./services/mcp/channelAllowlist.js');
+      // Skip the dialog when channels are blocked (no OAuth token available)
+      if (!isChannelsEnabled()) {
         setAllowedChannels([...getAllowedChannels(), ...devChannels.map(c => ({
           ...c,
           dev: true

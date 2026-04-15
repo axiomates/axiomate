@@ -26,7 +26,6 @@ import {
 } from './aws.js'
 import { AwsAuthStatusManager } from './awsAuthStatusManager.js'
 import {
-  type AccountInfo,
   checkHasTrustDialogAccepted,
   getGlobalConfig,
   saveGlobalConfig,
@@ -59,20 +58,6 @@ import {
 import { sleep } from './sleep.js'
 import { jsonParse } from './slowOperations.js'
 
-// ---------------------------------------------------------------------------
-// Re-exported types (previously from services/oauth/types)
-// ---------------------------------------------------------------------------
-export type SubscriptionType = 'max' | 'pro' | 'team' | 'enterprise' | null
-export type OAuthTokens = {
-  accessToken: string
-  refreshToken?: string | null
-  expiresAt?: number | null
-  scope?: string
-  scopes?: string[]
-  subscriptionType?: SubscriptionType
-  rateLimitTier?: string | null
-  organization?: string
-}
 
 // ---------------------------------------------------------------------------
 // API key helpers
@@ -104,7 +89,6 @@ export function isAnthropicAuthEnabled(): boolean {
   const settings = getSettings_DEPRECATED() || {}
   const apiKeyHelper = settings.apiKeyHelper
   const hasExternalAuthToken =
-    process.env.ANTHROPIC_AUTH_TOKEN ||
     apiKeyHelper ||
     process.env.CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR
   const { source: apiKeySource } = getAnthropicApiKeyWithSource({
@@ -124,9 +108,6 @@ export function getAuthTokenSource() {
       return { source: 'apiKeyHelper' as const, hasToken: true }
     }
     return { source: 'none' as const, hasToken: false }
-  }
-  if (process.env.ANTHROPIC_AUTH_TOKEN) {
-    return { source: 'ANTHROPIC_AUTH_TOKEN' as const, hasToken: true }
   }
   if (process.env.CLAUDE_CODE_OAUTH_TOKEN) {
     return { source: 'CLAUDE_CODE_OAUTH_TOKEN' as const, hasToken: true }
@@ -916,74 +897,5 @@ export function getOtelHeadersFromHelper(): Record<string, string> {
   }
 }
 
-// ---------------------------------------------------------------------------
-// OAuth / subscription stubs — always return no-op / null values.
-// Kept as exports so the 50+ consumers compile without changes.
-// ---------------------------------------------------------------------------
-
-/** OAuth tokens — always null (OAuth infrastructure removed). */
-export const getClaudeAIOAuthTokens = memoize((): OAuthTokens | null => null)
-export async function getClaudeAIOAuthTokensAsync(): Promise<OAuthTokens | null> { return null }
-export function clearOAuthTokenCache(): void { getClaudeAIOAuthTokens.cache?.clear?.() }
-export function saveOAuthTokensIfNeeded(_tokens: OAuthTokens): { success: boolean; warning?: string } { return { success: true } }
-export function checkAndRefreshOAuthTokenIfNeeded(_retryCount?: number, _force?: boolean): Promise<boolean> { return Promise.resolve(false) }
-export function handleOAuth401Error(_failedAccessToken: string): Promise<boolean> { return Promise.resolve(false) }
-
-/** Subscription — always false / null (OAuth infrastructure removed). */
-export function isClaudeAISubscriber(): boolean { return false }
-export function getSubscriptionType(): SubscriptionType | null { return null }
-export function getSubscriptionName(): string { return 'Claude API' }
-export function isMaxSubscriber(): boolean { return false }
-export function isTeamSubscriber(): boolean { return false }
-export function isTeamPremiumSubscriber(): boolean { return false }
-export function isEnterpriseSubscriber(): boolean { return false }
-export function isProSubscriber(): boolean { return false }
-export function getRateLimitTier(): string | null { return null }
-export function hasProfileScope(): boolean { return false }
-export function is1PApiCustomer(): boolean {
-  return !isUsing3PServices()
-}
-export function isConsumerSubscriber(): boolean { return false }
-export function hasOpusAccess(): boolean { return true }
-export function isOverageProvisioningAllowed(): boolean { return false }
-
-/** Account info stubs. */
-export function getOauthAccountInfo(): AccountInfo | undefined {
-  return isAnthropicAuthEnabled() ? getGlobalConfig().oauthAccount : undefined
-}
-
-export type UserAccountInfo = {
-  subscription?: string
-  tokenSource?: string
-  apiKeySource?: ApiKeySource
-  organization?: string
-  email?: string
-}
-
-export function getAccountInformation(): UserAccountInfo | undefined {
-  const { getAPIProvider: getProvider } = require('./model/providers.js') as typeof import('./model/providers.js')
-  if (getProvider() !== 'firstParty') return undefined
-  const { source: authTokenSource } = getAuthTokenSource()
-  const accountInfo: UserAccountInfo = { tokenSource: authTokenSource }
-  const { key: apiKey, source: apiKeySource } = getAnthropicApiKeyWithSource()
-  if (apiKey) accountInfo.apiKeySource = apiKeySource
-  return accountInfo
-}
-
-export type OrgValidationResult =
-  | { valid: true; message?: string }
-  | { valid: false; message: string }
-
-export async function validateForceLoginOrg(): Promise<OrgValidationResult> {
-  return { valid: true }
-}
-
-/** Stub — OAuth org UUID lookup removed. Returns null. */
-export async function getOrganizationUUID(): Promise<string | null> {
-  return getOauthAccountInfo()?.organizationUuid ?? null
-}
-
-/** Stub — OAuth account info population removed (no-op). */
-export async function populateOAuthAccountInfoIfNeeded(): Promise<void> {}
 
 class GcpCredentialsTimeoutError extends Error {}

@@ -4,7 +4,6 @@ import { markPostCompaction } from '../../bootstrap/state.js'
 import { getSystemPrompt } from '../../constants/prompts.js'
 import { getSystemContext, getUserContext } from '../../context.js'
 import { getShortcutDisplay } from '../../keybindings/shortcutFormat.js'
-import { notifyCompaction } from '../../services/api/promptCacheBreakDetection.js'
 import {
   type CompactionResult,
   compactConversation,
@@ -62,14 +61,6 @@ export const call: LocalCommandCall = async (args, context) => {
       if (sessionMemoryResult) {
         getUserContext.cache.clear?.()
         runPostCompactCleanup()
-        // Reset cache read baseline so the post-compact drop isn't flagged
-        // as a break. compactConversation does this internally; SM-compact doesn't.
-        if (feature('PROMPT_CACHE_BREAK_DETECTION')) {
-          notifyCompaction(
-            context.options.querySource ?? 'compact',
-            context.agentId,
-          )
-        }
         markPostCompaction()
         // Suppress warning immediately after successful compaction
         suppressCompactWarning()

@@ -1,7 +1,6 @@
 import axios from 'axios'
 import { readFile, stat } from 'fs/promises'
 import type { Message } from '../../types/message.js'
-import { checkAndRefreshOAuthTokenIfNeeded } from '../../utils/auth.js'
 import { logForDebugging } from '../../utils/debug.js'
 import { errorMessage } from '../../utils/errors.js'
 import { getAuthHeaders, getUserAgent } from '../../utils/http.js'
@@ -71,7 +70,7 @@ export async function submitTranscriptShare(
 
     const content = redactSensitiveInfo(jsonStringify(data))
 
-    await checkAndRefreshOAuthTokenIfNeeded()
+    
 
     const authResult = getAuthHeaders()
     if (authResult.error) {

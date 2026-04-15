@@ -7,7 +7,7 @@ import { getCwd } from './cwd.js';
 import { relative } from 'path';
 import { formatNumber } from './format.js';
 import type { getGlobalConfig } from './config.js';
-import { getAnthropicApiKeyWithSource, getApiKeyFromConfigOrMacOSKeychain, getAuthTokenSource, isClaudeAISubscriber } from './auth.js';
+import { getAnthropicApiKeyWithSource, getApiKeyFromConfigOrMacOSKeychain, getAuthTokenSource } from './auth.js'
 import type { AgentDefinitionsResult } from '../tools/AgentTool/loadAgentsDir.js';
 import { getAgentDescriptionsTotalTokens, AGENT_DESCRIPTIONS_THRESHOLD } from './statusNoticeHelpers.js';
 import { isSupportedJetBrainsTerminal, toIDEDisplayName, getTerminalIdeType } from './ide.js';
@@ -55,7 +55,7 @@ const claudeAiSubscriberExternalTokenNotice: StatusNoticeDefinition = {
   type: 'warning',
   isActive: () => {
     const authTokenInfo = getAuthTokenSource();
-    return isClaudeAISubscriber() && (authTokenInfo.source === 'ANTHROPIC_AUTH_TOKEN' || authTokenInfo.source === 'apiKeyHelper');
+    return false;
   },
   render: () => {
     const authTokenInfo = getAuthTokenSource();

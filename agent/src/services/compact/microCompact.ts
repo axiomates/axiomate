@@ -18,7 +18,6 @@ import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
 } from '../analytics/index.js'
-import { notifyCacheDeletion } from '../api/promptCacheBreakDetection.js'
 import { roughTokenCountEstimation } from '../tokenEstimation.js'
 import {
   clearCompactWarningSuppression,
@@ -359,13 +358,6 @@ async function cachedMicrocompactPath(
     suppressCompactWarning()
 
     // Notify cache break detection that cache reads will legitimately drop
-    if (feature('PROMPT_CACHE_BREAK_DETECTION')) {
-      // Pass the actual querySource — isMainThreadSource now prefix-matches
-      // so output-style variants enter here, and getTrackingKey keys on the
-      // full source string, not the 'repl_main_thread' prefix.
-      notifyCacheDeletion(querySource ?? 'repl_main_thread')
-    }
-
     // Return messages unchanged - cache_reference and cache_edits are added at API layer
     // Boundary message is deferred until after API response so we can use
     // actual cache_deleted_input_tokens from the API instead of client-side estimates
@@ -515,16 +507,5 @@ function maybeTimeBasedMicrocompact(
   // stale state, it would try to cache_edit tools whose server-side entries
   // no longer exist. Reset it.
   resetMicrocompactState()
-  // We just changed the prompt content — the next response's cache read will
-  // be low, but that's us, not a break. Tell the detector to expect a drop.
-  // notifyCacheDeletion (not notifyCompaction) because it's already imported
-  // here and achieves the same false-positive suppression — adding the second
-  // symbol to the import was flagged by the circular-deps check.
-  // Pass the actual querySource: getTrackingKey returns the full source string
-  // (e.g. 'repl_main_thread:outputStyle:custom'), not just the prefix.
-  if (feature('PROMPT_CACHE_BREAK_DETECTION') && querySource) {
-    notifyCacheDeletion(querySource)
-  }
-
   return { messages: result }
 }

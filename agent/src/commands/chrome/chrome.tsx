@@ -6,7 +6,6 @@ import {
 import { Dialog } from '../../components/design-system/Dialog.js'
 import { Box, Text } from '../../ink.js'
 import { useAppState } from '../../state/AppState.js'
-import { isClaudeAISubscriber } from '../../utils/auth.js'
 import { openBrowser } from '../../utils/browser.js'
 import {
   CLAUDE_IN_CHROME_MCP_SERVER_NAME,
@@ -225,7 +224,7 @@ export const call = async function (
 ): Promise<React.ReactNode> {
   const isExtensionInstalled = await isChromeExtensionInstalled()
   const config = getGlobalConfig()
-  const isSubscriber = isClaudeAISubscriber()
+  const isSubscriber = false
   const isWSL = env.isWslEnvironment()
 
   return (

@@ -1,11 +1,6 @@
 import { execa } from 'execa'
 import memoize from 'lodash-es/memoize.js'
 import { getSessionId } from '../bootstrap/state.js'
-import {
-  getOauthAccountInfo,
-  getRateLimitTier,
-  getSubscriptionType,
-} from './auth.js'
 import { getGlobalConfig, getOrCreateUserID } from './config.js'
 import { getCwd } from './cwd.js'
 import { type env, getHostPlatformForAnalytics } from './env.js'
@@ -84,8 +79,8 @@ export const getCoreUserData = memoize(
     let rateLimitTier: string | undefined
     let firstTokenTime: number | undefined
     if (includeAnalyticsMetadata) {
-      subscriptionType = getSubscriptionType() ?? undefined
-      rateLimitTier = getRateLimitTier() ?? undefined
+      subscriptionType = undefined
+      rateLimitTier = undefined
       if (subscriptionType && config.claudeCodeFirstTokenDate) {
         const configFirstTokenTime = new Date(
           config.claudeCodeFirstTokenDate,
@@ -97,7 +92,7 @@ export const getCoreUserData = memoize(
     }
 
     // Only include OAuth account data when actively using OAuth authentication
-    const oauthAccount = getOauthAccountInfo()
+    const oauthAccount = undefined
     const organizationUuid = oauthAccount?.organizationUuid
     const accountUuid = oauthAccount?.accountUuid
 
@@ -141,7 +136,7 @@ function getEmail(): string | undefined {
   }
 
   // Only include OAuth email when actively using OAuth authentication
-  const oauthAccount = getOauthAccountInfo()
+  const oauthAccount = undefined
   if (oauthAccount?.emailAddress) {
     return oauthAccount.emailAddress
   }
@@ -151,7 +146,7 @@ function getEmail(): string | undefined {
 
 async function getEmailAsync(): Promise<string | undefined> {
   // Only include OAuth email when actively using OAuth authentication
-  const oauthAccount = getOauthAccountInfo()
+  const oauthAccount = undefined
   if (oauthAccount?.emailAddress) {
     return oauthAccount.emailAddress
   }

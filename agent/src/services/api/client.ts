@@ -2,11 +2,8 @@ import Anthropic, { type ClientOptions } from '@anthropic-ai/sdk'
 import { randomUUID } from 'crypto'
 import type { GoogleAuth } from 'google-auth-library'
 import {
-  checkAndRefreshOAuthTokenIfNeeded,
   getAnthropicApiKey,
   getApiKeyFromApiKeyHelper,
-  getClaudeAIOAuthTokens,
-  isClaudeAISubscriber,
   refreshAndGetAwsCredentials,
   refreshGcpCredentialsIfNeeded,
 } from '../../utils/auth.js'
@@ -21,7 +18,6 @@ import {
   getIsNonInteractiveSession,
   getSessionId,
 } from '../../bootstrap/state.js'
-import { getOauthConfig } from '../../constants/oauth.js'
 import { isDebugToStdErr, logForDebugging } from '../../utils/debug.js'
 import {
   getAWSRegion,
@@ -128,13 +124,7 @@ export async function getAnthropicClient({
     defaultHeaders['x-anthropic-additional-protection'] = 'true'
   }
 
-  logForDebugging('[API:auth] OAuth token check starting')
-  await checkAndRefreshOAuthTokenIfNeeded()
-  logForDebugging('[API:auth] OAuth token check complete')
-
-  if (!isClaudeAISubscriber()) {
-    await configureApiKeyHeaders(defaultHeaders, getIsNonInteractiveSession())
-  }
+  await configureApiKeyHeaders(defaultHeaders, getIsNonInteractiveSession())
 
   const resolvedFetch = buildFetch(fetchOverride, source)
 
@@ -297,12 +287,8 @@ export async function getAnthropicClient({
     return new AnthropicVertex(vertexArgs) as unknown as Anthropic
   }
 
-  // Determine authentication method based on available tokens
   const clientConfig: any = {
-    apiKey: isClaudeAISubscriber() ? null : apiKey || getAnthropicApiKey(),
-    authToken: isClaudeAISubscriber()
-      ? getClaudeAIOAuthTokens()?.accessToken
-      : undefined,
+    apiKey: apiKey || getAnthropicApiKey(),
     ...ARGS,
     ...(isDebugToStdErr() && { logger: createStderrLogger() }),
   }
@@ -314,9 +300,7 @@ async function configureApiKeyHeaders(
   headers: Record<string, string>,
   isNonInteractiveSession: boolean,
 ): Promise<void> {
-  const token =
-    process.env.ANTHROPIC_AUTH_TOKEN ||
-    (await getApiKeyFromApiKeyHelper(isNonInteractiveSession))
+  const token = await getApiKeyFromApiKeyHelper(isNonInteractiveSession)
   if (token) {
     headers['Authorization'] = `Bearer ${token}`
   }
@@ -358,8 +342,7 @@ function buildFetch(
   const inner = fetchOverride ?? globalThis.fetch
   // Only send to the first-party API — Bedrock/Vertex/Foundry don't log it
   // and unknown headers risk rejection by strict proxies (inc-4029 class).
-  const injectClientRequestId =
-    getAPIProvider() === 'firstParty' && isFirstPartyAnthropicBaseUrl()
+  const injectClientRequestId = false
   return (input, init) => {
     // eslint-disable-next-line eslint-plugin-n/no-unsupported-features/node-builtins
     const headers = new Headers(init?.headers)

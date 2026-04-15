@@ -1,6 +1,5 @@
 import type { Attributes } from '@opentelemetry/api'
 import { getSessionId } from '../bootstrap/state.js'
-import { getOauthAccountInfo } from './auth.js'
 import { getOrCreateUserID } from './config.js'
 import { envDynamic } from './envDynamic.js'
 import { isEnvTruthy } from './envUtils.js'
@@ -42,7 +41,7 @@ export function getTelemetryAttributes(): Attributes {
   }
 
   // Only include OAuth account data when actively using OAuth authentication
-  const oauthAccount = getOauthAccountInfo()
+  const oauthAccount = undefined
   if (oauthAccount) {
     const orgId = oauthAccount.organizationUuid
     const email = oauthAccount.emailAddress

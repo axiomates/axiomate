@@ -2,14 +2,9 @@ import axios from 'axios'
 import { z } from 'zod/v4'
 import { getOauthConfig } from '../../constants/oauth.js'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../services/analytics/growthbook.js'
-import { getOrganizationUUID } from '../../utils/auth.js'
 import { isPolicyAllowed } from '../../services/policyLimits/index.js'
 import type { ToolUseContext } from '../../Tool.js'
 import { buildTool, type ToolDef } from '../../Tool.js'
-import {
-  checkAndRefreshOAuthTokenIfNeeded,
-  getClaudeAIOAuthTokens,
-} from '../../utils/auth.js'
 import { lazySchema } from '../../utils/lazySchema.js'
 import { jsonStringify } from '../../utils/slowOperations.js'
 import { DESCRIPTION, PROMPT, REMOTE_TRIGGER_TOOL_NAME } from './prompt.js'
@@ -76,14 +71,14 @@ export const RemoteTriggerTool = buildTool({
     return PROMPT
   },
   async call(input: Input, context: ToolUseContext) {
-    await checkAndRefreshOAuthTokenIfNeeded()
-    const accessToken = getClaudeAIOAuthTokens()?.accessToken
+    
+    const accessToken = undefined
     if (!accessToken) {
       throw new Error(
         'Not authenticated with a claude.ai account. Run /login and try again.',
       )
     }
-    const orgUUID = await getOrganizationUUID()
+    const orgUUID = null
     if (!orgUUID) {
       throw new Error('Unable to resolve organization UUID.')
     }

@@ -43,7 +43,6 @@ import {
   splitSysPromptPrefix,
   toolToAPISchema,
 } from '../../utils/api.js'
-import { getOauthAccountInfo } from '../../utils/auth.js'
 import {
   getBedrockExtraBodyParamsBetas,
   getMergedBetas,
@@ -122,7 +121,6 @@ import { addToTotalSessionCost } from '../../cost-tracker.js'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../analytics/growthbook.js'
 import type { AgentId } from '../../types/ids.js'
 import { getAgentContext } from '../../utils/agentContext.js'
-import { isClaudeAISubscriber } from '../../utils/auth.js'
 import {
   getToolSearchBetaHeader,
   modelSupportsStructuredOutputs,
@@ -195,9 +193,7 @@ import {
   logAPISuccessAndDuration,
   type NonNullableUsage,
 } from './logging.js'
-import {
-  CACHE_TTL_1HOUR_MS,
-} from './promptCacheBreakDetection.js'
+const CACHE_TTL_1HOUR_MS = 60 * 60 * 1000
 import {
   CannotRetryError,
   FallbackTriggeredError,
@@ -340,8 +336,7 @@ function should1hCacheTTL(querySource?: QuerySource): boolean {
   // would bust the server-side prompt cache (~20K tokens per flip).
   let userEligible = getPromptCache1hEligible()
   if (userEligible === null) {
-    userEligible =
-      isClaudeAISubscriber() && !currentLimits.isUsingOverage
+    userEligible = false
     setPromptCache1hEligible(userEligible)
   }
   if (!userEligible) return false
@@ -416,7 +411,7 @@ export function getAPIMetadata() {
       ...extra,
       device_id: getOrCreateUserID(),
       // Only include OAuth account UUID when actively using OAuth authentication
-      account_uuid: getOauthAccountInfo()?.accountUuid ?? '',
+      account_uuid: '',
       session_id: getSessionId(),
     }),
   }
@@ -704,7 +699,6 @@ async function* queryModel(
   // init (~10ms). For non-Opus models (haiku, sonnet) this skips the await
   // entirely. Subscribers don't hit this path at all.
   if (
-    !isClaudeAISubscriber() &&
     isNonCustomOpusModel(options.model) &&
     (
       await getDynamicConfig_BLOCKS_ON_INIT<{ activated: boolean }>(

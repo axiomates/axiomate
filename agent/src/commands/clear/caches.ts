@@ -18,7 +18,6 @@ import {
 import { clearFileSuggestionCaches } from '../../hooks/fileSuggestions.js'
 import { clearAllPendingCallbacks } from '../../hooks/useSwarmPermissionPoller.js'
 import { clearAllDumpState } from '../../services/api/dumpPrompts.js'
-import { resetPromptCacheBreakDetection } from '../../services/api/promptCacheBreakDetection.js'
 import { clearAllSessions } from '../../services/api/sessionIngress.js'
 import { runPostCompactCleanup } from '../../services/compact/postCompactCleanup.js'
 import { resetAllLSPDiagnosticState } from '../../services/lsp/LSPDiagnosticRegistry.js'
@@ -58,9 +57,6 @@ export function clearSessionCaches(
 
   // Clear commands/skills cache
   clearCommandsCache()
-
-  // Clear prompt cache break detection state
-  if (!hasPreserved) resetPromptCacheBreakDetection()
 
   // Clear system prompt injection (cache breaker)
   setSystemPromptInjection(null)

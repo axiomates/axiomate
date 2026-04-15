@@ -4,7 +4,6 @@ import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
 } from '../analytics/index.js'
-import { getOauthAccountInfo, isConsumerSubscriber } from '../../utils/auth.js'
 import { logForDebugging } from '../../utils/debug.js'
 import { gracefulShutdown } from '../../utils/gracefulShutdown.js'
 import { isEssentialTrafficOnly } from '../../utils/privacyLevel.js'
@@ -155,41 +154,7 @@ export async function updateGroveSettings(
  * false and the Grove dialog won't show until the next session.
  */
 export async function isQualifiedForGrove(): Promise<boolean> {
-  if (!isConsumerSubscriber()) {
-    return false
-  }
-
-  const accountId = getOauthAccountInfo()?.accountUuid
-  if (!accountId) {
-    return false
-  }
-
-  const globalConfig = getGlobalConfig()
-  const cachedEntry = globalConfig.groveConfigCache?.[accountId]
-  const now = Date.now()
-
-  // No cache - trigger background fetch and return false (non-blocking)
-  // The Grove dialog won't show this session, but will next time if eligible
-  if (!cachedEntry) {
-    logForDebugging(
-      'Grove: No cache, fetching config in background (dialog skipped this session)',
-    )
-    void fetchAndStoreGroveConfig(accountId)
-    return false
-  }
-
-  // Cache exists but is stale - return cached value and refresh in background
-  if (now - cachedEntry.timestamp > GROVE_CACHE_EXPIRATION_MS) {
-    logForDebugging(
-      'Grove: Cache stale, returning cached data and refreshing in background',
-    )
-    void fetchAndStoreGroveConfig(accountId)
-    return cachedEntry.grove_enabled
-  }
-
-  // Cache is fresh - return it immediately
-  logForDebugging('Grove: Using fresh cached config')
-  return cachedEntry.grove_enabled
+  return false
 }
 
 /**

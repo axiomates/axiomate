@@ -15,11 +15,6 @@ import {
 } from '../../bootstrap/state.js'
 import { ClaudeCodeInternalEvent } from '../../types/generated/events_mono/claude_code/v1/claude_code_internal_event.js'
 import { GrowthbookExperimentEvent } from '../../types/generated/events_mono/growthbook/v1/growthbook_experiment_event.js'
-import {
-  getClaudeAIOAuthTokens,
-  hasProfileScope,
-  isClaudeAISubscriber,
-} from '../../utils/auth.js'
 import { checkHasTrustDialogAccepted } from '../../utils/config.js'
 import { getConfigHomeDir } from '../../utils/envUtils.js'
 import { errorMessage, isFsInaccessible, toError } from '../../utils/errors.js'
@@ -492,7 +487,7 @@ export class FirstPartyEventLoggingExporter implements LogRecordExporter {
     // Skip auth when the OAuth token is expired or lacks user:profile
     // scope (service key sessions). Falls through to unauthenticated send.
     let shouldSkipAuth = this.skipAuth || !hasTrust
-    // OAuth subscriber check removed — isClaudeAISubscriber() always returns false
+    // OAuth subscriber check removed — false always returns false
 
     // Try with auth headers first (unless trust not established or token is known to be expired)
     const authResult = shouldSkipAuth

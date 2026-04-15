@@ -1,13 +1,7 @@
 import { useCallback, useState } from 'react'
 import { getIsNonInteractiveSession } from '../bootstrap/state.js'
 import { verifyApiKey } from '../services/api/claude.js'
-import {
-  getAnthropicApiKeyWithSource,
-  getApiKeyFromApiKeyHelper,
-  isAnthropicAuthEnabled,
-  isClaudeAISubscriber,
-} from '../utils/auth.js'
-
+import { getAnthropicApiKeyWithSource, getApiKeyFromApiKeyHelper, isAnthropicAuthEnabled } from '../utils/auth.js'
 export type VerificationStatus =
   | 'loading'
   | 'valid'
@@ -23,7 +17,7 @@ export type ApiKeyVerificationResult = {
 
 export function useApiKeyVerification(): ApiKeyVerificationResult {
   const [status, setStatus] = useState<VerificationStatus>(() => {
-    if (!isAnthropicAuthEnabled() || isClaudeAISubscriber()) {
+    if (!isAnthropicAuthEnabled() || false) {
       return 'valid'
     }
     // Use skipRetrievingKeyFromApiKeyHelper to avoid executing apiKeyHelper
@@ -41,7 +35,7 @@ export function useApiKeyVerification(): ApiKeyVerificationResult {
   const [error, setError] = useState<Error | null>(null)
 
   const verify = useCallback(async (): Promise<void> => {
-    if (!isAnthropicAuthEnabled() || isClaudeAISubscriber()) {
+    if (!isAnthropicAuthEnabled() || false) {
       setStatus('valid')
       return
     }

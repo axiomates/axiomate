@@ -179,7 +179,6 @@ import {
   type PromptVariant,
 } from '../services/PromptSuggestion/promptSuggestion.js'
 import { getLastCacheSafeParams } from '../utils/forkedAgent.js'
-import { getAccountInformation } from '../utils/auth.js'
 // OAuthService and installOAuthTokens removed — OAuth infrastructure deleted
 const OAuthService = class { static async startFlow() { return null } cleanup() {} async startOAuthFlow(_u?: unknown, _o?: unknown) { return null } handleManualAuthCodeInput(_i: unknown) {} }
 async function installOAuthTokens(_tokens: unknown): Promise<void> {}
@@ -222,10 +221,7 @@ import {
   isMcpServerDisabled,
   setMcpServerEnabled,
 } from '../services/mcp/config.js'
-import {
-  performMCPOAuthFlow,
-  revokeServerTokens,
-} from '../services/mcp/auth.js'
+import { performMCPOAuthFlow, revokeServerTokens } from '../services/mcp/auth.js'
 import {
   runElicitationHooks,
   runElicitationResultHooks,
@@ -3599,7 +3595,7 @@ function runHeadlessStreaming(
             const { flow } = claudeOAuth
             void flow.then(
               () => {
-                const accountInfo = getAccountInformation()
+                const accountInfo = undefined
                 sendControlResponseSuccess(message, {
                   account: {
                     email: accountInfo?.email,
@@ -4398,7 +4394,7 @@ async function handleInitializeRequest(
   const availableOutputStyles = await getAllOutputStyles(getCwd())
 
   // Get account information
-  const accountInfo = getAccountInformation()
+  const accountInfo = undefined
   if (request.hooks) {
     const hooks: Partial<Record<HookEvent, HookCallbackMatcher[]>> = {}
     for (const [event, matchers] of Object.entries(request.hooks)) {
@@ -4440,7 +4436,7 @@ async function handleInitializeRequest(
       subscriptionType: accountInfo?.subscription,
       tokenSource: accountInfo?.tokenSource,
       apiKeySource: accountInfo?.apiKeySource,
-      // getAccountInformation() returns undefined under 3P providers, so the
+      // undefined returns undefined under 3P providers, so the
       // other fields are all absent. apiProvider disambiguates "not logged
       // in" (firstParty + tokenSource:none) from "3P, login not applicable".
       apiProvider: getAPIProvider(),

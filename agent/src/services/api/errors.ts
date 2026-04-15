@@ -17,16 +17,11 @@ import type {
 } from '../../types/message.js'
 import {
   getAnthropicApiKeyWithSource,
-  getClaudeAIOAuthTokens,
-  isClaudeAISubscriber,
 } from '../../utils/auth.js'
 import {
   createAssistantAPIErrorMessage,
   NO_RESPONSE_REQUESTED,
 } from '../../utils/messages.js'
-import {
-  isNonCustomOpusModel,
-} from '../../utils/model/model.js'
 import { getModelStrings } from '../../utils/model/modelStrings.js'
 import { getAPIProvider } from '../../utils/model/providers.js'
 import { getIsNonInteractiveSession } from '../../bootstrap/state.js'
@@ -463,7 +458,7 @@ export function getAssistantMessageFromError(
   if (
     error instanceof APIError &&
     error.status === 429 &&
-    shouldProcessRateLimits(isClaudeAISubscriber())
+    shouldProcessRateLimits(false)
   ) {
     // Check if this is the new API with multiple rate limit headers
     const rateLimitType = getHeader(error.headers,
@@ -719,21 +714,6 @@ export function getAssistantMessageFromError(
     })
   }
 
-  // Check for invalid model name error for subscription users trying to use Opus
-  if (
-    isClaudeAISubscriber() &&
-    error instanceof APIError &&
-    error.status === 400 &&
-    error.message.toLowerCase().includes('invalid model name') &&
-    (isNonCustomOpusModel(model) || model === 'opus')
-  ) {
-    return createAssistantAPIErrorMessage({
-      content:
-        'Claude Opus is not available with the Claude Pro plan. If you have updated your subscription plan recently, run /logout and /login for the plan to take effect.',
-      error: 'invalid_request',
-    })
-  }
-
   if (
     error instanceof Error &&
     error.message.includes('Your credit balance is too low')
@@ -759,18 +739,11 @@ export function getAssistantMessageFromError(
     // actually set and actually on the wire.
     if (
       source === 'ANTHROPIC_API_KEY' &&
-      process.env.ANTHROPIC_API_KEY &&
-      !isClaudeAISubscriber()
+      process.env.ANTHROPIC_API_KEY
     ) {
-      const hasStoredOAuth = getClaudeAIOAuthTokens()?.accessToken != null
-      // Not 'authentication_failed' — that triggers VS Code's showLogin(), but
-      // login can't fix this (approved env var keeps overriding OAuth). The fix
-      // is configuration-based (unset the var), so invalid_request is correct.
       return createAssistantAPIErrorMessage({
         error: 'invalid_request',
-        content: hasStoredOAuth
-          ? ORG_DISABLED_ERROR_MESSAGE_ENV_KEY_WITH_OAUTH
-          : ORG_DISABLED_ERROR_MESSAGE_ENV_KEY,
+        content: ORG_DISABLED_ERROR_MESSAGE_ENV_KEY,
       })
     }
   }
@@ -903,9 +876,6 @@ export function getAssistantMessageFromError(
  * Returns a model name suggestion, or undefined if no suggestion is applicable.
  */
 function get3PModelFallbackSuggestion(model: string): string | undefined {
-  if (getAPIProvider() === 'firstParty') {
-    return undefined
-  }
   // @[MODEL LAUNCH]: Add a fallback suggestion chain for the new model → previous version for 3P
   const m = model.toLowerCase()
   // If the failing model looks like an Opus 4.6 variant, suggest the default Opus (4.1 for 3P)

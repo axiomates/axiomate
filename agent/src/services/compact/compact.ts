@@ -106,7 +106,6 @@ import {
   PROMPT_TOO_LONG_ERROR_MESSAGE,
   startsWithApiErrorPrefix,
 } from '../api/errors.js'
-import { notifyCompaction } from '../api/promptCacheBreakDetection.js'
 import { getRetryDelay } from '../api/withRetry.js'
 import {
   roughTokenCountEstimation,
@@ -693,13 +692,6 @@ export async function compactConversation(
       })(),
     })
 
-    // Reset cache read baseline so the post-compact drop isn't flagged as a break
-    if (feature('PROMPT_CACHE_BREAK_DETECTION')) {
-      notifyCompaction(
-        context.options.querySource ?? 'compact',
-        context.agentId,
-      )
-    }
     markPostCompaction()
 
     // Re-append session metadata (custom title, tag) so it stays within
@@ -1043,12 +1035,6 @@ export async function partialCompactConversation(
       }),
     ]
 
-    if (feature('PROMPT_CACHE_BREAK_DETECTION')) {
-      notifyCompaction(
-        context.options.querySource ?? 'compact',
-        context.agentId,
-      )
-    }
     markPostCompaction()
 
     // Re-append session metadata (custom title, tag) so it stays within

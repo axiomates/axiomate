@@ -4,13 +4,6 @@
 import { getMainLoopModelOverride } from '../../bootstrap/state.js'
 import { getGlobalConfig } from '../config.js'
 import {
-  getSubscriptionType,
-  isClaudeAISubscriber,
-  isMaxSubscriber,
-  isProSubscriber,
-  isTeamPremiumSubscriber,
-} from '../auth.js'
-import {
   has1mContext,
   is1mContextDisabled,
   modelSupports1M,
@@ -30,7 +23,6 @@ export type ModelName = string
 export type ModelSetting = ModelName | ModelAlias | null
 
 export function getFastModel(): ModelName {
-  if (process.env.ANTHROPIC_SMALL_FAST_MODEL) return process.env.ANTHROPIC_SMALL_FAST_MODEL
   // Config-driven: fastModel → currentModel → first model → Haiku fallback
   const config = getGlobalConfig()
   if (config.fastModel && config.models?.[config.fastModel]) return config.fastModel
@@ -71,7 +63,7 @@ export function getUserSpecifiedModelSetting(): ModelSetting | undefined {
     specifiedModel = modelOverride
   } else {
     const settings = getSettings_DEPRECATED() || {}
-    specifiedModel = process.env.ANTHROPIC_MODEL || settings.model || undefined
+    specifiedModel = settings.model || undefined
   }
 
   // If no model from override/env/settings, check config.currentModel or first configured model
@@ -123,40 +115,22 @@ export function getDefaultOpusModel(): ModelName {
   if (process.env.ANTHROPIC_DEFAULT_OPUS_MODEL) {
     return process.env.ANTHROPIC_DEFAULT_OPUS_MODEL
   }
-  // 3P providers (Bedrock, Vertex, Foundry) — kept as a separate branch
-  // even when values match, since 3P availability lags firstParty and
-  // these will diverge again at the next model launch.
-  if (getAPIProvider() !== 'firstParty') {
-    return getModelStrings().opus46
-  }
   return getModelStrings().opus46
 }
 
 // @[MODEL LAUNCH]: Update the default Sonnet model (3P providers may lag so keep defaults unchanged).
 export function getMidModel(): ModelName {
-  if (process.env.ANTHROPIC_DEFAULT_SONNET_MODEL) {
-    return process.env.ANTHROPIC_DEFAULT_SONNET_MODEL
-  }
   // Config-driven: midModel → currentModel → first model → Sonnet fallback
   const config = getGlobalConfig()
   if (config.midModel && config.models?.[config.midModel]) return config.midModel
   if (config.currentModel && config.models?.[config.currentModel]) return config.currentModel
   const firstModel = Object.keys(config.models ?? {})[0]
   if (firstModel) return firstModel
-  // Default to Sonnet 4.5 for 3P since they may not have 4.6 yet
-  if (getAPIProvider() !== 'firstParty') {
-    return getModelStrings().sonnet45
-  }
-  return getModelStrings().sonnet46
+  return getModelStrings().sonnet45
 }
 
 // @[MODEL LAUNCH]: Update the default Haiku model (3P providers may lag so keep defaults unchanged).
 export function getDefaultHaikuModel(): ModelName {
-  if (process.env.ANTHROPIC_DEFAULT_HAIKU_MODEL) {
-    return process.env.ANTHROPIC_DEFAULT_HAIKU_MODEL
-  }
-
-  // Haiku 4.5 is available on all platforms (first-party, Foundry, Bedrock, Vertex)
   return getModelStrings().haiku45
 }
 
@@ -200,12 +174,12 @@ export function getRuntimeMainLoopModel(params: {
  */
 export function getDefaultMainLoopModelSetting(): ModelName | ModelAlias {
   // Max users get Opus as default
-  if (isMaxSubscriber()) {
+  if (false) {
     return getDefaultOpusModel() + (isOpus1mMergeEnabled() ? '[1m]' : '')
   }
 
   // Team Premium gets Opus (same as Max)
-  if (isTeamPremiumSubscriber()) {
+  if (false) {
     return getDefaultOpusModel() + (isOpus1mMergeEnabled() ? '[1m]' : '')
   }
 
@@ -299,7 +273,7 @@ export function getCanonicalName(fullModelName: ModelName): ModelShortName {
 
 // @[MODEL LAUNCH]: Update the default model description strings shown to users.
 export function getClaudeAiUserDefaultModelDescription(): string {
-  if (isMaxSubscriber() || isTeamPremiumSubscriber()) {
+  if (false || false) {
     if (isOpus1mMergeEnabled()) {
       return 'Opus 4.6 with 1M context · Most capable for complex work'
     }
@@ -318,29 +292,11 @@ export function renderDefaultModelSetting(
 }
 
 export function getOpus46PricingSuffix(): string {
-  if (getAPIProvider() !== 'firstParty') return ''
-  const pricing = formatModelPricing(COST_TIER_5_25)
-  return ` · ${pricing}`
+  return ''
 }
 
 export function isOpus1mMergeEnabled(): boolean {
-  if (
-    is1mContextDisabled() ||
-    isProSubscriber() ||
-    getAPIProvider() !== 'firstParty'
-  ) {
-    return false
-  }
-  // Fail closed when a subscriber's subscription type is unknown. The VS Code
-  // config-loading subprocess can have OAuth tokens with valid scopes but no
-  // subscriptionType field (stale or partial refresh). Without this guard,
-  // isProSubscriber() returns false for such users and the merge leaks
-  // opus[1m] into the model dropdown — the API then rejects it with a
-  // misleading "rate limit reached" error.
-  if (isClaudeAISubscriber() && getSubscriptionType() === null) {
-    return false
-  }
-  return true
+  return false
 }
 
 export function renderModelSetting(setting: ModelName | ModelAlias): string {
@@ -463,14 +419,6 @@ export function parseUserSpecifiedModel(
   // alias already resolves to 4.6, so the only users on these explicit
   // strings pinned them in settings/env/--model/SDK before 4.5 launched.
   // 3P providers may not yet have 4.6 capacity, so pass through unchanged.
-  if (
-    getAPIProvider() === 'firstParty' &&
-    isLegacyOpusFirstParty(modelString) &&
-    isLegacyModelRemapEnabled()
-  ) {
-    return getDefaultOpusModel() + (has1mTag ? '[1m]' : '')
-  }
-
   // Preserve original case for custom model names (e.g., Azure Foundry deployment IDs)
   // Only strip [1m] suffix if present, maintaining case of the base model
   if (has1mTag) {
@@ -529,7 +477,7 @@ export function isLegacyModelRemapEnabled(): boolean {
 
 export function modelDisplayString(model: ModelSetting): string {
   if (model === null) {
-    if (isClaudeAISubscriber()) {
+    if (false) {
       return `Default (${getClaudeAiUserDefaultModelDescription()})`
     }
     return `Default (${getDefaultMainLoopModel()})`

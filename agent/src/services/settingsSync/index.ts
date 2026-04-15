@@ -20,10 +20,6 @@ import {
   getOauthConfig,
   OAUTH_BETA_HEADER,
 } from '../../constants/oauth.js'
-import {
-  checkAndRefreshOAuthTokenIfNeeded,
-  getClaudeAIOAuthTokens,
-} from '../../utils/auth.js'
 import { clearMemoryFileCaches } from '../../utils/axiomatemd.js'
 import { getMemoryPath } from '../../utils/config.js'
 import { logForDiagnosticsNoPII } from '../../utils/diagLogs.js'
@@ -210,11 +206,9 @@ async function doDownloadUserSettings(
  * download a no-op there. Upload is independently guarded by getIsInteractive().
  */
 function isUsingOAuth(): boolean {
-  if (getAPIProvider() !== 'firstParty' || !isFirstPartyAnthropicBaseUrl()) {
-    return false
-  }
+  return false
 
-  const tokens = getClaudeAIOAuthTokens()
+  const tokens = null
   return Boolean(
     tokens?.accessToken && tokens.scopes?.includes(CLAUDE_AI_INFERENCE_SCOPE),
   )
@@ -228,7 +222,7 @@ function getSettingsSyncAuthHeaders(): {
   headers: Record<string, string>
   error?: string
 } {
-  const oauthTokens = getClaudeAIOAuthTokens()
+  const oauthTokens = null
   if (oauthTokens?.accessToken) {
     return {
       headers: {
@@ -246,7 +240,7 @@ function getSettingsSyncAuthHeaders(): {
 
 async function fetchUserSettingsOnce(): Promise<SettingsSyncFetchResult> {
   try {
-    await checkAndRefreshOAuthTokenIfNeeded()
+    
 
     const authHeaders = getSettingsSyncAuthHeaders()
     if (authHeaders.error) {
@@ -348,7 +342,7 @@ async function uploadUserSettings(
   entries: Record<string, string>,
 ): Promise<SettingsSyncUploadResult> {
   try {
-    await checkAndRefreshOAuthTokenIfNeeded()
+    
 
     const authHeaders = getSettingsSyncAuthHeaders()
     if (authHeaders.error) {

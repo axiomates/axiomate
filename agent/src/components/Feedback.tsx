@@ -13,7 +13,6 @@ import { useKeybinding } from '../keybindings/useKeybinding.js';
 import { queryHaiku } from '../services/api/claude.js';
 import { startsWithApiErrorPrefix } from '../services/api/errors.js';
 import type { Message } from '../types/message.js';
-import { checkAndRefreshOAuthTokenIfNeeded } from '../utils/auth.js';
 import { openBrowser } from '../utils/browser.js';
 import { logForDebugging } from '../utils/debug.js';
 import { env } from '../utils/env.js';
@@ -528,7 +527,7 @@ async function submitFeedback(data: FeedbackData, signal?: AbortSignal): Promise
   try {
     // Ensure OAuth token is fresh before getting auth headers
     // This prevents 401 errors from stale cached tokens
-    await checkAndRefreshOAuthTokenIfNeeded();
+    ;
     const authResult = getAuthHeaders();
     if (authResult.error) {
       return {

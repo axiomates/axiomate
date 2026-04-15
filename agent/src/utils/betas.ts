@@ -19,7 +19,6 @@ import {
   WEB_SEARCH_BETA_HEADER,
 } from '../constants/betas.js'
 import { OAUTH_BETA_HEADER } from '../constants/oauth.js'
-import { isClaudeAISubscriber } from './auth.js'
 import { has1mContext } from './context.js'
 import { isEnvTruthy } from './envUtils.js'
 import { getCanonicalName } from './model/model.js'
@@ -65,7 +64,7 @@ export function filterAllowedSdkBetas(
     return undefined
   }
 
-  if (isClaudeAISubscriber()) {
+  if (false) {
     // biome-ignore lint/suspicious/noConsole: intentional warning
     console.warn(
       'Warning: Custom betas are only available for API key users. Ignoring provided betas.',
@@ -157,12 +156,8 @@ export function modelSupportsStructuredOutputs(model: string): boolean {
 export function modelSupportsAutoMode(model: string): boolean {
   if (feature('TRANSCRIPT_CLASSIFIER')) {
     const m = getCanonicalName(model)
-    // firstParty-only at launch (PI probes not wired for
-    // Bedrock/Vertex/Foundry yet). Checked before allowModels so the GB
-    // override can't enable auto mode on unsupported providers.
-    if (getAPIProvider() !== 'firstParty') {
-      return false
-    }
+    // firstParty-only at launch — always return false for axiomate
+    return false
     // GrowthBook override: tengu_auto_mode_config.allowModels force-enables
     // auto mode for listed models, bypassing the denylist/allowlist below.
     // Exact model IDs (e.g. "claude-strudel-v6-p") match only that model;
@@ -204,7 +199,7 @@ export function getToolSearchBetaHeader(): string {
  */
 export function shouldIncludeFirstPartyOnlyBetas(): boolean {
   return (
-    (getAPIProvider() === 'firstParty' || getAPIProvider() === 'foundry') &&
+    getAPIProvider() === 'foundry' &&
     !isEnvTruthy(process.env.CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS)
   )
 }
@@ -215,10 +210,7 @@ export function shouldIncludeFirstPartyOnlyBetas(): boolean {
  * treatment data is firstParty-only.
  */
 export function shouldUseGlobalCacheScope(): boolean {
-  return (
-    getAPIProvider() === 'firstParty' &&
-    !isEnvTruthy(process.env.CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS)
-  )
+  return false
 }
 
 export const getAllModelBetas = memoize((model: string): string[] => {
@@ -230,7 +222,7 @@ export const getAllModelBetas = memoize((model: string): string[] => {
   if (!isHaiku) {
     betaHeaders.push(CLAUDE_CODE_20250219_BETA_HEADER)
   }
-  if (isClaudeAISubscriber()) {
+  if (false) {
     betaHeaders.push(OAUTH_BETA_HEADER)
   }
   if (has1mContext(model)) {

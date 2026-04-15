@@ -300,21 +300,6 @@ export function isToolSearchEnabledOptimistic(): boolean {
   // behavior). Setting any non-empty value — 'true', 'auto', 'auto:N' —
   // means the user is explicitly configuring tool search and asserts their
   // setup supports it. The falsy check (rather than === undefined) aligns
-  // with getToolSearchMode(), which also treats "" as unset.
-  if (
-    !process.env.ENABLE_TOOL_SEARCH &&
-    getAPIProvider() === 'firstParty' &&
-    !isFirstPartyAnthropicBaseUrl()
-  ) {
-    if (!loggedOptimistic) {
-      loggedOptimistic = true
-      logForDebugging(
-        `[ToolSearch:optimistic] disabled: ANTHROPIC_BASE_URL=${process.env.ANTHROPIC_BASE_URL} is not a first-party Anthropic host. Set ENABLE_TOOL_SEARCH=true (or auto / auto:N) if your proxy forwards tool_reference blocks.`,
-      )
-    }
-    return false
-  }
-
   if (!loggedOptimistic) {
     loggedOptimistic = true
     logForDebugging(

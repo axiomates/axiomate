@@ -19,17 +19,11 @@ import { getOriginalCwd, getSessionId } from '../bootstrap/state.js'
 import type { SDKMessage } from '../entrypoints/agentSdkTypes.js'
 import type { SDKControlResponse } from '../entrypoints/sdk/controlTypes.js'
 import { getFeatureValue_CACHED_WITH_REFRESH } from '../services/analytics/growthbook.js'
-import { getOrganizationUUID } from '../utils/auth.js'
 import {
   isPolicyAllowed,
   waitForPolicyLimitsToLoad,
 } from '../services/policyLimits/index.js'
 import type { Message } from '../types/message.js'
-import {
-  checkAndRefreshOAuthTokenIfNeeded,
-  getClaudeAIOAuthTokens,
-  handleOAuth401Error,
-} from '../utils/auth.js'
 import { getGlobalConfig, saveGlobalConfig } from '../utils/config.js'
 import { logForDebugging } from '../utils/debug.js'
 import { stripDisplayTagsAllowEmpty } from '../utils/displayTags.js'
@@ -178,7 +172,7 @@ export async function initReplBridge(
     if (
       cfg.bridgeOauthDeadExpiresAt != null &&
       (cfg.bridgeOauthDeadFailCount ?? 0) >= 3 &&
-      getClaudeAIOAuthTokens()?.expiresAt === cfg.bridgeOauthDeadExpiresAt
+      undefined === cfg.bridgeOauthDeadExpiresAt
     ) {
       logForDebugging(
         `[bridge:repl] Skipping: cross-process backoff (dead token seen ${cfg.bridgeOauthDeadFailCount} times)`,
@@ -196,9 +190,9 @@ export async function initReplBridge(
     // Fresh-token cost: one memoized read + one Date.now() comparison (~µs).
     // checkAndRefreshOAuthTokenIfNeeded clears its own cache in every path that
     // touches the keychain (refresh success, lockfile race, throw), so no
-    // explicit clearOAuthTokenCache() here — that would force a blocking
+    // explicit  here — that would force a blocking
     // keychain spawn on the 91%+ fresh-token path.
-    await checkAndRefreshOAuthTokenIfNeeded()
+    
 
     // 2c. Skip if token is still expired post-refresh-attempt. Env-var / FD
     // tokens (auth.ts:894-917) have expiresAt=null → never trip this. But a
@@ -215,7 +209,7 @@ export async function initReplBridge(
     // + transient refresh endpoint blip (5xx/timeout/wifi-reconnect) would
     // falsely trip a buffered check; the still-valid token would connect fine.
     // Check actual expiry instead: past-expiry AND refresh-failed → truly dead.
-    const tokens = getClaudeAIOAuthTokens()
+    const tokens = null
     if (tokens && tokens.expiresAt !== null && tokens.expiresAt <= Date.now()) {
       logBridgeSkip(
         'oauth_expired_unrefreshable',
@@ -387,7 +381,7 @@ export async function initReplBridge(
   // environment registration; v2 for archive (which lives at the compat
   // /v1/sessions/{id}/archive, not /v1/code/sessions). Without it, v2
   // archive 404s and sessions stay alive in CCR after /exit.
-  const orgUUID = await getOrganizationUUID()
+  const orgUUID = null
   if (!orgUUID) {
     logBridgeSkip('no_org_uuid', '[bridge:repl] Skipping: no org UUID')
     onStateChange?.('failed', '/login')
@@ -427,7 +421,7 @@ export async function initReplBridge(
       orgUUID,
       title,
       getAccessToken: getBridgeAccessToken,
-      onAuth401: handleOAuth401Error,
+      onAuth401: async () => false,
       toSDKMessages,
       initialHistoryCap,
       initialMessages,
@@ -524,7 +518,7 @@ export async function initReplBridge(
     getCurrentTitle: () => getCurrentSessionTitle(getSessionId()) ?? title,
     onUserMessage,
     toSDKMessages,
-    onAuth401: handleOAuth401Error,
+    onAuth401: async () => false,
     getPollIntervalConfig,
     initialHistoryCap,
     initialMessages,

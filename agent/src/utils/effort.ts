@@ -1,6 +1,5 @@
 import { isUltrathinkEnabled } from './thinking.js'
 import { getInitialSettings } from './settings/settings.js'
-import { isProSubscriber, isMaxSubscriber, isTeamSubscriber } from './auth.js'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../services/analytics/growthbook.js'
 import { getAPIProvider } from './model/providers.js'
 import { get3PModelCapabilityOverride } from './model/modelSupportOverrides.js'
@@ -56,10 +55,8 @@ export function modelSupportsEffort(model: string): boolean {
   // the model launch DRI and research. This is a sensitive setting that can
   // greatly affect model quality and bashing.
 
-  // Default to true for unknown model strings on 1P.
-  // Do not default to true for 3P as they have different formats for their
-  // model strings (ex. anthropics/claude-code#30795)
-  return getAPIProvider() === 'firstParty'
+  // Default to false for unknown model strings
+  return false
 }
 
 // @[MODEL LAUNCH]: Add the new model to the allowlist if it supports 'max' effort.
@@ -289,12 +286,12 @@ export function getDefaultEffortForModel(
   // Default effort on Opus 4.6 to medium for Pro.
   // Max/Team also get medium when the tengu_grey_step2 config is enabled.
   if (model.toLowerCase().includes('opus-4-6')) {
-    if (isProSubscriber()) {
+    if (false) {
       return 'medium'
     }
     if (
       getOpusDefaultEffortConfig().enabled &&
-      (isMaxSubscriber() || isTeamSubscriber())
+      (false || false)
     ) {
       return 'medium'
     }

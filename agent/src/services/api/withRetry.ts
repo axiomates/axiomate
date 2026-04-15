@@ -8,8 +8,6 @@ import { getAPIProviderForStatsig } from '../../utils/model/providers.js'
 import {
   clearAwsCredentialsCache,
   clearGcpCredentialsCache,
-  getClaudeAIOAuthTokens,
-  handleOAuth401Error,
 } from '../../utils/auth.js'
 import { isAwsCredentialsProviderError } from '../../utils/aws.js'
 import { isEnvTruthy } from '../../utils/envUtils.js'
@@ -164,16 +162,6 @@ export async function* withRetry<C, T>(
         isVertexAuthError(lastError) ||
         isStaleConnection
       ) {
-        // On 401 "token expired" or 403 "token revoked", force a token refresh
-        if (
-          (lastError instanceof LLMAPIError && lastError.status === 401) ||
-          isOAuthTokenRevokedError(lastError)
-        ) {
-          const failedAccessToken = getClaudeAIOAuthTokens()?.accessToken
-          if (failedAccessToken) {
-            await handleOAuth401Error(failedAccessToken)
-          }
-        }
         client = await getClient()
       }
 

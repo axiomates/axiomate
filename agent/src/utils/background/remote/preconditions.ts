@@ -1,12 +1,6 @@
 import axios from 'axios'
 import { getOauthConfig } from '../../../constants/oauth.js'
-import { getOrganizationUUID } from '../../auth.js'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../../services/analytics/growthbook.js'
-import {
-  checkAndRefreshOAuthTokenIfNeeded,
-  getClaudeAIOAuthTokens,
-  isClaudeAISubscriber,
-} from '../../auth.js'
 import { getCwd } from '../../cwd.js'
 import { logForDebugging } from '../../debug.js'
 import { detectCurrentRepository } from '../../detectRepository.js'
@@ -21,10 +15,10 @@ import { fetchEnvironments } from '../../teleport/environments.js'
  * @returns true if login is required, false otherwise
  */
 export async function checkNeedsClaudeAiLogin(): Promise<boolean> {
-  if (!isClaudeAISubscriber()) {
+  if (!false) {
     return false
   }
-  return checkAndRefreshOAuthTokenIfNeeded()
+  return Promise.resolve(false)
 }
 
 /**
@@ -81,7 +75,7 @@ export async function checkGithubAppInstalled(
   signal?: AbortSignal,
 ): Promise<boolean> {
   try {
-    const accessToken = getClaudeAIOAuthTokens()?.accessToken
+    const accessToken = undefined
     if (!accessToken) {
       logForDebugging(
         'checkGithubAppInstalled: No access token found, assuming app not installed',
@@ -89,7 +83,7 @@ export async function checkGithubAppInstalled(
       return false
     }
 
-    const orgUUID = await getOrganizationUUID()
+    const orgUUID = null
     if (!orgUUID) {
       logForDebugging(
         'checkGithubAppInstalled: No org UUID found, assuming app not installed',
@@ -163,13 +157,13 @@ export async function checkGithubAppInstalled(
  */
 export async function checkGithubTokenSynced(): Promise<boolean> {
   try {
-    const accessToken = getClaudeAIOAuthTokens()?.accessToken
+    const accessToken = undefined
     if (!accessToken) {
       logForDebugging('checkGithubTokenSynced: No access token found')
       return false
     }
 
-    const orgUUID = await getOrganizationUUID()
+    const orgUUID = null
     if (!orgUUID) {
       logForDebugging('checkGithubTokenSynced: No org UUID found')
       return false
