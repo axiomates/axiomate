@@ -15,9 +15,6 @@ import type { IDESelection } from '../../hooks/useIdeSelection.js'
 import { useMainLoopModel } from '../../hooks/useMainLoopModel.js'
 import { useVoiceEnabled } from '../../hooks/useVoiceEnabled.js'
 import { Box, Text } from '../../ink.js'
-// apiLimitsHook stub inlined
-type ClaudeAILimits = { status: string; isUsingOverage: boolean; [key: string]: unknown }
-function useClaudeAiLimits(): ClaudeAILimits | null { return null }
 import { calculateTokenWarningState } from '../../services/compact/autoCompact.js'
 import type { MCPServerConnection } from '../../services/mcp/types.js'
 import type { Message } from '../../types/message.js'
@@ -90,8 +87,6 @@ export function Notifications({
   const { status: ideStatus } = useIdeConnectionStatus(mcpClients)
   const notifications = useAppState(s => s.notifications)
   const { addNotification, removeNotification } = useNotifications()
-  const claudeAiLimits = useClaudeAiLimits()
-
   // Register env hook notifier for CwdChanged/FileChanged feedback
   useEffect(() => {
     setEnvHookNotifier((text, isError) => {
@@ -117,12 +112,6 @@ export function Notifications({
     !shouldShowIdeSelection ||
     isAutoUpdating ||
     autoUpdaterResult?.status !== 'success'
-
-  // Check if we're in overage mode for UI indicators
-  const isInOverageMode = claudeAiLimits.isUsingOverage
-  const subscriptionType = null
-  const isTeamOrEnterprise =
-    subscriptionType === 'team' || subscriptionType === 'enterprise'
 
   // Check if the external editor hint should be shown
   const editor = getExternalEditor()
@@ -174,8 +163,6 @@ export function Notifications({
           ideSelection={ideSelection}
           mcpClients={mcpClients}
           notifications={notifications}
-          isInOverageMode={isInOverageMode ?? false}
-          isTeamOrEnterprise={isTeamOrEnterprise}
           apiKeyStatus={apiKeyStatus}
           debug={debug}
           verbose={verbose}
@@ -197,8 +184,6 @@ function NotificationContent({
   ideSelection,
   mcpClients,
   notifications,
-  isInOverageMode,
-  isTeamOrEnterprise,
   apiKeyStatus,
   debug,
   verbose,
@@ -217,8 +202,6 @@ function NotificationContent({
     current: Notification | null
     queue: Notification[]
   }
-  isInOverageMode: boolean
-  isTeamOrEnterprise: boolean
   apiKeyStatus: VerificationStatus
   debug: boolean
   verbose: boolean
@@ -284,13 +267,6 @@ function NotificationContent({
             {notifications.current.text}
           </Text>
         ))}
-      {isInOverageMode && !isTeamOrEnterprise && (
-        <Box>
-          <Text dimColor wrap="truncate">
-            Now using extra usage
-          </Text>
-        </Box>
-      )}
       {apiKeyHelperSlow && (
         <Box>
           <Text color="warning" wrap="truncate">
