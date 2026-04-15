@@ -99,14 +99,10 @@ import { feature } from 'bun:bundle'
 import {
   getAfkModeHeaderLatched,
   getLastApiCompletionTimestamp,
-  getPromptCache1hAllowlist,
-  getPromptCache1hEligible,
   getSessionId,
   getThinkingClearLatched,
   setAfkModeHeaderLatched,
   setLastMainRequestId,
-  setPromptCache1hAllowlist,
-  setPromptCache1hEligible,
   setThinkingClearLatched,
 } from '../../bootstrap/state.js'
 import {
@@ -324,45 +320,12 @@ export function getCacheControl({
  * The allowlist is cached in STATE for session stability — prevents mixed
  * TTLs when GrowthBook's disk cache updates mid-request.
  */
-function should1hCacheTTL(querySource?: QuerySource): boolean {
-  // 3P Bedrock users get 1h TTL when opted in via env var — they manage their own billing
-  // No GrowthBook gating needed since 3P users don't have GrowthBook configured
-  if (
-    getAPIProvider() === 'bedrock' &&
-    isEnvTruthy(process.env.ENABLE_PROMPT_CACHING_1H_BEDROCK)
-  ) {
-    return true
-  }
-
-  // Latch eligibility in bootstrap state for session stability — prevents
-  // mid-session overage flips from changing the cache_control TTL, which
-  // would bust the server-side prompt cache (~20K tokens per flip).
-  let userEligible = getPromptCache1hEligible()
-  if (userEligible === null) {
-    userEligible = false
-    setPromptCache1hEligible(userEligible)
-  }
-  if (!userEligible) return false
-
-  // Cache allowlist in bootstrap state for session stability — prevents mixed
-  // TTLs when GrowthBook's disk cache updates mid-request
-  let allowlist = getPromptCache1hAllowlist()
-  if (allowlist === null) {
-    const config = getFeatureValue_CACHED_MAY_BE_STALE<{
-      allowlist?: string[]
-    }>('tengu_prompt_cache_1h_config', {})
-    allowlist = config.allowlist ?? []
-    setPromptCache1hAllowlist(allowlist)
-  }
-
-  return (
-    querySource !== undefined &&
-    allowlist.some(pattern =>
-      pattern.endsWith('*')
-        ? querySource.startsWith(pattern.slice(0, -1))
-        : querySource === pattern,
-    )
-  )
+function should1hCacheTTL(_querySource?: QuerySource): boolean {
+  // 1hr cache TTL is part of the public Anthropic messages API (cache_control).
+  // Enable for all Anthropic-protocol providers — they support it natively.
+  // OpenAI-protocol providers don't use cache_control, so this is irrelevant for them
+  // (getCacheControl is only called in the Anthropic request builder path).
+  return true
 }
 
 /** Anthropic output_config shape — local type to avoid SDK import. */
