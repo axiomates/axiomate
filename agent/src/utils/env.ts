@@ -1,7 +1,6 @@
 import memoize from 'lodash-es/memoize.js'
 import { homedir } from 'os'
 import { join } from 'path'
-import { fileSuffixForOauthConfig } from '../constants/oauth.js'
 import { isRunningWithBun } from './bundledMode.js'
 import { getConfigHomeDir, isEnvTruthy } from './envUtils.js'
 import { findExecutable } from './findExecutable.js'
@@ -21,7 +20,7 @@ export const getGlobalConfigFile = memoize((): string => {
     return join(getConfigHomeDir(), '.config.json')
   }
 
-  const filename = `.axiomate${fileSuffixForOauthConfig()}.json`
+  const filename = `.axiomate.json`
   return join(process.env.AXIOMATE_CONFIG_DIR || homedir(), filename)
 })
 

@@ -7,12 +7,6 @@
  * mirror alongside the leaf's state.
  */
 
-import { CLAUDE_AI_INFERENCE_SCOPE } from '../../constants/oauth.js'
-import { getAnthropicApiKeyWithSource } from '../../utils/auth.js'
-import {
-  getAPIProvider,
-} from '../../utils/model/providers.js'
-
 import {
   resetSyncCache as resetLeafCache,
   setEligibility,

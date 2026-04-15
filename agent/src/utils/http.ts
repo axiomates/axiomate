@@ -3,7 +3,6 @@
  */
 
 import axios from 'axios'
-import { OAUTH_BETA_HEADER } from '../constants/oauth.js'
 import { getAnthropicApiKey } from './auth.js'
 import { getAxiomateUserAgent } from './userAgent.js'
 import { getWorkload } from './workloadContext.js'

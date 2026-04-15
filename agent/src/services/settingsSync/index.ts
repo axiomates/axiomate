@@ -15,11 +15,8 @@ import { mkdir, readFile, stat, writeFile } from 'fs/promises'
 import pickBy from 'lodash-es/pickBy.js'
 import { dirname } from 'path'
 import { getIsInteractive } from '../../bootstrap/state.js'
-import {
-  CLAUDE_AI_INFERENCE_SCOPE,
-  getOauthConfig,
-  OAUTH_BETA_HEADER,
-} from '../../constants/oauth.js'
+const CLAUDE_AI_INFERENCE_SCOPE = 'user:inference'
+const OAUTH_BETA_HEADER = 'oauth-2025-04-20'
 import { clearMemoryFileCaches } from '../../utils/axiomatemd.js'
 import { getMemoryPath } from '../../utils/config.js'
 import { logForDiagnosticsNoPII } from '../../utils/diagLogs.js'
@@ -214,7 +211,7 @@ function isUsingOAuth(): boolean {
 }
 
 function getSettingsSyncEndpoint(): string {
-  return `${getOauthConfig().BASE_API_URL}/api/claude_code/user_settings`
+  return `https://api.anthropic.com/api/claude_code/user_settings`
 }
 
 function getSettingsSyncAuthHeaders(): {
