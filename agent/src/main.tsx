@@ -3154,31 +3154,8 @@ async function logTenguInit({
     logError(error);
   }
 }
-function maybeActivateBrief(options: unknown): void {
-  if (!(false)) return;
-  const briefFlag = (options as {
-    brief?: boolean;
-  }).brief;
-  const briefEnv = isEnvTruthy(process.env.CLAUDE_CODE_BRIEF);
-  if (!briefFlag && !briefEnv) return;
-  // --brief / CLAUDE_CODE_BRIEF are explicit opt-ins: check entitlement,
-  // then set userMsgOptIn to activate the tool + prompt section. The env
-  // var also grants entitlement (isBriefEntitled() reads it), so setting
-  // CLAUDE_CODE_BRIEF=1 alone force-enables for dev/testing — no GB gate
-  // needed. initialIsBriefOnly reads getUserMsgOptIn() directly.
-  // Conditional require: static import would leak the tool name string
-  // into external builds via BriefTool.ts → prompt.ts.
-  /* eslint-disable @typescript-eslint/no-require-imports */
-  const {
-    isBriefEntitled
-  } = require('./tools/BriefTool/BriefTool.js') as typeof import('./tools/BriefTool/BriefTool.js');
-  /* eslint-enable @typescript-eslint/no-require-imports */
-  const entitled = isBriefEntitled();
-  if (entitled) {
-    setUserMsgOptIn(true);
-  }
-  // Fire unconditionally once intent is seen: enabled=false captures the
-  // "user tried but was gated" failure mode in telemetry.
+function maybeActivateBrief(_options: unknown): void {
+  // brief feature not available in this build
 }
 function resetCursor() {
   const terminal = process.stderr.isTTY ? process.stderr : process.stdout.isTTY ? process.stdout : undefined;

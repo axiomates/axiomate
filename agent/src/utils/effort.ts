@@ -273,16 +273,6 @@ export function getDefaultEffortForModel(
   // the model launch DRI and research. Default effort is a sensitive setting
   // that can greatly affect model quality and bashing.
 
-  // Default effort on Opus 4.6 to medium for Pro.
-  // Max/Team also get medium when the ax_grey_step2 config is enabled.
-  if (model.toLowerCase().includes('opus-4-6')) {
-    if (
-      getOpusDefaultEffortConfig().enabled &&
-      (false || false)
-    ) {
-      return 'medium'
-    }
-  }
 
   // When ultrathink feature is on, default effort to medium (ultrathink bumps to high)
   if (isUltrathinkEnabled() && modelSupportsEffort(model)) {

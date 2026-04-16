@@ -1,5 +1,4 @@
-// Stub: useFrustrationDetection — Anthropic-internal hook.
-// Loaded behind ("external" as string) === 'ant' check in REPL.tsx.
+// Stub: useFrustrationDetection — not available in this build.
 export function useFrustrationDetection(
   _messages?: unknown[],
   _isLoading?: boolean,

@@ -4174,90 +4174,7 @@ function handleChannelEnable(
       response: { subtype: 'error', request_id: requestId, error },
     })
 
-  if (!(false)) {
-    return respondError('channels feature not available in this build')
-  }
-
-  // Only a 'connected' client has .capabilities and .client to register the
-  // handler on. The pool spread at the call site matches mcp_status.
-  const connection = connectionPool.find(
-    c => c.name === serverName && c.type === 'connected',
-  )
-  if (!connection || connection.type !== 'connected') {
-    return respondError(`server ${serverName} is not connected`)
-  }
-
-  const pluginSource = connection.config.pluginSource
-  const parsed = pluginSource ? parsePluginIdentifier(pluginSource) : undefined
-  if (!parsed?.marketplace) {
-    // No pluginSource or @-less source — can never pass the {plugin,
-    // marketplace}-keyed allowlist. Short-circuit with the same reason the
-    // gate would produce.
-    return respondError(
-      `server ${serverName} is not plugin-sourced; channel_enable requires a marketplace plugin`,
-    )
-  }
-
-  const entry: ChannelEntry = {
-    kind: 'plugin',
-    name: parsed.name,
-    marketplace: parsed.marketplace,
-  }
-  // Idempotency: don't double-append on repeat enable.
-  const prior = getAllowedChannels()
-  const already = prior.some(
-    e =>
-      e.kind === 'plugin' &&
-      e.name === entry.name &&
-      e.marketplace === entry.marketplace,
-  )
-  if (!already) setAllowedChannels([...prior, entry])
-
-  const gate = gateChannelServer(
-    serverName,
-    connection.capabilities,
-    pluginSource,
-  )
-  if (gate.action === 'skip') {
-    // Rollback — only remove the entry we appended.
-    if (!already) setAllowedChannels(prior)
-    return respondError(gate.reason)
-  }
-
-  const pluginId =
-  logMCPDebug(serverName, 'Channel notifications registered')
-
-  // Identical enqueue shape to the interactive register block in
-  // useManageMCPConnections. drainCommandQueue processes it between turns —
-  // channel messages queue at priority 'next' and are seen by the model on
-  // the turn after they arrive.
-  connection.client.setNotificationHandler(
-    ChannelMessageNotificationSchema(),
-    async notification => {
-      const { content, meta } = notification.params
-      logMCPDebug(
-        serverName,
-        `notifications/claude/channel: ${content.slice(0, 80)}`,
-      )
-      enqueue({
-        mode: 'prompt',
-        value: wrapChannelMessage(serverName, content, meta),
-        priority: 'next',
-        isMeta: true,
-        origin: { kind: 'channel', server: serverName },
-        skipSlashCommands: true,
-      })
-    },
-  )
-
-  output.enqueue({
-    type: 'control_response',
-    response: {
-      subtype: 'success',
-      request_id: requestId,
-      response: undefined,
-    },
-  })
+  return respondError('channels feature not available in this build')
 }
 
 /**
@@ -4277,44 +4194,9 @@ function handleChannelEnable(
  * check.
  */
 function reregisterChannelHandlerAfterReconnect(
-  connection: MCPServerConnection,
+  _connection: MCPServerConnection,
 ): void {
-  if (!(false)) return
-  if (connection.type !== 'connected') return
-
-  const gate = gateChannelServer(
-    connection.name,
-    connection.capabilities,
-    connection.config.pluginSource,
-  )
-  if (gate.action !== 'register') return
-
-  const entry = findChannelEntry(connection.name, getAllowedChannels())
-  const pluginId =
-    entry?.kind === 'plugin' ? entry.name : undefined
-
-  logMCPDebug(
-    connection.name,
-    'Channel notifications re-registered after reconnect',
-  )
-  connection.client.setNotificationHandler(
-    ChannelMessageNotificationSchema(),
-    async notification => {
-      const { content, meta } = notification.params
-      logMCPDebug(
-        connection.name,
-        `notifications/claude/channel: ${content.slice(0, 80)}`,
-      )
-      enqueue({
-        mode: 'prompt',
-        value: wrapChannelMessage(connection.name, content, meta),
-        priority: 'next',
-        isMeta: true,
-        origin: { kind: 'channel', server: connection.name },
-        skipSlashCommands: true,
-      })
-    },
-  )
+  // channels feature not available in this build
 }
 
 /**

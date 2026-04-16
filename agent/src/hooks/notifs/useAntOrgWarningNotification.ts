@@ -1,5 +1,4 @@
-// Stub: useAntOrgWarningNotification — Anthropic-internal hook.
-// Loaded behind ("external" as string) === 'ant' check in REPL.tsx.
+// Stub: useAntOrgWarningNotification — not available in this build.
 export function useAntOrgWarningNotification(): void {
   // no-op
 }

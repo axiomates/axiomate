@@ -17,7 +17,7 @@ export type ApiKeyVerificationResult = {
 
 export function useApiKeyVerification(): ApiKeyVerificationResult {
   const [status, setStatus] = useState<VerificationStatus>(() => {
-    if (!isAnthropicAuthEnabled() || false) {
+    if (!isAnthropicAuthEnabled()) {
       return 'valid'
     }
     // Use skipRetrievingKeyFromApiKeyHelper to avoid executing apiKeyHelper
@@ -35,7 +35,7 @@ export function useApiKeyVerification(): ApiKeyVerificationResult {
   const [error, setError] = useState<Error | null>(null)
 
   const verify = useCallback(async (): Promise<void> => {
-    if (!isAnthropicAuthEnabled() || false) {
+    if (!isAnthropicAuthEnabled()) {
       setStatus('valid')
       return
     }
