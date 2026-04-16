@@ -101,7 +101,7 @@ function SetModelAndClose({
       // @[MODEL LAUNCH]: Update check for 1M access.
       if (model && isOpus1mUnavailable(model)) {
         onDone(
-          `Opus 4.6 with 1M context is not available for your account. Learn more: https://code.claude.com/docs/en/model-config#extended-context-with-1m`,
+          `Opus 4.6 with 1M context is not available for your account. Learn more: https://github.com/axiomates/axiomate/model-config#extended-context-with-1m`,
           { display: 'system' },
         )
         return
@@ -109,7 +109,7 @@ function SetModelAndClose({
 
       if (model && isSonnet1mUnavailable(model)) {
         onDone(
-          `Sonnet 4.6 with 1M context is not available for your account. Learn more: https://code.claude.com/docs/en/model-config#extended-context-with-1m`,
+          `Sonnet 4.6 with 1M context is not available for your account. Learn more: https://github.com/axiomates/axiomate/model-config#extended-context-with-1m`,
           { display: 'system' },
         )
         return

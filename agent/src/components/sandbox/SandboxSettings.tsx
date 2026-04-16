@@ -201,8 +201,8 @@ function SandboxModeTab({
         </Text>
         <Text dimColor>
           Learn more:{' '}
-          <Link url="https://code.claude.com/docs/en/sandboxing">
-            code.claude.com/docs/en/sandboxing
+          <Link url="https://github.com/axiomates/axiomate/sandboxing">
+            github.com/axiomates/axiomate
           </Link>
         </Text>
       </Box>

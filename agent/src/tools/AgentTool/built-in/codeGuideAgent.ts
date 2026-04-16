@@ -13,8 +13,7 @@ import type {
   BuiltInAgentDefinition,
 } from '../loadAgentsDir.js'
 
-const CLAUDE_CODE_DOCS_MAP_URL =
-  'https://code.claude.com/docs/en/claude_code_docs_map.md'
+const CLAUDE_CODE_DOCS_MAP_URL = ''
 const CDP_DOCS_MAP_URL = ''
 
 export const AXIOMATE_GUIDE_AGENT_TYPE = 'axiomate-guide'

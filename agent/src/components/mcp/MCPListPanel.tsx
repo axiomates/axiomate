@@ -332,8 +332,8 @@ export function MCPListPanel({
               </Text>
             )}
             <Text dimColor>
-              <Link url="https://code.claude.com/docs/en/mcp">
-                https://code.claude.com/docs/en/mcp
+              <Link url="https://github.com/axiomates/axiomate/mcp">
+                https://github.com/axiomates/axiomate/mcp
               </Link>{' '}
               for help
             </Text>

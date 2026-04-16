@@ -180,7 +180,7 @@ export function TrustDialog({ onDone, commands }: Props): React.ReactNode {
         </Text>
 
         <Text dimColor>
-          <Link url="https://code.claude.com/docs/en/security">
+          <Link url="https://github.com/axiomates/axiomate/security">
             Security guide
           </Link>
         </Text>

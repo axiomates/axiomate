@@ -129,8 +129,8 @@ function OverridesSelect({
         </Text>
         <Text dimColor>
           Learn more:{' '}
-          <Link url="https://code.claude.com/docs/en/sandboxing#configure-sandboxing">
-            code.claude.com/docs/en/sandboxing#configure-sandboxing
+          <Link url="https://github.com/axiomates/axiomate/sandboxing#configure-sandboxing">
+            github.com/axiomates/axiomate
           </Link>
         </Text>
       </Box>

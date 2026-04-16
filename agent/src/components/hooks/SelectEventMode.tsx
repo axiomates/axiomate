@@ -55,7 +55,7 @@ export function SelectEventMode({
           <Text dimColor>
             {figures.info} This menu is read-only. To add or modify hooks, edit
             settings.json directly or ask Claude.{' '}
-            <Link url="https://code.claude.com/docs/en/hooks">Learn more</Link>
+            <Link url="https://github.com/axiomates/axiomate/hooks">Learn more</Link>
           </Text>
         </Box>
 

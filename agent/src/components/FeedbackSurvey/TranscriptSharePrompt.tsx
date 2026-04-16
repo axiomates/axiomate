@@ -48,7 +48,7 @@ export function TranscriptSharePrompt({
       <Box marginLeft={2}>
         <Text dimColor>
           Learn more:
-          https://code.claude.com/docs/en/data-usage#session-quality-surveys
+          https://github.com/axiomates/axiomate/data-usage#session-quality-surveys
         </Text>
       </Box>
 

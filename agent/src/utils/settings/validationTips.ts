@@ -23,7 +23,7 @@ type TipMatcher = {
   tip: ValidationTip
 }
 
-const DOCUMENTATION_BASE = 'https://code.claude.com/docs/en'
+const DOCUMENTATION_BASE = 'https://github.com/axiomates/axiomate'
 
 const TIP_MATCHERS: TipMatcher[] = [
   {
