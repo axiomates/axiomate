@@ -26,10 +26,10 @@ import {
  * Check if PID-based version locking is enabled.
  * When disabled, falls back to mtime-based locking (30-day timeout).
  *
- * Controlled by GrowthBook gate with local override:
+ * Controlled by config gate with local override:
  * - Set ENABLE_PID_BASED_VERSION_LOCKING=true to force-enable
  * - Set ENABLE_PID_BASED_VERSION_LOCKING=false to force-disable
- * - If unset, GrowthBook gate (ax_pid_based_version_locking) controls rollout
+ * - If unset, config gate (ax_pid_based_version_locking) controls rollout
  */
 export function isPidBasedLockingEnabled(): boolean {
   const envVar = process.env.ENABLE_PID_BASED_VERSION_LOCKING
@@ -40,7 +40,7 @@ export function isPidBasedLockingEnabled(): boolean {
   if (isEnvDefinedFalsy(envVar)) {
     return false
   }
-  // GrowthBook controls gradual rollout (returns false for external users)
+  // config controls gradual rollout (returns false for external users)
   return false
 }
 

@@ -5,7 +5,7 @@
  * ENABLE_BETA_TRACING_DETAILED=1 and BETA_TRACING_ENDPOINT are set.
  *
  * Tracing is enabled in SDK/headless mode, or in interactive mode when
- * the org is allowlisted via the ax_trace_lantern GrowthBook gate.
+ * the org is allowlisted via the ax_trace_lantern config gate.
  *
  * Features:
  * - Per-agent message tracking with hash-based deduplication
@@ -61,7 +61,7 @@ const MAX_CONTENT_SIZE = 60 * 1024 // 60KB (Honeycomb limit is 64KB, staying saf
  * Check if beta detailed tracing is enabled.
  * - Requires ENABLE_BETA_TRACING_DETAILED=1 and BETA_TRACING_ENDPOINT
  * - For external users, enabled in SDK/headless mode OR when org is
- *   allowlisted via the ax_trace_lantern GrowthBook gate
+ *   allowlisted via the ax_trace_lantern config gate
  */
 export function isBetaTracingEnabled(): boolean {
   const baseEnabled =

@@ -168,7 +168,7 @@ const TOOL_REFERENCE_TURN_BOUNDARY = 'Tool loaded.'
 
 /**
  * Appends a memory correction hint to a rejection/cancellation message
- * when auto-memory is enabled and the GrowthBook flag is on.
+ * when auto-memory is enabled and the config flag is on.
  */
 export function withMemoryCorrectionHint(message: string): string {
   return message

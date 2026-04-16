@@ -24,7 +24,7 @@ export type GitHubActionsMetadata = {
 
 /**
  * Core user data used as base for all analytics providers.
- * This is also the format used by GrowthBook.
+ * This is also the format used by config.
  */
 export type CoreUserData = {
   deviceId: string
@@ -123,9 +123,9 @@ export const getCoreUserData = memoize(
 )
 
 /**
- * Get user data for GrowthBook (same as core data with analytics metadata).
+ * Get user data for config (same as core data with analytics metadata).
  */
-export function getUserForGrowthBook(): CoreUserData {
+export function getUserForconfig(): CoreUserData {
   return getCoreUserData(true)
 }
 

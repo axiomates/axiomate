@@ -1053,7 +1053,7 @@ export async function classifyYoloAction(
   }
 
   // Use getCacheControl for consistency with the main agent loop —
-  // respects GrowthBook TTL allowlist and query-source gating.
+  // respects config TTL allowlist and query-source gating.
   const cacheControl = getCacheControl({ querySource: 'auto_mode' })
   // Place cache_control on the action block. In the two-stage classifier,
   // stage 2 shares the same transcript+action prefix as stage 1 — the
@@ -1068,7 +1068,7 @@ export async function classifyYoloAction(
 
   const model = getClassifierModel()
 
-  // Dispatch to 2-stage XML classifier if enabled via GrowthBook
+  // Dispatch to 2-stage XML classifier if enabled via config
   if (isTwoStageClassifierEnabled()) {
     return classifyYoloActionXml(
       prefixMessages,
@@ -1284,7 +1284,7 @@ type AutoModeConfig = {
 
 /**
  * Get the model for the classifier.
- * Ant-only env var takes precedence, then GrowthBook JSON config override,
+ * Ant-only env var takes precedence, then config JSON config override,
  * then the main loop model.
  */
 function getClassifierModel(): string {
@@ -1293,7 +1293,7 @@ function getClassifierModel(): string {
 
 /**
  * Resolve the XML classifier setting: ant-only env var takes precedence,
- * then GrowthBook. Returns undefined when unset (caller decides default).
+ * then config. Returns undefined when unset (caller decides default).
  */
 function resolveTwoStageClassifier():
   | boolean

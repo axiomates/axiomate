@@ -115,7 +115,7 @@ export async function toolToAPISchema(
 ): Promise<NeutralToolSchema> {
   // Session-stable base schema: name, description, input_schema, strict,
   // eager_input_streaming. These are computed once per session and cached to
-  // prevent mid-session GrowthBook flips (ax_tool_pear, ax_fgts) or
+  // prevent mid-session config flips (ax_tool_pear, ax_fgts) or
   // tool.prompt() drift from churning the serialized tool array bytes.
   // See toolSchemaCache.ts for rationale.
   //

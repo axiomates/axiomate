@@ -279,7 +279,7 @@ export type CronTask = {
 
 /**
  * Cron scheduler tuning knobs (jitter + expiry). Sourced at runtime from the
- * `ax_kairos_cron_config` GrowthBook config in CLI sessions; daemon hosts
+ * `ax_kairos_cron_config` config config in CLI sessions; daemon hosts
  * pass this through `watchScheduledTasks({ getJitterConfig })` to get the
  * same tuning.
  * @internal

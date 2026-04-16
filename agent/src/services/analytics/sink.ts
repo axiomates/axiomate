@@ -18,7 +18,7 @@ type LogEventMetadata = { [key: string]: boolean | number | undefined }
 
 /**
  * Check if Datadog tracking is enabled.
- * Previously GrowthBook-gated; now always returns false (gate default).
+ * Now always returns false (gate default).
  */
 function shouldTrackDatadog(): boolean {
   if (isSinkKilled('datadog')) {
@@ -72,7 +72,7 @@ function logEventAsyncImpl(
 
 /**
  * Initialize analytics gates during startup.
- * Previously read GrowthBook; now a no-op (gate defaults are hardcoded).
+ * Now a no-op (gate defaults are hardcoded).
  */
 export function initializeAnalyticsGates(): void {}
 

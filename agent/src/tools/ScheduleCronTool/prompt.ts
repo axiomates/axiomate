@@ -10,7 +10,7 @@ export const DEFAULT_MAX_AGE_DAYS =
 /**
  * Unified gate for the cron scheduling system. Combines the build-time
  * `feature('AGENT_TRIGGERS')` flag (dead code elimination) with the runtime
- * `ax_kairos_cron` GrowthBook gate on a 5-minute refresh window.
+ * `ax_kairos_cron` config gate on a 5-minute refresh window.
  *
  * AGENT_TRIGGERS is independently shippable from KAIROS — the cron module
  * graph (cronScheduler/cronTasks/cronTasksLock/cron.ts + the three tools +
@@ -23,7 +23,7 @@ export const DEFAULT_MAX_AGE_DAYS =
  * imperative setup, never at module scope — so the disk cache has had a
  * chance to populate.
  *
- * The default is `true` — /loop is GA (announced in changelog). GrowthBook
+ * The default is `true` — /loop is GA (announced in changelog). config
  * is disabled for Bedrock/Vertex/Foundry and when DISABLE_TELEMETRY /
  * CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC are set; a `false` default would
  * break /loop for those users (GH #31759). The GB gate now serves purely as

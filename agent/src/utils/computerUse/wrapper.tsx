@@ -13,7 +13,7 @@
  *
  * External callers reach this via the lazy require thunk in `client.ts`, gated
  * on `feature('CHICAGO_MCP')`. Runtime enablement is controlled by the
- * GrowthBook gate `ax_malort_pedway` (see gates.ts).
+ * config gate `ax_malort_pedway` (see gates.ts).
  */
 
 import { bindSessionContext, type ComputerUseSessionContext, type CuCallToolResult, type CuPermissionRequest, type CuPermissionResponse, DEFAULT_GRANT_FLAGS, type ScreenshotDims } from 'computer-use-mcp-axiomate';

@@ -45,7 +45,7 @@ import { jsonParse, jsonStringify } from './slowOperations.js'
 
 // Re-entrancy guard: prevents getConfig → logEvent → getGlobalConfig → getConfig
 // infinite recursion when the config file is corrupted. logEvent's sampling check
-// reads GrowthBook features from the global config, which calls getConfig again.
+// reads config features from the global config, which calls getConfig again.
 let insideGetConfig = false
 
 // Image dimension info for coordinate mapping (only set when image was resized)
@@ -585,12 +585,8 @@ export type GlobalConfig = {
   // Cached statsig dynamic configs
   cachedDynamicConfigs?: { [configName: string]: unknown }
 
-  // Cached GrowthBook feature values
-  cachedGrowthBookFeatures?: { [featureName: string]: unknown }
-
-  // Local GrowthBook overrides (ant-only, set via /config Gates tab).
-  // Checked after env-var overrides but before the real resolved value.
-  growthBookOverrides?: { [featureName: string]: unknown }
+  // Cached config feature values
+  cachedconfigFeatures?: { [featureName: string]: unknown }
 
   // Emergency tip tracking - stores the last shown tip to prevent re-showing
   lastShownEmergencyTip?: string
@@ -668,7 +664,7 @@ export type GlobalConfig = {
   // undefined = hardcoded Opus (backward-compat); null = leader's model; string = model alias/ID.
   teammateDefaultModel?: string | null
 
-  // PR status footer configuration (feature-flagged via GrowthBook)
+  // PR status footer configuration (feature-flagged via config)
   prStatusFooterEnabled?: boolean // Show PR review status in footer (default: true)
 
   // Tmux live panel visibility (ant-only, toggled via Enter on tmux pill)
@@ -758,7 +754,7 @@ function createDefaultGlobalConfig(): GlobalConfig {
     terminalProgressBarEnabled: true,
     cachedStatsigGates: {},
     cachedDynamicConfigs: {},
-    cachedGrowthBookFeatures: {},
+    cachedconfigFeatures: {},
     respectGitignore: true,
     copyFullResponse: false,
   }
@@ -1230,7 +1226,7 @@ export function getGlobalConfig(): GlobalConfig {
 /**
  * Returns the effective value of remoteControlAtStartup. Precedence:
  *   1. User's explicit config value (always wins — honors opt-out)
- *   2. CCR auto-connect default (ant-only build, GrowthBook-gated)
+ *   2. CCR auto-connect default (ant-only build, config-gated)
  *   3. false (Remote Control must be explicitly opted into)
  */
 export function getRemoteControlAtStartup(): boolean {
@@ -1618,7 +1614,7 @@ function getConfig<A>(
 
       // Guard: logEvent → shouldSampleEvent → getGlobalConfig → getConfig
       // causes infinite recursion when the config file is corrupted, because
-      // the sampling check reads a GrowthBook feature from global config.
+      // the sampling check reads a config feature from global config.
       // Only log analytics on the outermost call.
       if (!insideGetConfig) {
         insideGetConfig = true

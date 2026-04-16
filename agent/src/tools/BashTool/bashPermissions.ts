@@ -465,7 +465,7 @@ const ANT_ONLY_SAFE_ENV_VARS = new Set([
   // Credentials (approved subset - these don't change exfil risk)
   'PGPASSWORD', // Postgres password
   'GH_TOKEN', // GitHub token
-  'GROWTHBOOK_API_KEY', // self-hosted growthbook
+  'GROWTHBOOK_API_KEY', // self-hosted config
 ])
 
 /**
@@ -1648,7 +1648,7 @@ export async function bashToolHasPermission(
   const injectionCheckDisabled = isEnvTruthy(
     process.env.CLAUDE_CODE_DISABLE_COMMAND_INJECTION_CHECK,
   )
-  // GrowthBook killswitch for shadow mode — when off, skip the native parse
+  // config killswitch for shadow mode — when off, skip the native parse
   // entirely. Computed once; feature() must stay inline in the ternary below.
   const shadowEnabled = feature('TREE_SITTER_BASH_SHADOW')
     ? true

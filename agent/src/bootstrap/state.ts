@@ -216,7 +216,7 @@ type State = {
   hasDevChannels: boolean
   // Dir containing the session's `.jsonl`; null = derive from originalCwd.
   sessionProjectDir: string | null
-  // Cached prompt cache 1h TTL allowlist from GrowthBook (session-stable)
+  // Cached prompt cache 1h TTL allowlist from config system (session-stable)
   promptCache1hAllowlist: string[] | null
   // Cached 1h TTL user eligibility (session-stable). Latched on first
   // evaluation so mid-session overage flips don't change the cache_control
@@ -228,7 +228,7 @@ type State = {
   afkModeHeaderLatched: boolean | null
   // Sticky-on latch for the cache-editing beta header. Once cached
   // microcompact is first enabled, keep sending the header so mid-session
-  // GrowthBook/settings toggles don't bust the prompt cache.
+  // config/settings toggles don't bust the prompt cache.
   cacheEditingHeaderLatched: boolean | null
   // Sticky-on latch for clearing thinking from prior tool loops. Triggered
   // when >1h since last API call (confirmed cache miss — no cache-hit
@@ -396,7 +396,7 @@ function getInitialState(): State {
     hasDevChannels: false,
     // Session project dir (null = derive from originalCwd)
     sessionProjectDir: null,
-    // Prompt cache 1h allowlist (null = not yet fetched from GrowthBook)
+    // Prompt cache 1h allowlist (null = not yet fetched from config system)
     promptCache1hAllowlist: null,
     // Prompt cache 1h eligibility (null = not yet evaluated)
     promptCache1hEligible: null,

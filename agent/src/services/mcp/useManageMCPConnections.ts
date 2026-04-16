@@ -172,7 +172,7 @@ export function useManageMCPConnections(
     if (feature('KAIROS') || feature('KAIROS_CHANNELS')) {
       const callbacks = channelPermCallbacksRef.current
       if (!callbacks) return
-      // GrowthBook runtime gate — separate from channels so channels can
+      // config runtime gate — separate from channels so channels can
       // ship without this. Checked at mount; mid-session flips need restart.
       // If off, callbacks never go into AppState → interactiveHandler sees
       // undefined → never sends → intercept has nothing pending → "yes tbxkq"

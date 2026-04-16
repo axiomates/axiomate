@@ -976,7 +976,7 @@ export async function initializeToolPermissionContext({
 export type AutoModeGateCheckResult = {
   // Transform function (not a pre-computed context) so callers can apply it
   // inside setAppState(prev => ...) against the CURRENT context. Pre-computing
-  // the context here captured a stale snapshot: the async GrowthBook await
+  // the context here captured a stale snapshot: the async config await
   // below can be outrun by a mid-turn shift-tab, and returning
   // { ...currentContext, ... } would overwrite the user's mode change.
   updateContext: (ctx: ToolPermissionContext) => ToolPermissionContext
@@ -1010,7 +1010,7 @@ export function getAutoModeUnavailableNotification(
  *
  * Returns a transform function (not a pre-computed context) that callers
  * apply inside setAppState(prev => ...) against the CURRENT context. This
- * prevents the async GrowthBook await from clobbering mid-turn mode changes
+ * prevents the async config await from clobbering mid-turn mode changes
  * (e.g., user shift-tabs to acceptEdits while this check is in flight).
  *
  * The transform re-checks mode/prePlanMode against the fresh ctx to avoid
@@ -1021,12 +1021,12 @@ export async function verifyAutoModeGateAccess(
 ): Promise<AutoModeGateCheckResult> {
   // Auto-mode config — runs in ALL builds (circuit breaker, carousel, kick-out)
   // Fresh read of ax_auto_mode_config.enabled — this async check runs once
-  // after GrowthBook initialization and is the authoritative source for
+  // after config initialization and is the authoritative source for
   // isAutoModeAvailable. The sync startup path uses stale cache; this
   // corrects it. Circuit breaker (enabled==='disabled') takes effect here.
   const enabledState = parseAutoModeEnabledState(undefined)
   const disabledBySettings = isAutoModeDisabledBySettings()
-  // Treat settings-disable the same as GrowthBook 'disabled' for circuit-breaker
+  // Treat settings-disable the same as config 'disabled' for circuit-breaker
   // semantics — blocks SDK/explicit re-entry via isAutoModeGateEnabled().
   autoModeStateModule?.setAutoModeCircuitBroken(
     enabledState === 'disabled' || disabledBySettings,
@@ -1053,7 +1053,7 @@ export async function verifyAutoModeGateAccess(
   const autoModeFlagCli = autoModeStateModule?.getAutoModeFlagCli() ?? false
 
   // Return a transform function that re-evaluates context-dependent conditions
-  // against the CURRENT context at setAppState time. The async GrowthBook
+  // against the CURRENT context at setAppState time. The async config
   // results above (canEnterAuto, carouselAvailable, enabledState, reason) are
   // closure-captured — those don't depend on context. But mode, prePlanMode,
   // and isAutoModeAvailable checks MUST use the fresh ctx or a mid-await
@@ -1215,7 +1215,7 @@ export function getAutoModeUnavailableReason(): AutoModeUnavailableReason | null
 }
 
 /**
- * The `enabled` field in the ax_auto_mode_config GrowthBook JSON config.
+ * The `enabled` field in the ax_auto_mode_config config JSON config.
  * Controls auto mode availability in UI surfaces (CLI, IDE, Desktop).
  * - 'enabled': auto mode is available in the shift-tab carousel (or equivalent)
  * - 'disabled': auto mode is fully unavailable — circuit breaker for incident response
@@ -1235,7 +1235,7 @@ function parseAutoModeEnabledState(value: unknown): AutoModeEnabledState {
 
 /**
  * Reads the `enabled` field from ax_auto_mode_config (cached, may be stale).
- * Defaults to 'disabled' if GrowthBook is unavailable or the field is unset.
+ * Defaults to 'disabled' if config is unavailable or the field is unset.
  * Other surfaces (IDE, Desktop) should call this to decide whether to surface
  * auto mode in their mode pickers.
  */
@@ -1247,7 +1247,7 @@ const NO_CACHED_AUTO_MODE_CONFIG = Symbol('no-cached-auto-mode-config')
 
 /**
  * Like getAutoModeEnabledState but returns undefined when no cached value
- * exists (cold start, before GrowthBook init). Used by the sync
+ * exists (cold start, before config init). Used by the sync
  * circuit-breaker check in initialPermissionModeFromCLI, which must not
  * conflate "not yet fetched" with "fetched and disabled" — the former
  * defers to verifyAutoModeGateAccess, the latter blocks immediately.

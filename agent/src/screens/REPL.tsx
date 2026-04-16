@@ -1137,7 +1137,7 @@ export function REPL({
   const messagesRef = useRef(messages);
   // Stores the willowMode variant that was shown (or false if no hint shown).
   // Captured at hint_shown time so hint_converted telemetry reports the same
-  // variant — the GrowthBook value shouldn't change mid-session, but reading
+  // variant — the config value shouldn't change mid-session, but reading
   // it once guarantees consistency between the paired events.
   const idleHintShownRef = useRef<string | false>(false);
   // Wrap setMessages so messagesRef is always current the instant the
@@ -1434,7 +1434,7 @@ export function REPL({
   lastQueryCompletionTimeRef.current = lastQueryCompletionTime;
 
   // Aggregate tool result budget: per-conversation decision tracking.
-  // When the GrowthBook flag is on, query.ts enforces the budget; when
+  // When the config flag is on, query.ts enforces the budget; when
   // off (undefined), enforcement is skipped entirely. Stale entries after
   // /clear, rewind, or compact are harmless (tool_use_ids are UUIDs, stale
   // keys are never looked up). Memory is bounded by total replacement count
@@ -2643,7 +2643,7 @@ export function REPL({
     }
     queryCheckpoint('query_context_loading_start');
     const [, defaultSystemPrompt, baseUserContext, systemContext] = await Promise.all([
-    // Gated on TRANSCRIPT_CLASSIFIER so GrowthBook kill switch runs wherever auto mode is built in
+    // Gated on TRANSCRIPT_CLASSIFIER so config kill switch runs wherever auto mode is built in
     feature('TRANSCRIPT_CLASSIFIER') ? checkAndDisableAutoModeIfNeeded(toolPermissionContext, setAppState) : undefined, getSystemPrompt(freshTools, mainLoopModelParam, Array.from(toolPermissionContext.additionalWorkingDirectories.keys()), freshMcpClients), getUserContext(), getSystemContext()]);
     const userContext = {
       ...baseUserContext,

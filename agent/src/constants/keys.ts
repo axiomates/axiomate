@@ -1,3 +1,3 @@
-export function getGrowthBookClientKey(): string {
+export function getconfigClientKey(): string {
   return 'sdk-zAZezfDKGoZuXXKe'
 }

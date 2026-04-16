@@ -137,7 +137,7 @@ export function useFeedbackSurvey(messages: Message[], isLoading: boolean, submi
       return false;
     }
 
-    // Probability gate from GrowthBook config (separate per rating)
+    // Probability gate from config system config (separate per rating)
     const probability = selected_0 === 'bad' ? badTranscriptAskConfig.probability : goodTranscriptAskConfig.probability;
     return Math.random() <= probability;
   }, [badTranscriptAskConfig.probability, goodTranscriptAskConfig.probability]);

@@ -23,7 +23,7 @@ export function ChannelsNotice(): React.ReactNode {
   // after the logo; any re-render past that point forces a full terminal
   // reset. getAllowedChannels (bootstrap state), getSettingsForSource
   // (session cache updated by background polling / /login), and
-  // isChannelsEnabled (GrowthBook 5-min refresh) must be captured once
+  // isChannelsEnabled (config 5-min refresh) must be captured once
   // so a later re-render cannot flip branches.
   const [{ channels, disabled, noAuth, policyBlocked, list, unmatched }] =
     useState(() => {
@@ -162,7 +162,7 @@ function findUnmatched(
   // Plugin-kind allowlist check: same {marketplace, plugin} test as the
   // gate at channelNotification.ts. entry.dev bypasses (dev flag opts out
   // of the allowlist). Org list replaces ledger when set (team/enterprise).
-  // GrowthBook _CACHED_MAY_BE_STALE — cold cache yields [] so every plugin
+  // config _CACHED_MAY_BE_STALE — cold cache yields [] so every plugin
   // entry warns; same tradeoff the gate already accepts.
   const { entries: allowed, source } = allowlist
 

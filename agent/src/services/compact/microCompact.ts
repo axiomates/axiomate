@@ -301,7 +301,7 @@ export async function microcompactMessages(
  *
  * Key differences from regular microcompact:
  * - Does NOT modify local message content (cache_reference and cache_edits are added at API layer)
- * - Uses count-based trigger/keep thresholds from GrowthBook config
+ * - Uses count-based trigger/keep thresholds from config system config
  * - Takes precedence over regular microcompact (no disk persistence)
  * - Tracks tool results and queues cache edits for the API layer
  */

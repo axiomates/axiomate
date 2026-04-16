@@ -33,7 +33,7 @@ export const PERSISTED_OUTPUT_CLOSING_TAG = '</persisted-output>'
 export const TOOL_RESULT_CLEARED_MESSAGE = '[Old tool result content cleared]'
 
 /**
- * GrowthBook override map: tool name -> persistence threshold (chars).
+ * config override map: tool name -> persistence threshold (chars).
  * When a tool name is present in this map, that value is used directly as the
  * effective threshold, bypassing the Math.min() clamp against the 50k default.
  * Tools absent from the map use the hardcoded fallback.
@@ -43,10 +43,10 @@ const PERSIST_THRESHOLD_OVERRIDE_FLAG = 'ax_satin_quoll'
 
 /**
  * Resolve the effective persistence threshold for a tool.
- * GrowthBook override wins when present; otherwise falls back to the declared
+ * config override wins when present; otherwise falls back to the declared
  * per-tool cap clamped by the global default.
  *
- * Defensive: GrowthBook's cache returns `cached !== undefined ? cached : default`,
+ * Defensive: config's cache returns `cached !== undefined ? cached : default`,
  * so a flag served as `null` leaks through. We guard with optional chaining and a
  * typeof check so any non-object flag value (null, string, number) falls through
  * to the hardcoded default instead of throwing on index or returning 0.
@@ -399,10 +399,10 @@ export function cloneContentReplacementState(
 }
 
 /**
- * Resolve the per-message aggregate budget limit. GrowthBook override
+ * Resolve the per-message aggregate budget limit. config override
  * (ax_hawthorn_window) wins when present and a finite positive number;
  * otherwise falls back to the hardcoded constant. Defensive typeof/finite
- * check: GrowthBook's cache returns `cached !== undefined ? cached : default`,
+ * check: config's cache returns `cached !== undefined ? cached : default`,
  * so a flag served as null/string/NaN leaks through.
  */
 export function getPerMessageBudgetLimit(): number {

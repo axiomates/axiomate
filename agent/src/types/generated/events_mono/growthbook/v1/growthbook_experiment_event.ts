@@ -2,25 +2,25 @@
 // versions:
 //   protoc-gen-ts_proto  v2.6.1
 //   protoc               unknown
-// source: events_mono/growthbook/v1/growthbook_experiment_event.proto
+// source: events_mono/config/v1/config_experiment_event.proto
 
 /* eslint-disable */
 import { Timestamp } from '../../../google/protobuf/timestamp.js'
 import { PublicApiAuth } from '../../common/v1/auth.js'
 
 /**
- * GrowthBook experiment assignment event
+ * config experiment assignment event
  * This event tracks when a user is exposed to an experiment variant
- * See: https://docs.growthbook.io/guide/bigquery
+ * See: https://docs.config.io/guide/bigquery
  */
-export interface GrowthbookExperimentEvent {
+export interface ConfigExperimentEvent {
   /** Unique event identifier (for deduplication) */
   event_id?: string | undefined
-  /** When user was exposed to experiment (maps to GrowthBook's timestamp column) */
+  /** When user was exposed to experiment (maps to config's timestamp column) */
   timestamp?: Date | undefined
-  /** Experiment tracking key (maps to GrowthBook's experiment_id column) */
+  /** Experiment tracking key (maps to config's experiment_id column) */
   experiment_id?: string | undefined
-  /** Variation index: 0=control, 1+=variants (maps to GrowthBook's variation_id column) */
+  /** Variation index: 0=control, 1+=variants (maps to config's variation_id column) */
   variation_id?: number | undefined
   /** Environment where assignment occurred */
   environment?: string | undefined
@@ -40,7 +40,7 @@ export interface GrowthbookExperimentEvent {
   event_metadata_vars?: string | undefined
 }
 
-function createBaseGrowthbookExperimentEvent(): GrowthbookExperimentEvent {
+function createBaseConfigExperimentEvent(): ConfigExperimentEvent {
   return {
     event_id: '',
     timestamp: undefined,
@@ -57,9 +57,9 @@ function createBaseGrowthbookExperimentEvent(): GrowthbookExperimentEvent {
   }
 }
 
-export const GrowthbookExperimentEvent: MessageFns<GrowthbookExperimentEvent> =
+export const ConfigExperimentEvent: MessageFns<ConfigExperimentEvent> =
   {
-    fromJSON(object: any): GrowthbookExperimentEvent {
+    fromJSON(object: any): ConfigExperimentEvent {
       return {
         event_id: isSet(object.event_id)
           ? globalThis.String(object.event_id)
@@ -100,7 +100,7 @@ export const GrowthbookExperimentEvent: MessageFns<GrowthbookExperimentEvent> =
       }
     },
 
-    toJSON(message: GrowthbookExperimentEvent): unknown {
+    toJSON(message: ConfigExperimentEvent): unknown {
       const obj: any = {}
       if (message.event_id !== undefined) {
         obj.event_id = message.event_id
@@ -141,15 +141,15 @@ export const GrowthbookExperimentEvent: MessageFns<GrowthbookExperimentEvent> =
       return obj
     },
 
-    create<I extends Exact<DeepPartial<GrowthbookExperimentEvent>, I>>(
+    create<I extends Exact<DeepPartial<ConfigExperimentEvent>, I>>(
       base?: I,
-    ): GrowthbookExperimentEvent {
-      return GrowthbookExperimentEvent.fromPartial(base ?? ({} as any))
+    ): ConfigExperimentEvent {
+      return ConfigExperimentEvent.fromPartial(base ?? ({} as any))
     },
-    fromPartial<I extends Exact<DeepPartial<GrowthbookExperimentEvent>, I>>(
+    fromPartial<I extends Exact<DeepPartial<ConfigExperimentEvent>, I>>(
       object: I,
-    ): GrowthbookExperimentEvent {
-      const message = createBaseGrowthbookExperimentEvent()
+    ): ConfigExperimentEvent {
+      const message = createBaseConfigExperimentEvent()
       message.event_id = object.event_id ?? ''
       message.timestamp = object.timestamp ?? undefined
       message.experiment_id = object.experiment_id ?? ''

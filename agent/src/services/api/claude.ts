@@ -295,9 +295,9 @@ export function getCacheControl({
  *
  * Only applied when:
  * 1. User is eligible (ant or subscriber within rate limits)
- * 2. The query source matches a pattern in the GrowthBook allowlist
+ * 2. The query source matches a pattern in the config allowlist
  *
- * GrowthBook config shape: { allowlist: string[] }
+ * config config shape: { allowlist: string[] }
  * Patterns support trailing '*' for prefix matching.
  * Examples:
  * - { allowlist: ["repl_main_thread*", "sdk"] } — main thread + SDK only
@@ -305,7 +305,7 @@ export function getCacheControl({
  * - { allowlist: ["*"] } — all sources
  *
  * The allowlist is cached in STATE for session stability — prevents mixed
- * TTLs when GrowthBook's disk cache updates mid-request.
+ * TTLs when config's disk cache updates mid-request.
  */
 function should1hCacheTTL(_querySource?: QuerySource): boolean {
   // 1hr cache TTL is part of the public Anthropic messages API (cache_control).
@@ -647,7 +647,7 @@ async function* queryModel(
   StreamEvent | AssistantMessage | SystemAPIErrorMessage,
   void
 > {
-  // Off-switch check. Previously blocked on GrowthBook init; now always false.
+  // Off-switch check. Previously blocked on config init; now always false.
   if (
     isNonCustomOpusModel(options.model) &&
     false
@@ -692,7 +692,7 @@ async function* queryModel(
     'query',
   )
 
-  // Precompute once — isDeferredTool does 2 GrowthBook lookups per call
+  // Precompute once — isDeferredTool does 2 config lookups per call
   const deferredToolNames = new Set<string>()
   if (useToolSearch) {
     for (const t of tools) {

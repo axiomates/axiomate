@@ -46,7 +46,7 @@ export function getCLISyspromptPrefix(options?: {
 
 /**
  * Check if attribution header is enabled.
- * Enabled by default, can be disabled via env var or GrowthBook killswitch.
+ * Enabled by default, can be disabled via env var or config killswitch.
  */
 function isAttributionHeaderEnabled(): boolean {
   if (isEnvDefinedFalsy(process.env.CLAUDE_CODE_ATTRIBUTION_HEADER)) {
@@ -58,7 +58,7 @@ function isAttributionHeaderEnabled(): boolean {
 /**
  * Get attribution header for API requests.
  * Returns a header string with cc_version (including fingerprint) and cc_entrypoint.
- * Enabled by default, can be disabled via env var or GrowthBook killswitch.
+ * Enabled by default, can be disabled via env var or config killswitch.
  *
  * When NATIVE_CLIENT_ATTESTATION is enabled, includes a `cch=00000` placeholder.
  * Before the request is sent, Bun's native HTTP stack finds this placeholder

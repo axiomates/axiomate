@@ -204,7 +204,7 @@ const DEFAULT_UNSUPPORTED_MODEL_PATTERNS = ['haiku']
 
 /**
  * Get the list of model patterns that do NOT support tool_reference.
- * Can be configured via GrowthBook for live updates without code changes.
+ * Can be configured via config for live updates without code changes.
  */
 function getUnsupportedToolReferencePatterns(): string[] {
   return DEFAULT_UNSUPPORTED_MODEL_PATTERNS
@@ -218,7 +218,7 @@ function getUnsupportedToolReferencePatterns(): string[] {
  * models work by default without code changes.
  *
  * Currently, Haiku models do NOT support tool_reference. This can be
- * updated via GrowthBook feature 'ax_tool_search_unsupported_models'.
+ * updated via config feature 'ax_tool_search_unsupported_models'.
  *
  * @param model The model name to check
  * @returns true if the model supports tool_reference, false otherwise

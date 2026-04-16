@@ -839,7 +839,7 @@ const skillsLoaded = createSignal()
 export function onDynamicSkillsLoaded(callback: () => void): () => void {
   // Wrap at subscribe time so a throwing listener is logged and skipped
   // rather than aborting skillsLoaded.emit() and breaking skill loading.
-  // Same callSafe pattern as growthbook.ts — createSignal.emit() has no
+  // Same callSafe pattern as config.ts — createSignal.emit() has no
   // per-listener try/catch.
   return skillsLoaded.subscribe(() => {
     try {

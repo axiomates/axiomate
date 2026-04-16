@@ -13,7 +13,7 @@ export type ThinkingConfig =
   | { type: 'disabled' }
 
 /**
- * Build-time gate (feature) + runtime gate (GrowthBook). The build flag
+ * Build-time gate (feature) + runtime gate (config). The build flag
  * controls code inclusion in external builds; the GB flag controls rollout.
  */
 export function isUltrathinkEnabled(): boolean {

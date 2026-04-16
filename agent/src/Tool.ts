@@ -291,7 +291,7 @@ export type ToolUseContext = {
   /**
    * Parent's rendered system prompt bytes, frozen at turn start.
    * Used by fork subagents to share the parent's prompt cache — re-calling
-   * getSystemPrompt() at fork-spawn time can diverge (GrowthBook cold→warm)
+   * getSystemPrompt() at fork-spawn time can diverge (config cold→warm)
    * and bust the cache. See forkSubagent.ts.
    */
   renderedSystemPrompt?: SystemPrompt

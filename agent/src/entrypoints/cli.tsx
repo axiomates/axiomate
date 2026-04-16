@@ -105,7 +105,7 @@ async function main(): Promise<void> {
   // Fast-path for `claude remote-control` (also accepts legacy `claude remote` / `claude sync` / `claude bridge`):
   // serve local machine as bridge environment.
   // feature() must stay inline for build-time dead code elimination;
-  // isBridgeEnabled() checks the runtime GrowthBook gate.
+  // isBridgeEnabled() checks the runtime config gate.
   if (feature('BRIDGE_MODE') && (args[0] === 'remote-control' || args[0] === 'rc' || args[0] === 'remote' || args[0] === 'sync' || args[0] === 'bridge')) {
     profileCheckpoint('cli_bridge_path');
     const {

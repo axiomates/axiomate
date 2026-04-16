@@ -18,7 +18,7 @@ import {
 } from './imageResizer.js'
 import { logError } from './log.js'
 
-// Native NSPasteboard reader. GrowthBook gate ax_collage_kaleidoscope is
+// Native NSPasteboard reader. config gate ax_collage_kaleidoscope is
 // a kill switch (default on). Falls through to osascript when off.
 // The gate string is inlined at each callsite INSIDE the feature() condition
 // — module-scope helpers are NOT tree-shaken (see docs/feature-gating.md).

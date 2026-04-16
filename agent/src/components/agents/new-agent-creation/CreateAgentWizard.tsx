@@ -41,7 +41,7 @@ export function CreateAgentWizard({
     () => <ToolsStep tools={tools} />, // 6
     ModelStep, // 7
     ColorStep, // 8
-    // MemoryStep is conditionally included based on GrowthBook gate
+    // MemoryStep is conditionally included based on config gate
     ...(isAutoMemoryEnabled() ? [MemoryStep] : []),
     () => (
       <ConfirmStepWrapper

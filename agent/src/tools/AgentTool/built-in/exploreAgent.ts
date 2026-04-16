@@ -74,7 +74,7 @@ export const EXPLORE_AGENT: BuiltInAgentDefinition = {
   source: 'built-in',
   baseDir: 'built-in',
   // Ants get inherit to use the main agent's model; external users get haiku for speed
-  // Note: For ants, getAgentModel() checks ax_explore_agent GrowthBook flag at runtime
+  // Note: For ants, getAgentModel() checks ax_explore_agent config flag at runtime
   model: 'haiku',
   // Explore is a fast read-only search agent — it doesn't need commit/PR/lint
   // rules from AXIOMATE.md. The main agent has full context and interprets results.

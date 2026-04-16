@@ -36,7 +36,7 @@ export type EventSamplingConfig = {
 const EVENT_SAMPLING_CONFIG_NAME = 'ax_event_sampling_config'
 /**
  * Get the event sampling configuration.
- * Previously backed by GrowthBook; now returns empty config (log all events).
+ * Now returns empty config (log all events).
  */
 export function getEventSamplingConfig(): EventSamplingConfig {
   return {}
@@ -98,7 +98,7 @@ let firstPartyEventLogger: ReturnType<typeof logs.getLogger> | null = null
 let firstPartyEventLoggerProvider: LoggerProvider | null = null
 // Last batch config used to construct the provider — used by
 // reinitialize1PEventLoggingIfConfigChanged to decide whether a rebuild is
-// needed when GrowthBook refreshes.
+// needed when config refreshes.
 let lastBatchConfig: BatchConfig | null = null
 /**
  * Flush and shutdown the 1P event logger.
@@ -209,9 +209,9 @@ export function logEventTo1P(
 }
 
 /**
- * GrowthBook experiment event data for logging
+ * config experiment event data for logging
  */
-export type GrowthBookExperimentData = {
+export type configExperimentData = {
   experimentId: string
   variationId: number
   userAttributes?: {
@@ -232,21 +232,21 @@ export type GrowthBookExperimentData = {
   experimentMetadata?: Record<string, unknown>
 }
 
-// the API endpoint only serves the "production" GrowthBook environment
+// the API endpoint only serves the "production" config environment
 // (see starling/starling/cli/cli.py DEFAULT_ENVIRONMENTS). Staging and
 // development environments are not exported to the prod API.
-function getEnvironmentForGrowthBook(): string {
+function getEnvironmentForconfig(): string {
   return 'production'
 }
 
 /**
- * Log a GrowthBook experiment assignment event to 1P.
+ * Log a config experiment assignment event to 1P.
  * Events are batched and exported to /api/event_logging/batch
  *
- * @param data - GrowthBook experiment assignment data
+ * @param data - config experiment assignment data
  */
-export function logGrowthBookExperimentTo1P(
-  data: GrowthBookExperimentData,
+export function logconfigExperimentTo1P(
+  data: configExperimentData,
 ): void {
   if (!is1PEventLoggingEnabled()) {
     return
@@ -259,9 +259,9 @@ export function logGrowthBookExperimentTo1P(
   const userId = getOrCreateUserID()
   const { accountUuid, organizationUuid } = getCoreUserData(true)
 
-  // Build attributes for GrowthbookExperimentEvent
+  // Build attributes for ConfigExperimentEvent
   const attributes = {
-    event_type: 'GrowthbookExperimentEvent',
+    event_type: 'ConfigExperimentEvent',
     event_id: randomUUID(),
     experiment_id: data.experimentId,
     variation_id: data.variationId,
@@ -275,11 +275,11 @@ export function logGrowthBookExperimentTo1P(
     ...(data.experimentMetadata && {
       experiment_metadata: jsonStringify(data.experimentMetadata),
     }),
-    environment: getEnvironmentForGrowthBook(),
+    environment: getEnvironmentForconfig(),
   }
 
   firstPartyEventLogger.emit({
-    body: 'growthbook_experiment',
+    body: 'config_experiment',
     attributes,
   })
 }
@@ -304,7 +304,7 @@ export function initialize1PEventLogging(): void {
     return
   }
 
-  // Fetch batch processor configuration from GrowthBook dynamic config
+  // Fetch batch processor configuration from config system dynamic config
   // Uses cached value if available, refreshes in background
   const batchConfig = getBatchConfig()
   lastBatchConfig = batchConfig
@@ -374,7 +374,7 @@ export function initialize1PEventLogging(): void {
 
 /**
  * Rebuild the 1P event logging pipeline if the batch config changed.
- * Register this with onGrowthBookRefresh so long-running sessions pick up
+ * Register this with onconfigRefresh so long-running sessions pick up
  * changes to batch size, delay, endpoint, etc.
  *
  * Event-loss safety:
@@ -413,7 +413,7 @@ export async function reinitialize1PEventLoggingIfConfigChanged(): Promise<void>
   try {
     initialize1PEventLogging()
   } catch (e) {
-    // Restore so the next GrowthBook refresh can retry. oldProvider was
+    // Restore so the next config refresh can retry. oldProvider was
     // only forceFlush()'d, not shut down — it's still functional. Without
     // this, both stay null and the !firstPartyEventLoggerProvider gate at
     // the top makes recovery impossible.

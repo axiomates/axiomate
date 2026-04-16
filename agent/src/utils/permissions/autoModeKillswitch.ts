@@ -27,7 +27,7 @@ export async function checkAndDisableAutoModeIfNeeded(
     )
     setAppState(prev => {
       // Apply the transform to CURRENT context, not the stale snapshot we
-      // passed to verifyAutoModeGateAccess. The async GrowthBook await inside
+      // passed to verifyAutoModeGateAccess. The async config await inside
       // can be outrun by a mid-turn shift-tab; spreading a stale context here
       // would revert the user's mode change.
       const nextCtx = updateContext(prev.toolPermissionContext)

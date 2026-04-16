@@ -93,7 +93,7 @@ export function resetSessionMemoryCompactConfig(): void {
 }
 
 /**
- * Initialize configuration from remote config (GrowthBook).
+ * Initialize configuration from remote config (config).
  * Only fetches once per session - subsequent calls return immediately.
  */
 async function initSessionMemoryCompactConfig(): Promise<void> {
@@ -102,7 +102,7 @@ async function initSessionMemoryCompactConfig(): Promise<void> {
   }
   configInitialized = true
 
-  // Previously loaded from GrowthBook; now uses defaults
+  // Previously loaded from config system; now uses defaults
   const remoteConfig: Partial<SessionMemoryCompactConfig> = {}
 
   // Only use remote values if they are explicitly set (positive numbers)

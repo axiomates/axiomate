@@ -1,7 +1,7 @@
-// GrowthBook-backed cron jitter configuration.
+// config-backed cron jitter configuration.
 //
 // Separated from cronScheduler.ts so the scheduler can be bundled in the
-// Agent SDK public build without pulling in analytics/growthbook.ts and
+// Agent SDK public build without pulling in analytics/config.ts and
 // its large transitive dependency set (settings/hooks/config cycle).
 //
 // Usage:
@@ -16,7 +16,7 @@ import {
 /**
  * Returns the default cron jitter config.
  *
- * Previously read from GrowthBook (`ax_kairos_cron_config`). Now returns
+ * Previously read from config system (`ax_kairos_cron_config`). Now returns
  * the hardcoded default. Pass this as `getJitterConfig` when calling
  * createCronScheduler in REPL contexts.
  */

@@ -225,7 +225,7 @@ const claudeInChromeToolRendering =
     require('../../utils/browserExtension/toolRendering.js')
 // Lazy: wrapper.tsx → hostAdapter.ts → executor.ts pulls both native modules
 // (computer-use-native-axiomate + computer-use-native-axiomate). Runtime-gated by
-// GrowthBook ax_malort_pedway (see gates.ts).
+// config ax_malort_pedway (see gates.ts).
 const computerUseWrapper = feature('CHICAGO_MCP')
   ? (): typeof import('../../utils/computerUse/wrapper.js') =>
       require('../../utils/computerUse/wrapper.js')

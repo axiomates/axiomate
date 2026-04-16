@@ -189,7 +189,7 @@ export function ExitPlanModePermissionRequest({
   const rawPlan = inputPlan ?? getPlan();
   const isEmpty = !rawPlan || rawPlan.trim() === '';
 
-  // Capture the variant once on mount. GrowthBook reads from a disk cache
+  // Capture the variant once on mount. config reads from a disk cache
   // so the value is stable across a single planning session. undefined =
   // control arm. The variant is a fixed 3-value enum of short literals,
   // not user input.

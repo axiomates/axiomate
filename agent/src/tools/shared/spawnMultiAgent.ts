@@ -226,7 +226,7 @@ function buildInheritedCliFlags(options?: {
   } else if (permissionMode === 'auto') {
     // Teammates inherit auto mode so the classifier auto-approves their tool
     // calls too. The teammate's own startup (permissionSetup.ts) handles
-    // GrowthBook gate checks and setAutoModeActive(true) independently.
+    // config gate checks and setAutoModeActive(true) independently.
     flags.push('--permission-mode auto')
   }
 

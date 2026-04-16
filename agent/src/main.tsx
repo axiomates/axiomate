@@ -975,7 +975,7 @@ async function run(): Promise<CommanderCommand> {
     }
 
     // Assistant mode: when .axiomate/settings.json has assistant: true AND
-    // the ax_kairos GrowthBook gate is on, force brief on. Permission
+    // the ax_kairos config gate is on, force brief on. Permission
     // mode is left to the user — settings defaultMode or --permission-mode
     // apply as normal. REPL-typed messages already default to 'next'
     // priority (messageQueueManager.enqueue) so they drain mid-turn between
@@ -1013,7 +1013,7 @@ async function run(): Promise<CommanderCommand> {
         console.warn(chalk.yellow('Assistant mode disabled: directory is not trusted. Accept the trust dialog and restart.'));
       } else {
         // Blocking gate check — returns cached `true` instantly; if disk
-        // cache is false/missing, lazily inits GrowthBook and fetches fresh
+        // cache is false/missing, lazily inits config and fetches fresh
         // (max ~5s). --assistant skips the gate entirely (daemon is
         // pre-entitled).
         kairosEnabled = assistantModule.isAssistantForced() || (await kairosGate.isKairosEnabled());
@@ -1203,7 +1203,7 @@ async function run(): Promise<CommanderCommand> {
       rc?: string | true;
     }).rc;
     // Actual bridge check is deferred to after showSetupScreens() so that
-    // trust is established and GrowthBook has auth headers.
+    // trust is established and config has auth headers.
     let remoteControl = false;
     const remoteControlName = typeof remoteControlOption === 'string' && remoteControlOption.length > 0 ? remoteControlOption : undefined;
 
@@ -1515,7 +1515,7 @@ async function run(): Promise<CommanderCommand> {
     }
 
     // chicago MCP: guarded Computer Use (app allowlist + frontmost gate +
-    // SCContentFilter screenshots). Ant-only, GrowthBook-gated — failures
+    // SCContentFilter screenshots). Ant-only, config-gated — failures
     // are silent (this is dogfooding). Platform + interactive checks inline
     // so non-macOS / print-mode ants skip the heavy @ant/computer-use-mcp
     // import entirely. gates.js is light (type-only package import).
@@ -1562,7 +1562,7 @@ async function run(): Promise<CommanderCommand> {
     if (feature('KAIROS') || feature('KAIROS_CHANNELS')) {
       // Parse plugin:name@marketplace / server:Y tags into typed entries.
       // Tag decides trust model downstream: plugin-kind hits marketplace
-      // verification + GrowthBook allowlist, server-kind always fails
+      // verification + config allowlist, server-kind always fails
       // allowlist (schema is plugin-only) unless dev flag is set.
       // Untagged or marketplace-less plugin entries are hard errors —
       // silently not-matching in the gate would look like channels are
@@ -1946,7 +1946,7 @@ async function run(): Promise<CommanderCommand> {
     }
 
     // Ant model aliases (capybara-fast etc.) resolve via the
-    // ax_ant_model_override GrowthBook flag. _CACHED_MAY_BE_STALE reads
+    // ax_ant_model_override config flag. _CACHED_MAY_BE_STALE reads
     // disk synchronously; disk is populated by a fire-and-forget write. On a
     // cold cache, parseUserSpecifiedModel returns the unresolved alias, the
     // API 404s, and -p exits before the async write lands — crashloop on
@@ -2173,7 +2173,7 @@ async function run(): Promise<CommanderCommand> {
       const onboardingShown = await showSetupScreens(root, permissionMode, commands, enableClaudeInChrome, devChannels);
       logForDebugging(`[STARTUP] showSetupScreens() completed in ${Date.now() - setupScreensStart}ms`);
 
-      // Now that trust is established and GrowthBook has auth headers,
+      // Now that trust is established and config has auth headers,
       // resolve the --remote-control / --rc entitlement gate.
       if (feature('BRIDGE_MODE') && remoteControlOption !== undefined) {
         // Bridge modules removed — remote control disabled
@@ -2530,7 +2530,7 @@ async function run(): Promise<CommanderCommand> {
       const headlessStore = createStore(headlessInitialState, onChangeAppState);
 
       // Async check of auto mode gate — corrects state and disables auto if needed.
-      // Gated on TRANSCRIPT_CLASSIFIER (not USER_TYPE) so GrowthBook kill switch runs for external builds too.
+      // Gated on TRANSCRIPT_CLASSIFIER (not USER_TYPE) so config kill switch runs for external builds too.
       if (feature('TRANSCRIPT_CLASSIFIER')) {
         void verifyAutoModeGateAccess(toolPermissionContext).then(({
           updateContext
@@ -3932,7 +3932,7 @@ async function run(): Promise<CommanderCommand> {
   });
   if (feature('TRANSCRIPT_CLASSIFIER')) {
     // Skip when ax_auto_mode_config.enabled === 'disabled' (circuit breaker).
-    // Reads from disk cache — GrowthBook isn't initialized at registration time.
+    // Reads from disk cache — config isn't initialized at registration time.
     if (getAutoModeEnabledStateIfCached() !== 'disabled') {
       const autoModeCmd = program.command('auto-mode').description('Inspect auto mode classifier configuration');
       autoModeCmd.command('defaults').description('Print the default auto mode environment, allow, and deny rules as JSON').action(async () => {

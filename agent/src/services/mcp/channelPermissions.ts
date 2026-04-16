@@ -27,7 +27,7 @@ import { jsonStringify } from '../../utils/slowOperations.js'
 
 /**
  * Runtime gate for channel permission relay.
- * Previously GrowthBook-gated (ax_harbor_permissions); now defaults to false.
+ * Previously config-gated (ax_harbor_permissions); now defaults to false.
  */
 export function isChannelPermissionRelayEnabled(): boolean {
   return false

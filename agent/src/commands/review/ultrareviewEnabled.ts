@@ -1,5 +1,5 @@
 /**
- * Runtime gate for /ultrareview. Previously backed by GrowthBook config;
+ * Runtime gate for /ultrareview. Previously backed by config config;
  * now always disabled (config inlined as null).
  */
 export function isUltrareviewEnabled(): boolean {

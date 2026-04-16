@@ -16,7 +16,7 @@ const MAX_OUTPUT_TOKENS_UPPER_LIMIT = 64_000
 // tokens, so 32k/64k defaults over-reserve 8-16× slot capacity. With the cap
 // enabled, <1% of requests hit the limit; those get one clean retry at 64k
 // (see query.ts max_output_tokens_escalate). Cap is applied in
-// claude.ts:getMaxOutputTokensForModel to avoid the growthbook→betas→context
+// claude.ts:getMaxOutputTokensForModel to avoid the config→betas→context
 // import cycle.
 export const CAPPED_DEFAULT_MAX_TOKENS = 8_000
 export const ESCALATED_MAX_TOKENS = 64_000

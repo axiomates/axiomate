@@ -2437,7 +2437,7 @@ export async function refreshMarketplace(
       }
       // GCS failed — fall through to git ONLY if the kill-switch allows.
       // Default true (backend write perms are pending as of inc-5046); flip
-      // to false via GrowthBook once the backend is confirmed live so new
+      // to false via config once the backend is confirmed live so new
       // clients NEVER hit GitHub for the official marketplace.
       if (
         false

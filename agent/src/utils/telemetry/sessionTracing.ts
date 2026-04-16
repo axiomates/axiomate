@@ -120,7 +120,7 @@ function ensureCleanupInterval(): void {
 
 /**
  * Check if enhanced telemetry is enabled.
- * Priority: env var override > ant build > GrowthBook gate
+ * Priority: env var override > ant build > config gate
  */
 export function isEnhancedTelemetryEnabled(): boolean {
   if (feature('ENHANCED_TELEMETRY_BETA')) {

@@ -141,7 +141,7 @@ export async function showSetupScreens(root: Root, permissionMode: PermissionMod
     }
 
     // Signal that trust has been verified for this session.
-    // GrowthBook checks this to decide whether to include auth headers.
+    // config checks this to decide whether to include auth headers.
     setSessionTrustAccepted(true);
 
     // Now that trust is established, prefetch system context if it wasn't already

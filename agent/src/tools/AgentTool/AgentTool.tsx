@@ -66,7 +66,7 @@ const isBackgroundTasksDisabled =
 isEnvTruthy(process.env.CLAUDE_CODE_DISABLE_BACKGROUND_TASKS);
 
 // Auto-background agent tasks after this many ms (0 = disabled)
-// Enabled by env var OR GrowthBook gate (checked lazily since GB may not be ready at module load)
+// Enabled by env var OR config gate (checked lazily since GB may not be ready at module load)
 function getAutoBackgroundMs(): number {
   if (isEnvTruthy(process.env.CLAUDE_AUTO_BACKGROUND_TASKS)) {
     return 120_000;
@@ -110,7 +110,7 @@ export const inputSchema = lazySchema(() => {
     cwd: true
   });
 
-  // GrowthBook-in-lazySchema is acceptable here (unlike subagent_type, which
+  // config-in-lazySchema is acceptable here (unlike subagent_type, which
   // was removed in 906da6c723): the divergence window is one-session-per-
   // gate-flip via _CACHED_MAY_BE_STALE disk read, and worst case is either
   // "schema shows a no-op param" (gate flips on mid-session: param ignored
@@ -445,7 +445,7 @@ export const AgentTool = buildTool({
         forkParentSystemPrompt = toolUseContext.renderedSystemPrompt;
       } else {
         // Fallback: recompute. May diverge from parent's cached bytes if
-        // GrowthBook state changed between parent turn-start and fork spawn.
+        // config state changed between parent turn-start and fork spawn.
         const mainThreadAgentDefinition = appState.agent ? appState.agentDefinitions.activeAgents.find(a => a.agentType === appState.agent) : undefined;
         const additionalWorkingDirectories = Array.from(appState.toolPermissionContext.additionalWorkingDirectories.keys());
         const defaultSystemPrompt = await getSystemPrompt(toolUseContext.options.tools, toolUseContext.options.mainLoopModel, additionalWorkingDirectories, toolUseContext.options.mcpClients);
