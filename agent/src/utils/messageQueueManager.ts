@@ -352,7 +352,7 @@ export function isPromptInputModeEditable(
 
 /**
  * Whether this queued command can be pulled into the input buffer via UP/ESC.
- * System-generated commands (proactive ticks, scheduled tasks, plan
+ * System-generated commands (scheduled tasks, plan
  * verification, channel messages) contain raw XML and must not leak into
  * the user's input.
  */

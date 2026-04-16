@@ -78,9 +78,6 @@ export type ApiKeySource =
  */
 export function isAnthropicAuthEnabled(): boolean {
   if (isBareMode()) return false
-  if (process.env.ANTHROPIC_UNIX_SOCKET) {
-    return !!process.env.CLAUDE_CODE_OAUTH_TOKEN
-  }
   const is3P =
     isEnvTruthy(process.env.CLAUDE_CODE_USE_BEDROCK) ||
     isEnvTruthy(process.env.CLAUDE_CODE_USE_VERTEX) ||

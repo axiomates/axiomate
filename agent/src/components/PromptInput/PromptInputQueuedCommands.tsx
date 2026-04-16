@@ -81,7 +81,7 @@ function PromptInputQueuedCommandsImpl(): React.ReactNode {
   const messages = useMemo(() => {
     if (queuedCommands.length === 0) return null;
     // task-notification is shown via useInboxNotification; most isMeta commands
-    // (scheduled tasks, proactive ticks) are system-generated and hidden.
+    // (scheduled tasks) are system-generated and hidden.
     // Channel messages are the exception — isMeta but shown so the keyboard
     // user sees what arrived.
     const visibleCommands = queuedCommands.filter(isQueuedCommandVisible);

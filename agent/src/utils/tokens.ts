@@ -86,7 +86,7 @@ export function finalContextTokensFromLastResponse(
     const message = messages[i]
     const usage = message ? getTokenUsage(message) : undefined
     if (usage) {
-      // Stainless types don't include iterations yet — cast like advisor.ts:43
+      // Stainless types don't include iterations yet — cast
       const iterations = (
         usage as {
           iterations?: Array<{

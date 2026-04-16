@@ -65,7 +65,6 @@ import {
   ensureToolResultPairing,
   normalizeContentFromAPI,
   normalizeMessagesForAPI,
-  stripAdvisorBlocks,
   stripCallerFieldFromAssistantMessage,
   stripToolReferenceBlocksFromUserMessage,
 } from '../../utils/messages.js'
@@ -834,9 +833,6 @@ async function* queryModel(
   // remote/teleport sessions. Inserts synthetic error tool_results for orphaned
   // tool_uses and strips orphaned tool_results referencing non-existent tool_uses.
   messagesForAPI = ensureToolResultPairing(messagesForAPI)
-
-  // Strip advisor blocks — third-party providers reject them.
-  messagesForAPI = stripAdvisorBlocks(messagesForAPI)
 
   // Strip excess media items before making the API call.
   // The API rejects requests with >100 media items but returns a confusing error.

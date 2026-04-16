@@ -1,13 +1,8 @@
 /**
- * Anthropic API Limits
+ * API Limits
  *
- * These constants define server-side limits enforced by the Anthropic API.
+ * These constants define server-side limits enforced by the API.
  * Keep this file dependency-free to prevent circular imports.
- *
- * Last verified: 2025-12-22
- * Source: api/api/schemas/messages/blocks/ and api/api/config.py
- *
- * Future: See issue #13240 for dynamic limits fetching from server.
  */
 
 // =============================================================================

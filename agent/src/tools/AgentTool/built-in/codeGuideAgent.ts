@@ -15,7 +15,7 @@ import type {
 
 const CLAUDE_CODE_DOCS_MAP_URL =
   'https://code.claude.com/docs/en/claude_code_docs_map.md'
-const CDP_DOCS_MAP_URL = 'https://docs.anthropic.com/llms.txt'
+const CDP_DOCS_MAP_URL = ''
 
 export const AXIOMATE_GUIDE_AGENT_TYPE = 'axiomate-guide'
 

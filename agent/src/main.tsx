@@ -42,7 +42,6 @@ import { loadRemoteManagedSettings, refreshRemoteManagedSettings } from './servi
 import type { ToolInputJSONSchema } from './Tool.js';
 import { createSyntheticOutputTool, isSyntheticOutputToolEnabled } from './tools/SyntheticOutputTool/SyntheticOutputTool.js';
 import { getTools } from './tools.js';
-import { canUserConfigureAdvisor, getInitialAdvisorSetting, isAdvisorEnabled, isValidAdvisorModel, modelSupportsAdvisor } from './utils/advisor.js';
 import { isAgentSwarmsEnabled } from './utils/agentSwarmsEnabled.js';
 import { count, uniq } from './utils/array.js';
 // Side-effect import: asciicast module registers terminal recording hooks
@@ -887,7 +886,7 @@ async function run(): Promise<CommanderCommand> {
     // apply as normal. REPL-typed messages already default to 'next'
     // priority (messageQueueManager.enqueue) so they drain mid-turn between
     // tool calls. SendUserMessage (BriefTool) is enabled via the brief env
-    // var. SleepTool stays disabled (its isEnabled() gates on proactive).
+    // var. SleepTool stays disabled.
     // getAssistantSystemPromptAddendum() call site further down.
     //
     // Trust gate: .axiomate/settings.json is attacker-controllable in an
@@ -909,7 +908,7 @@ async function run(): Promise<CommanderCommand> {
     // isAssistantMode() is true for them too. --agent-id being set
     // means we ARE a spawned teammate (extractTeammateOptions runs
     // ~170 lines later so check the raw commander option) — don't
-    // re-init the team or override teammateMode/proactive/brief.
+    // re-init the team or override teammateMode/brief.
     !(options as {
       agentId?: unknown;
     }).agentId) {
@@ -1561,10 +1560,6 @@ async function run(): Promise<CommanderCommand> {
     let inputPrompt = await getInputPrompt(effectivePrompt, (inputFormat ?? 'text') as 'text' | 'stream-json');
     profileCheckpoint('action_after_input_prompt');
 
-    // Activate proactive mode BEFORE getTools() so SleepTool.isEnabled()
-    // (which returns isProactiveActive()) passes and Sleep is included.
-    // The later REPL-path maybeActivateProactive() calls are idempotent.
-    maybeActivateProactive(options);
     let tools = getTools(toolPermissionContext);
 
     // Apply coordinator mode tool filtering for headless path
@@ -1824,28 +1819,6 @@ async function run(): Promise<CommanderCommand> {
     setInitialMainLoopModel(getUserSpecifiedModelSetting() || null);
     const initialMainLoopModel = getInitialMainLoopModel();
     const resolvedInitialModel = parseUserSpecifiedModel(initialMainLoopModel ?? getDefaultMainLoopModel());
-    let advisorModel: string | undefined;
-    if (isAdvisorEnabled()) {
-      const advisorOption = canUserConfigureAdvisor() ? (options as {
-        advisor?: string;
-      }).advisor : undefined;
-      if (advisorOption) {
-        logForDebugging(`[AdvisorTool] --advisor ${advisorOption}`);
-        if (!modelSupportsAdvisor(resolvedInitialModel)) {
-          process.stderr.write(chalk.red(`Error: The model "${resolvedInitialModel}" does not support the advisor tool.\n`));
-          process.exit(1);
-        }
-        const normalizedAdvisorModel = normalizeModelStringForAPI(parseUserSpecifiedModel(advisorOption));
-        if (!isValidAdvisorModel(normalizedAdvisorModel)) {
-          process.stderr.write(chalk.red(`Error: The model "${advisorOption}" cannot be used as an advisor.\n`));
-          process.exit(1);
-        }
-      }
-      advisorModel = canUserConfigureAdvisor() ? advisorOption ?? getInitialAdvisorSetting() : advisorOption;
-      if (advisorModel) {
-        logForDebugging(`[AdvisorTool] Advisor model: ${advisorModel}`);
-      }
-    }
 
     // For tmux teammates with --agent-type, append the custom agent's prompt
     if (isAgentSwarmsEnabled() && storedTeammateOpts?.agentId && storedTeammateOpts?.agentName && storedTeammateOpts?.teamName && storedTeammateOpts?.agentType) {
@@ -1881,8 +1854,7 @@ async function run(): Promise<CommanderCommand> {
     // the assistant installer writes defaultView:'chat' to settings.local.json
     // which would otherwise leak into --print sessions in the same directory.
     // Runs right after maybeActivateBrief() so all startup opt-in paths fire
-    // BEFORE any isBriefEnabled() read below (proactive prompt's
-    // briefVisibility). A persisted 'chat' after a GB kill-switch falls
+    // BEFORE any isBriefEnabled() read below. A persisted 'chat' after a GB kill-switch falls
     // through (entitlement fails).
     if ((false) && !getIsNonInteractiveSession() && !getUserMsgOptIn() && getInitialSettings().defaultView === 'chat') {
       /* eslint-disable @typescript-eslint/no-require-imports */
@@ -1894,17 +1866,6 @@ async function run(): Promise<CommanderCommand> {
         setUserMsgOptIn(true);
       }
     }
-    // Coordinator mode has its own system prompt and filters out Sleep, so
-    // the generic proactive prompt would tell it to call a tool it can't
-    // access and conflict with delegation instructions.
-    if (( false) && ((options as {
-      proactive?: boolean;
-    }).proactive || isEnvTruthy(process.env.CLAUDE_CODE_PROACTIVE)) && !coordinatorModeModule?.isCoordinatorMode()) {
-      const briefVisibility = 'The user will see any text you output.';
-      const proactivePrompt = `\n# Proactive Mode\n\nYou are in proactive mode. Take initiative — explore, act, and make progress without waiting for instructions.\n\nStart by briefly greeting the user.\n\nYou will receive periodic <tick> prompts. These are check-ins. Do whatever seems most useful, or call Sleep if there's nothing to do. ${briefVisibility}`;
-      appendSystemPrompt = appendSystemPrompt ? `${appendSystemPrompt}\n\n${proactivePrompt}` : proactivePrompt;
-    }
-
     // Ink root is only needed for interactive sessions — patchConsole in the
     // Ink constructor would swallow console output in headless mode.
     let root!: Root;
@@ -2260,9 +2221,6 @@ async function run(): Promise<CommanderCommand> {
         },
         toolPermissionContext,
         effortValue: parseEffortValue(options.effort) ?? getInitialEffortSetting(),
-        ...(isAdvisorEnabled() && advisorModel && {
-          advisorModel
-        }),
         // executeForkedSlashCommand (processSlashCommand.tsx:132) and
         // AgentTool's shouldRunAsync. The REPL initialState sets this at
         // ~3459; headless was defaulting to false, so the daemon child's
@@ -2622,9 +2580,6 @@ async function run(): Promise<CommanderCommand> {
       } : null,
       effortValue: parseEffortValue(options.effort) ?? getInitialEffortSetting(),
       activeOverlays: new Set<string>(),
-      ...(isAdvisorEnabled() && advisorModel && {
-        advisorModel
-      }),
       // Compute teamContext synchronously to avoid useEffect setState during render.
       // DISABLED: assistantTeamContext takes precedence — set earlier in the
       // DISABLED block so Agent(name: "foo") can spawn in-process teammates
@@ -2717,7 +2672,6 @@ async function run(): Promise<CommanderCommand> {
         if (loaded.restoredAgentDef) {
           mainThreadAgentDefinition = loaded.restoredAgentDef;
         }
-        maybeActivateProactive(options);
         maybeActivateBrief(options);
         resumeSucceeded = true;
         await launchRepl(root, {
@@ -3180,7 +3134,6 @@ async function run(): Promise<CommanderCommand> {
         contentReplacements: undefined
       } : undefined);
       if (resumeData) {
-        maybeActivateProactive(options);
         maybeActivateBrief(options);
         await launchRepl(root, {
           getFpsMetrics,
@@ -3216,7 +3169,6 @@ async function run(): Promise<CommanderCommand> {
       // the first API call so the model always sees hook context.
       const pendingHookMessages = hooksPromise && hookMessages.length === 0 ? hooksPromise : undefined;
       profileCheckpoint('action_after_hooks');
-      maybeActivateProactive(options);
       maybeActivateBrief(options);
       // Persist the current mode for fresh sessions so future resumes know what mode was used
       if (feature('COORDINATOR_MODE')) {
@@ -3246,16 +3198,9 @@ async function run(): Promise<CommanderCommand> {
   // Worktree flags
   program.option('-w, --worktree [name]', 'Create a new git worktree for this session (optionally specify a name)');
   program.option('--tmux', 'Create a tmux session for the worktree (requires --worktree). Uses iTerm2 native panes when available; use --tmux=classic for traditional tmux.');
-  if (canUserConfigureAdvisor()) {
-    program.addOption(new Option('--advisor <model>', 'Enable the server-side advisor tool with the specified model (alias or full ID).').hideHelp());
-  }
   if (feature('TRANSCRIPT_CLASSIFIER')) {
     program.addOption(new Option('--enable-auto-mode', 'Opt in to auto mode').hideHelp());
   }
-  if ( false) {
-    program.addOption(new Option('--proactive', 'Start in proactive autonomous mode'));
-  }
-
   // Teammate identity options (set by leader when spawning tmux teammates)
   // These replace the CLAUDE_CODE_* environment variables
   program.addOption(new Option('--agent-id <id>', 'Teammate agent ID').hideHelp());
@@ -3683,17 +3628,6 @@ async function logTenguInit({
   try {
   } catch (error) {
     logError(error);
-  }
-}
-function maybeActivateProactive(options: unknown): void {
-  if (( false) && ((options as {
-    proactive?: boolean;
-  }).proactive || isEnvTruthy(process.env.CLAUDE_CODE_PROACTIVE))) {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const proactiveModule = require('./proactive/index.js');
-    if (!proactiveModule.isProactiveActive()) {
-      proactiveModule.activateProactive('command');
-    }
   }
 }
 function maybeActivateBrief(options: unknown): void {

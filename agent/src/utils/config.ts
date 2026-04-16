@@ -8,7 +8,6 @@ import { getOriginalCwd, getSessionTrustAccepted } from '../bootstrap/state.js'
 import { getAutoMemEntrypoint } from '../memdir/paths.js'
 import type { McpServerConfig } from '../services/mcp/types.js'
 // Types inlined after OAuth stub deletion
-type BillingType = string
 type ReferralEligibilityResponse = unknown
 import { getCwd } from '../utils/cwd.js'
 import { registerCleanup } from './cleanupRegistry.js'
@@ -155,20 +154,6 @@ import type { EDITOR_MODES, NOTIFICATION_CHANNELS } from './configConstants.js'
 
 export type NotificationChannel = (typeof NOTIFICATION_CHANNELS)[number]
 
-export type AccountInfo = {
-  accountUuid: string
-  emailAddress: string
-  organizationUuid?: string
-  organizationName?: string | null // added 4/23/2025, not populated for existing users
-  organizationRole?: string | null
-  workspaceRole?: string | null
-  // Populated by /api/oauth/profile
-  displayName?: string
-  hasExtraUsageEnabled?: boolean
-  billingType?: BillingType | null
-  accountCreatedAt?: string
-  subscriptionCreatedAt?: string
-}
 
 // TODO: 'emacs' is kept for backward compatibility - remove after a few releases
 export type EditorMode = 'emacs' | (typeof EDITOR_MODES)[number]
@@ -395,9 +380,8 @@ export type GlobalConfig = {
     approved?: string[]
     rejected?: string[]
   }
-  primaryApiKey?: string // Primary API key for the user when no environment variable is set, set via oauth (TODO: rename)
-  hasSeenUndercoverAutoNotice?: boolean // ant-only: whether the one-time auto-undercover explainer has been shown
-  oauthAccount?: AccountInfo
+  primaryApiKey?: string // Primary API key for the user when no environment variable is set
+  hasSeenUndercoverAutoNotice?: boolean
   editorMode?: EditorMode
   hasUsedBackslashReturn?: boolean
   autoCompactEnabled: boolean // Controls whether auto-compact is enabled
@@ -617,7 +601,6 @@ export type GlobalConfig = {
   officialMarketplaceAutoInstallFailReason?:
     | 'policy_blocked'
     | 'git_unavailable'
-    | 'gcs_unavailable'
     | 'unknown' // Reason for failure if applicable
   officialMarketplaceAutoInstallRetryCount?: number // Number of retry attempts
   officialMarketplaceAutoInstallLastAttemptTime?: number // Timestamp of last attempt
@@ -912,17 +895,14 @@ export function isProjectConfigKey(key: string): key is ProjectConfigKey {
  * wipe auth. See GH #3117.
  */
 function wouldLoseAuthState(fresh: {
-  oauthAccount?: unknown
   hasCompletedOnboarding?: boolean
 }): boolean {
   const cached = globalConfigCache.config
   if (!cached) return false
-  const lostOauth =
-    cached.oauthAccount !== undefined && fresh.oauthAccount === undefined
   const lostOnboarding =
     cached.hasCompletedOnboarding === true &&
     fresh.hasCompletedOnboarding !== true
-  return lostOauth || lostOnboarding
+  return lostOnboarding
 }
 
 export function saveGlobalConfig(

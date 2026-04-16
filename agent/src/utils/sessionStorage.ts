@@ -30,7 +30,7 @@ import {
   switchSession,
 } from '../bootstrap/state.js'
 import { builtInCommandNames } from '../commands.js'
-import { COMMAND_NAME_TAG, TICK_TAG } from '../constants/xml.js'
+import { COMMAND_NAME_TAG } from '../constants/xml.js'
 // sessionIngress removed — stub namespace
 const sessionIngress = {
   appendSessionLog: async (..._args: unknown[]) => false,
@@ -4772,7 +4772,6 @@ async function readLiteMetadata(
  */
 function extractFirstPromptFromChunk(chunk: string): string {
   let start = 0
-  let hasTickMessages = false
   let firstCommandFallback = ''
   while (start < chunk.length) {
     const newlineIdx = chunk.indexOf('\n', start)
@@ -4842,11 +4841,6 @@ function extractFirstPromptFromChunk(chunk: string): string {
         if (bashInput) return `! ${bashInput}`
 
         if (SKIP_FIRST_PROMPT_PATTERN.test(result)) {
-          if (
-            ( false) &&
-            result.startsWith(`<${TICK_TAG}>`)
-          )
-            hasTickMessages = true
           continue
         }
         if (result.length > 200) {
@@ -4861,10 +4855,6 @@ function extractFirstPromptFromChunk(chunk: string): string {
   // Session started with a slash command but had no subsequent real message —
   // use the clean command name so the session still appears in the resume picker
   if (firstCommandFallback) return firstCommandFallback
-  // Proactive sessions have only tick messages — give them a synthetic prompt
-  // so they're not filtered out by enrichLogs
-  if (( false) && hasTickMessages)
-    return 'Proactive session'
   return ''
 }
 

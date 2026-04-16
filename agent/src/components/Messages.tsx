@@ -23,7 +23,6 @@ import type {
   ProgressMessage as ProgressMessageType,
   RenderableMessage,
 } from '../types/message.js'
-import { type AdvisorBlock, isAdvisorBlock } from '../utils/advisor.js'
 import { collapseBackgroundBashNotifications } from '../utils/collapseBackgroundBashNotifications.js'
 import { collapseHookSummaries } from '../utils/collapseHookSummaries.js'
 import { collapseReadSearchGroups } from '../utils/collapseReadSearch.js'
@@ -95,12 +94,6 @@ const LogoHeader = React.memo(function LogoHeader({
   )
 })
 
-// Dead code elimination: conditional import for proactive mode
-/* eslint-disable @typescript-eslint/no-require-imports */
-const proactiveModule =
-  false
-    ? require('../proactive/index.js')
-    : null
 const BRIEF_TOOL_NAME: string | null = null
 const SEND_USER_FILE_TOOL_NAME: string | null = null
 
@@ -730,15 +723,6 @@ const MessagesImpl = ({
   const isItemClickable = useCallback(
     (msg: RenderableMessage): boolean => {
       if (msg.type === 'collapsed_read_search') return true
-      if (msg.type === 'assistant') {
-        const b = msg.message.content[0] as unknown as AdvisorBlock | undefined
-        return (
-          b != null &&
-          isAdvisorBlock(b) &&
-          b.type === 'advisor_tool_result' &&
-          b.content.type === 'advisor_result'
-        )
-      }
       if (msg.type !== 'user') return false
       const b = msg.message.content[0]
       if (b?.type !== 'tool_result' || b.is_error || !msg.toolUseResult)
@@ -764,8 +748,7 @@ const MessagesImpl = ({
   const prevProgressState = useRef<string | null>(null)
   const progressEnabled =
     getGlobalConfig().terminalProgressBarEnabled &&
-    !getIsRemoteMode() &&
-    !(proactiveModule?.isProactiveActive() ?? false)
+    !getIsRemoteMode()
   useEffect(() => {
     const state = progressEnabled
       ? hasToolsInProgress

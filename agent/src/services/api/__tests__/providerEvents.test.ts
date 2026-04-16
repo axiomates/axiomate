@@ -149,65 +149,6 @@ describe('AnthropicProvider — ProviderEvents', () => {
     expect(researchCall![0].data).toEqual({ query: 'test' })
   })
 
-  it('emits advisor_start on content_block_start with server_tool_use name=advisor', async () => {
-    const sdkEvents = [
-      {
-        type: 'message_start',
-        message: {
-          id: 'msg_01', type: 'message', role: 'assistant', content: [],
-          model: 'claude-opus-4-6', stop_reason: null, stop_sequence: null,
-          usage: { input_tokens: 10, output_tokens: 0, cache_creation_input_tokens: null, cache_read_input_tokens: null },
-        },
-      },
-      {
-        type: 'content_block_start',
-        index: 0,
-        content_block: { type: 'server_tool_use', id: 'stu_01', name: 'advisor', input: {} },
-      },
-      { type: 'content_block_stop', index: 0 },
-      { type: 'message_stop' },
-    ]
-    const mockClient = createMockClient(sdkEvents)
-    const onProviderEvent = vi.fn()
-    const provider = createProvider(mockClient)
-
-    const { result } = await consumeProvider(provider.bind(baseExt).createStream(baseRequest(mockClient, onProviderEvent)))
-    await collectStream(result.stream)
-
-    const advisorStart = onProviderEvent.mock.calls.find((c: any[]) => c[0].type === 'advisor_start')
-    expect(advisorStart).toBeDefined()
-    expect(advisorStart![0].model).toBe('claude-opus-4-6')
-  })
-
-  it('emits advisor_end on content_block_start with advisor_tool_result', async () => {
-    const sdkEvents = [
-      {
-        type: 'message_start',
-        message: {
-          id: 'msg_01', type: 'message', role: 'assistant', content: [],
-          model: 'claude-opus-4-6', stop_reason: null, stop_sequence: null,
-          usage: { input_tokens: 10, output_tokens: 0, cache_creation_input_tokens: null, cache_read_input_tokens: null },
-        },
-      },
-      {
-        type: 'content_block_start',
-        index: 0,
-        content_block: { type: 'advisor_tool_result', id: 'atr_01', tool_use_id: 'stu_01', content: 'advice' },
-      },
-      { type: 'content_block_stop', index: 0 },
-      { type: 'message_stop' },
-    ]
-    const mockClient = createMockClient(sdkEvents)
-    const onProviderEvent = vi.fn()
-    const provider = createProvider(mockClient)
-
-    const { result } = await consumeProvider(provider.bind(baseExt).createStream(baseRequest(mockClient, onProviderEvent)))
-    await collectStream(result.stream)
-
-    const advisorEnd = onProviderEvent.mock.calls.find((c: any[]) => c[0].type === 'advisor_end')
-    expect(advisorEnd).toBeDefined()
-  })
-
   it('does not crash when onProviderEvent is not provided', async () => {
     const sdkEvents = [
       {

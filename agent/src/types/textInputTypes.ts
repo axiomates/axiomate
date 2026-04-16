@@ -274,7 +274,7 @@ export type EditablePromptInputMode = Exclude<
 >
 
 /**
- * Queue priority levels. Same semantics in both normal and proactive mode.
+ * Queue priority levels.
  *
  *  - `now`   — Interrupt and send immediately. Aborts any in-flight tool
  *              call (equivalent to Esc + send). Consumers (print.ts,
@@ -288,8 +288,7 @@ export type EditablePromptInputMode = Exclude<
  *              call (query.ts upgrades the drain threshold after sleep so
  *              the message is attached to the same turn).
  *
- * The SleepTool is only available in proactive mode, so "wakes SleepTool"
- * is a no-op in normal mode.
+ * "Wakes SleepTool" means the queued message cancels an in-progress sleep.
  */
 export type QueuePriority = 'now' | 'next' | 'later'
 
@@ -328,7 +327,7 @@ export type QueuedCommand = {
   /**
    * When true, the resulting UserMessage gets `isMeta: true` — hidden in the
    * transcript UI but visible to the model. Used by system-generated prompts
-   * (proactive ticks, teammate messages, resource updates) that route through
+   * (teammate messages, resource updates) that route through
    * the queue instead of calling `onQuery` directly.
    */
   isMeta?: boolean

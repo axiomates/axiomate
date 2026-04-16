@@ -13,7 +13,6 @@ import {
   useMemo,
   useRef,
   useState,
-  useSyncExternalStore,
 } from 'react'
 import type { VimMode, PromptInputMode } from '../../types/textInputTypes.js'
 import type { ToolPermissionContext } from '../../Tool.js'
@@ -42,7 +41,6 @@ import { KeyboardShortcutHint } from '../design-system/KeyboardShortcutHint.js'
 import { Byline } from '../design-system/Byline.js'
 import { useTerminalSize } from '../../hooks/useTerminalSize.js'
 import { useTasksV2 } from '../../hooks/useTasksV2.js'
-import { formatDuration } from '../../utils/format.js'
 import { VoiceWarmupHint } from './VoiceIndicator.js'
 import { useVoiceEnabled } from '../../hooks/useVoiceEnabled.js'
 import { useVoiceState } from '../../context/voice.js'
@@ -53,15 +51,6 @@ import { getGlobalConfig, saveGlobalConfig } from '../../utils/config.js'
 import { getPlatform } from '../../utils/platform.js'
 import { PrBadge } from '../PrBadge.js'
 
-// Dead code elimination: conditional import for proactive mode
-/* eslint-disable @typescript-eslint/no-require-imports */
-const proactiveModule =
-  false
-    ? require('../../proactive/index.js')
-    : null
-/* eslint-enable @typescript-eslint/no-require-imports */
-const NO_OP_SUBSCRIBE = (_cb: () => void) => () => {}
-const NULL = () => null
 const MAX_VOICE_HINT_SHOWS = 3
 
 type Props = {
@@ -85,44 +74,6 @@ type Props = {
   setHistoryQuery: (query: string) => void
   historyFailedMatch: boolean
   onOpenTasksDialog?: (taskId?: string) => void
-}
-
-function ProactiveCountdown(): React.ReactNode {
-  const nextTickAt = useSyncExternalStore(
-    proactiveModule?.subscribeToProactiveChanges ?? NO_OP_SUBSCRIBE,
-    proactiveModule?.getNextTickAt ?? NULL,
-    NULL,
-  )
-
-  const [remainingSeconds, setRemainingSeconds] = useState<number | null>(null)
-
-  useEffect(() => {
-    if (nextTickAt === null) {
-      setRemainingSeconds(null)
-      return
-    }
-
-    function update(): void {
-      const remaining = Math.max(
-        0,
-        Math.ceil((nextTickAt! - Date.now()) / 1000),
-      )
-      setRemainingSeconds(remaining)
-    }
-
-    update()
-    const interval = setInterval(update, 1000)
-    return () => clearInterval(interval)
-  }, [nextTickAt])
-
-  if (remainingSeconds === null) return null
-
-  return (
-    <Text dimColor>
-      waiting{' '}
-      {formatDuration(remainingSeconds * 1000, { mostSignificantOnly: true })}
-    </Text>
-  )
 }
 
 export function PromptInputFooterLeftSide({
@@ -234,17 +185,11 @@ function ModeIndicator({
       false,
   )
 
-  const nextTickAt = useSyncExternalStore(
-    proactiveModule?.subscribeToProactiveChanges ?? NO_OP_SUBSCRIBE,
-    proactiveModule?.getNextTickAt ?? NULL,
-    NULL,
-  )
   const voiceEnabled = useVoiceEnabled()
   const voiceState = useVoiceState(s => s.voiceState)
   const voiceWarmingUp = useVoiceState(s => s.voiceWarmingUp)
   const hasSelection = useHasSelection()
   const selGetState = useSelection().getState
-  const hasNextTick = nextTickAt !== null
   const isCoordinator = feature('COORDINATOR_MODE')
     ? coordinatorModule?.isCoordinatorMode() === true
     : false
@@ -443,8 +388,6 @@ function ModeIndicator({
         />
       </Text>,
     )
-  } else if (false && hasNextTick) {
-    parts.push(<ProactiveCountdown key="proactive" />)
   } else if (!hasTeammatePills && showHint) {
     parts.push(...hintParts)
   }

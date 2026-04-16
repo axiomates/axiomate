@@ -701,10 +701,6 @@ export const SettingsSchema = lazySchema(() =>
         .optional()
         .catch(undefined)
         .describe('Persisted effort level for supported models.'),
-      advisorModel: z
-        .string()
-        .optional()
-        .describe('Advisor model for the server-side advisor tool.'),
       promptSuggestionEnabled: z
         .boolean()
         .optional()
@@ -816,8 +812,7 @@ export const SettingsSchema = lazySchema(() =>
               .int()
               .optional()
               .describe(
-                'Minimum duration in milliseconds that the Sleep tool must sleep for. ' +
-                  'Useful for throttling proactive tick frequency.',
+                'Minimum duration in milliseconds that the Sleep tool must sleep for.',
               ),
             maxSleepDurationMs: z
               .number()

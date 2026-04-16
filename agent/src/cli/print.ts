@@ -150,7 +150,7 @@ import {
   DEFAULT_OUTPUT_STYLE_NAME,
   getAllOutputStyles,
 } from '../constants/outputStyles.js'
-import { TEAMMATE_MESSAGE_TAG, TICK_TAG } from '../constants/xml.js'
+import { TEAMMATE_MESSAGE_TAG } from '../constants/xml.js'
 import {
   getSettings_DEPRECATED,
   getSettingsWithSources,
@@ -329,7 +329,6 @@ import { isExtractModeActive } from '../memdir/paths.js'
 const coordinatorModeModule = feature('COORDINATOR_MODE')
   ? (require('../coordinator/coordinatorMode.js') as typeof import('../coordinator/coordinatorMode.js'))
   : null
-const proactiveModule = null
 const cronSchedulerModule = feature('AGENT_TRIGGERS')
   ? (require('../utils/cronScheduler.js') as typeof import('../utils/cronScheduler.js'))
   : null
@@ -405,7 +404,7 @@ export function joinPromptValues(values: PromptValue[]): PromptValue {
  * Whether `next` can be batched into the same ask() call as `head`. Only
  * prompt-mode commands batch, and only when the workload tag matches (so the
  * combined turn is attributed correctly) and the isMeta flag matches (so a
- * proactive tick can't merge into a user prompt and lose its hidden-in-
+ * meta message can't merge into a user prompt and lose its hidden-in-
  * transcript marking when the head is spread over the merged command).
  */
 export function canBatchWith(
@@ -477,19 +476,6 @@ export async function runHeadless(
   settingsChangeDetector.subscribe(source => {
     applySettingsChange(source, setAppState)
   })
-
-  // Proactive activation is now handled in main.tsx before getTools() so
-  // SleepTool passes isEnabled() filtering. This fallback covers the case
-  // where CLAUDE_CODE_PROACTIVE is set but main.tsx's check didn't fire
-  // (e.g. env was injected by the SDK transport after argv parsing).
-  if (
-    ( false) &&
-    proactiveModule &&
-    !proactiveModule.isProactiveActive() &&
-    isEnvTruthy(process.env.CLAUDE_CODE_PROACTIVE)
-  ) {
-    proactiveModule.activateProactive('command')
-  }
 
   // Periodically force a full GC to keep memory usage in check
   if (typeof Bun !== 'undefined') {
@@ -1751,33 +1737,6 @@ function runHeadlessStreaming(
     })
   })
 
-  // Proactive mode: schedule a tick to keep the model looping autonomously.
-  // setTimeout(0) yields to the event loop so pending stdin messages
-  // (interrupts, user messages) are processed before the tick fires.
-  const scheduleProactiveTick =
-     false
-      ? () => {
-          setTimeout(() => {
-            if (
-              !proactiveModule?.isProactiveActive() ||
-              proactiveModule.isProactivePaused() ||
-              inputClosed
-            ) {
-              return
-            }
-            const tickContent = `<${TICK_TAG}>${new Date().toLocaleTimeString()}</${TICK_TAG}>`
-            enqueue({
-              mode: 'prompt' as const,
-              value: tickContent,
-              uuid: randomUUID(),
-              priority: 'later',
-              isMeta: true,
-            })
-            void run()
-          }, 0)
-        }
-      : undefined
-
   // Abort the current operation when a 'now' priority message arrives.
   subscribeToCommandQueue(() => {
     if (abortController && getCommandsByMaxPriority('now').length > 0) {
@@ -2386,18 +2345,6 @@ function runHeadlessStreaming(
       running = false
       // Start idle timer when we finish processing and are waiting for input
       idleTimeout.start()
-    }
-
-    // Proactive tick: if proactive is active and queue is empty, inject a tick
-    if (
-      ( false) &&
-      proactiveModule?.isProactiveActive() &&
-      !proactiveModule.isProactivePaused()
-    ) {
-      if (peek(isMainThread) === undefined && !inputClosed) {
-        scheduleProactiveTick!()
-        return
-      }
     }
 
     // Re-check the queue after releasing the mutex. A message may have
@@ -3635,23 +3582,6 @@ function runHeadlessStreaming(
               sendControlResponseError(message, errorMessage(e))
             }
           })()
-        } else if (
-          ( false) &&
-          (message.request as { subtype: string }).subtype === 'set_proactive'
-        ) {
-          const req = message.request as unknown as {
-            subtype: string
-            enabled: boolean
-          }
-          if (req.enabled) {
-            if (!proactiveModule!.isProactiveActive()) {
-              proactiveModule!.activateProactive('command')
-              scheduleProactiveTick!()
-            }
-          } else {
-            proactiveModule!.deactivateProactive()
-          }
-          sendControlResponseSuccess(message)
         } else if (message.request.subtype === 'remote_control') {
           if (message.request.enabled) {
             if (bridgeHandle) {

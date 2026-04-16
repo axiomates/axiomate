@@ -176,13 +176,8 @@ import { isBgSession, updateSessionName, updateSessionActivity } from '../utils/
 import { isInProcessTeammateTask, type InProcessTeammateTaskState } from '../tasks/InProcessTeammateTask/types.js';
 const restoreRemoteAgentTasks = async (..._args: unknown[]) => {} // RemoteAgentTask removed
 import { useInboxPoller } from '../hooks/useInboxPoller.js';
-// Dead code elimination: conditional import for loop mode
-/* eslint-disable @typescript-eslint/no-require-imports */
-const proactiveModule =  null;
-const PROACTIVE_NO_OP_SUBSCRIBE = (_cb: () => void) => () => {};
-const PROACTIVE_FALSE = () => false;
 const SUGGEST_BG_PR_NOOP = (_p: string, _n: string): boolean => false;
-const useProactive =  null;
+/* eslint-disable @typescript-eslint/no-require-imports */
 const useScheduledTasks = feature('AGENT_TRIGGERS') ? require('../hooks/useScheduledTasks.js').useScheduledTasks : null;
 /* eslint-enable @typescript-eslint/no-require-imports */
 import { isAgentSwarmsEnabled } from '../utils/agentSwarmsEnabled.js';
@@ -662,8 +657,6 @@ export function REPL({
   // Watch for skill file changes and reload all commands
   useSkillsChange(isRemoteSession ? undefined : getProjectRoot(), setLocalCommands);
 
-  // Track proactive mode for tools dependency - SleepTool filters by proactive state
-  const proactiveActive = React.useSyncExternalStore(proactiveModule?.subscribeToProactiveChanges ?? PROACTIVE_NO_OP_SUBSCRIBE, proactiveModule?.isProactiveActive ?? PROACTIVE_FALSE);
 
   // BriefTool.isEnabled() reads getUserMsgOptIn() from bootstrap state, which
   // /brief flips mid-session alongside isBriefOnly. The memo below needs a
@@ -672,7 +665,7 @@ export function REPL({
   // /brief mid-session leaves the stale tool list (no SendUserMessage) and
   // the model emits plain text the brief filter hides.
   const isBriefOnly = useAppState(s => s.isBriefOnly);
-  const localTools = useMemo(() => getTools(toolPermissionContext), [toolPermissionContext, proactiveActive, isBriefOnly]);
+  const localTools = useMemo(() => getTools(toolPermissionContext), [toolPermissionContext, isBriefOnly]);
   useKickOffCheckAndDisableAutoModeIfNeeded();
   const [dynamicMcpConfig, setDynamicMcpConfig] = useState<Record<string, ScopedMcpServerConfig> | undefined>(initialDynamicMcpConfig);
   const onChangeDynamicMcpConfig = useCallback((config: Record<string, ScopedMcpServerConfig>) => {
@@ -1432,9 +1425,6 @@ export function REPL({
   const [isSearchingHistory, setIsSearchingHistory] = useState(false);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
 
-  const isTerminalFocused = useTerminalFocus();
-  const terminalFocusRef = useRef(isTerminalFocused);
-  terminalFocusRef.current = isTerminalFocused;
   const [theme] = useTheme();
 
   // resetLoadingState runs twice per turn (onQueryImpl tail + onQuery finally).
@@ -1981,11 +1971,6 @@ export function REPL({
     }
     logForDebugging(`[onCancel] focusedInputDialog=${focusedInputDialog} streamMode=${streamMode}`);
 
-    // Pause proactive mode so the user gets control back.
-    // It will resume when they submit their next input (see onSubmit).
-    if ( false) {
-      proactiveModule?.pauseProactive();
-    }
     queryGuard.forceEnd();
     skipIdleCheckRef.current = false;
 
@@ -2408,10 +2393,6 @@ export function REPL({
         // Bump conversationId so Messages.tsx row keys change and
         // stale memoized rows remount with post-compact content.
         setConversationId(randomUUID());
-        // Compaction succeeded — clear the context-blocked flag so ticks resume
-        if ( false) {
-          proactiveModule?.setContextBlocked(false);
-        }
       } else if (newMessage.type === 'progress' && isEphemeralToolProgress(newMessage.data.type)) {
         // Replace the previous ephemeral progress tick for the same tool
         // call instead of appending. Sleep/Bash emit a tick per second and
@@ -2527,16 +2508,10 @@ export function REPL({
     // The last message is an assistant message if the user input was a bash command,
     // or if the user input was an invalid slash command.
     if (!shouldQuery) {
-      // Manual /compact sets messages directly (shouldQuery=false) bypassing
-      // handleMessageFromStream. Clear context-blocked if a compact boundary
-      // is present so proactive ticks resume after compaction.
       if (newMessages.some(isCompactBoundaryMessage)) {
         // Bump conversationId so Messages.tsx row keys change and
         // stale memoized rows remount with post-compact content.
         setConversationId(randomUUID());
-        if ( false) {
-          proactiveModule?.setContextBlocked(false);
-        }
       }
       resetLoadingState();
       setAbortController(null);
@@ -2570,9 +2545,6 @@ export function REPL({
     const userContext = {
       ...baseUserContext,
       ...getCoordinatorUserContext(freshMcpClients, isScratchpadEnabled() ? getScratchpadDir() : undefined),
-      ...(( false) && proactiveModule?.isProactiveActive() && !terminalFocusRef.current ? {
-        terminalFocus: 'The terminal is unfocused \u2014 the user is not actively watching.'
-      } : {})
     };
     queryCheckpoint('query_context_loading_end');
     const systemPrompt = buildEffectiveSystemPrompt({
@@ -2707,7 +2679,7 @@ export function REPL({
         // Skip if user aborted or if in loop mode (too noisy between ticks)
         // Defer if swarm teammates are still running (show when they finish)
         const turnDurationMs = Date.now() - loadingStartTimeRef.current - totalPausedMsRef.current;
-        if ((turnDurationMs > 30000 || budgetInfo !== undefined) && !abortController.signal.aborted && !proactiveActive) {
+        if ((turnDurationMs > 30000 || budgetInfo !== undefined) && !abortController.signal.aborted) {
           const hasRunningSwarmAgents = getAllInProcessTeammateTasks(store.getState().tasks).some(t => t.status === 'running');
           if (hasRunningSwarmAgents) {
             // Only record start time on the first deferred turn
@@ -2885,11 +2857,6 @@ export function REPL({
     // Re-pin scroll to bottom on submit so the user always sees the new
     // exchange (matches OpenCode's auto-scroll behavior).
     repinScroll();
-
-    // Resume loop mode if paused
-    if ( false) {
-      proactiveModule?.resumeProactive();
-    }
 
     // Handle immediate commands - these bypass the queue and execute right away
     // even while Claude is processing. Commands opt-in via `immediate: true`.
@@ -3706,8 +3673,7 @@ export function REPL({
 
   // Scheduled tasks from .axiomate/scheduled_tasks.json (CronCreate/Delete/List)
   if (feature('AGENT_TRIGGERS')) {
-    // Assistant mode bypasses the isLoading gate (the proactive tick →
-    // Sleep → tick loop would otherwise starve the scheduler).
+    // assistantMode is currently always false.
     // useScheduledTasks's effect (not here) since wrapping a hook call in a dynamic
     // condition would break rules-of-hooks.
     const assistantMode = false;
@@ -4502,11 +4468,6 @@ export function REPL({
               });
             } else {
               setMessages(postCompact);
-            }
-            // Partial compact bypasses handleMessageFromStream — clear
-            // the context-blocked flag so proactive ticks resume.
-            if ( false) {
-              proactiveModule?.setContextBlocked(false);
             }
             setConversationId(randomUUID());
             runPostCompactCleanup(context.options.querySource);

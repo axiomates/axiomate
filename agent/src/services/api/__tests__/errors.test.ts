@@ -22,7 +22,6 @@ vi.mock('../../../utils/auth.js', () => ({
   isEnterpriseSubscriber: vi.fn().mockReturnValue(false),
   getAnthropicApiKeyWithSource: vi.fn().mockReturnValue({ source: '' }),
   getClaudeAIOAuthTokens: vi.fn().mockReturnValue(null),
-  getOauthAccountInfo: vi.fn().mockReturnValue(null),
 }))
 
 vi.mock('../../../utils/messages.js', () => ({

@@ -89,7 +89,6 @@ export type EnabledVia =
 /** How a skill/command invocation was triggered. */
 export type InvocationTrigger =
   | 'user-slash'
-  | 'claude-proactive'
   | 'nested-skill'
 
 /** Where a skill invocation executes. */

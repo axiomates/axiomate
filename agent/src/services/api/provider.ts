@@ -59,7 +59,7 @@ export interface RequestHooks {
   onAttemptStart?: (info: { attempt: number; start: number }) => void
   /** Called after request headers are received. */
   onRequestSent?: (info: { maxOutputTokens: number; requestId?: string; response?: unknown }) => void
-  /** Called with provider-neutral events (TTFB, research, advisor, etc.). */
+  /** Called with provider-neutral events (TTFB, research, etc.). */
   onProviderEvent?: (event: ProviderEvent) => void
 }
 
@@ -70,8 +70,6 @@ export interface RequestHooks {
 export type ProviderEvent =
   | { type: 'ttfb'; ms: number }
   | { type: 'research'; data: unknown }
-  | { type: 'advisor_start'; model: string }
-  | { type: 'advisor_end' }
 
 // ---------------------------------------------------------------------------
 // Stream result

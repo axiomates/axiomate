@@ -142,7 +142,6 @@ export type AssistantMessage = BaseMessage & {
   errorDetails?: string
   isMeta?: true
   isVirtual?: true
-  advisorModel?: string
   /** Caller tag injected by subagent tracing */
   caller?: string
   /** Optional attachment (for union compatibility with AttachmentMessage) */

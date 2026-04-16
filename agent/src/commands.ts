@@ -3,7 +3,6 @@ import btw from './commands/btw/index.js'
 import clear from './commands/clear/index.js'
 import color from './commands/color/index.js'
 import copy from './commands/copy/index.js'
-import desktop from './commands/desktop/index.js'
 import compact from './commands/compact/index.js'
 import config from './commands/config/index.js'
 import { context, contextNonInteractive } from './commands/context/index.js'
@@ -14,8 +13,6 @@ import help from './commands/help/index.js'
 import ide from './commands/ide/index.js'
 import init from './commands/init.js'
 import keybindings from './commands/keybindings/index.js'
-import installGitHubApp from './commands/install-github-app/index.js'
-import installSlackApp from './commands/install-slack-app/index.js'
 import mcp from './commands/mcp/index.js'
 import pr_comments from './commands/pr_comments/index.js'
 import releaseNotes from './commands/release-notes/index.js'
@@ -33,10 +30,6 @@ import vim from './commands/vim/index.js'
 import { feature } from 'bun:bundle'
 // Dead code elimination: conditional imports
 /* eslint-disable @typescript-eslint/no-require-imports */
-const proactive =
-   false
-    ? require('./commands/proactive.js').default
-    : null
 const briefCommand =
   false
     ? require('./commands/brief.js').default
@@ -73,9 +66,7 @@ import rewind from './commands/rewind/index.js'
 import heapDump from './commands/heapdump/index.js'
 import summary from './commands/summary/index.js'
 import sandboxToggle from './commands/sandbox-toggle/index.js'
-import chrome from './commands/chrome/index.js'
 import stickers from './commands/stickers/index.js'
-import advisor from './commands/advisor.js'
 import { logError } from './utils/log.js'
 import { toError } from './utils/errors.js'
 import { logForDebugging } from './utils/debug.js'
@@ -147,17 +138,14 @@ export const INTERNAL_ONLY_COMMANDS = [
 // since underlying functions read from config, which can't be read at module initialization time
 const COMMANDS = memoize((): Command[] => [
   addDir,
-  advisor,
   agents,
   branch,
   btw,
-  chrome,
   clear,
   color,
   compact,
   config,
   copy,
-  desktop,
   context,
   contextNonInteractive,
   diff,
@@ -169,8 +157,6 @@ const COMMANDS = memoize((): Command[] => [
   ide,
   init,
   keybindings,
-  installGitHubApp,
-  installSlackApp,
   mcp,
   memory,
   model,
@@ -199,7 +185,6 @@ const COMMANDS = memoize((): Command[] => [
   vim,
   ...(webCmd ? [webCmd] : []),
   ...(forkCmd ? [forkCmd] : []),
-  ...(proactive ? [proactive] : []),
   ...(briefCommand ? [briefCommand] : []),
   ...(assistantCommand ? [assistantCommand] : []),
   ...(bridge ? [bridge] : []),
@@ -272,34 +257,6 @@ async function getSkills(cwd: string): Promise<{
 const getWorkflowCommands = null
 
 /**
- * Filters commands by their declared `availability` (auth/provider requirement).
- * Commands without `availability` are treated as universal.
- * This runs before `isEnabled()` so that provider-gated commands are hidden
- * regardless of feature-flag state.
- *
- * Not memoized — auth state can change mid-session (e.g. after /login),
- * so this must be re-evaluated on every getCommands() call.
- */
-export function meetsAvailabilityRequirement(cmd: Command): boolean {
-  if (!cmd.availability) return true
-  for (const a of cmd.availability) {
-    switch (a) {
-      case 'claude-ai':
-        break
-      case 'console':
-        // Excludes 3P (Bedrock/Vertex/Foundry) who don't set ANTHROPIC_BASE_URL
-        break
-      default: {
-        const _exhaustive: never = a
-        void _exhaustive
-        break
-      }
-    }
-  }
-  return false
-}
-
-/**
  * Loads all command sources (skills, plugins, workflows). Memoized by cwd
  * because loading is expensive (disk I/O, dynamic imports).
  */
@@ -327,8 +284,8 @@ const loadAllCommands = memoize(async (cwd: string): Promise<Command[]> => {
 
 /**
  * Returns commands available to the current user. The expensive loading is
- * memoized, but availability and isEnabled checks run fresh every call so
- * auth changes (e.g. /login) take effect immediately.
+ * memoized, but isEnabled checks run fresh every call so
+ * config changes take effect immediately.
  */
 export async function getCommands(cwd: string): Promise<Command[]> {
   const allCommands = await loadAllCommands(cwd)
@@ -338,7 +295,7 @@ export async function getCommands(cwd: string): Promise<Command[]> {
 
   // Build base commands without dynamic skills
   const baseCommands = allCommands.filter(
-    _ => meetsAvailabilityRequirement(_) && isCommandEnabled(_),
+    _ => isCommandEnabled(_),
   )
 
   if (dynamicSkills.length === 0) {
@@ -350,7 +307,6 @@ export async function getCommands(cwd: string): Promise<Command[]> {
   const uniqueDynamicSkills = dynamicSkills.filter(
     s =>
       !baseCommandNames.has(s.name) &&
-      meetsAvailabilityRequirement(s) &&
       isCommandEnabled(s),
   )
 

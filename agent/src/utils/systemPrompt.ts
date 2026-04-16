@@ -10,24 +10,12 @@ import { asSystemPrompt, type SystemPrompt } from './systemPromptType.js'
 
 export { asSystemPrompt, type SystemPrompt } from './systemPromptType.js'
 
-// Dead code elimination: conditional import for proactive mode.
-// Same pattern as prompts.ts — lazy require to avoid pulling the module
-// into non-proactive builds.
-// proactive module removed — stub
-const proactiveModule = null
-
-function isProactiveActive_SAFE_TO_CALL_ANYWHERE(): boolean {
-  return proactiveModule?.isProactiveActive() ?? false
-}
 
 /**
  * Builds the effective system prompt array based on priority:
  * 0. Override system prompt (if set, e.g., via loop mode - REPLACES all other prompts)
  * 1. Coordinator system prompt (if coordinator mode is active)
- * 2. Agent system prompt (if mainThreadAgentDefinition is set)
- *    - In proactive mode: agent prompt is APPENDED to default (agent adds domain
- *      instructions on top of the autonomous agent prompt, like teammates do)
- *    - Otherwise: agent prompt REPLACES default
+ * 2. Agent system prompt (if mainThreadAgentDefinition is set) - REPLACES default
  * 3. Custom system prompt (if specified via --system-prompt)
  * 4. Default system prompt (the standard Axiomate prompt)
  *
@@ -79,22 +67,6 @@ export function buildEffectiveSystemPrompt({
 
   // Log agent memory loaded event for main loop agents
   if (mainThreadAgentDefinition?.memory) {
-  }
-
-  // In proactive mode, agent instructions are appended to the default prompt
-  // rather than replacing it. The proactive default prompt is already lean
-  // (autonomous agent identity + memory + env + proactive section), and agents
-  // add domain-specific behavior on top — same pattern as teammates.
-  if (
-    agentSystemPrompt &&
-    ( false) &&
-    isProactiveActive_SAFE_TO_CALL_ANYWHERE()
-  ) {
-    return asSystemPrompt([
-      ...defaultSystemPrompt,
-      `\n# Custom Agent Instructions\n${agentSystemPrompt}`,
-      ...(appendSystemPrompt ? [appendSystemPrompt] : []),
-    ])
   }
 
   return asSystemPrompt([

@@ -435,7 +435,7 @@ async function getMessagesForSlashCommand(commandName: string, args: string, set
               // Outside fullscreen keep them so scrollback shows what ran.
               // Only skip "<Name> dismissed" modal-close notifications —
               // commands that early-exit before showing a modal (e.g.
-              // /rename, /proactive) use display:system for actual
+              // /rename) use display:system for actual
               // output that must reach the transcript.
               const skipTranscript = isFullscreenEnvEnabled() && typeof result === 'string' && result.endsWith(' dismissed');
               void resolve({

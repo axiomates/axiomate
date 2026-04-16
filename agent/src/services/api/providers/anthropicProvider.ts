@@ -305,17 +305,6 @@ export class AnthropicProvider implements LLMProvider {
             onProviderEvent({ type: 'research', data: ext.research })
           }
 
-          // Advisor state
-          if (raw.type === 'content_block_start') {
-
-            const block = (raw as ContentBlockStartEvent).content_block
-            if (block.type === 'server_tool_use' && block.name === 'advisor') {
-              onProviderEvent({ type: 'advisor_start', model: request.model })
-            }
-            if (block.type === 'advisor_tool_result') {
-              onProviderEvent({ type: 'advisor_end' })
-            }
-          }
         }
       : undefined
     const neutralStream = anthropicStreamAdapter(rawStream!, onRawEvent)

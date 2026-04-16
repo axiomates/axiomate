@@ -150,7 +150,7 @@ describe('normalizeContentFromAPI', () => {
 
   describe('server_tool_use blocks', () => {
     it('parses string input to object', () => {
-      const blocks = [serverToolUseBlock('advisor', '{"query":"test"}')]
+      const blocks = [serverToolUseBlock('web_search', '{"query":"test"}')]
       const result = normalizeContentFromAPI(blocks, NO_TOOLS)
       expect(result[0]).toMatchObject({
         type: 'server_tool_use',
@@ -159,7 +159,7 @@ describe('normalizeContentFromAPI', () => {
     })
 
     it('keeps object input as-is', () => {
-      const blocks = [serverToolUseBlock('advisor', { query: 'test' })]
+      const blocks = [serverToolUseBlock('web_search', { query: 'test' })]
       const result = normalizeContentFromAPI(blocks, NO_TOOLS)
       expect(result[0]).toMatchObject({
         type: 'server_tool_use',

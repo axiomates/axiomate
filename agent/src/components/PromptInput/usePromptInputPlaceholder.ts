@@ -1,17 +1,9 @@
-import { feature } from 'bun:bundle'
 import { useMemo } from 'react'
 import { useCommandQueue } from '../../hooks/useCommandQueue.js'
 import { useAppState } from '../../state/AppState.js'
 import { getGlobalConfig } from '../../utils/config.js'
 import { getExampleCommandFromCache } from '../../utils/exampleCommands.js'
 import { isQueuedCommandEditable } from '../../utils/messageQueueManager.js'
-
-// Dead code elimination: conditional import for proactive mode
-/* eslint-disable @typescript-eslint/no-require-imports */
-const proactiveModule =
-  false
-    ? require('../../proactive/index.js')
-    : null
 
 type Props = {
   input: string
@@ -55,12 +47,9 @@ export function usePromptInputPlaceholder({
     }
 
     // Show example command if user has not submitted yet and suggestions are enabled.
-    // Skip in proactive mode — the model drives the conversation so onboarding
-    // examples are irrelevant and block prompt suggestions from showing.
     if (
       submitCount < 1 &&
-      promptSuggestionEnabled &&
-      !proactiveModule?.isProactiveActive()
+      promptSuggestionEnabled
     ) {
       return getExampleCommandFromCache()
     }

@@ -131,7 +131,7 @@ export function createChromeContext(
       bridgeConfig: {
         url: chromeBridgeUrl,
         getUserId: async () => {
-          return getGlobalConfig().oauthAccount?.accountUuid
+          return undefined
         },
         getOAuthToken: async () => {
           return ''

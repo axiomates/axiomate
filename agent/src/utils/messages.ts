@@ -66,7 +66,6 @@ import type {
   ToolUseSummaryMessage,
   UserMessage,
 } from '../types/message.js'
-import { isAdvisorBlock } from './advisor.js'
 import { isAgentSwarmsEnabled } from './agentSwarmsEnabled.js'
 import { count } from './array.js'
 import {
@@ -753,7 +752,6 @@ export function normalizeMessages(messages: Message[]): NormalizedMessage[] {
             uuid,
             error: message.error,
             isApiErrorMessage: message.isApiErrorMessage,
-            advisorModel: message.advisorModel,
           } as NormalizedAssistantMessage
         })
       }
@@ -1234,7 +1232,7 @@ export function buildMessageLookups(
 
     if (msg.type === 'assistant') {
       for (const content of msg.message.content) {
-        // Track all server-side *_tool_result blocks (advisor, web_search,
+        // Track all server-side *_tool_result blocks (web_search,
         // code_execution, mcp, etc.) — any block with tool_use_id is a result.
         if (
           'tool_use_id' in content &&
@@ -1243,15 +1241,6 @@ export function buildMessageLookups(
           resolvedToolUseIDs.add(
             (content as { tool_use_id: string }).tool_use_id,
           )
-        }
-        if ((content.type as string) === 'advisor_tool_result') {
-          const result = content as unknown as {
-            tool_use_id: string
-            content: { type: string }
-          }
-          if (result.content.type === 'advisor_tool_result_error') {
-            erroredToolUseIDs.add(result.tool_use_id)
-          }
         }
       }
     }
@@ -4982,8 +4971,7 @@ export function ensureToolResultPairing(
     // Also strip orphaned server-side tool use blocks (server_tool_use,
     // mcp_tool_use) whose result blocks live in the SAME assistant message.
     // If the stream was interrupted before the result arrived, the use block
-    // has no matching *_tool_result and the API rejects with e.g. "advisor
-    // tool use without corresponding advisor_tool_result".
+    // has no matching *_tool_result and the API rejects it.
     const seenToolUseIds = new Set<string>()
     const finalContent = msg.message.content.filter(block => {
       if (block.type === 'tool_use') {
@@ -5208,40 +5196,6 @@ export function ensureToolResultPairing(
   }
 
   return result
-}
-
-/**
- * Strip advisor blocks from messages. The API rejects server_tool_use blocks
- * with name "advisor" unless the advisor beta header is present.
- */
-export function stripAdvisorBlocks(
-  messages: (UserMessage | AssistantMessage)[],
-): (UserMessage | AssistantMessage)[] {
-  let changed = false
-  const result = messages.map(msg => {
-    if (msg.type !== 'assistant') return msg
-    const content = msg.message.content
-    const filtered = content.filter(b => !isAdvisorBlock(b))
-    if (filtered.length === content.length) return msg
-    changed = true
-    if (
-      filtered.length === 0 ||
-      filtered.every(
-        b =>
-          b.type === 'thinking' ||
-          b.type === 'redacted_thinking' ||
-          (b.type === 'text' && (!b.text || !b.text.trim())),
-      )
-    ) {
-      filtered.push({
-        type: 'text' as const,
-        text: '[Advisor response]',
-        citations: [],
-      })
-    }
-    return { ...msg, message: { ...msg.message, content: filtered } }
-  })
-  return changed ? result : messages
 }
 
 export function wrapCommandText(

@@ -91,19 +91,14 @@ export const getCoreUserData = memoize(
       }
     }
 
-    // Only include OAuth account data when actively using OAuth authentication
-    const oauthAccount = undefined
-    const organizationUuid = oauthAccount?.organizationUuid
-    const accountUuid = oauthAccount?.accountUuid
-
     return {
       deviceId,
       sessionId: getSessionId(),
       email: getEmail(),
       appVersion: MACRO.VERSION,
       platform: getHostPlatformForAnalytics(),
-      organizationUuid,
-      accountUuid,
+      organizationUuid: undefined,
+      accountUuid: undefined,
       userType: process.env.USER_TYPE,
       subscriptionType,
       rateLimitTier,
@@ -135,22 +130,10 @@ function getEmail(): string | undefined {
     return cachedEmail
   }
 
-  // Only include OAuth email when actively using OAuth authentication
-  const oauthAccount = undefined
-  if (oauthAccount?.emailAddress) {
-    return oauthAccount.emailAddress
-  }
-
   return undefined
 }
 
 async function getEmailAsync(): Promise<string | undefined> {
-  // Only include OAuth email when actively using OAuth authentication
-  const oauthAccount = undefined
-  if (oauthAccount?.emailAddress) {
-    return oauthAccount.emailAddress
-  }
-
   return undefined
 }
 

@@ -66,7 +66,6 @@ import {
   OFFICIAL_MARKETPLACE_NAME,
   OFFICIAL_MARKETPLACE_SOURCE,
 } from './officialMarketplace.js'
-import { fetchOfficialMarketplaceFromGcs } from './officialMarketplaceGcs.js'
 import {
   deletePluginDataDir,
   getPluginSeedDirs,
@@ -2308,27 +2307,6 @@ export async function refreshAllMarketplaces(): Promise<void> {
     if (entry.source.source === 'settings') {
       continue
     }
-    // inc-5046: same GCS intercept as refreshMarketplace() — bulk update
-    // hits this path on `claude plugin marketplace update` (no name arg).
-    if (name === OFFICIAL_MARKETPLACE_NAME) {
-      const sha = await fetchOfficialMarketplaceFromGcs(
-        entry.installLocation,
-        getMarketplacesCacheDir(),
-      )
-      if (sha !== null) {
-        config[name]!.lastUpdated = new Date().toISOString()
-        continue
-      }
-      if (
-        false
-      ) {
-        logForDebugging(
-          `Skipping official marketplace bulk refresh: GCS failed, git fallback disabled`,
-        )
-        continue
-      }
-      // fall through to git
-    }
     try {
       const { cachePath } = await loadAndCacheMarketplace(entry.source)
       config[name]!.lastUpdated = new Date().toISOString()
@@ -2419,41 +2397,6 @@ export async function refreshMarketplace(
             `Run: claude plugin marketplace remove "${name}" and re-add it.`,
         )
       }
-    }
-
-    // inc-5046: official marketplace fetches from a GCS mirror instead of
-    // git-cloning GitHub. Special-cased by NAME (not a new source type) so
-    // no data migration is needed — existing known_marketplaces.json entries
-    // still say source:'github', which is true (GCS is a mirror).
-    if (name === OFFICIAL_MARKETPLACE_NAME) {
-      const sha = await fetchOfficialMarketplaceFromGcs(
-        installLocation,
-        getMarketplacesCacheDir(),
-      )
-      if (sha !== null) {
-        config[name] = { ...entry, lastUpdated: new Date().toISOString() }
-        await saveKnownMarketplacesConfig(config)
-        return
-      }
-      // GCS failed — fall through to git ONLY if the kill-switch allows.
-      // Default true (backend write perms are pending as of inc-5046); flip
-      // to false via config once the backend is confirmed live so new
-      // clients NEVER hit GitHub for the official marketplace.
-      if (
-        false
-      ) {
-        // Throw, don't return — every other failure path in this function
-        // throws, and callers like ManageMarketplaces.tsx:259 increment
-        // updatedCount on any non-throwing return. A silent return would
-        // report "Updated 1 marketplace" when nothing was refreshed.
-        throw new Error(
-          'Official marketplace GCS fetch failed and git fallback is disabled',
-        )
-      }
-      logForDebugging('Official marketplace GCS failed; falling back to git', {
-        level: 'warn',
-      })
-      // ...falls through to source.source === 'github' branch below
     }
 
     // Update based on source type

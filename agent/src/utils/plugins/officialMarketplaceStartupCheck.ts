@@ -26,7 +26,6 @@ import {
   OFFICIAL_MARKETPLACE_NAME,
   OFFICIAL_MARKETPLACE_SOURCE,
 } from './officialMarketplace.js'
-import { fetchOfficialMarketplaceFromGcs } from './officialMarketplaceGcs.js'
 
 /**
  * Reason why the official marketplace was not installed
@@ -36,7 +35,6 @@ export type OfficialMarketplaceSkipReason =
   | 'already_installed'
   | 'policy_blocked'
   | 'git_unavailable'
-  | 'gcs_unavailable'
   | 'unknown'
 
 /**
@@ -109,7 +107,6 @@ function shouldRetryInstallation(
   return (
     failReason === 'unknown' ||
     failReason === 'git_unavailable' ||
-    failReason === 'gcs_unavailable' ||
     failReason === undefined
   )
 }
@@ -201,62 +198,8 @@ export async function checkAndInstallOfficialMarketplace(): Promise<OfficialMark
       return { installed: false, skipped: true, reason: 'policy_blocked' }
     }
 
-    // inc-5046: try GCS mirror first — doesn't need git, doesn't hit GitHub.
-    // Backend (anthropic#317037) publishes a marketplace zip to the same
-    // bucket as the native binary. If GCS succeeds, register the marketplace
-    // with source:'github' (still true — GCS is a mirror) and skip git
-    // entirely.
     const cacheDir = getMarketplacesCacheDir()
     const installLocation = join(cacheDir, OFFICIAL_MARKETPLACE_NAME)
-    const gcsSha = await fetchOfficialMarketplaceFromGcs(
-      installLocation,
-      cacheDir,
-    )
-    if (gcsSha !== null) {
-      const known = await loadKnownMarketplacesConfig()
-      known[OFFICIAL_MARKETPLACE_NAME] = {
-        source: OFFICIAL_MARKETPLACE_SOURCE,
-        installLocation,
-        lastUpdated: new Date().toISOString(),
-      }
-      await saveKnownMarketplacesConfig(known)
-
-      saveGlobalConfig(current => ({
-        ...current,
-        officialMarketplaceAutoInstallAttempted: true,
-        officialMarketplaceAutoInstalled: true,
-        officialMarketplaceAutoInstallFailReason: undefined,
-        officialMarketplaceAutoInstallRetryCount: undefined,
-        officialMarketplaceAutoInstallLastAttemptTime: undefined,
-        officialMarketplaceAutoInstallNextRetryTime: undefined,
-      }))
-      return { installed: true, skipped: false }
-    }
-    // GCS failed (404 until backend writes, or network). Fall through to git
-    // ONLY if the kill-switch allows — same gate as refreshMarketplace().
-    if (
-      false
-    ) {
-      logForDebugging(
-        'Official marketplace GCS failed; git fallback disabled by flag — skipping install',
-      )
-      // Same retry-with-backoff metadata as git_unavailable below — transient
-      // GCS failures should retry with exponential backoff, not give up.
-      const retryCount =
-        (config.officialMarketplaceAutoInstallRetryCount || 0) + 1
-      const now = Date.now()
-      const nextRetryTime = now + calculateNextRetryDelay(retryCount)
-      saveGlobalConfig(current => ({
-        ...current,
-        officialMarketplaceAutoInstallAttempted: true,
-        officialMarketplaceAutoInstalled: false,
-        officialMarketplaceAutoInstallFailReason: 'gcs_unavailable',
-        officialMarketplaceAutoInstallRetryCount: retryCount,
-        officialMarketplaceAutoInstallLastAttemptTime: now,
-        officialMarketplaceAutoInstallNextRetryTime: nextRetryTime,
-      }))
-      return { installed: false, skipped: true, reason: 'gcs_unavailable' }
-    }
 
     // Check git availability
     const gitAvailable = await checkGitAvailable()

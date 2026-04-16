@@ -12,11 +12,8 @@
 // that sandbox network restrictions require explicit user permission rules.
 
 export const PREAPPROVED_HOSTS = new Set([
-  // Anthropic
-  'docs.anthropic.com',
-  'code.claude.com',
+  // AI/LLM documentation
   'modelcontextprotocol.io',
-  'github.com/axiomates',
   'agentskills.io',
 
   // Top Programming Languages

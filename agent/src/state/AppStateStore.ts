@@ -420,8 +420,6 @@ export type AppState = DeepImmutable<{
   denialTracking?: DenialTrackingState
   // Active overlays (Select dialogs, etc.) for Escape key coordination
   activeOverlays: ReadonlySet<string>
-  // Advisor model for server-side advisor tool (undefined = disabled).
-  advisorModel?: string
   // Effort value
   effortValue?: EffortValue
   // Always-on bridge: permission callbacks for bidirectional permission checks

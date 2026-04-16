@@ -4,7 +4,7 @@
  * content blocks, and yields AssistantMessage / error messages.
  *
  * Deliberately excludes provider-specific concerns: stall detection, TTFB,
- * cost calculation, research field handling, advisor state tracking.
+ * cost calculation, research field handling.
  */
 import { randomUUID } from 'crypto'
 import type { Tools } from '../../Tool.js'

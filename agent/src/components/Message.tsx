@@ -25,12 +25,10 @@ import type {
   ProgressMessage,
   SystemMessage,
 } from '../types/message.js'
-import { type AdvisorBlock, isAdvisorBlock } from '../utils/advisor.js'
 import { isFullscreenEnvEnabled } from '../utils/fullscreen.js'
 import { logError } from '../utils/log.js'
 import type { buildMessageLookups } from '../utils/messages.js'
 import { CompactSummary } from './CompactSummary.js'
-import { AdvisorMessage } from './messages/AdvisorMessage.js'
 import { AssistantRedactedThinkingMessage } from './messages/AssistantRedactedThinkingMessage.js'
 import { AssistantTextMessage } from './messages/AssistantTextMessage.js'
 import { AssistantThinkingMessage } from './messages/AssistantThinkingMessage.js'
@@ -132,7 +130,6 @@ function MessageImpl({
               onOpenRateLimitOptions={onOpenRateLimitOptions}
               thinkingBlockId={`${message.uuid}:${index}`}
               lastThinkingBlockId={lastThinkingBlockId}
-              advisorModel={message.advisorModel}
             />
           ))}
         </Box>
@@ -348,12 +345,10 @@ function AssistantMessageBlock({
   onOpenRateLimitOptions,
   thinkingBlockId,
   lastThinkingBlockId,
-  advisorModel,
 }: {
   param:
     | BetaContentBlock
     | ConnectorTextBlock
-    | AdvisorBlock
     | TextBlockParam
     | ImageBlockParam
     | ThinkingBlockParam
@@ -376,7 +371,6 @@ function AssistantMessageBlock({
   thinkingBlockId: string
   /** ID of the last thinking block to show, null means show all */
   lastThinkingBlockId?: string | null
-  advisorModel?: string
 }): React.ReactNode {
   switch (param.type) {
     case 'tool_use':
@@ -430,20 +424,6 @@ function AssistantMessageBlock({
       )
     }
     case 'server_tool_use':
-    case 'advisor_tool_result':
-      if (isAdvisorBlock(param)) {
-        return (
-          <AdvisorMessage
-            block={param}
-            addMargin={addMargin}
-            resolvedToolUseIDs={lookups.resolvedToolUseIDs}
-            erroredToolUseIDs={lookups.erroredToolUseIDs}
-            shouldAnimate={shouldAnimate}
-            verbose={verbose || isTranscriptMode}
-            advisorModel={advisorModel}
-          />
-        )
-      }
       logError(new Error(`Unable to render server tool block: ${param.type}`))
       return null
     default:
