@@ -4,7 +4,7 @@ import type { SystemAPIErrorMessage } from '../../types/message.js'
 import { logForDebugging } from '../../utils/debug.js'
 import { logError } from '../../utils/log.js'
 import { createSystemAPIErrorMessage } from '../../utils/messages.js'
-import { getAPIProviderForStatsig } from '../../utils/model/providers.js'
+import { getAPIProviderForanalytics } from '../../utils/model/providers.js'
 import {
   clearAwsCredentialsCache,
   clearGcpCredentialsCache,
@@ -172,7 +172,7 @@ export async function* withRetry<C, T>(
       // Single-pass classification — all retry decisions read from this
       // ---------------------------------------------------------------
       const classified = classifyError(error, {
-        provider: getAPIProviderForStatsig(),
+        provider: getAPIProviderForanalytics(),
         model: options.model,
       })
 

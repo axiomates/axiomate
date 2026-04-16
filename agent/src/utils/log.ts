@@ -342,7 +342,6 @@ export function captureAPIRequest(
   // available via React state.
   const { messages, ...paramsWithoutMessages } = params
   setLastAPIRequest(paramsWithoutMessages)
-  // For ant users only: also keep a reference to the final messages array so
   // /share's serialized_conversation.json captures the exact post-compaction,
   // AXIOMATE.md-injected payload the API received. Overwritten each turn;
   // dumpPrompts.ts already holds 5 full request bodies for ants, so this is

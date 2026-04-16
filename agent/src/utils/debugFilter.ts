@@ -85,7 +85,6 @@ export function extractDebugCategories(message: string): string[] {
   }
 
   // Pattern 4: Check for additional categories in the message
-  // e.g., "[ANT-ONLY] 1P event: ax_timer" should match both "ant-only" and "1p"
   if (message.toLowerCase().includes('1p event:')) {
     categories.push('1p')
   }

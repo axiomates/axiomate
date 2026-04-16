@@ -324,7 +324,7 @@ function handleRemoteAuthFailure(
   const label: Record<typeof transportType, string> = {
     sse: 'SSE',
     http: 'HTTP',
-    'claudeai-proxy': 'claude.ai proxy',
+    'claudeai-proxy': 'remote service proxy',
   }
   logMCPDebug(
     name,

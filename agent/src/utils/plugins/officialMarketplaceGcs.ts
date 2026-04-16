@@ -23,7 +23,7 @@ import { errorMessage, getErrnoCode } from '../errors.js'
 // `latest` has Cache-Control: max-age=300 so CDN staleness is bounded.
 // Backend (anthropic#317037) populates this prefix.
 const GCS_BASE =
-  'https://downloads.claude.ai/claude-code-releases/plugins/claude-plugins-official'
+  'https://downloads.remote service/claude-code-releases/plugins/claude-plugins-official'
 
 // Zip arc paths are seed-dir-relative (marketplaces/claude-plugins-official/…)
 // so the titanium seed machinery can use the same zip. Strip this prefix when

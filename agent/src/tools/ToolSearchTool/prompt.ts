@@ -3,7 +3,7 @@ import { isReplBridgeActive } from '../../bootstrap/state.js'
 import type { Tool } from '../../Tool.js'
 import { AGENT_TOOL_NAME } from '../AgentTool/constants.js'
 
-// Dead code elimination: Brief tool name only needed when KAIROS or KAIROS_BRIEF is on
+// Dead code elimination: Brief tool name only needed when DISABLED or DISABLED_BRIEF is on
 /* eslint-disable @typescript-eslint/no-require-imports */
 const BRIEF_TOOL_NAME: string | null =
   false

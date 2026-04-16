@@ -117,7 +117,6 @@ function logClassifierResultForAnts(
   _descriptions: string[],
   _result: ClassifierResult,
 ): void {
-  // Disabled: was ant-only telemetry
 }
 
 /**
@@ -140,7 +139,6 @@ export function getSimpleCommandPrefix(command: string): string | null {
   if (tokens.length === 0) return null
 
   // Skip env var assignments (VAR=value) at the start, but only if they are
-  // in SAFE_ENV_VARS (or ANT_ONLY_SAFE_ENV_VARS for ant users). If a non-safe
   // env var is encountered, return null to fall back to exact match. This
   // prevents generating prefix rules like Bash(npm run:*) that can never match
   // at allow-rule check time, because stripSafeWrappers only strips safe vars.
@@ -451,7 +449,7 @@ const ANT_ONLY_SAFE_ENV_VARS = new Set([
   'HARNESS_QUIET', // quiet mode flag
   'TEST_CROSSCHECK_LISTS_MATCH_UPDATE', // test update flag
   'DBT_PER_DEVELOPER_ENVIRONMENTS', // DBT config
-  'STATSIG_FORD_DB_CHECKS', // statsig DB check flag
+  'ANALYTICS_FORD_DB_CHECKS', // analytics DB check flag
 
   // Build configuration
   'ANT_ENVIRONMENT', // Anthropic environment name

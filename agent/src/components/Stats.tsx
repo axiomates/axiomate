@@ -315,7 +315,6 @@ function OverviewTab({
   const rangeDays =
     dateRange === '7d' ? 7 : dateRange === '30d' ? 30 : stats.totalDays
 
-  // Compute shot stats data (ant-only, gated by feature flag)
   let shotStatsData: {
     avgShots: string
     buckets: { label: string; count: number; pct: number }[]
@@ -447,7 +446,7 @@ function OverviewTab({
       </Box>
 
 
-      {/* Shot stats (ant-only) */}
+      {/* Shot stats */}
       {shotStatsData && (
         <>
           <Box marginTop={1}>
@@ -992,7 +991,6 @@ function renderOverviewToAnsi(stats: AxiomateStats): string[] {
   lines.push(row('Active days', activeDaysVal, 'Peak hour', peakHourVal))
 
 
-  // Shot stats (ant-only)
   if (feature('SHOT_STATS') && stats.shotDistribution) {
     const dist = stats.shotDistribution
     const totalWithShots = Object.values(dist).reduce((s, n) => s + n, 0)

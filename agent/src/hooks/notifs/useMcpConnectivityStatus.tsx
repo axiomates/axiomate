@@ -76,7 +76,7 @@ export function useMcpConnectivityStatus({
         jsx: (
           <>
             <Text color="error">
-              {failedClaudeAiClients.length} claude.ai{' '}
+              {failedClaudeAiClients.length} remote service{' '}
               {failedClaudeAiClients.length === 1 ? 'connector' : 'connectors'}{' '}
               unavailable
             </Text>
@@ -110,7 +110,7 @@ export function useMcpConnectivityStatus({
         jsx: (
           <>
             <Text color="warning">
-              {needsAuthClaudeAiServers.length} claude.ai{' '}
+              {needsAuthClaudeAiServers.length} remote service{' '}
               {needsAuthClaudeAiServers.length === 1
                 ? 'connector needs'
                 : 'connectors need'}{' '}

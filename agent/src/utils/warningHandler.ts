@@ -91,15 +91,12 @@ export function initializeWarningHandler(): void {
 
       const isInternal = isInternalWarning(warning)
 
-      // Always log to Statsig for monitoring
-      // Include full details for ant users only, since they may contain code or filepaths
 
       // In debug mode, show all warnings with context
       if (isEnvTruthy(process.env.CLAUDE_DEBUG)) {
         const prefix = isInternal ? '[Internal Warning]' : '[Warning]'
         logForDebugging(`${prefix} ${warning.toString()}`, { level: 'warn' })
       }
-      // Hide all warnings from users - they are only logged to Statsig for monitoring
     } catch {
       // Fail silently - we don't want the warning handler to cause issues
     }

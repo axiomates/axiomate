@@ -41,7 +41,7 @@ import { getMemoryPath } from '../../utils/config.js'
 import { COMPACT_MAX_OUTPUT_TOKENS } from '../../utils/context.js'
 import {
   analyzeContext,
-  tokenStatsToStatsigMetrics,
+  tokenStatsToanalyticsMetrics,
 } from '../../utils/contextAnalysis.js'
 import { logForDebugging } from '../../utils/debug.js'
 import { AbortError, hasExactErrorMessage } from '../../utils/errors.js'

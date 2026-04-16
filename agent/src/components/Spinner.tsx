@@ -1,4 +1,3 @@
-// biome-ignore-all assist/source/organizeImports: ANT-ONLY import markers must not be reordered
 import { Box, Text } from '../ink.js'
 import * as React from 'react'
 import { useEffect, useMemo, useRef, useState } from 'react'
@@ -308,7 +307,6 @@ function SpinnerWithVerbInner({
         ? "Use /btw to ask a quick side question without interrupting Claude's current work"
         : spinnerTip
 
-  // Budget text (ant-only) — shown above the tip line
   let budgetText: string | null = null
   if (feature('TOKEN_BUDGET')) {
     const budget = getCurrentTurnTokenBudget()

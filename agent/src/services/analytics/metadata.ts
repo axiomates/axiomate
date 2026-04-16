@@ -1,4 +1,3 @@
-// biome-ignore-all assist/source/organizeImports: ANT-ONLY import markers must not be reordered
 /**
  * Shared event metadata enrichment for analytics systems
  *
@@ -91,7 +90,6 @@ export function isToolDetailsLoggingEnabled(): boolean {
  *
  * Per go/taxonomy, MCP names are medium PII. We log them for:
  * - Cowork (entrypoint=local-agent) — no ZDR concept, log all MCPs
- * - claude.ai-proxied connectors — always official (from claude.ai's list)
  * - Servers whose URL matches the official MCP registry — directory
  *   connectors added via `claude mcp add`, not customer-specific config
  *
@@ -488,9 +486,9 @@ export type EventMetadata = {
   teamName?: string // Team name for swarm agents (from env var or AsyncLocalStorage)
   subscriptionType?: string // OAuth subscription tier (max, pro, enterprise, team)
   rh?: string // Hashed repo remote URL (first 16 chars of SHA256), for joining with server-side data
-  kairosActive?: true // KAIROS assistant mode active (ant-only; set in main.tsx after gate check)
-  skillMode?: 'discovery' | 'coach' | 'discovery_and_coach' // Which skill surfacing mechanism(s) are gated on (ant-only; for BQ session segmentation)
-  observerMode?: 'backseat' | 'skillcoach' | 'both' // Which observer classifiers are gated on (ant-only; for BQ cohort splits on ax_backseat_* events)
+  kairosActive?: true // DISABLED assistant mode active
+  skillMode?: 'discovery' | 'coach' | 'discovery_and_coach' // Which skill surfacing mechanism(s) are gated on
+  observerMode?: 'backseat' | 'skillcoach' | 'both' // Which observer classifiers are gated on
 }
 
 /**

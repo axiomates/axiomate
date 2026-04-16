@@ -883,7 +883,6 @@ export async function initializeToolPermissionContext({
   // Load all permission rules from disk
   const rulesFromDisk = loadAllPermissionRulesFromDisk()
 
-  // Ant-only: Detect overly broad shell allow rules for all modes.
   // Bash(*) or PowerShell(*) are equivalent to YOLO mode for that shell.
   // Skip in CCR/BYOC where --allowed-tools is the intended pre-approval mechanism.
   // Variable name kept for return-field compat; contains both shells.
@@ -902,7 +901,6 @@ export async function initializeToolPermissionContext({
     ]
   }
 
-  // Ant-only: Detect dangerous shell permissions for auto mode
   // Dangerous permissions (like Bash(*), Bash(python:*), PowerShell(iex:*)) would auto-allow
   // before the classifier can evaluate them, defeating the purpose of safer YOLO mode
   let dangerousPermissions: DangerousPermissionInfo[] = []

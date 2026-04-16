@@ -110,7 +110,6 @@ type State = {
   agentColorIndex: number
   // Last API request for bug reports
   lastAPIRequest: Record<string, unknown> | null
-  // Messages from the last API request (ant-only; reference, not clone).
   // Captures the exact post-compaction, AXIOMATE.md-injected message set sent
   // to the API so /share's serialized_conversation.json reflects reality.
   lastAPIRequestMessages: Record<string, unknown>[] | null
@@ -183,7 +182,6 @@ type State = {
       agentId: string | null
     }
   >
-  // Track slow operations for dev bar display (ant-only)
   slowOperations: Array<{
     operation: string
     durationMs: number

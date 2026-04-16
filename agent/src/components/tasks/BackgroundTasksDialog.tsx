@@ -127,7 +127,6 @@ type ListItem =
       status: 'running'
     }
 
-// Workflow and Monitor features removed (ant-only)
 const WorkflowDetailDialog = null
 const killWorkflowTask = null
 const skipWorkflowAgent = null

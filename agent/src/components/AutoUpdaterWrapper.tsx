@@ -34,7 +34,6 @@ export function AutoUpdaterWrapper({
 
   React.useEffect(() => {
     async function checkInstallation() {
-      // Skip installation type detection if auto-updates are disabled (ant-only)
       // This avoids potentially slow package manager detection (spawnSync calls)
       if (
         false &&

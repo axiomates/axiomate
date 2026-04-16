@@ -1,4 +1,3 @@
-// biome-ignore-all assist/source/organizeImports: ANT-ONLY import markers must not be reordered
 import {
   logEvent,
 } from '../services/analytics/index.js'
@@ -3466,7 +3465,6 @@ async function getTeammateMailboxAttachments(
   if (!isAgentSwarmsEnabled()) {
     return []
   }
-  // Teammate mailbox was ant-only; always return empty now
   return []
 
   // Get AppState early to check for team lead status
@@ -3825,7 +3823,6 @@ async function getVerifyPlanReminderAttachment(
   messages: Message[] | undefined,
   toolUseContext: ToolUseContext,
 ): Promise<Attachment[]> {
-  // Verify plan was ant-only; always return empty now
   return []
 
   const appState = toolUseContext.getAppState()

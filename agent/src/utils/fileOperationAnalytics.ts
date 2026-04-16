@@ -26,7 +26,6 @@ function hashFileContent(content: string): string {
 const MAX_CONTENT_HASH_SIZE = 100 * 1024
 
 /**
- * Logs file operation analytics to Statsig
  */
 export function logFileOperation(params: {
   operation: 'read' | 'write' | 'edit'

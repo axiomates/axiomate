@@ -26,16 +26,14 @@ import { jsonStringify } from './slowOperations.js'
 // eslint-disable-next-line custom-rules/no-process-env-top-level
 const DETAILED_PROFILING = isEnvTruthy(process.env.CLAUDE_CODE_PROFILE_STARTUP)
 
-// Sampling for Statsig logging: 100% DEV, 5% external
 // Decision made once at module load - non-sampled users pay no profiling cost
-const STATSIG_SAMPLE_RATE = 0.05
+const ANALYTICS_SAMPLE_RATE = 0.05
 // eslint-disable-next-line custom-rules/no-process-env-top-level
-const STATSIG_LOGGING_SAMPLED = feature('DEV')
+const ANALYTICS_LOGGING_SAMPLED = feature('DEV')
   ? true
-  : Math.random() < STATSIG_SAMPLE_RATE
+  : Math.random() < ANALYTICS_SAMPLE_RATE
 
-// Enable profiling if either detailed mode OR sampled for Statsig
-const SHOULD_PROFILE = DETAILED_PROFILING || STATSIG_LOGGING_SAMPLED
+const SHOULD_PROFILE = DETAILED_PROFILING || ANALYTICS_LOGGING_SAMPLED
 
 // Use a unique prefix to avoid conflicts with other profiler marks
 const MARK_PREFIX = 'headless_'
@@ -98,7 +96,6 @@ export function headlessProfilerCheckpoint(name: string): void {
 }
 
 /**
- * Log headless latency metrics for the current turn to Statsig.
  * Call this at the end of each turn (before processing next user message).
  */
 export function logHeadlessProfilerTurn(): void {
@@ -162,8 +159,7 @@ export function logHeadlessProfilerTurn(): void {
     metadata.entrypoint = process.env.CLAUDE_CODE_ENTRYPOINT
   }
 
-  // Log to Statsig if sampled
-  if (STATSIG_LOGGING_SAMPLED) {
+  if (ANALYTICS_LOGGING_SAMPLED) {
   }
 
   // Log detailed output if CLAUDE_CODE_PROFILE_STARTUP=1

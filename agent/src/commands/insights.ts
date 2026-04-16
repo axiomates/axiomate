@@ -56,7 +56,6 @@ type RemoteHostInfo = {
   sessionCount: number
 }
 
-// Remote host collection is disabled (was ant-only feature)
 const getRunningRemoteHosts: () => Promise<string[]> = async () => []
 const getRemoteHostSessionCount: (_hs: string) => Promise<number> =
   async () => 0
@@ -2005,7 +2004,6 @@ function generateHtmlReport(
     `
       : ''
 
-  // Build Team Feedback section (collapsible, ant-only)
   const ccImprovements: Array<{ title?: string; detail?: string; evidence?: string }> = []
   const modelImprovements: Array<{ title?: string; detail?: string; evidence?: string }> = []
   const teamFeedbackHtml =
@@ -2616,7 +2614,6 @@ export async function generateUsageReport(options?: {
 }> {
   let remoteStats: { hosts: RemoteHostInfo[]; totalCopied: number } | undefined
 
-  // Remote host collection is disabled (was ant-only feature)
 
   // Phase 1: Lite scan — filesystem metadata only (no JSONL parsing)
   const allScannedSessions = await scanAllSessions()

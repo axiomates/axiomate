@@ -284,7 +284,6 @@ function PromptInput({
   // the pill returns null for implicit-and-not-reconnecting, so nav must too,
   // otherwise bridge becomes an invisible selection stop.
   const bridgeFooterVisible = replBridgeConnected && (replBridgeExplicit || replBridgeReconnecting);
-  // Tmux pill (ant-only) — visible when there's an active tungsten session
   const hasTungstenSession = false;
   const tmuxFooterVisible = false;
   // WebBrowser pill — visible when a browser is open
@@ -1985,7 +1984,6 @@ function PromptInput({
     }} onCancel={() => setShowHistoryPicker(false)} />;
   }
 
-  // Show loop mode menu when requested (ant-only, eliminated from external builds)
   if (modelPickerElement) {
     return modelPickerElement;
   }

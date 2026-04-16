@@ -565,7 +565,7 @@ export const AgentTool = buildTool({
       description
     };
 
-    // Helper to wrap execution with a cwd override: explicit cwd arg (KAIROS)
+    // Helper to wrap execution with a cwd override: explicit cwd arg (DISABLED)
     // takes precedence over worktree isolation path.
     const cwdOverridePath = cwd ?? worktreeInfo?.worktreePath;
     const wrapWithCwd = <T,>(fn: () => T): T => cwdOverridePath ? runWithCwdOverride(cwdOverridePath, fn) : fn();

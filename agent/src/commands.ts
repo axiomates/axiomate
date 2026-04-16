@@ -287,7 +287,6 @@ export function meetsAvailabilityRequirement(cmd: Command): boolean {
       case 'claude-ai':
         break
       case 'console':
-        // Console API key user = direct 1P API customer (not 3P, not claude.ai).
         // Excludes 3P (Bedrock/Vertex/Foundry) who don't set ANTHROPIC_BASE_URL
         break
       default: {

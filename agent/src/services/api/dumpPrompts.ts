@@ -11,7 +11,6 @@ function hashString(str: string): string {
   return createHash('sha256').update(str).digest('hex')
 }
 
-// Cache last few API requests for ant users (e.g., for /issue command)
 const MAX_CACHED_REQUESTS = 5
 const cachedApiRequests: Array<{ timestamp: string; request: unknown }> = []
 

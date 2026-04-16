@@ -4,7 +4,8 @@
       "Bash(xargs grep:*)",
       "Bash(npx tsc:*)",
       "Bash(npx vitest:*)",
-      "Bash(npm run *)"
+      "Bash(npm run *)",
+      "Bash(xargs sed *)"
     ]
   }
 }

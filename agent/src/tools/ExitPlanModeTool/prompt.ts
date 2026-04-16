@@ -1,4 +1,3 @@
-// External stub for ExitPlanModeTool prompt - excludes Ant-only allowedPrompts section
 
 // Hardcoded to avoid relative import issues in stub
 const ASK_USER_QUESTION_TOOL_NAME = 'AskUserQuestion'

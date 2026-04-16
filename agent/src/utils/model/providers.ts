@@ -12,6 +12,6 @@ export function getAPIProvider(): APIProvider {
         : 'firstParty'
 }
 
-export function getAPIProviderForStatsig(): APIProvider {
+export function getAPIProviderForanalytics(): APIProvider {
   return getAPIProvider()
 }

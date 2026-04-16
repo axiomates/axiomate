@@ -249,7 +249,7 @@ export function ContextVisualization({ data }: Props): React.ReactNode {
           </Box>
         )}
 
-        {/* Show builtin tools: always-loaded + deferred (ant-only) */}
+        {/* Show builtin tools: always-loaded + deferred */}
         {((systemTools && systemTools.length > 0) || hasDeferredBuiltinTools) &&
           (feature('DEV') ? true : false) && (
             <Box flexDirection="column" marginTop={1}>

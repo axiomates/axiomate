@@ -62,7 +62,7 @@ const outputSchema = lazySchema(() =>
 type OutputSchema = ReturnType<typeof outputSchema>
 export type Output = z.infer<OutputSchema>
 
-const KAIROS_BRIEF_REFRESH_MS = 5 * 60 * 1000
+const DISABLED_BRIEF_REFRESH_MS = 5 * 60 * 1000
 
 /**
  * Entitlement check — is the user ALLOWED to use Brief? Combines build-time
@@ -70,9 +70,9 @@ const KAIROS_BRIEF_REFRESH_MS = 5 * 60 * 1000
  * here — this decides whether opt-in should be HONORED, not whether the user
  * has opted in.
  *
- * Build-time OR-gated on KAIROS || KAIROS_BRIEF (same pattern as
- * PROACTIVE || KAIROS): assistant mode depends on Brief, so KAIROS alone
- * must bundle it. KAIROS_BRIEF lets Brief ship independently.
+ * Build-time OR-gated on DISABLED || DISABLED_BRIEF (same pattern as
+ * PROACTIVE || DISABLED): assistant mode depends on Brief, so DISABLED alone
+ * must bundle it. DISABLED_BRIEF lets Brief ship independently.
  *
  * Use this to decide whether `--brief` / `defaultView: 'chat'` / `--tools`
  * listing should be honored. Use `isBriefEnabled()` to decide whether the
@@ -104,11 +104,9 @@ export function isBriefEntitled(): boolean {
  *   - `/config` defaultView picker (Config.tsx)
  *   - SendUserMessage in `--tools` / SDK `tools` option (main.tsx)
  *   - CLAUDE_CODE_BRIEF env var (maybeActivateBrief — dev/testing bypass)
- * Assistant mode (kairosActive) bypasses opt-in since its system prompt
  * hard-codes "you MUST use SendUserMessage" (systemPrompt.md:14).
  *
  * The GB gate is re-checked here as a kill-switch AND — flipping
- * ax_kairos_brief off mid-session disables the tool on the next 5-min
  * refresh even for opted-in sessions. No opt-in → always false regardless
  * of GB (this is the fix for "brief defaults on for enrolled ants").
  *

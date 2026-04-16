@@ -81,7 +81,6 @@ export type AxiomateStats = {
   // Speculation time saved
   totalSpeculationTimeSavedMs: number
 
-  // Shot stats (ant-only, gated by SHOT_STATS feature flag)
   shotDistribution?: { [shotCount: number]: number }
   oneShotRate?: number
 }
@@ -208,7 +207,6 @@ async function processSessionFiles(
       // their token usage counted, but not as separate sessions.
       const isSubagentFile = sessionFile.includes(`${sep}subagents${sep}`)
 
-      // Extract shot count from PR attribution in gh pr create calls (ant-only)
       // This must run before the sidechain filter since subagent transcripts
       // mark all messages as sidechain
       if (feature('SHOT_STATS') && shotDistributionMap) {

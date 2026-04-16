@@ -47,7 +47,6 @@ const COMPACTABLE_TOOLS = new Set<string>([
   FILE_WRITE_TOOL_NAME,
 ])
 
-// --- Cached microcompact state (ant-only, gated by false) ---
 // cachedMicrocompact module removed — inline stubs
 
 type CachedMCState = { pinnedEdits: PinnedCacheEdits[]; registeredTools: Set<string>; toolOrder: string[]; deletedRefs: Set<string> }
@@ -278,7 +277,6 @@ export async function microcompactMessages(
 
   // Legacy microcompact path removed — ax_cache_plum_violet is always true.
   // For contexts where cached microcompact is not available (external builds,
-  // non-ant users, unsupported models, sub-agents), no compaction happens here;
   // autocompact handles context pressure instead.
   return { messages }
 }

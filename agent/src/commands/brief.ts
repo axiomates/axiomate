@@ -31,7 +31,6 @@ const DEFAULT_BRIEF_CONFIG: BriefConfig = {
 // No TTL — this gate controls slash-command *visibility*, not a kill switch.
 // CACHED_MAY_BE_STALE still has one background-update flip (first call kicks
 // off fetch; second call sees fresh value), but no additional flips after that.
-// The tool-availability gate (ax_kairos_brief in isBriefEnabled) keeps its
 // 5-min TTL because that one IS a kill switch.
 function getBriefConfig(): BriefConfig {
   const raw: unknown = DEFAULT_BRIEF_CONFIG
@@ -82,9 +81,7 @@ const brief = {
         // (model may keep emitting plain text from inertia, or keep calling a
         // tool that just vanished). Inject an explicit reminder into the next
         // turn's context so the transition is unambiguous.
-        // Skip when Kairos is active: isBriefEnabled() short-circuits on
         // false so the tool never actually leaves the list, and
-        // the Kairos system prompt already mandates SendUserMessage.
         // Inline <system-reminder> wrap — importing wrapInSystemReminder from
         // utils/messages.ts pulls constants/xml.ts into the bridge SDK bundle
         // via this module's import chain, tripping the excluded-strings check.

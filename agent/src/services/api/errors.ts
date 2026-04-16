@@ -352,7 +352,6 @@ function logToolUseToolResultMismatch(
       }
     }
 
-    // Log to Statsig
   } catch (_) {
     // Ignore errors in debug logging
   }
@@ -516,7 +515,7 @@ export function getAssistantMessageFromError(
     // (e.g. 1M context without Extra Usage) and infra capacity 429s land here.
     if (error.message.includes('Extra usage is required for long context')) {
       const hint = getIsNonInteractiveSession()
-        ? 'enable extra usage at claude.ai/settings/usage, or use --model to switch to standard context'
+        ? 'enable extra usage at remote service/settings/usage, or use --model to switch to standard context'
         : 'run /extra-usage to enable, or /model to switch to standard context'
       return createAssistantAPIErrorMessage({
         content: `${API_ERROR_MESSAGE_PREFIX}: Extra usage is required for 1M context · ${hint}`,
@@ -632,7 +631,6 @@ export function getAssistantMessageFromError(
       '`tool_use` ids were found without `tool_result` blocks immediately after',
     )
   ) {
-    // Log to Statsig if we have the message context
     if (options?.messages && options?.messagesForAPI) {
       const toolUseIdMatch = error.message.match(/toolu_[a-zA-Z0-9]+/)
       const toolUseId = toolUseIdMatch ? toolUseIdMatch[0] : null

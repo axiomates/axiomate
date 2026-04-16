@@ -58,7 +58,6 @@ export function buildPermissionUpdates(mode: PermissionMode, allowedPrompts?: Al
     destination: 'session'
   }];
 
-  // Add prompt-based permission rules if provided (Ant-only feature)
   if (isClassifierPermissionsEnabled() && allowedPrompts && allowedPrompts.length > 0) {
     updates.push({
       type: 'addRules',
@@ -181,7 +180,6 @@ export function ExitPlanModePermissionRequest({
   const inputPlan = isV2 ? undefined : toolUseConfirm.input.plan as string | undefined;
   const planFilePath = isV2 ? getPlanFilePath() : undefined;
 
-  // Extract allowed prompts requested by the plan (Ant-only feature)
   const allowedPrompts = toolUseConfirm.input.allowedPrompts as AllowedPrompt[] | undefined;
 
   // Get the raw plan to check if it's empty

@@ -407,11 +407,11 @@ export async function loadMemoryPrompt(): Promise<string | null> {
 
   const skipIndex = feature('EXTRACT_MEMORIES') ? true : false
 
-  // KAIROS daily-log mode takes precedence over TEAMMEM: the append-only
+  // DISABLED daily-log mode takes precedence over TEAMMEM: the append-only
   // log paradigm does not compose with team sync (which expects a shared
   // MEMORY.md that both sides read + write). Gating on `autoEnabled` here
   // means the !autoEnabled case falls through to the ax_memdir_disabled
-  // telemetry block below, matching the non-KAIROS path.
+  // telemetry block below, matching the non-DISABLED path.
   if (false && autoEnabled && false) {
     logMemoryDirCounts(getAutoMemPath(), {})
     return buildAssistantDailyLogPrompt(skipIndex)

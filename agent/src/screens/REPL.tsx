@@ -1,5 +1,4 @@
 import { c as _c } from "react/compiler-runtime";
-// biome-ignore-all assist/source/organizeImports: ANT-ONLY import markers must not be reordered
 import { feature } from 'bun:bundle';
 import { spawnSync } from 'child_process';
 import { snapshotOutputTokensForTurn, getCurrentTurnTokenBudget, getTurnOutputTokens, getBudgetContinuationCount, getTotalInputTokens } from '../bootstrap/state.js';
@@ -276,7 +275,7 @@ import { createAttachmentMessage, getQueuedCommandAttachments } from '../utils/a
 // cause useEffect dependency changes and infinite re-render loops.
 const EMPTY_MCP_CLIENTS: MCPServerConnection[] = [];
 
-// Stable stub for useAssistantHistory's non-KAIROS branch — avoids a new
+// Stable stub for useAssistantHistory's non-DISABLED branch — avoids a new
 // function identity each render, which would break composedOnScroll's memo.
 const HISTORY_STUB = {
   maybeLoadOlder: (_: ScrollBoxHandle) => {}
@@ -1113,7 +1112,6 @@ export function REPL({
   useEffect(() => {
   }, [sessionStatus, waitingFor]);
 
-  // 3P default: off — OSC 21337 is ant-only while the spec stabilizes.
   // Gated so we can roll back if the sidebar indicator conflicts with
   // the title spinner in terminals that render both. When the flag is
   // on, the user-facing config setting controls whether it's active.
@@ -1222,8 +1220,8 @@ export function REPL({
     }
   }, [lastMsgIsHuman, lastMsg, repinScroll]);
   // Assistant-chat: lazy-load remote history on scroll-up. No-op unless
-  // KAIROS build + config.viewerOnly. feature() is build-time constant so
-  // the branch is dead-code-eliminated in non-KAIROS builds (same pattern
+  // DISABLED build + config.viewerOnly. feature() is build-time constant so
+  // the branch is dead-code-eliminated in non-DISABLED builds (same pattern
   // as useUnseenDivider above).
   const { maybeLoadOlder } = HISTORY_STUB;
   // Compose useUnseenDivider's callbacks with the lazy-load trigger.
@@ -1353,7 +1351,6 @@ export function REPL({
   // Ref instead of state to avoid triggering React re-renders on every
   // streaming text_delta. The spinner reads this via its animation timer.
   const responseLengthRef = useRef(0);
-  // API performance metrics ref for ant-only spinner display (TTFT/OTPS).
   // Accumulates metrics from all API requests in a turn for P50 aggregation.
   const apiMetricsRef = useRef<Array<{
     ttftMs: number;
@@ -2690,7 +2687,6 @@ export function REPL({
         // can stop the spark animation and show post-turn UI.
         sendBridgeResultRef.current();
 
-        // Capture budget info before clearing (ant-only)
         let budgetInfo: {
           tokens: number;
           limit: number;
@@ -3712,8 +3708,6 @@ export function REPL({
   if (feature('AGENT_TRIGGERS')) {
     // Assistant mode bypasses the isLoading gate (the proactive tick →
     // Sleep → tick loop would otherwise starve the scheduler).
-    // kairosEnabled is set once in initialState (main.tsx) and never mutated — no
-    // subscription needed. The ax_kairos_cron runtime gate is checked inside
     // useScheduledTasks's effect (not here) since wrapping a hook call in a dynamic
     // condition would break rules-of-hooks.
     const assistantMode = false;

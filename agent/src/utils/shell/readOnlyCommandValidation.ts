@@ -923,7 +923,6 @@ export const GIT_READ_ONLY_COMMANDS: Record<string, ExternalCommandConfig> = {
 }
 
 // ---------------------------------------------------------------------------
-// GH_READ_ONLY_COMMANDS — ant-only gh CLI commands (network-dependent)
 // ---------------------------------------------------------------------------
 
 // SECURITY: Shared callback for all gh commands to prevent network exfil.

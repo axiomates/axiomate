@@ -1,4 +1,3 @@
-// biome-ignore-all assist/source/organizeImports: ANT-ONLY import markers must not be reordered
 import React, { useMemo } from 'react'
 import { Ansi, Box, Text } from '../../ink.js'
 import type { Attachment } from '../../utils/attachments.js'

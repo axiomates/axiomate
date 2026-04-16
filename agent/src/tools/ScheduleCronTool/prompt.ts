@@ -2,7 +2,7 @@ import { feature } from 'bun:bundle'
 import { DEFAULT_CRON_JITTER_CONFIG } from '../../utils/cronTasks.js'
 import { isEnvTruthy } from '../../utils/envUtils.js'
 
-const KAIROS_CRON_REFRESH_MS = 5 * 60 * 1000
+const DISABLED_CRON_REFRESH_MS = 5 * 60 * 1000
 
 export const DEFAULT_MAX_AGE_DAYS =
   DEFAULT_CRON_JITTER_CONFIG.recurringMaxAgeMs / (24 * 60 * 60 * 1000)
@@ -10,14 +10,11 @@ export const DEFAULT_MAX_AGE_DAYS =
 /**
  * Unified gate for the cron scheduling system. Combines the build-time
  * `feature('AGENT_TRIGGERS')` flag (dead code elimination) with the runtime
- * `ax_kairos_cron` config gate on a 5-minute refresh window.
  *
- * AGENT_TRIGGERS is independently shippable from KAIROS — the cron module
+ * AGENT_TRIGGERS is independently shippable from DISABLED — the cron module
  * graph (cronScheduler/cronTasks/cronTasksLock/cron.ts + the three tools +
  * /loop skill) has zero imports into src/assistant/ and no false
- * calls. The REPL.tsx kairosEnabled read is safe:
- * kairosEnabled is unconditionally in AppStateStore with default false, so
- * when KAIROS is off the scheduler just gets assistantMode: false.
+ * when DISABLED is off the scheduler just gets assistantMode: false.
  *
  * Called from Tool.isEnabled() (lazy, post-init) and inside useEffect /
  * imperative setup, never at module scope — so the disk cache has had a
@@ -41,12 +38,10 @@ export function isKairosCronEnabled(): boolean {
 
 /**
  * Kill switch for disk-persistent (durable) cron tasks. Narrower than
- * {@link isKairosCronEnabled} — flipping this off forces `durable: false` at
  * the call() site, leaving session-only cron (in-memory, GA) untouched.
  *
  * Defaults to `true` so Bedrock/Vertex/Foundry and DISABLE_TELEMETRY users get
  * durable cron. Does NOT consult CLAUDE_CODE_DISABLE_CRON (that kills the whole
- * scheduler via isKairosCronEnabled).
  */
 export function isDurableCronEnabled(): boolean {
   return true

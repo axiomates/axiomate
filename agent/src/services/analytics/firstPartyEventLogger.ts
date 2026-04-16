@@ -124,7 +124,6 @@ export async function shutdown1PEventLogging(): Promise<void> {
  * - Non-essential traffic disabled
  *
  * Note: Unlike BigQuery metrics, event logging does NOT check organization-level
- * metrics opt-out via API. It follows the same pattern as Statsig event logging.
  */
 export function is1PEventLoggingEnabled(): boolean {
   // Respect standard analytics opt-outs
@@ -136,7 +135,6 @@ export function is1PEventLoggingEnabled(): boolean {
  * Events are batched and exported to /api/event_logging/batch
  *
  * This enriches the event with core metadata (model, session, env context, etc.)
- * at log time, similar to logEventToStatsig.
  *
  * @param eventName - Name of the event (e.g., 'ax_api_query')
  * @param metadata - Additional metadata for the event (intentionally no strings, to avoid accidentally logging code/filepaths)
@@ -147,7 +145,6 @@ async function logEventTo1PAsync(
   metadata: Record<string, number | boolean | undefined> = {},
 ): Promise<void> {
   try {
-    // Enrich with core metadata at log time (similar to Statsig pattern)
     const coreMetadata = await getEventMetadata({
       model: metadata.model,
       betas: metadata.betas,

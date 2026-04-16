@@ -1,4 +1,3 @@
-// biome-ignore-all assist/source/organizeImports: ANT-ONLY import markers must not be reordered
 import { Box, Text, type TextProps } from '../../ink.js'
 import { feature } from 'bun:bundle'
 import * as React from 'react'
@@ -100,7 +99,6 @@ export function SystemTextMessage({
     )
   }
 
-  // Thinking messages are subtle, like turn duration (ant-only)
   if (message.subtype === 'thinking') {
     return null
   }

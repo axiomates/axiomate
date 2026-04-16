@@ -4,7 +4,6 @@ import { LocalAgentTask } from './tasks/LocalAgentTask/LocalAgentTask.js'
 import { LocalShellTask } from './tasks/LocalShellTask/LocalShellTask.js'
 // RemoteAgentTask removed
 
-// LocalWorkflowTask and MonitorMcpTask removed (ant-only features)
 
 /**
  * Get all tasks.

@@ -55,7 +55,6 @@ const BASE_PROMPT: string = feature('TRANSCRIPT_CLASSIFIER')
   : ''
 
 // External template is loaded separately so it's available for
-// `claude auto-mode defaults` even in ant builds. Ant builds use
 // permissions_anthropic.txt at runtime but should dump external defaults.
 const EXTERNAL_PERMISSIONS_TEMPLATE: string = feature('TRANSCRIPT_CLASSIFIER')
   ? txtRequire(require('./yolo-classifier-prompts/permissions_external.txt'))
@@ -143,7 +142,6 @@ async function maybeDumpAutoMode(
   _timestamp: number,
   _suffix?: string,
 ): Promise<void> {
-  // Disabled: was ant-only debugging feature
 }
 
 /**

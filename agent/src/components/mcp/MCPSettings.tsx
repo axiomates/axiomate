@@ -171,7 +171,7 @@ export function MCPSettings({ onComplete }: Props): React.ReactNode {
 
       const defaultTab =
         viewState.server.transport === 'claudeai-proxy'
-          ? 'claude.ai'
+          ? 'remote service'
           : 'Axiomate'
 
       if (viewState.server.transport === 'stdio') {

@@ -36,7 +36,6 @@ export function initBundledSkills(): void {
     /* eslint-disable @typescript-eslint/no-require-imports */
     const { registerLoopSkill } = require('./loop.js')
     /* eslint-enable @typescript-eslint/no-require-imports */
-    // /loop's isEnabled delegates to isKairosCronEnabled() — same lazy
     // per-invocation pattern as the cron tools. Registered unconditionally;
     // the skill's own isEnabled callback decides visibility.
     registerLoopSkill()

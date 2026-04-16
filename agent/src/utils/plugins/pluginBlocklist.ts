@@ -5,7 +5,6 @@
  * that have been removed, and auto-uninstalls them.
  *
  * The security.json fetch was removed (see #25447) — ~29.5M/week GitHub hits
- * for UI reason/text only. If re-introduced, serve from downloads.claude.ai.
  */
 
 import { uninstallPluginOp } from '../../services/plugins/pluginOperations.js'

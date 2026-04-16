@@ -206,7 +206,6 @@ export function useManagePlugins({
         hook_count,
         mcp_count,
         lsp_count,
-        // Ant-only: which plugins are enabled, to correlate with RSS/FPS.
         // Kept separate from base metrics so it doesn't flow into
         // logForDiagnosticsNoPII.
       }

@@ -1,4 +1,3 @@
-// biome-ignore-all assist/source/organizeImports: ANT-ONLY import markers must not be reordered
 import type {
   ToolResultBlockParam,
   ToolUseBlock,
@@ -287,7 +286,6 @@ async function* queryLoop(
   // api/api/sampling/prompt/renderer.py:292). After a compact, the server sees
   // only the summary and would under-count spend; remaining tells it the
   // pre-compact final window that got summarized away. Cumulative across
-  // Snapshot immutable env/statsig/session state once at entry. See QueryConfig
   // for what's included and why feature() gates are intentionally excluded.
   const config = buildQueryConfig()
 

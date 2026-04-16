@@ -192,7 +192,7 @@ function increment(map: Map<string, number>, key: string, value: number): void {
   map.set(key, (map.get(key) || 0) + value)
 }
 
-export function tokenStatsToStatsigMetrics(
+export function tokenStatsToanalyticsMetrics(
   stats: TokenStats,
 ): Record<string, number> {
   const metrics: Record<string, number> = {

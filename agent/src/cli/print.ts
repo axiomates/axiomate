@@ -1,4 +1,3 @@
-// biome-ignore-all assist/source/organizeImports: ANT-ONLY import markers must not be reordered
 import { feature } from 'bun:bundle'
 import { readFile, stat } from 'fs/promises'
 import { dirname } from 'path'
@@ -793,7 +792,6 @@ export async function runHeadless(
   const messages: SDKMessage[] = []
   let lastMessage: SDKMessage | undefined
   // Streamlined mode transforms messages when CLAUDE_CODE_STREAMLINED_OUTPUT=true and using stream-json
-  // Build flag gates this out of external builds; env var is the runtime opt-in for ant builds
   const transformToStreamlined =
     feature('STREAMLINED_OUTPUT') &&
     isEnvTruthy(process.env.CLAUDE_CODE_STREAMLINED_OUTPUT) &&
@@ -2727,7 +2725,6 @@ function runHeadlessStreaming(
 
       if (message.type === 'control_request') {
         if (message.request.subtype === 'interrupt') {
-          // Track escapes for attribution (ant-only feature)
           if (feature('COMMIT_ATTRIBUTION')) {
             setAppState(prev => ({
               ...prev,
@@ -3532,7 +3529,6 @@ function runHeadlessStreaming(
             ...getSettingsWithSources(),
             applied: {
               model,
-              // Numeric effort (ant-only) → null; SDK schema is string-level only.
               effort: typeof effort === 'string' ? effort : null,
             },
           })
@@ -4607,7 +4603,6 @@ async function loadInitialMessages(
   }
 
   // Handle resume in print mode (accepts session ID or URL)
-  // URLs are [ANT-ONLY]
   if (options.resume) {
     try {
 

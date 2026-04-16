@@ -1,6 +1,5 @@
 // Centralized analytics/telemetry logging for tool permission decisions.
 // All permission approve/reject events flow through logPermissionDecision(),
-// which fans out to Statsig analytics, OTel telemetry, and code-edit metrics.
 import { feature } from 'bun:bundle'
 import { sanitizeToolNameForAnalytics } from '../../services/analytics/metadata.js'
 import { getCodeEditToolDecisionCounter } from '../../bootstrap/state.js'

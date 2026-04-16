@@ -73,7 +73,7 @@ const getTeammateModeSnapshot = () => require('./utils/swarm/backends/teammateMo
 /* eslint-disable @typescript-eslint/no-require-imports */
 const coordinatorModeModule = feature('COORDINATOR_MODE') ? require('./coordinator/coordinatorMode.js') as typeof import('./coordinator/coordinatorMode.js') : null;
 /* eslint-enable @typescript-eslint/no-require-imports */
-// Dead code elimination: conditional import for KAIROS (assistant mode)
+// Dead code elimination: conditional import for DISABLED (assistant mode)
 /* eslint-disable @typescript-eslint/no-require-imports */
 // assistant/index.js and assistant/gate.js removed
 const assistantModule = null;
@@ -203,7 +203,6 @@ import { getTmuxInstallInstructions, isTmuxAvailable, parsePRReference } from '.
 profileCheckpoint('main_tsx_imports_loaded');
 
 /**
- * Log managed settings keys to Statsig for analytics.
  * This is called after init() completes to ensure settings are loaded
  * and environment variables are applied before model resolution.
  */
@@ -884,13 +883,11 @@ async function run(): Promise<CommanderCommand> {
     }
 
     // Assistant mode: when .axiomate/settings.json has assistant: true AND
-    // the ax_kairos config gate is on, force brief on. Permission
     // mode is left to the user — settings defaultMode or --permission-mode
     // apply as normal. REPL-typed messages already default to 'next'
     // priority (messageQueueManager.enqueue) so they drain mid-turn between
     // tool calls. SendUserMessage (BriefTool) is enabled via the brief env
     // var. SleepTool stays disabled (its isEnabled() gates on proactive).
-    // kairosEnabled is computed once here and reused at the
     // getAssistantSystemPromptAddendum() call site further down.
     //
     // Trust gate: .axiomate/settings.json is attacker-controllable in an
@@ -905,7 +902,6 @@ async function run(): Promise<CommanderCommand> {
     }).assistant && assistantModule) {
       // --assistant (Agent SDK daemon mode): force the latch before
       // isAssistantMode() runs below. The daemon has already checked
-      // entitlement — don't make the child re-check ax_kairos.
       assistantModule.markAssistantForced();
     }
     if (false && assistantModule?.isAssistantMode() &&
@@ -917,7 +913,6 @@ async function run(): Promise<CommanderCommand> {
     !(options as {
       agentId?: unknown;
     }).agentId) {
-      // Kairos assistant mode removed
     }
     const {
       debug = false,
@@ -1389,7 +1384,6 @@ async function run(): Promise<CommanderCommand> {
     }
 
     // chicago MCP: guarded Computer Use (app allowlist + frontmost gate +
-    // SCContentFilter screenshots). Ant-only, config-gated — failures
     // are silent (this is dogfooding). Platform + interactive checks inline
     // so non-macOS / print-mode ants skip the heavy @ant/computer-use-mcp
     // import entirely. gates.js is light (type-only package import).
@@ -1940,7 +1934,6 @@ async function run(): Promise<CommanderCommand> {
         process.stderr.write(chalk.yellow('Bridge modules removed.\n--rc flag ignored.\n'));
       }
 
-      // Check for pending agent memory snapshot updates (only for --agent mode, ant-only)
       if (false && mainThreadAgentDefinition && isCustomAgent(mainThreadAgentDefinition) && mainThreadAgentDefinition.memory && mainThreadAgentDefinition.pendingSnapshotUpdate) {
         const agentDef = mainThreadAgentDefinition;
         const choice = await launchSnapshotUpdateDialog(root, {
@@ -2270,7 +2263,6 @@ async function run(): Promise<CommanderCommand> {
         ...(isAdvisorEnabled() && advisorModel && {
           advisorModel
         }),
-        // kairosEnabled gates the async fire-and-forget path in
         // executeForkedSlashCommand (processSlashCommand.tsx:132) and
         // AgentTool's shouldRunAsync. The REPL initialState sets this at
         // ~3459; headless was defaulting to false, so the daemon child's
@@ -2634,8 +2626,8 @@ async function run(): Promise<CommanderCommand> {
         advisorModel
       }),
       // Compute teamContext synchronously to avoid useEffect setState during render.
-      // KAIROS: assistantTeamContext takes precedence — set earlier in the
-      // KAIROS block so Agent(name: "foo") can spawn in-process teammates
+      // DISABLED: assistantTeamContext takes precedence — set earlier in the
+      // DISABLED block so Agent(name: "foo") can spawn in-process teammates
       // without TeamCreate. computeInitialTeamContext() is for tmux-spawned
       // teammates reading their own identity, not the assistant-mode leader.
       teamContext: computeInitialTeamContext?.()
@@ -2659,8 +2651,6 @@ async function run(): Promise<CommanderCommand> {
       logSessionTelemetry();
     });
 
-    // Set up per-turn session environment data uploader (ant-only build).
-    // Default-enabled for all ant users when working in an Anthropic-owned
     // repo. Captures git/filesystem state (NOT transcripts) at each turn so
     // environments can be recreated at any user message index. Gating:
     //   - Build-time: this import is stubbed in external builds.
@@ -2939,7 +2929,6 @@ async function run(): Promise<CommanderCommand> {
       }, renderAndRun);
       return;
     } else if (options.resume || options.fromPr || teleport || remote !== null) {
-      // Handle resume flow - from file (ant-only), session ID, or interactive selector
 
       // Clear stale caches before resuming to ensure fresh file/skill discovery
       const {
@@ -3549,7 +3538,6 @@ async function run(): Promise<CommanderCommand> {
     } = await import('./cli/handlers/plugins.js');
     await pluginUpdateHandler(plugin, options);
   });
-  // END ANT-ONLY
 
   // Setup token command
   program.command('setup-token').description('Set up a long-lived authentication token (requires Claude subscription)').action(async () => {
@@ -3646,7 +3634,6 @@ async function run(): Promise<CommanderCommand> {
   // Record final checkpoint for total_time calculation
   profileCheckpoint('main_after_run');
 
-  // Log startup perf to Statsig (sampled) and output detailed report if enabled
   profileReport();
   return program;
 }

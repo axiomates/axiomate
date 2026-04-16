@@ -144,7 +144,6 @@ export function createChromeContext(
     // a lightning-mode agent loop in Node and calls the extension's
     // lightning_turn tool once per iteration for execution.
     //
-    // Ant-only: the extension's lightning_turn is build-time-gated via
     // import.meta.env.ANT_ONLY_BUILD — the whole lightning/ module graph is
     // tree-shaken from the public extension build (build:prod greps for a
     // marker to verify). Without this injection, the Node MCP server's

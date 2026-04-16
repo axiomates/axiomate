@@ -384,7 +384,6 @@ export type GlobalConfig = {
   // @deprecated - Migrated to ~/.axiomate/cache/changelog.md. Keep for migration support.
   cachedChangelog?: string
   mcpServers?: Record<string, McpServerConfig>
-  // claude.ai MCP connectors that have successfully connected at least once.
   // Used to gate "connector unavailable" / "needs auth" startup notifications:
   // a connector the user has actually used is worth flagging when it breaks,
   // but an org-configured connector that's been needs-auth since day one is
@@ -576,12 +575,10 @@ export type GlobalConfig = {
   idleReturnDismissed?: boolean // "Don't ask again" picked
 
 
-  // Cached statsig gate values
-  cachedStatsigGates: {
+  cachedanalyticsGates: {
     [gateName: string]: boolean
   }
 
-  // Cached statsig dynamic configs
   cachedDynamicConfigs?: { [configName: string]: unknown }
 
   // Cached config feature values
@@ -666,7 +663,6 @@ export type GlobalConfig = {
   // PR status footer configuration (feature-flagged via config)
   prStatusFooterEnabled?: boolean // Show PR review status in footer (default: true)
 
-  // Tmux live panel visibility (ant-only, toggled via Enter on tmux pill)
   tungstenPanelVisible?: boolean
 
   // Epoch ms when background refreshes last ran (quota, passes, client data).
@@ -681,10 +677,8 @@ export type GlobalConfig = {
   // undefined = no cache, null = extra usage enabled, string = disabled reason.
   cachedExtraUsageDisabledReason?: string | null
 
-  // Auto permissions notification tracking (ant-only)
   autoPermissionsNotificationCount?: number // Number of times the auto permissions notification has been shown
 
-  // Speculation configuration (ant-only)
   speculationEnabled?: boolean // Whether speculation is enabled (default: true)
 
 
@@ -751,7 +745,7 @@ function createDefaultGlobalConfig(): GlobalConfig {
     autoInstallIdeExtension: true,
     fileCheckpointingEnabled: true,
     terminalProgressBarEnabled: true,
-    cachedStatsigGates: {},
+    cachedanalyticsGates: {},
     cachedDynamicConfigs: {},
     cachedconfigFeatures: {},
     respectGitignore: true,
@@ -1012,7 +1006,6 @@ let lastReadFileStats: { mtime: number; size: number } | null = null
 let configCacheHits = 0
 let configCacheMisses = 0
 // Session-total count of actual disk writes to the global config file.
-// Exposed for ant-only dev diagnostics (see inc-4552) so anomalous write
 // rates surface in the UI before they corrupt ~/.axiomate.json.
 let globalConfigWriteCount = 0
 
@@ -1219,7 +1212,7 @@ export function getGlobalConfig(): GlobalConfig {
 /**
  * Returns the effective value of remoteControlAtStartup. Precedence:
  *   1. User's explicit config value (always wins — honors opt-out)
- *   2. CCR auto-connect default (ant-only build, config-gated)
+ *   2. CCR auto-connect default
  *   3. false (Remote Control must be explicitly opted into)
  */
 export function getRemoteControlAtStartup(): boolean {

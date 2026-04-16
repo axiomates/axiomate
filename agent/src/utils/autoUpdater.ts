@@ -50,7 +50,6 @@ export type MaxVersionConfig = {
 }
 
 /**
- * Checks if the current version meets the minimum required version from Statsig config
  * Terminates the process with an error message if the version is too old
  *
  * NOTE ON SHA-BASED VERSIONING:
@@ -368,7 +367,7 @@ export async function getGcsDistTags(): Promise<NpmDistTags> {
 }
 
 /**
- * Get version history from npm registry (ant-only feature)
+ * Get version history from npm registry
  * Returns versions sorted newest-first, limited to the specified count
  *
  * Uses NATIVE_PACKAGE_URL when available because:

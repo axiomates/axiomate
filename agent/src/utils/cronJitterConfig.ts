@@ -16,7 +16,6 @@ import {
 /**
  * Returns the default cron jitter config.
  *
- * Previously read from config system (`ax_kairos_cron_config`). Now returns
  * the hardcoded default. Pass this as `getJitterConfig` when calling
  * createCronScheduler in REPL contexts.
  */

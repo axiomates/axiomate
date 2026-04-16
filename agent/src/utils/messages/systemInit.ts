@@ -82,6 +82,5 @@ export function buildSystemInitMessage(inputs: SystemInitInputs): SDKMessage {
     })),
     uuid: randomUUID(),
   }
-  // Hidden from public SDK types — ant-only UDS messaging socket path
   return initMessage
 }

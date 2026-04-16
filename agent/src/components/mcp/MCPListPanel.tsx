@@ -281,7 +281,7 @@ export function MCPListPanel({
           {claudeAiServers.length > 0 && (
             <Box flexDirection="column" marginBottom={1}>
               <Box paddingLeft={2}>
-                <Text bold>claude.ai</Text>
+                <Text bold>remote service</Text>
               </Box>
               {claudeAiServers.map(server => renderServerItem(server))}
             </Box>

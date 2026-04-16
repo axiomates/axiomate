@@ -14,9 +14,7 @@ import { isEnvTruthy } from '../utils/envUtils.js'
 export type QueryConfig = {
   sessionId: SessionId
 
-  // Runtime gates (env/statsig). NOT feature() gates — see above.
   gates: {
-    // Statsig — CACHED_MAY_BE_STALE already admits staleness, so snapshotting
     // once per query() call stays within the existing contract.
     streamingToolExecution: boolean
     emitToolUseSummaries: boolean

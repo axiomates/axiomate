@@ -392,7 +392,6 @@ export function calculateMessagesToKeepIndex(
 
 /**
  * Check if we should use session memory for compaction
- * Uses cached gate values to avoid blocking on Statsig initialization
  */
 export function shouldUseSessionMemoryCompaction(): boolean {
   // Allow env var override for eval runs and testing

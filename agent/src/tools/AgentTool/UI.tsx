@@ -253,7 +253,6 @@ export function renderToolResultMessage(
     isTranscriptMode?: boolean
   },
 ): React.ReactNode {
-  // Remote-launched agents (ant-only) use a private output type not in the
   // public schema. Narrow via the internal discriminant.
   const internal = data as Output | RemoteLaunchedOutput
   if (internal.status === 'remote_launched') {
@@ -507,7 +506,6 @@ export function renderToolUseProgressMessage(
     )
   }
 
-  // Process messages to group consecutive search/read operations into summaries (ants only)
   // isAgentRunning=true since this is the progress view while the agent is still running
   const processedMessages = processProgressMessages(
     progressMessages,

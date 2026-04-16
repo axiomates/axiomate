@@ -107,7 +107,6 @@ export function restoreSessionStateFromLog(
     })
   }
 
-  // Restore attribution state (ant-only feature)
   if (
     feature('COMMIT_ATTRIBUTION') &&
     result.attributionSnapshots &&

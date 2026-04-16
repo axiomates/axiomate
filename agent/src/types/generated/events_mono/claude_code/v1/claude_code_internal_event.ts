@@ -93,7 +93,7 @@ export interface AxiomateInternalEvent {
   is_interactive?: boolean | undefined
   client_type?: string | undefined
   /**
-   * Process metrics as JSON string (ant-only)
+   * Process metrics as JSON string
    * Contains: uptime, rss, heapTotal, heapUsed, external, arrayBuffers,
    * constrainedMemory, cpuUsage
    */

@@ -407,7 +407,6 @@ export function addBetaLLMResponseAttributes(
     }
   }
 
-  // thinking_output was ant-only and has been removed
 }
 
 /**
