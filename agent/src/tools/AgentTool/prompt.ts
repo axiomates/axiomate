@@ -1,4 +1,3 @@
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../services/analytics/growthbook.js'
 import { hasEmbeddedSearchTools } from '../../utils/embeddedTools.js'
 import { isEnvDefinedFalsy, isEnvTruthy } from '../../utils/envUtils.js'
 import { isTeammate } from '../../utils/teammate.js'
@@ -59,7 +58,7 @@ export function shouldInjectAgentListInMessages(): boolean {
   if (isEnvTruthy(process.env.CLAUDE_CODE_AGENT_LIST_IN_MESSAGES)) return true
   if (isEnvDefinedFalsy(process.env.CLAUDE_CODE_AGENT_LIST_IN_MESSAGES))
     return false
-  return getFeatureValue_CACHED_MAY_BE_STALE('ax_agent_list_attach', false)
+  return false
 }
 
 export async function getPrompt(

@@ -26,10 +26,6 @@ import { NO_CONTENT_MESSAGE } from '../constants/messages.js'
 import { OUTPUT_STYLE_CONFIG } from '../constants/outputStyles.js'
 import { isAutoMemoryEnabled } from '../memdir/paths.js'
 import {
-  checkStatsigFeatureGate_CACHED_MAY_BE_STALE,
-  getFeatureValue_CACHED_MAY_BE_STALE,
-} from '../services/analytics/growthbook.js'
-import {
   getImageTooLargeErrorMessage,
   getPdfInvalidErrorMessage,
   getPdfPasswordProtectedErrorMessage,
@@ -175,12 +171,6 @@ const TOOL_REFERENCE_TURN_BOUNDARY = 'Tool loaded.'
  * when auto-memory is enabled and the GrowthBook flag is on.
  */
 export function withMemoryCorrectionHint(message: string): string {
-  if (
-    isAutoMemoryEnabled() &&
-    getFeatureValue_CACHED_MAY_BE_STALE('ax_amber_prism', false)
-  ) {
-    return message + MEMORY_CORRECTION_HINT
-  }
   return message
 }
 
@@ -2152,11 +2142,7 @@ export function normalizeMessagesForAPI(
           // of adding one here. This injection is itself one of the patterns
           // that gets relocated, so skipping it saves a scan. When gate is
           // off, this is the fallback (same as pre-#21049 main).
-          if (
-            !checkStatsigFeatureGate_CACHED_MAY_BE_STALE(
-              'ax_toolref_defer_j8m',
-            )
-          ) {
+          if (true) {
             const contentAfterStrip = normalizedMessage.message.content
             if (
               Array.isArray(contentAfterStrip) &&
@@ -2266,11 +2252,7 @@ export function normalizeMessagesForAPI(
           const rawAttachmentMessage = normalizeAttachmentForAPI(
             message.attachment,
           )
-          const attachmentMessage = checkStatsigFeatureGate_CACHED_MAY_BE_STALE(
-            'ax_chair_sermon',
-          )
-            ? rawAttachmentMessage.map(ensureSystemReminderWrap)
-            : rawAttachmentMessage
+          const attachmentMessage = rawAttachmentMessage
 
           // If the last message is also a user message, merge them
           const lastMessage = last(result)
@@ -2294,11 +2276,7 @@ export function normalizeMessagesForAPI(
   // Runs after merge (siblings are in place) and before ID tagging (so
   // tags reflect final positions). When gate is OFF, this is a noop and
   // the TOOL_REFERENCE_TURN_BOUNDARY injection above serves as fallback.
-  const relocated = checkStatsigFeatureGate_CACHED_MAY_BE_STALE(
-    'ax_toolref_defer_j8m',
-  )
-    ? relocateToolReferenceSiblings(result)
-    : result
+  const relocated = result
 
   // Filter orphaned thinking-only assistant messages (likely introduced by
   // compaction slicing away intervening messages between a failed streaming
@@ -2327,11 +2305,7 @@ export function normalizeMessagesForAPI(
   // Gated together: the merge exists solely to feed the smoosh; running it
   // ungated changes VCR fixture hashes for @-mention scenarios (adjacent
   // [prompt, attachment] users) without any benefit when the smoosh is off.
-  const smooshed = checkStatsigFeatureGate_CACHED_MAY_BE_STALE(
-    'ax_chair_sermon',
-  )
-    ? smooshSystemReminderSiblings(mergeAdjacentUserMessages(withNonEmpty))
-    : withNonEmpty
+  const smooshed = withNonEmpty
 
   // Unconditional — catches transcripts persisted before smooshIntoToolResult
   // learned to filter on is_error. Without this a resumed session with an
@@ -2606,7 +2580,7 @@ export function mergeUserContentBlocks(
     return [...a, ...b]
   }
 
-  if (!checkStatsigFeatureGate_CACHED_MAY_BE_STALE('ax_chair_sermon')) {
+  if (true) {
     // Legacy (ungated) smoosh: only string-content tool_result + all-text
     // siblings → joined string. Matches pre-universal-smoosh behavior on main.
     // The precondition guarantees smooshIntoToolResult hits its string path
@@ -2631,7 +2605,7 @@ export function mergeUserContentBlocks(
     return [...a, ...b]
   }
 
-  const smooshed = smooshIntoToolResult(lastBlock, toSmoosh)
+  const smooshed = smooshIntoToolResult(lastBlock as ToolResultBlockParam, toSmoosh)
   if (smooshed === null) {
     // tool_reference constraint — fall back to siblings
     return [...a, ...b]
@@ -5232,11 +5206,7 @@ export function ensureToolResultPairing(
         // Prepending synthetics to existing content can produce a
         // [tool_result, text] sibling the smoosh inside normalize never saw
         // (pairing runs after normalize). Re-smoosh just this one message.
-        result.push(
-          checkStatsigFeatureGate_CACHED_MAY_BE_STALE('ax_chair_sermon')
-            ? smooshSystemReminderSiblings([patchedNext])[0]!
-            : patchedNext,
-        )
+        result.push(patchedNext)
       } else {
         // Content is empty after stripping orphaned tool_results. We still
         // need a user message here to maintain role alternation — otherwise

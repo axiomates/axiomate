@@ -64,21 +64,17 @@ import {
 // ============================================================================
 // Feature Gate and Config (Cached - Non-blocking)
 // ============================================================================
-// These functions return cached values from disk immediately without blocking
-// on GrowthBook initialization. Values may be stale but are updated in background.
+// Feature gate and config helpers.
 
 import { errorMessage, getErrnoCode } from '../../utils/errors.js'
-import {
-  getDynamicConfig_CACHED_MAY_BE_STALE,
-  getFeatureValue_CACHED_MAY_BE_STALE,
-} from '../analytics/growthbook.js'
+import { feature } from 'bun:bundle'
 
 /**
  * Check if session memory feature is enabled.
  * Uses cached gate value - returns immediately without blocking.
  */
 function isSessionMemoryGateEnabled(): boolean {
-  return getFeatureValue_CACHED_MAY_BE_STALE('ax_session_memory', false)
+  return feature('EXTRACT_MEMORIES')
 }
 
 /**
@@ -86,10 +82,7 @@ function isSessionMemoryGateEnabled(): boolean {
  * Returns immediately without blocking - value may be stale.
  */
 function getSessionMemoryRemoteConfig(): Partial<SessionMemoryConfig> {
-  return getDynamicConfig_CACHED_MAY_BE_STALE<Partial<SessionMemoryConfig>>(
-    'ax_sm_config',
-    {},
-  )
+  return {}
 }
 
 // ============================================================================

@@ -7,7 +7,6 @@ import {
   IMAGE_MAX_WIDTH,
   IMAGE_TARGET_RAW_SIZE,
 } from '../constants/apiLimits.js'
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '../services/analytics/growthbook.js'
 import { getImageProcessor } from '../tools/FileReadTool/imageProcessor.js'
 import { logForDebugging } from './debug.js'
 import { execFileNoThrowWithCwd } from './execFileNoThrow.js'
@@ -99,7 +98,7 @@ export async function hasImageInClipboard(): Promise<boolean> {
   }
   if (
     feature('NATIVE_CLIPBOARD_IMAGE') &&
-    getFeatureValue_CACHED_MAY_BE_STALE('ax_collage_kaleidoscope', true)
+    true
   ) {
     // Native NSPasteboard check (~0.03ms warm). Fall through to osascript
     // when the module/export is missing. Catch a throw too: it would surface
@@ -131,7 +130,7 @@ export async function getImageFromClipboard(): Promise<ImageWithDimensions | nul
   if (
     feature('NATIVE_CLIPBOARD_IMAGE') &&
     process.platform === 'darwin' &&
-    getFeatureValue_CACHED_MAY_BE_STALE('ax_collage_kaleidoscope', true)
+    true
   ) {
     try {
       const { getNativeModule } = await import('image-processor-axiomate') as any

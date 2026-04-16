@@ -9,7 +9,6 @@ import { useCallback } from 'react';
 import instances from '../ink/instances.js';
 import { useKeybinding } from '../keybindings/useKeybinding.js';
 import type { Screen } from '../screens/REPL.js';
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '../services/analytics/growthbook.js';
 import { type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS, logEvent } from '../services/analytics/index.js';
 import { useAppState, useSetAppState } from '../state/AppState.js';
 import { count } from '../utils/array.js';
@@ -209,9 +208,8 @@ export function GlobalKeybindingHandlers({
   // toggle() blocks in spawnSync until the user detaches from tmux.
   const handleToggleTerminal = useCallback(() => {
     if (feature('TERMINAL_PANEL')) {
-      if (!getFeatureValue_CACHED_MAY_BE_STALE('ax_terminal_panel', false)) {
-        return;
-      }
+      // ax_terminal_panel gate removed — terminal panel disabled
+      return;
       getTerminalPanel().toggle();
     }
   }, []);

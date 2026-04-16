@@ -80,7 +80,6 @@ import {
   type SystemPrompt,
 } from '../../utils/systemPromptType.js'
 import { tokenCountFromLastAPIResponse } from '../../utils/tokens.js'
-import { getDynamicConfig_BLOCKS_ON_INIT } from '../analytics/growthbook.js'
 // apiLimits stubs inlined
 const currentLimits = { status: 'allowed' as const, isUsingOverage: false }
 function extractQuotaStatusFromError(_error: unknown): void {}
@@ -107,7 +106,6 @@ import {
 import type { QuerySource } from '../../constants/querySource.js'
 import type { Notification } from '../../context/notifications.js'
 import { addToTotalSessionCost } from '../../cost-tracker.js'
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '../analytics/growthbook.js'
 import type { AgentId } from '../../types/ids.js'
 import { getAgentContext } from '../../utils/agentContext.js'
 import {
@@ -649,19 +647,10 @@ async function* queryModel(
   StreamEvent | AssistantMessage | SystemAPIErrorMessage,
   void
 > {
-  // Check cheap conditions first — the off-switch await blocks on GrowthBook
-  // init (~10ms). For non-Opus models (haiku, sonnet) this skips the await
-  // entirely. Subscribers don't hit this path at all.
+  // Off-switch check. Previously blocked on GrowthBook init; now always false.
   if (
     isNonCustomOpusModel(options.model) &&
-    (
-      await getDynamicConfig_BLOCKS_ON_INIT<{ activated: boolean }>(
-        'ax-off-switch',
-        {
-          activated: false,
-        },
-      )
-    ).activated
+    false
   ) {
     logEvent('ax_off_switch_query', {})
     yield getAssistantMessageFromError(
@@ -1629,10 +1618,7 @@ async function* queryModel(
       // and runs it again. See inc-4258.
       const disableFallback =
         isEnvTruthy(process.env.CLAUDE_CODE_DISABLE_NONSTREAMING_FALLBACK) ||
-        getFeatureValue_CACHED_MAY_BE_STALE(
-          'ax_disable_streaming_to_non_streaming_fallback',
-          false,
-        )
+        false
 
       if (disableFallback) {
         logForDebugging(
@@ -2294,7 +2280,7 @@ export function adjustParamsForNonStreaming<
 
 function isMaxTokensCapEnabled(): boolean {
   // 3P default: false (not validated on Bedrock/Vertex)
-  return getFeatureValue_CACHED_MAY_BE_STALE('ax_otk_slot_v1', false)
+  return false
 }
 
 export function getMaxOutputTokensForModel(model: string): number {

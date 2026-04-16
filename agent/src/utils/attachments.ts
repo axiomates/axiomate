@@ -213,7 +213,6 @@ import {
   getEffectiveContextWindowSize,
   isAutoCompactEnabled,
 } from '../services/compact/autoCompact.js'
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '../services/analytics/growthbook.js'
 import {
   hasInstructionsLoadedHook,
   executeInstructionsLoadedHooks,
@@ -1817,10 +1816,7 @@ async function getNestedMemoryAttachmentsForFile(
       originalCwd,
     )
 
-    const skipProjectLevel = getFeatureValue_CACHED_MAY_BE_STALE(
-      'ax_paper_halyard',
-      false,
-    )
+    const skipProjectLevel = false
 
     // Phase 3: Process nested directories (CWD → target)
     // Each directory gets: AXIOMATE.md + unconditional rules + conditional rules
@@ -2361,7 +2357,7 @@ export function startRelevantMemoryPrefetch(
 ): MemoryPrefetch | undefined {
   if (
     !isAutoMemoryEnabled() ||
-    !getFeatureValue_CACHED_MAY_BE_STALE('ax_moth_copse', false)
+    !feature('EXTRACT_MEMORIES')
   ) {
     return undefined
   }
@@ -3919,9 +3915,8 @@ export function getCompactionReminderAttachment(
   messages: Message[],
   model: string,
 ): Attachment[] {
-  if (!getFeatureValue_CACHED_MAY_BE_STALE('ax_marble_fox', false)) {
-    return []
-  }
+  // ax_marble_fox removed — compaction reminder disabled
+  return []
 
   if (!isAutoCompactEnabled()) {
     return []

@@ -32,7 +32,6 @@ import {
 } from '../bootstrap/state.js'
 import { builtInCommandNames } from '../commands.js'
 import { COMMAND_NAME_TAG, TICK_TAG } from '../constants/xml.js'
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '../services/analytics/growthbook.js'
 // sessionIngress removed — stub namespace
 const sessionIngress = {
   appendSessionLog: async (..._args: unknown[]) => false,
@@ -3731,7 +3730,7 @@ export async function loadTranscriptFile(
   const leafUuids = new Set<UUID>()
   let hasCycle = false
 
-  if (getFeatureValue_CACHED_MAY_BE_STALE('ax_pebble_leaf_prune', false)) {
+  if (feature('EXTRACT_MEMORIES')) {
     // Build a set of UUIDs that have user/assistant children
     // (these are mid-conversation nodes, not dead ends)
     const hasUserAssistantChild = new Set<UUID>()

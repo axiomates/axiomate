@@ -3,7 +3,6 @@ import { constants as fsConstants } from 'fs'
 import { access, writeFile } from 'fs/promises'
 import { homedir } from 'os'
 import { join } from 'path'
-import { getDynamicConfig_BLOCKS_ON_INIT } from '../services/analytics/growthbook.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
@@ -70,35 +69,6 @@ export type MaxVersionConfig = {
 export async function assertMinVersion(): Promise<void> {
   // Axiomate: skip version gate — we don't use Anthropic's remote config
   return
-
-  if (process.env.NODE_ENV === 'test') {
-    return
-  }
-
-  try {
-    const versionConfig = await getDynamicConfig_BLOCKS_ON_INIT<{
-      minVersion: string
-    }>('ax_version_config', { minVersion: '0.0.0' })
-
-    if (
-      versionConfig.minVersion &&
-      lt(MACRO.VERSION, versionConfig.minVersion)
-    ) {
-      // biome-ignore lint/suspicious/noConsole:: intentional console output
-      console.error(`
-It looks like your version of Axiomate (${MACRO.VERSION}) needs an update.
-A newer version (${versionConfig.minVersion} or higher) is required to continue.
-
-To update, please run:
-    claude update
-
-This will ensure you have access to the latest features and improvements.
-`)
-      gracefulShutdownSync(1)
-    }
-  } catch (error) {
-    logError(error as Error)
-  }
 }
 
 /**
@@ -123,15 +93,7 @@ export async function getMaxVersionMessage(): Promise<string | undefined> {
 }
 
 async function getMaxVersionConfig(): Promise<MaxVersionConfig> {
-  try {
-    return await getDynamicConfig_BLOCKS_ON_INIT<MaxVersionConfig>(
-      'ax_max_version_config',
-      {},
-    )
-  } catch (error) {
-    logError(error as Error)
-    return {}
-  }
+  return {}
 }
 
 /**

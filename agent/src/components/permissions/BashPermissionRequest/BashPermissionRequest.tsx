@@ -3,7 +3,6 @@ import figures from 'figures'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Box, Text, useTheme } from '../../../ink.js'
 import { useKeybinding } from '../../../keybindings/useKeybinding.js'
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../../services/analytics/growthbook.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
@@ -284,10 +283,7 @@ function BashPermissionRequestInner({
   // prove side-effect freedom), so this useMemo still guards against any
   // re-render source (e.g. Inner state updates). Same pattern as PR#20730.
   const { destructiveWarning, sandboxingEnabled, isSandboxed } = useMemo(() => {
-    const destructiveWarning = getFeatureValue_CACHED_MAY_BE_STALE(
-      'ax_destructive_command_warning',
-      false,
-    )
+    const destructiveWarning = feature('BASH_CLASSIFIER')
       ? getDestructiveCommandWarning(command)
       : null
 

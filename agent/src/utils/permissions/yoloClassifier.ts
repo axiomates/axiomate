@@ -9,7 +9,6 @@ import {
   getSessionId,
   setLastClassifierRequests,
 } from '../../bootstrap/state.js'
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../services/analytics/growthbook.js'
 import { logEvent } from '../../services/analytics/index.js'
 import type { AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS } from '../../services/analytics/metadata.js'
 import { getCacheControl } from '../../services/api/claude.js'
@@ -1289,13 +1288,6 @@ type AutoModeConfig = {
  * then the main loop model.
  */
 function getClassifierModel(): string {
-  const config = getFeatureValue_CACHED_MAY_BE_STALE(
-    'ax_auto_mode_config',
-    {} as AutoModeConfig,
-  )
-  if (config?.model) {
-    return config.model
-  }
   return getMainLoopModel()
 }
 
@@ -1308,11 +1300,7 @@ function resolveTwoStageClassifier():
   | 'fast'
   | 'thinking'
   | undefined {
-  const config = getFeatureValue_CACHED_MAY_BE_STALE(
-    'ax_auto_mode_config',
-    {} as AutoModeConfig,
-  )
-  return config?.twoStageClassifier
+  return undefined
 }
 
 /**
@@ -1324,11 +1312,7 @@ function isTwoStageClassifierEnabled(): boolean {
 }
 
 function isJsonlTranscriptEnabled(): boolean {
-  const config = getFeatureValue_CACHED_MAY_BE_STALE(
-    'ax_auto_mode_config',
-    {} as AutoModeConfig,
-  )
-  return config?.jsonlTranscript === true
+  return false
 }
 
 /**

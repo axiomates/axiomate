@@ -98,7 +98,6 @@ import type {
   LocalJSXCommandContext,
   CommandResultDisplay,
 } from '../../commands.js'
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../services/analytics/growthbook.js'
 import { isAgentSwarmsEnabled } from '../../utils/agentSwarmsEnabled.js'
 import {
   getCliTeammateModeOverride,
@@ -411,25 +410,6 @@ export function Config({
         logEvent('ax_thinking_toggled', { enabled })
       },
     },
-    ...(getFeatureValue_CACHED_MAY_BE_STALE('ax_chomp_inflection', false)
-      ? [
-          {
-            id: 'promptSuggestionEnabled',
-            label: 'Prompt suggestions',
-            value: promptSuggestionEnabled,
-            type: 'boolean' as const,
-            onChange(enabled: boolean) {
-              setAppState(prev => ({
-                ...prev,
-                promptSuggestionEnabled: enabled,
-              }))
-              updateSettingsForSource('userSettings', {
-                promptSuggestionEnabled: enabled ? undefined : false,
-              })
-            },
-          },
-        ]
-      : []),
     ...(isFileCheckpointingAvailable
       ? [
           {
@@ -476,29 +456,6 @@ export function Config({
         })
       },
     },
-    ...(getFeatureValue_CACHED_MAY_BE_STALE('ax_terminal_sidebar', false)
-      ? [
-          {
-            id: 'showStatusInTerminalTab',
-            label: 'Show status in terminal tab',
-            value: globalConfig.showStatusInTerminalTab ?? false,
-            type: 'boolean' as const,
-            onChange(showStatusInTerminalTab: boolean) {
-              saveGlobalConfig(current => ({
-                ...current,
-                showStatusInTerminalTab,
-              }))
-              setGlobalConfig({
-                ...getGlobalConfig(),
-                showStatusInTerminalTab,
-              })
-              logEvent('ax_terminal_tab_status_setting_changed', {
-                enabled: showStatusInTerminalTab,
-              })
-            },
-          },
-        ]
-      : []),
     {
       id: 'showTurnDuration',
       label: 'Show turn duration',

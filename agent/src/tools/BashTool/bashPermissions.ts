@@ -1,6 +1,5 @@
 import { feature } from 'bun:bundle'
 import type { z } from 'zod/v4'
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../services/analytics/growthbook.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
@@ -1652,7 +1651,7 @@ export async function bashToolHasPermission(
   // GrowthBook killswitch for shadow mode — when off, skip the native parse
   // entirely. Computed once; feature() must stay inline in the ternary below.
   const shadowEnabled = feature('TREE_SITTER_BASH_SHADOW')
-    ? getFeatureValue_CACHED_MAY_BE_STALE('ax_birch_trellis', true)
+    ? true
     : false
   // Parse once here; the resulting AST feeds both parseForSecurityFromAst
   // and bashToolCheckCommandOperatorPermissions.

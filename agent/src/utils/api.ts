@@ -1,12 +1,9 @@
+import { feature } from 'bun:bundle'
 import type { NeutralToolSchema } from '../services/api/streamTypes.js'
 import { createHash } from 'crypto'
 import { SYSTEM_PROMPT_DYNAMIC_BOUNDARY } from '../constants/prompts.js'
 import { getSystemContext, getUserContext } from '../context.js'
 import { isAnalyticsDisabled } from '../services/analytics/config.js'
-import {
-  checkStatsigFeatureGate_CACHED_MAY_BE_STALE,
-  getFeatureValue_CACHED_MAY_BE_STALE,
-} from '../services/analytics/growthbook.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
@@ -134,8 +131,7 @@ export async function toolToAPISchema(
   const cache = getToolSchemaCache()
   let base = cache.get(cacheKey)
   if (!base) {
-    const strictToolsEnabled =
-      checkStatsigFeatureGate_CACHED_MAY_BE_STALE('ax_tool_pear')
+    const strictToolsEnabled = feature('DEV')
     // Use tool's JSON schema directly if provided, otherwise convert Zod schema
     let inputSchema = (
       'inputJSONSchema' in tool && tool.inputJSONSchema

@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { isFeedbackSurveyDisabled } from '../../services/analytics/config.js';
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../services/analytics/growthbook.js';
 import { type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS, logEvent } from '../../services/analytics/index.js';
 import { isAutoMemoryEnabled } from '../../memdir/paths.js';
 import { isPolicyAllowed } from '../../services/policyLimits/index.js';
@@ -162,10 +161,8 @@ export function useMemorySurvey(messages: Message[], isLoading: boolean, hasActi
       return;
     }
 
-    // 3P default: survey off (no GrowthBook on Bedrock/Vertex/Foundry).
-    if (!getFeatureValue_CACHED_MAY_BE_STALE(MEMORY_SURVEY_GATE, false)) {
-      return;
-    }
+    // Survey gate removed — always off.
+    return;
     if (!isAutoMemoryEnabled()) {
       return;
     }

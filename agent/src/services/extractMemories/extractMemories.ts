@@ -53,7 +53,6 @@ import {
   createMemorySavedMessage,
   createUserMessage,
 } from '../../utils/messages.js'
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '../analytics/growthbook.js'
 import { logEvent } from '../analytics/index.js'
 import { sanitizeToolNameForAnalytics } from '../analytics/metadata.js'
 import {
@@ -363,10 +362,7 @@ export function initExtractMemories(): void {
       ? teamMemPaths!.isTeamMemoryEnabled()
       : false
 
-    const skipIndex = getFeatureValue_CACHED_MAY_BE_STALE(
-      'ax_moth_copse',
-      false,
-    )
+    const skipIndex = feature('EXTRACT_MEMORIES')
 
     const canUseTool = createAutoMemCanUseTool(memoryDir)
     const cacheSafeParams = createCacheSafeParams(context)
@@ -378,7 +374,7 @@ export function initExtractMemories(): void {
       turnsSinceLastExtraction++
       if (
         turnsSinceLastExtraction <
-        (getFeatureValue_CACHED_MAY_BE_STALE('ax_bramble_lintel', null) ?? 1)
+        1
       ) {
         return
       }
@@ -533,7 +529,7 @@ export function initExtractMemories(): void {
       return
     }
 
-    if (!getFeatureValue_CACHED_MAY_BE_STALE('ax_passport_quail', false)) {
+    if (!feature('EXTRACT_MEMORIES')) {
       return
     }
 

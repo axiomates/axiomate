@@ -13,7 +13,6 @@
 import { feature } from 'bun:bundle'
 import { context as otelContext, type Span, trace } from '@opentelemetry/api'
 import { AsyncLocalStorage } from 'async_hooks'
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../services/analytics/growthbook.js'
 import type { AssistantMessage, UserMessage } from '../../types/message.js'
 import { isEnvDefinedFalsy, isEnvTruthy } from '../envUtils.js'
 import { getTelemetryAttributes } from '../telemetryAttributes.js'
@@ -134,9 +133,7 @@ export function isEnhancedTelemetryEnabled(): boolean {
     if (isEnvDefinedFalsy(env)) {
       return false
     }
-    return (
-      getFeatureValue_CACHED_MAY_BE_STALE('enhanced_telemetry_beta', false)
-    )
+    return false
   }
   return false
 }

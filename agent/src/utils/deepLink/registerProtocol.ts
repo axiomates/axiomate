@@ -16,7 +16,6 @@
 import { promises as fs } from 'fs'
 import * as os from 'os'
 import * as path from 'path'
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../services/analytics/growthbook.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
@@ -299,9 +298,8 @@ export async function ensureDeepLinkProtocolRegistered(): Promise<void> {
   if (getInitialSettings().disableDeepLinkRegistration === 'disable') {
     return
   }
-  if (!getFeatureValue_CACHED_MAY_BE_STALE('ax_lodestone_enabled', false)) {
-    return
-  }
+  // Deep link protocol registration disabled (was gated by ax_lodestone_enabled)
+  return
 
   const claudePath = await resolveClaudePath()
   if (await isProtocolHandlerCurrent(claudePath)) {

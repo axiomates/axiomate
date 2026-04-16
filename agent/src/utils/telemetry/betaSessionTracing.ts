@@ -17,7 +17,6 @@
 import type { Span } from '@opentelemetry/api'
 import { createHash } from 'crypto'
 import { getIsNonInteractiveSession } from '../../bootstrap/state.js'
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../services/analytics/growthbook.js'
 import { sanitizeToolNameForAnalytics } from '../../services/analytics/metadata.js'
 import type { AssistantMessage, UserMessage } from '../../types/message.js'
 import { isEnvTruthy } from '../envUtils.js'
@@ -76,10 +75,7 @@ export function isBetaTracingEnabled(): boolean {
   // Enable in SDK/headless mode OR when org is allowlisted.
   // Gate reads from disk cache, so first run after allowlisting returns false;
   // works from second run onward (same behavior as enhanced_telemetry_beta).
-  return (
-    getIsNonInteractiveSession() ||
-    getFeatureValue_CACHED_MAY_BE_STALE('ax_trace_lantern', false)
-  )
+  return getIsNonInteractiveSession()
 }
 
 /**

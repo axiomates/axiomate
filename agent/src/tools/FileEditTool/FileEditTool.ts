@@ -1,6 +1,5 @@
 import { dirname, isAbsolute, sep } from 'path'
 import { logEvent } from '../../services/analytics/index.js'
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../services/analytics/growthbook.js'
 import { diagnosticTracker } from '../../services/diagnosticTracking.js'
 import { clearDeliveredDiagnosticsForFile } from '../../services/lsp/LSPDiagnosticRegistry.js'
 import { getLspServerManager } from '../../services/lsp/manager.js'
@@ -545,7 +544,7 @@ export const FileEditTool = buildTool({
     let gitDiff: ToolUseDiff | undefined
     if (
       isEnvTruthy(process.env.CLAUDE_CODE_REMOTE) &&
-      getFeatureValue_CACHED_MAY_BE_STALE('ax_quartz_lantern', false)
+      false
     ) {
       const startTime = Date.now()
       const diff = await fetchSingleFileGitDiff(absoluteFilePath)

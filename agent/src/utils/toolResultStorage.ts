@@ -12,7 +12,6 @@ import {
   MAX_TOOL_RESULT_BYTES,
   MAX_TOOL_RESULTS_PER_MESSAGE_CHARS,
 } from '../constants/toolLimits.js'
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '../services/analytics/growthbook.js'
 import { logEvent } from '../services/analytics/index.js'
 import { sanitizeToolNameForAnalytics } from '../services/analytics/metadata.js'
 import type { Message } from '../types/message.js'
@@ -61,18 +60,6 @@ export function getPersistenceThreshold(
   // before the GB override so ax_satin_quoll can't force it back on.
   if (!Number.isFinite(declaredMaxResultSizeChars)) {
     return declaredMaxResultSizeChars
-  }
-  const overrides = getFeatureValue_CACHED_MAY_BE_STALE<Record<
-    string,
-    number
-  > | null>(PERSIST_THRESHOLD_OVERRIDE_FLAG, {})
-  const override = overrides?.[toolName]
-  if (
-    typeof override === 'number' &&
-    Number.isFinite(override) &&
-    override > 0
-  ) {
-    return override
   }
   return Math.min(declaredMaxResultSizeChars, DEFAULT_MAX_RESULT_SIZE_CHARS)
 }
@@ -419,17 +406,6 @@ export function cloneContentReplacementState(
  * so a flag served as null/string/NaN leaks through.
  */
 export function getPerMessageBudgetLimit(): number {
-  const override = getFeatureValue_CACHED_MAY_BE_STALE<number | null>(
-    'ax_hawthorn_window',
-    null,
-  )
-  if (
-    typeof override === 'number' &&
-    Number.isFinite(override) &&
-    override > 0
-  ) {
-    return override
-  }
   return MAX_TOOL_RESULTS_PER_MESSAGE_CHARS
 }
 
@@ -448,11 +424,7 @@ export function provisionContentReplacementState(
   initialMessages?: Message[],
   initialContentReplacements?: ContentReplacementRecord[],
 ): ContentReplacementState | undefined {
-  const enabled = getFeatureValue_CACHED_MAY_BE_STALE(
-    'ax_hawthorn_steeple',
-    false,
-  )
-  if (!enabled) return undefined
+  return undefined
   if (initialMessages) {
     return reconstructContentReplacementState(
       initialMessages,

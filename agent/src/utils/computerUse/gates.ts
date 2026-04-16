@@ -1,8 +1,4 @@
-import { feature } from 'bun:bundle'
 import type { CoordinateMode, CuSubGates } from 'computer-use-mcp-axiomate'
-
-import { getDynamicConfig_CACHED_MAY_BE_STALE } from '../../services/analytics/growthbook.js'
-import { isEnvTruthy } from '../envUtils.js'
 
 type ChicagoConfig = CuSubGates & {
   enabled: boolean
@@ -20,41 +16,13 @@ const DEFAULTS: ChicagoConfig = {
   coordinateMode: 'pixels',
 }
 
-// Spread over defaults so a partial JSON ({"enabled": true} alone) inherits the
-// rest. The generic on getDynamicConfig is a type assertion, not a validator —
-// GB returning a partial object would otherwise surface undefined fields.
 function readConfig(): ChicagoConfig {
-  return {
-    ...DEFAULTS,
-    ...getDynamicConfig_CACHED_MAY_BE_STALE<Partial<ChicagoConfig>>(
-      'ax_malort_pedway',
-      DEFAULTS,
-    ),
-  }
-}
-
-// Max/Pro only for external rollout. Ant bypass so dogfooding continues
-// regardless of subscription tier — not all ants are max/pro, and per
-// AXIOMATE.md:281, USER_TYPE !== 'ant' branches get zero antfooding.
-function hasRequiredSubscription(): boolean {
-  if (feature('DEV')) return true
-  const tier = null
-  return tier === 'max' || tier === 'pro'
+  return { ...DEFAULTS }
 }
 
 export function getChicagoEnabled(): boolean {
-  // Disable for ants whose shell inherited monorepo dev config.
-  // MONOREPO_ROOT_DIR is exported by config/local/zsh/zshrc, which
-  // laptop-setup.sh wires into ~/.zshrc — its presence is the cheap
-  // proxy for "has monorepo access". Override: ALLOW_ANT_COMPUTER_USE_MCP=1.
-  if (
-    feature('DEV') &&
-    process.env.MONOREPO_ROOT_DIR &&
-    !isEnvTruthy(process.env.ALLOW_ANT_COMPUTER_USE_MCP)
-  ) {
-    return false
-  }
-  return hasRequiredSubscription() && readConfig().enabled
+  // axiomate has no subscription system — enabled is purely config-driven
+  return readConfig().enabled
 }
 
 export function getChicagoSubGates(): CuSubGates {
@@ -62,9 +30,6 @@ export function getChicagoSubGates(): CuSubGates {
   return subGates
 }
 
-// Frozen at first read — setup.ts builds tool descriptions and executor.ts
-// scales coordinates off the same value. A live read here lets a mid-session
-// GB flip tell the model "pixels" while transforming clicks as normalized.
 let frozenCoordinateMode: CoordinateMode | undefined
 export function getChicagoCoordinateMode(): CoordinateMode {
   frozenCoordinateMode ??= readConfig().coordinateMode

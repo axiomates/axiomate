@@ -10,36 +10,21 @@
 
 import { trackDatadogEvent } from './datadog.js'
 import { logEventTo1P, shouldSampleEvent } from './firstPartyEventLogger.js'
-import { checkStatsigFeatureGate_CACHED_MAY_BE_STALE } from './growthbook.js'
 import { attachAnalyticsSink, stripProtoFields } from './index.js'
 import { isSinkKilled } from './sinkKillswitch.js'
 
 // Local type matching the logEvent metadata signature
 type LogEventMetadata = { [key: string]: boolean | number | undefined }
 
-const DATADOG_GATE_NAME = 'ax_log_datadog_events'
-
-// Module-level gate state - starts undefined, initialized during startup
-let isDatadogGateEnabled: boolean | undefined = undefined
-
 /**
  * Check if Datadog tracking is enabled.
- * Falls back to cached value from previous session if not yet initialized.
+ * Previously GrowthBook-gated; now always returns false (gate default).
  */
 function shouldTrackDatadog(): boolean {
   if (isSinkKilled('datadog')) {
     return false
   }
-  if (isDatadogGateEnabled !== undefined) {
-    return isDatadogGateEnabled
-  }
-
-  // Fallback to cached value from previous session
-  try {
-    return checkStatsigFeatureGate_CACHED_MAY_BE_STALE(DATADOG_GATE_NAME)
-  } catch {
-    return false
-  }
+  return false
 }
 
 /**
@@ -87,16 +72,9 @@ function logEventAsyncImpl(
 
 /**
  * Initialize analytics gates during startup.
- *
- * Updates gate values from server. Early events use cached values from previous
- * session to avoid data loss during initialization.
- *
- * Called from main.tsx during setupBackend().
+ * Previously read GrowthBook; now a no-op (gate defaults are hardcoded).
  */
-export function initializeAnalyticsGates(): void {
-  isDatadogGateEnabled =
-    checkStatsigFeatureGate_CACHED_MAY_BE_STALE(DATADOG_GATE_NAME)
-}
+export function initializeAnalyticsGates(): void {}
 
 /**
  * Initialize the analytics sink.

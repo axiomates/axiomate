@@ -1,6 +1,5 @@
 import { feature } from 'bun:bundle'
 import { isReplBridgeActive } from '../../bootstrap/state.js'
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../services/analytics/growthbook.js'
 import type { Tool } from '../../Tool.js'
 import { AGENT_TOOL_NAME } from '../AgentTool/constants.js'
 
@@ -30,7 +29,7 @@ const PROMPT_HEAD = `Fetches full schema definitions for deferred tools so they 
 // <available-deferred-tools> block (pre-gate behavior).
 function getToolLocationHint(): string {
   const deltaEnabled =
-    getFeatureValue_CACHED_MAY_BE_STALE('ax_glacier_2xr', false)
+    false
   return deltaEnabled
     ? 'Deferred tools appear by name in <system-reminder> messages.'
     : 'Deferred tools appear by name in <available-deferred-tools> messages.'

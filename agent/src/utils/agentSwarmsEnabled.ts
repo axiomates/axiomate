@@ -1,4 +1,3 @@
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '../services/analytics/growthbook.js'
 import { isEnvTruthy } from './envUtils.js'
 
 /**
@@ -27,11 +26,6 @@ export function isAgentSwarmsEnabled(): boolean {
     !isEnvTruthy(process.env.CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS) &&
     !isAgentTeamsFlagSet()
   ) {
-    return false
-  }
-
-  // Killswitch — always respected for external users
-  if (!getFeatureValue_CACHED_MAY_BE_STALE('ax_amber_flint', true)) {
     return false
   }
 

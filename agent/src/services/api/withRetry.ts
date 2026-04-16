@@ -15,7 +15,6 @@ import { errorMessage } from '../../utils/errors.js'
 import { disableKeepAlive } from '../../utils/proxy.js'
 import { sleep } from '../../utils/sleep.js'
 import type { ThinkingConfig } from '../../utils/thinking.js'
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '../analytics/growthbook.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
@@ -143,10 +142,7 @@ export async function* withRetry<C, T>(
       const isStaleConnection = isStaleConnectionError(lastError)
       if (
         isStaleConnection &&
-        getFeatureValue_CACHED_MAY_BE_STALE(
-          'ax_disable_keepalive_on_econnreset',
-          false,
-        )
+        false
       ) {
         logForDebugging(
           'Stale connection (ECONNRESET/EPIPE) — disabling keep-alive for retry',

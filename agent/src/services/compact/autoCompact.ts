@@ -12,7 +12,6 @@ import { hasExactErrorMessage } from '../../utils/errors.js'
 import type { CacheSafeParams } from '../../utils/forkedAgent.js'
 import { logError } from '../../utils/log.js'
 import { tokenCountWithEstimation } from '../../utils/tokens.js'
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '../analytics/growthbook.js'
 import { getMaxOutputTokensForModel } from '../api/claude.js'
 import { setLastSummarizedMessageId } from '../SessionMemory/sessionMemoryUtils.js'
 import {
@@ -191,11 +190,7 @@ export async function shouldAutoCompact(
   // Note: returning false here also means autoCompactIfNeeded never reaches
   // trySessionMemoryCompaction in the query loop — the /compact call site
   // still tries session memory first. Revisit if reactive-only graduates.
-  if (feature('REACTIVE_COMPACT')) {
-    if (getFeatureValue_CACHED_MAY_BE_STALE('ax_cobalt_raccoon', false)) {
-      return false
-    }
-  }
+  // ax_cobalt_raccoon gate removed — reactive-only suppression no longer applies.
 
   // Context-collapse mode: same suppression. Collapse IS the context
   // management system when it's on — the 90% commit / 95% blocking-spawn

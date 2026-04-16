@@ -1,10 +1,6 @@
 import { logForDebugging } from '../../utils/debug.js'
 import { z } from 'zod/v4'
 import { lazySchema } from '../../utils/lazySchema.js'
-import {
-  checkStatsigFeatureGate_CACHED_MAY_BE_STALE,
-  getFeatureValue_CACHED_MAY_BE_STALE,
-} from '../analytics/growthbook.js'
 import { logEvent } from '../analytics/index.js'
 import type { ConnectedMCPServer, MCPServerConnection } from './types.js'
 
@@ -12,11 +8,7 @@ import type { ConnectedMCPServer, MCPServerConnection } from './types.js'
 // file pulls in too many deps for this thin IPC module.
 type AutoModeEnabledState = 'enabled' | 'disabled' | 'opt-in'
 function readAutoModeEnabledState(): AutoModeEnabledState | undefined {
-  const v = getFeatureValue_CACHED_MAY_BE_STALE<{ enabled?: string }>(
-    'ax_auto_mode_config',
-    {},
-  )?.enabled
-  return v === 'enabled' || v === 'disabled' || v === 'opt-in' ? v : undefined
+  return undefined
 }
 
 export const LogEventNotificationSchema = lazySchema(() =>
@@ -81,22 +73,12 @@ export function setupVscodeSdkMcp(sdkClients: MCPServerConnection[]): void {
 
     // Send necessary experiment gates to VSCode immediately.
     const gates: Record<string, boolean | string> = {
-      ax_vscode_review_upsell: checkStatsigFeatureGate_CACHED_MAY_BE_STALE(
-        'ax_vscode_review_upsell',
-      ),
-      ax_vscode_onboarding: checkStatsigFeatureGate_CACHED_MAY_BE_STALE(
-        'ax_vscode_onboarding',
-      ),
+      ax_vscode_review_upsell: false,
+      ax_vscode_onboarding: false,
       // Browser support.
-      ax_quiet_fern: getFeatureValue_CACHED_MAY_BE_STALE(
-        'ax_quiet_fern',
-        false,
-      ),
+      ax_quiet_fern: false,
       // In-band OAuth via claude_authenticate (vs. extension-native PKCE).
-      ax_vscode_cc_auth: getFeatureValue_CACHED_MAY_BE_STALE(
-        'ax_vscode_cc_auth',
-        false,
-      ),
+      ax_vscode_cc_auth: false,
     }
     // Tri-state: 'enabled' | 'disabled' | 'opt-in'. Omit if unknown so VSCode
     // fails closed (treats absent as 'disabled').

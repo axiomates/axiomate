@@ -10,7 +10,6 @@ import {
 } from '../../constants/apiLimits.js'
 import { hasBinaryExtension } from '../../constants/files.js'
 import { memoryFreshnessNote } from '../../memdir/memoryAge.js'
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../services/analytics/growthbook.js'
 import { logEvent } from '../../services/analytics/index.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -533,13 +532,7 @@ export const FileReadTool = buildTool({
     // the model externally.
     // 3P default: killswitch off = dedup enabled. Client-side only — no
     // server support needed, safe for Bedrock/Vertex/Foundry.
-    const dedupKillswitch = getFeatureValue_CACHED_MAY_BE_STALE(
-      'ax_read_dedup_killswitch',
-      false,
-    )
-    const existingState = dedupKillswitch
-      ? undefined
-      : readFileState.get(fullFilePath)
+    const existingState = readFileState.get(fullFilePath)
     // Only dedup entries that came from a prior Read (offset is always set
     // by Read). Edit/Write store offset=undefined — their readFileState
     // entry reflects post-edit mtime, so deduping against it would wrongly

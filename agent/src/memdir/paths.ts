@@ -5,7 +5,7 @@ import {
   getIsNonInteractiveSession,
   getProjectRoot,
 } from '../bootstrap/state.js'
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '../services/analytics/growthbook.js'
+import { feature } from 'bun:bundle'
 import {
   getConfigHomeDir,
   isEnvDefinedFalsy,
@@ -67,12 +67,12 @@ export function isAutoMemoryEnabled(): boolean {
  * directly in an `if` condition.
  */
 export function isExtractModeActive(): boolean {
-  if (!getFeatureValue_CACHED_MAY_BE_STALE('ax_passport_quail', false)) {
+  if (!feature('EXTRACT_MEMORIES')) {
     return false
   }
   return (
     !getIsNonInteractiveSession() ||
-    getFeatureValue_CACHED_MAY_BE_STALE('ax_slate_thimble', false)
+    false
   )
 }
 

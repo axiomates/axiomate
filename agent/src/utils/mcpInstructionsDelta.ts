@@ -1,4 +1,3 @@
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '../services/analytics/growthbook.js'
 import { logEvent } from '../services/analytics/index.js'
 import type {
   ConnectedMCPServer,
@@ -37,9 +36,7 @@ export type ClientSideInstruction = {
 export function isMcpInstructionsDeltaEnabled(): boolean {
   if (isEnvTruthy(process.env.CLAUDE_CODE_MCP_INSTR_DELTA)) return true
   if (isEnvDefinedFalsy(process.env.CLAUDE_CODE_MCP_INSTR_DELTA)) return false
-  return (
-    getFeatureValue_CACHED_MAY_BE_STALE('ax_basalt_3kr', false)
-  )
+  return false
 }
 
 /**

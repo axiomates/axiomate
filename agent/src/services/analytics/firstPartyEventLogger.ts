@@ -20,7 +20,6 @@ import { getCoreUserData } from '../../utils/user.js'
 import { isAnalyticsDisabled } from './config.js'
 import { FirstPartyEventLoggingExporter } from './firstPartyEventLoggingExporter.js'
 import type { GrowthBookUserAttributes } from './growthbook.js'
-import { getDynamicConfig_CACHED_MAY_BE_STALE } from './growthbook.js'
 import { getEventMetadata } from './metadata.js'
 import { isSinkKilled } from './sinkKillswitch.js'
 
@@ -37,14 +36,11 @@ export type EventSamplingConfig = {
 
 const EVENT_SAMPLING_CONFIG_NAME = 'ax_event_sampling_config'
 /**
- * Get the event sampling configuration from GrowthBook.
- * Uses cached value if available, updates cache in background.
+ * Get the event sampling configuration.
+ * Previously backed by GrowthBook; now returns empty config (log all events).
  */
 export function getEventSamplingConfig(): EventSamplingConfig {
-  return getDynamicConfig_CACHED_MAY_BE_STALE<EventSamplingConfig>(
-    EVENT_SAMPLING_CONFIG_NAME,
-    {},
-  )
+  return {}
 }
 
 /**
@@ -95,10 +91,7 @@ type BatchConfig = {
   baseUrl?: string
 }
 function getBatchConfig(): BatchConfig {
-  return getDynamicConfig_CACHED_MAY_BE_STALE<BatchConfig>(
-    BATCH_CONFIG_NAME,
-    {},
-  )
+  return {}
 }
 
 // Module-local state for event logging (not exposed globally)

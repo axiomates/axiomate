@@ -121,7 +121,6 @@ import { clearSpeculativeChecks } from '../tools/BashTool/bashPermissions.js';
 import type { AutoUpdaterResult } from '../utils/autoUpdater.js';
 import { getGlobalConfig, saveGlobalConfig, getGlobalConfigWriteCount } from '../utils/config.js';
 import { logEvent, type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS } from '../services/analytics/index.js';
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '../services/analytics/growthbook.js';
 import { textForResubmit, handleMessageFromStream, type StreamingToolUse, type StreamingThinking, isCompactBoundaryMessage, getMessagesAfterCompactBoundary, getContentText, createUserMessage, createAssistantMessage, createTurnDurationMessage, createAgentsKilledMessage, createApiMetricsMessage, createSystemMessage, createCommandInputMessage, formatCommandInputTags } from '../utils/messages.js';
 import { generateSessionTitle } from '../utils/sessionTitle.js';
 import { BASH_INPUT_TAG, COMMAND_MESSAGE_TAG, COMMAND_NAME_TAG, LOCAL_COMMAND_STDOUT_TAG } from '../constants/xml.js';
@@ -1125,7 +1124,7 @@ export function REPL({
   // Gated so we can roll back if the sidebar indicator conflicts with
   // the title spinner in terminals that render both. When the flag is
   // on, the user-facing config setting controls whether it's active.
-  const tabStatusGateEnabled = getFeatureValue_CACHED_MAY_BE_STALE('ax_terminal_sidebar', false);
+  const tabStatusGateEnabled = false;
   const showStatusInTerminalTab = tabStatusGateEnabled && (getGlobalConfig().showStatusInTerminalTab ?? false);
   useTabStatus(titleDisabled || !showStatusInTerminalTab ? null : sessionStatus);
 
@@ -3108,7 +3107,7 @@ export function REPL({
     // conversation is large and the cache is cold. ax_willow_mode
     // controls treatment: "dialog" (blocking), "hint" (notification), "off".
     {
-      const willowMode = getFeatureValue_CACHED_MAY_BE_STALE('ax_willow_mode', 'off');
+      const willowMode = 'off';
       const idleThresholdMin = Number(process.env.CLAUDE_CODE_IDLE_THRESHOLD_MINUTES ?? 75);
       const tokenThreshold = Number(process.env.CLAUDE_CODE_IDLE_TOKEN_THRESHOLD ?? 100_000);
       if (willowMode !== 'off' && !getGlobalConfig().idleReturnDismissed && !skipIdleCheckRef.current && !speculationAccept && !input.trim().startsWith('/') && lastQueryCompletionTimeRef.current > 0 && getTotalInputTokens() >= tokenThreshold) {
@@ -3737,7 +3736,7 @@ export function REPL({
   useEffect(() => {
     if (lastQueryCompletionTime === 0) return;
     if (isLoading) return;
-    const willowMode: string = getFeatureValue_CACHED_MAY_BE_STALE('ax_willow_mode', 'off');
+    const willowMode: string = 'off';
     if (willowMode !== 'hint' && willowMode !== 'hint_v2') return;
     if (getGlobalConfig().idleReturnDismissed) return;
     const tokenThreshold = Number(process.env.CLAUDE_CODE_IDLE_TOKEN_THRESHOLD ?? 100_000);

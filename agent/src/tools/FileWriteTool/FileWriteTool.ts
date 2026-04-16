@@ -1,7 +1,6 @@
 import { dirname, sep } from 'path'
 import { logEvent } from '../../services/analytics/index.js'
 import { z } from 'zod/v4'
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../services/analytics/growthbook.js'
 import { diagnosticTracker } from '../../services/diagnosticTracking.js'
 import { clearDeliveredDiagnosticsForFile } from '../../services/lsp/LSPDiagnosticRegistry.js'
 import { getLspServerManager } from '../../services/lsp/manager.js'
@@ -344,7 +343,7 @@ export const FileWriteTool = buildTool({
     let gitDiff: ToolUseDiff | undefined
     if (
       isEnvTruthy(process.env.CLAUDE_CODE_REMOTE) &&
-      getFeatureValue_CACHED_MAY_BE_STALE('ax_quartz_lantern', false)
+      false
     ) {
       const startTime = Date.now()
       const diff = await fetchSingleFileGitDiff(fullFilePath)

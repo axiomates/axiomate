@@ -4,7 +4,6 @@ import {
   getTerminalFocusState,
   subscribeTerminalFocus,
 } from '../ink/terminal-focus-state.js'
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '../services/analytics/growthbook.js'
 import { generateAwaySummary } from '../services/awaySummary.js'
 import type { Message } from '../types/message.js'
 import { createAwaySummaryMessage } from '../utils/messages.js'
@@ -44,11 +43,8 @@ export function useAwaySummary(
   messagesRef.current = messages
   isLoadingRef.current = isLoading
 
-  // 3P default: false
-  const gbEnabled = getFeatureValue_CACHED_MAY_BE_STALE(
-    'ax_sedge_lantern',
-    false,
-  )
+  // Away summary gate removed — always disabled
+  const gbEnabled = false
 
   useEffect(() => {
     if (!feature('AWAY_SUMMARY')) return

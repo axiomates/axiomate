@@ -35,10 +35,6 @@ const autoModeStateModule = feature('TRANSCRIPT_CLASSIFIER')
 
 import { resolve } from 'path'
 import {
-  getDynamicConfig_BLOCKS_ON_INIT,
-  getFeatureValue_CACHED_MAY_BE_STALE,
-} from '../../services/analytics/growthbook.js'
-import {
   addDirHelpMessage,
   validateDirectoryForWorkspace,
 } from '../../commands/add-dir/validation.js'
@@ -1028,10 +1024,7 @@ export async function verifyAutoModeGateAccess(
   // after GrowthBook initialization and is the authoritative source for
   // isAutoModeAvailable. The sync startup path uses stale cache; this
   // corrects it. Circuit breaker (enabled==='disabled') takes effect here.
-  const autoModeConfig = await getDynamicConfig_BLOCKS_ON_INIT<{
-    enabled?: AutoModeEnabledState
-  }>('ax_auto_mode_config', {})
-  const enabledState = parseAutoModeEnabledState(autoModeConfig?.enabled)
+  const enabledState = parseAutoModeEnabledState(undefined)
   const disabledBySettings = isAutoModeDisabledBySettings()
   // Treat settings-disable the same as GrowthBook 'disabled' for circuit-breaker
   // semantics — blocks SDK/explicit re-entry via isAutoModeGateEnabled().
@@ -1247,10 +1240,7 @@ function parseAutoModeEnabledState(value: unknown): AutoModeEnabledState {
  * auto mode in their mode pickers.
  */
 export function getAutoModeEnabledState(): AutoModeEnabledState {
-  const config = getFeatureValue_CACHED_MAY_BE_STALE<{
-    enabled?: AutoModeEnabledState
-  }>('ax_auto_mode_config', {})
-  return parseAutoModeEnabledState(config?.enabled)
+  return parseAutoModeEnabledState(undefined)
 }
 
 const NO_CACHED_AUTO_MODE_CONFIG = Symbol('no-cached-auto-mode-config')
@@ -1265,11 +1255,7 @@ const NO_CACHED_AUTO_MODE_CONFIG = Symbol('no-cached-auto-mode-config')
 export function getAutoModeEnabledStateIfCached():
   | AutoModeEnabledState
   | undefined {
-  const config = getFeatureValue_CACHED_MAY_BE_STALE<
-    { enabled?: AutoModeEnabledState } | typeof NO_CACHED_AUTO_MODE_CONFIG
-  >('ax_auto_mode_config', NO_CACHED_AUTO_MODE_CONFIG)
-  if (config === NO_CACHED_AUTO_MODE_CONFIG) return undefined
-  return parseAutoModeEnabledState(config?.enabled)
+  return parseAutoModeEnabledState(undefined)
 }
 
 /**

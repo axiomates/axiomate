@@ -47,7 +47,6 @@ import {
 } from '../bootstrap/state.js'
 import { truncateEntrypointContent } from '../memdir/memdir.js'
 import { getAutoMemEntrypoint, isAutoMemoryEnabled } from '../memdir/paths.js'
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '../services/analytics/growthbook.js'
 import {
   getCurrentProjectConfig,
   getManagedClaudeRulesDir,
@@ -1142,10 +1141,7 @@ export function getLargeMemoryFiles(files: MemoryFileInfo[]): MemoryFileInfo[] {
 export function filterInjectedMemoryFiles(
   files: MemoryFileInfo[],
 ): MemoryFileInfo[] {
-  const skipMemoryIndex = getFeatureValue_CACHED_MAY_BE_STALE(
-    'ax_moth_copse',
-    false,
-  )
+  const skipMemoryIndex = feature('EXTRACT_MEMORIES')
   if (!skipMemoryIndex) return files
   return files.filter(f => f.type !== 'AutoMem' && f.type !== 'TeamMem')
 }
@@ -1155,15 +1151,9 @@ export const getClaudeMds = (
   filter?: (type: MemoryType) => boolean,
 ): string => {
   const memories: string[] = []
-  const skipProjectLevel = getFeatureValue_CACHED_MAY_BE_STALE(
-    'ax_paper_halyard',
-    false,
-  )
 
   for (const file of memoryFiles) {
     if (filter && !filter(file.type)) continue
-    if (skipProjectLevel && (file.type === 'Project' || file.type === 'Local'))
-      continue
     if (file.content) {
       const description =
         file.type === 'Project'

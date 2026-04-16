@@ -9,7 +9,6 @@ const teamMemPaths = feature('TEAMMEM')
   : null
 
 import { getKairosActive, getOriginalCwd } from '../bootstrap/state.js'
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '../services/analytics/growthbook.js'
 /* eslint-enable @typescript-eslint/no-require-imports */
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -373,7 +372,7 @@ function buildAssistantDailyLogPrompt(skipIndex = false): string {
  * Build the "Searching past context" section if the feature gate is enabled.
  */
 export function buildSearchingPastContextSection(autoMemDir: string): string[] {
-  if (!getFeatureValue_CACHED_MAY_BE_STALE('ax_coral_fern', false)) {
+  if (!feature('EXTRACT_MEMORIES')) {
     return []
   }
   const projectDir = getProjectDir(getOriginalCwd())
@@ -419,10 +418,7 @@ export function buildSearchingPastContextSection(autoMemDir: string): string[] {
 export async function loadMemoryPrompt(): Promise<string | null> {
   const autoEnabled = isAutoMemoryEnabled()
 
-  const skipIndex = getFeatureValue_CACHED_MAY_BE_STALE(
-    'ax_moth_copse',
-    false,
-  )
+  const skipIndex = feature('EXTRACT_MEMORIES')
 
   // KAIROS daily-log mode takes precedence over TEAMMEM: the append-only
   // log paradigm does not compose with team sync (which expects a shared
@@ -497,10 +493,10 @@ export async function loadMemoryPrompt(): Promise<string | null> {
       !isEnvTruthy(process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY) &&
       getInitialSettings().autoMemoryEnabled === false,
   })
-  // Gate on the GB flag directly, not isTeamMemoryEnabled() — that function
+  // Gate on the feature flag directly, not isTeamMemoryEnabled() — that function
   // checks isAutoMemoryEnabled() first, which is definitionally false in this
   // branch. We want "was this user in the team-memory cohort at all."
-  if (getFeatureValue_CACHED_MAY_BE_STALE('ax_herring_clock', false)) {
+  if (feature('TEAMMEM')) {
     logEvent('ax_team_memdir_disabled', {})
   }
   return null

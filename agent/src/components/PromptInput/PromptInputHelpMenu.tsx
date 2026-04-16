@@ -1,10 +1,8 @@
-import { feature } from 'bun:bundle'
 import * as React from 'react'
 import { Box, Text } from '../../ink.js'
 import { getPlatform } from '../../utils/platform.js'
 import { isKeybindingCustomizationEnabled } from '../../keybindings/loadUserBindings.js'
 import { useShortcutDisplay } from '../../keybindings/useShortcutDisplay.js'
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../services/analytics/growthbook.js'
 import { getNewlineInstructions } from './utils.js'
 
 /** Format a shortcut for display in the help menu (e.g., "ctrl+o" → "ctrl + o") */
@@ -44,21 +42,12 @@ export function PromptInputHelpMenu(props: Props): React.ReactNode {
   const externalEditorShortcut = formatShortcut(
     useShortcutDisplay('chat:externalEditor', 'Chat', 'ctrl+g'),
   )
-  const terminalShortcut = formatShortcut(
-    useShortcutDisplay('app:toggleTerminal', 'Global', 'meta+j'),
-  )
   const imagePasteShortcut = formatShortcut(
     useShortcutDisplay('chat:imagePaste', 'Chat', 'ctrl+v'),
   )
 
-  // Compute terminal shortcut element outside JSX to satisfy feature() constraint
-  const terminalShortcutElement = feature('TERMINAL_PANEL') ? (
-    getFeatureValue_CACHED_MAY_BE_STALE('ax_terminal_panel', false) ? (
-      <Box>
-        <Text dimColor={dimColor}>{terminalShortcut} for terminal</Text>
-      </Box>
-    ) : null
-  ) : null
+  // Terminal panel shortcut — gate removed, always null
+  const terminalShortcutElement = null
 
   return (
     <Box paddingX={paddingX} flexDirection="row" gap={gap}>

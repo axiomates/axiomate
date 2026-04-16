@@ -7,7 +7,6 @@
  */
 
 import memoize from 'lodash-es/memoize.js'
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '../services/analytics/growthbook.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
@@ -208,18 +207,6 @@ const DEFAULT_UNSUPPORTED_MODEL_PATTERNS = ['haiku']
  * Can be configured via GrowthBook for live updates without code changes.
  */
 function getUnsupportedToolReferencePatterns(): string[] {
-  try {
-    // Try to get from GrowthBook for live configuration
-    const patterns = getFeatureValue_CACHED_MAY_BE_STALE<string[] | null>(
-      'ax_tool_search_unsupported_models',
-      null,
-    )
-    if (patterns && Array.isArray(patterns) && patterns.length > 0) {
-      return patterns
-    }
-  } catch {
-    // GrowthBook not ready, use defaults
-  }
   return DEFAULT_UNSUPPORTED_MODEL_PATTERNS
 }
 
@@ -619,9 +606,7 @@ export type DeferredToolsDeltaScanContext = {
  * header prepend (the attachment does not fire).
  */
 export function isDeferredToolsDeltaEnabled(): boolean {
-  return (
-    getFeatureValue_CACHED_MAY_BE_STALE('ax_glacier_2xr', false)
-  )
+  return false
 }
 
 /**

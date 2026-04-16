@@ -1,7 +1,6 @@
 import * as React from 'react'
 import { useEffect, useState } from 'react'
 import { Box, Text } from '../../ink.js'
-import { getDynamicConfig_CACHED_MAY_BE_STALE } from '../../services/analytics/growthbook.js'
 import { logEvent } from '../../services/analytics/index.js'
 import { getGlobalConfig, saveGlobalConfig } from '../../utils/config.js'
 import { Select } from '../CustomSelect/select.js'
@@ -19,10 +18,7 @@ const DESKTOP_UPSELL_DEFAULT: DesktopUpsellConfig = {
 }
 
 export function getDesktopUpsellConfig(): DesktopUpsellConfig {
-  return getDynamicConfig_CACHED_MAY_BE_STALE(
-    'ax_desktop_upsell',
-    DESKTOP_UPSELL_DEFAULT,
-  )
+  return DESKTOP_UPSELL_DEFAULT
 }
 
 function isSupportedPlatform(): boolean {

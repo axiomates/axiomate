@@ -18,7 +18,6 @@ import {
 } from '../../utils/messages.js'
 import { getInitialSettings } from '../../utils/settings/settings.js'
 import { isTeammate } from '../../utils/teammate.js'
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '../analytics/growthbook.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
@@ -56,14 +55,13 @@ export function shouldEnablePromptSuggestion(): boolean {
   }
 
   // Keep default in sync with Config.tsx (settings toggle visibility)
-  if (!getFeatureValue_CACHED_MAY_BE_STALE('ax_chomp_inflection', false)) {
-    logEvent('ax_prompt_suggestion_init', {
-      enabled: false,
-      source:
-        'growthbook' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-    })
-    return false
-  }
+  // ax_chomp_inflection gate removed — default false disables prompt suggestion
+  logEvent('ax_prompt_suggestion_init', {
+    enabled: false,
+    source:
+      'default' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+  })
+  return false
 
   // Disable in non-interactive mode (print mode, piped input, SDK)
   if (getIsNonInteractiveSession()) {

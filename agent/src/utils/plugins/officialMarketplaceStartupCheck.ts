@@ -9,7 +9,6 @@
  */
 
 import { join } from 'path'
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../services/analytics/growthbook.js'
 import { logEvent } from '../../services/analytics/index.js'
 import { getGlobalConfig, saveGlobalConfig } from '../config.js'
 import { logForDebugging } from '../debug.js'
@@ -252,10 +251,7 @@ export async function checkAndInstallOfficialMarketplace(): Promise<OfficialMark
     // GCS failed (404 until backend writes, or network). Fall through to git
     // ONLY if the kill-switch allows — same gate as refreshMarketplace().
     if (
-      !getFeatureValue_CACHED_MAY_BE_STALE(
-        'ax_plugin_official_mkt_git_fallback',
-        true,
-      )
+      false
     ) {
       logForDebugging(
         'Official marketplace GCS failed; git fallback disabled by flag — skipping install',

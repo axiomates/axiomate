@@ -13,7 +13,6 @@ import {
   sep,
 } from 'path'
 import { logEvent } from '../services/analytics/index.js'
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '../services/analytics/growthbook.js'
 import { getCwd } from '../utils/cwd.js'
 import { logForDebugging } from './debug.js'
 import { isENOENT, isFsInaccessible } from './errors.js'
@@ -278,10 +277,7 @@ export async function suggestPathUnderCwd(
 export function isCompactLinePrefixEnabled(): boolean {
   // 3P default: killswitch off = compact format enabled. Client-side only —
   // no server support needed, safe for Bedrock/Vertex/Foundry.
-  return !getFeatureValue_CACHED_MAY_BE_STALE(
-    'ax_compact_line_prefix_killswitch',
-    false,
-  )
+  return true
 }
 
 /**

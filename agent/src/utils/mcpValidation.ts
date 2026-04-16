@@ -3,7 +3,6 @@ import type {
   ImageBlockParam,
   TextBlockParam,
 } from '../services/api/streamTypes.js'
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '../services/analytics/growthbook.js'
 import {
   countMessagesTokensWithAPI,
   roughTokenCountEstimation,
@@ -30,18 +29,6 @@ export function getMaxMcpOutputTokens(): number {
     if (Number.isFinite(parsed) && parsed > 0) {
       return parsed
     }
-  }
-  const overrides = getFeatureValue_CACHED_MAY_BE_STALE<Record<
-    string,
-    number
-  > | null>('ax_satin_quoll', {})
-  const override = overrides?.['mcp_tool']
-  if (
-    typeof override === 'number' &&
-    Number.isFinite(override) &&
-    override > 0
-  ) {
-    return override
   }
   return DEFAULT_MAX_MCP_OUTPUT_TOKENS
 }

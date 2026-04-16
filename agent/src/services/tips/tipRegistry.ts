@@ -37,7 +37,6 @@ import {
   isCustomTitleEnabled,
 } from '../../utils/sessionStorage.js'
 import { isPowerShellToolEnvConfigured } from '../../utils/shell/shellToolUtils.js'
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '../analytics/growthbook.js'
 // overageCreditGrant removed — stubs
 const getCachedOverageCreditGrant = (): null => null
 const formatGrantAmount = (_info: unknown): string | null => null
@@ -489,46 +488,19 @@ const externalTips: Tip[] = [
     id: 'subagent-fanout-nudge',
     content: async ctx => {
       const blue = color('suggestion', ctx.theme)
-      const variant = getFeatureValue_CACHED_MAY_BE_STALE<
-        'off' | 'copy_a' | 'copy_b'
-      >('ax_tern_alloy', 'off')
-      return variant === 'copy_b'
-        ? `For big tasks, tell the AI to ${blue('use subagents')}. They work in parallel and keep your main thread clean.`
-        : `Say ${blue('"fan out subagents"')} and it sends a team. Each one digs deep so nothing gets missed.`
+      return `Say ${blue('"fan out subagents"')} and it sends a team. Each one digs deep so nothing gets missed.`
     },
     cooldownSessions: 3,
-    isRelevant: async () => {
-      if (!true) return false
-      return (
-        getFeatureValue_CACHED_MAY_BE_STALE<'off' | 'copy_a' | 'copy_b'>(
-          'ax_tern_alloy',
-          'off',
-        ) !== 'off'
-      )
-    },
+    isRelevant: async () => false,
   },
   {
     id: 'loop-command-nudge',
     content: async ctx => {
       const blue = color('suggestion', ctx.theme)
-      const variant = getFeatureValue_CACHED_MAY_BE_STALE<
-        'off' | 'copy_a' | 'copy_b'
-      >('ax_timber_lark', 'off')
-      return variant === 'copy_b'
-        ? `Use ${blue('/loop 5m check the deploy')} to run any prompt on a schedule. Set it and forget it.`
-        : `${blue('/loop')} runs any prompt on a recurring schedule. Great for monitoring deploys, babysitting PRs, or polling status.`
+      return `${blue('/loop')} runs any prompt on a recurring schedule. Great for monitoring deploys, babysitting PRs, or polling status.`
     },
     cooldownSessions: 3,
-    isRelevant: async () => {
-      if (!true) return false
-      if (!isKairosCronEnabled()) return false
-      return (
-        getFeatureValue_CACHED_MAY_BE_STALE<'off' | 'copy_a' | 'copy_b'>(
-          'ax_timber_lark',
-          'off',
-        ) !== 'off'
-      )
-    },
+    isRelevant: async () => false,
   },
   {
     id: 'guest-passes',

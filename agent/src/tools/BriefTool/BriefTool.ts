@@ -1,7 +1,6 @@
 import { feature } from 'bun:bundle'
 import { z } from 'zod/v4'
 import { getKairosActive, getUserMsgOptIn } from '../../bootstrap/state.js'
-import { getFeatureValue_CACHED_WITH_REFRESH } from '../../services/analytics/growthbook.js'
 import { logEvent } from '../../services/analytics/index.js'
 import type { ValidationResult } from '../../Tool.js'
 import { buildTool, type ToolDef } from '../../Tool.js'
@@ -90,12 +89,7 @@ export function isBriefEntitled(): boolean {
   // would not eliminate the GB gate string from external builds.
   return feature('KAIROS') || feature('KAIROS_BRIEF')
     ? getKairosActive() ||
-        isEnvTruthy(process.env.CLAUDE_CODE_BRIEF) ||
-        getFeatureValue_CACHED_WITH_REFRESH(
-          'ax_kairos_brief',
-          false,
-          KAIROS_BRIEF_REFRESH_MS,
-        )
+        isEnvTruthy(process.env.CLAUDE_CODE_BRIEF)
     : false
 }
 

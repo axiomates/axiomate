@@ -2,7 +2,6 @@ import { feature } from 'bun:bundle'
 import * as React from 'react'
 import { useSyncExternalStore } from 'react'
 import { Box, Text } from '../ink.js'
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '../services/analytics/growthbook.js'
 import {
   calculateTokenWarningState,
   getEffectiveContextWindowSize,
@@ -96,9 +95,7 @@ export function TokenWarning({ tokenUsage, model }: Props): React.ReactNode {
   let reactiveOnlyMode = false
   let collapseMode = false
   if (feature('REACTIVE_COMPACT')) {
-    if (getFeatureValue_CACHED_MAY_BE_STALE('ax_cobalt_raccoon', false)) {
-      reactiveOnlyMode = true
-    }
+    // ax_cobalt_raccoon gate removed — always false
   }
   if (feature('CONTEXT_COLLAPSE')) {
     /* eslint-disable @typescript-eslint/no-require-imports */

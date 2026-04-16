@@ -8,7 +8,7 @@ import {
   getIsNonInteractiveSession,
   getSessionBypassPermissionsMode,
 } from '../../bootstrap/state.js'
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../services/analytics/growthbook.js'
+import { feature } from 'bun:bundle'
 import type { ScopedMcpServerConfig } from '../../services/mcp/types.js'
 import { isInBundledMode } from '../bundledMode.js'
 import { getGlobalConfig, saveGlobalConfig } from '../config.js'
@@ -77,7 +77,7 @@ export function shouldAutoEnableClaudeInChrome(): boolean {
   shouldAutoEnable =
     getIsInteractive() &&
     isChromeExtensionInstalled_CACHED_MAY_BE_STALE() &&
-    getFeatureValue_CACHED_MAY_BE_STALE('ax_chrome_auto_enable', false)
+    feature('DEV')
 
   return shouldAutoEnable
 }

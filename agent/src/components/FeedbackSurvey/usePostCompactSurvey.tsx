@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { isFeedbackSurveyDisabled } from '../../services/analytics/config.js'
-import { checkStatsigFeatureGate_CACHED_MAY_BE_STALE } from '../../services/analytics/growthbook.js'
 import {
   type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
   logEvent,
@@ -106,9 +105,7 @@ export function usePostCompactSurvey(
   // Check the feature gate on mount
   useEffect(() => {
     if (!enabled) return
-    setGateEnabled(
-      checkStatsigFeatureGate_CACHED_MAY_BE_STALE(POST_COMPACT_SURVEY_GATE),
-    )
+    setGateEnabled(false)
   }, [enabled])
 
   // Find compact boundary messages

@@ -12,7 +12,6 @@ const computeShimmerSegments = (text: string, idx: number) => ({
 })
 import { feature } from 'bun:bundle'
 import { getKairosActive, getUserMsgOptIn } from '../bootstrap/state.js'
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '../services/analytics/growthbook.js'
 import { isEnvTruthy } from '../utils/envUtils.js'
 import { count } from '../utils/array.js'
 import sample from 'lodash-es/sample.js'
@@ -102,7 +101,7 @@ export function SpinnerWithVerb(props: Props): React.ReactNode {
     (getKairosActive() ||
       (getUserMsgOptIn() &&
         (briefEnvEnabled ||
-          getFeatureValue_CACHED_MAY_BE_STALE('ax_kairos_brief', false)))) &&
+          false))) &&
     isBriefOnly &&
     !viewingAgentTaskId
   ) {

@@ -23,7 +23,6 @@ import type { Message } from '../../types/message.js'
 import { logForDebugging } from '../../utils/debug.js'
 import type { ToolUseContext } from '../../Tool.js'
 import { logEvent } from '../analytics/index.js'
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '../analytics/growthbook.js'
 import { isAutoMemoryEnabled, getAutoMemPath } from '../../memdir/paths.js'
 import { isAutoDreamEnabled } from './config.js'
 import { getProjectDir } from '../../utils/sessionStorage.js'
@@ -72,10 +71,7 @@ const DEFAULTS: AutoDreamConfig = {
  */
 function getConfig(): AutoDreamConfig {
   const raw =
-    getFeatureValue_CACHED_MAY_BE_STALE<Partial<AutoDreamConfig> | null>(
-      'ax_onyx_plover',
-      null,
-    )
+    null as Partial<AutoDreamConfig> | null
   return {
     minHours:
       typeof raw?.minHours === 'number' &&

@@ -1,5 +1,4 @@
 import type { NonNullableUsage } from '../entrypoints/sdk/sdkUtilityTypes.js'
-import { getFeatureValue_CACHED_MAY_BE_STALE } from '../services/analytics/growthbook.js'
 import { shouldIncludeFirstPartyOnlyBetas } from './betas.js'
 import { isEnvTruthy } from './envUtils.js'
 import { getInitialSettings } from './settings/settings.js'
@@ -51,10 +50,7 @@ type AdvisorConfig = {
 }
 
 function getAdvisorConfig(): AdvisorConfig {
-  return getFeatureValue_CACHED_MAY_BE_STALE<AdvisorConfig>(
-    'ax_sage_compass',
-    {},
-  )
+  return {}
 }
 
 export function isAdvisorEnabled(): boolean {
