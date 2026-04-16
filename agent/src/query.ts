@@ -12,9 +12,6 @@ import {
 import { buildPostCompactMessages } from './services/compact/compact.js'
 /* eslint-disable @typescript-eslint/no-require-imports */
 const reactiveCompact = null
-const contextCollapse = false
-  ? (require('./services/contextCollapse/index.js') as typeof import('./services/contextCollapse/index.js'))
-  : null
 /* eslint-enable @typescript-eslint/no-require-imports */
 import {
   logEvent,
@@ -525,10 +522,7 @@ async function* queryLoop(
     // so reactive compact would never see a prompt-too-long to react to.
     // Widened to walrus so RC can act as fallback when proactive fails.
     //
-    // Same skip for context-collapse: its recoverFromOverflow drains
-    // staged collapses on a REAL API 413, then falls through to
-    // reactiveCompact. A synthetic preempt here would return before the
-    // API call and starve both recovery paths. The isAutoCompactEnabled()
+    // The isAutoCompactEnabled()
     // conjunct preserves the user's explicit "no automatic anything"
     // config — if they set DISABLE_AUTO_COMPACT, they get the preempt.
     let collapseOwnsIt = false
@@ -910,11 +904,6 @@ async function* queryLoop(
       const isWithheldMedia =
         mediaRecoveryEnabled &&
         reactiveCompact?.isWithheldMediaSizeError(lastMessage)
-      if (isWithheld413) {
-        // First: drain all staged context-collapses. Gated on the PREVIOUS
-        // transition not being collapse_drain_retry — if we already drained
-        // and the retry still 413'd, fall through to reactive compact.
-      }
       if ((isWithheld413 || isWithheldMedia) && reactiveCompact) {
         const compacted = await reactiveCompact.tryReactiveCompact({
           hasAttempted: hasAttemptedReactiveCompact,

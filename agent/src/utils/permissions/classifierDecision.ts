@@ -25,8 +25,6 @@ import { YOLO_CLASSIFIER_TOOL_NAME } from './yoloClassifier.js'
 /* eslint-disable @typescript-eslint/no-require-imports */
 const TERMINAL_CAPTURE_TOOL_NAME = null
 const OVERFLOW_TEST_TOOL_NAME = null
-const VERIFY_PLAN_EXECUTION_TOOL_NAME =
-  null
 const WORKFLOW_TOOL_NAME = false
   ? (
       require('../../tools/WorkflowTool/constants.js') as typeof import('../../tools/WorkflowTool/constants.js')
@@ -74,7 +72,6 @@ const SAFE_YOLO_ALLOWLISTED_TOOLS = new Set([
   SLEEP_TOOL_NAME,
   ...(TERMINAL_CAPTURE_TOOL_NAME ? [TERMINAL_CAPTURE_TOOL_NAME] : []),
   ...(OVERFLOW_TEST_TOOL_NAME ? [OVERFLOW_TEST_TOOL_NAME] : []),
-  ...(VERIFY_PLAN_EXECUTION_TOOL_NAME ? [VERIFY_PLAN_EXECUTION_TOOL_NAME] : []),
   // Internal classifier tool
   YOLO_CLASSIFIER_TOOL_NAME,
 ])

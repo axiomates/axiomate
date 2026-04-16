@@ -4408,9 +4408,6 @@ export function getMessagesAfterCompactBoundary<
 >(messages: T[], options?: { includeSnipped?: boolean }): T[] {
   const boundaryIndex = findLastCompactBoundaryIndex(messages)
   const sliced = boundaryIndex === -1 ? messages : messages.slice(boundaryIndex)
-  if (!options?.includeSnipped && false) {
-    return sliced
-  }
   return sliced
 }
 

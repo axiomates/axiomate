@@ -64,9 +64,7 @@ import env from './commands/env/index.js'
 import exit from './commands/exit/index.js'
 import exportCommand from './commands/export/index.js'
 import model from './commands/model/index.js'
-import tag from './commands/tag/index.js'
 import outputStyle from './commands/output-style/index.js'
-import remoteEnv from './commands/remote-env/index.js'
 import statusline from './commands/statusline.js'
 import stats from './commands/stats/index.js'
 // insights.ts is 113KB (3200 lines, includes diffLines/html rendering). Lazy
@@ -137,7 +135,6 @@ const COMMANDS = memoize((): Command[] => [
   memory,
   model,
   outputStyle,
-  remoteEnv,
   plugin,
   pr_comments,
   releaseNotes,
@@ -150,7 +147,6 @@ const COMMANDS = memoize((): Command[] => [
   status,
   statusline,
   stickers,
-  tag,
   theme,
   review,
   ultrareview,
