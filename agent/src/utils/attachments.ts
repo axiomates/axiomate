@@ -73,8 +73,6 @@ import type { PastedContent } from './config.js'
 import { getGlobalConfig } from './config.js'
 import {
   getMidModel,
-  getDefaultHaikuModel,
-  getDefaultOpusModel,
 } from './model/model.js'
 import type { ReadResourceResult } from '@modelcontextprotocol/sdk/types.js'
 import { getSkillToolCommands, getMcpSkillCommands } from '../commands.js'

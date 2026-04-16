@@ -69,7 +69,7 @@ import {
   stripToolReferenceBlocksFromUserMessage,
 } from '../../utils/messages.js'
 import {
-  getDefaultOpusModel,
+  getDefaultMainLoopModel,
   getMidModel,
   getFastModel,
   isNonCustomOpusModel,
@@ -260,7 +260,7 @@ export function getPromptCachingEnabled(model: string): boolean {
 
   // Check if we should disable for default Opus
   if (isEnvTruthy(process.env.DISABLE_PROMPT_CACHING_OPUS)) {
-    const defaultOpus = getDefaultOpusModel()
+    const defaultOpus = getDefaultMainLoopModel()
     if (model === defaultOpus) return false
   }
 

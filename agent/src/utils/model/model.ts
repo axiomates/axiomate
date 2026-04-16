@@ -28,7 +28,7 @@ export function getFastModel(): ModelName {
   if (config.currentModel && config.models?.[config.currentModel]) return config.currentModel
   const firstModel = Object.keys(config.models ?? {})[0]
   if (firstModel) return firstModel
-  return getDefaultHaikuModel()
+  return getFastModel()
 }
 
 export function isNonCustomOpusModel(model: ModelName): boolean {
@@ -106,32 +106,20 @@ export function getMainLoopModel(): ModelName {
 }
 
 export function getBestModel(): ModelName {
-  return getDefaultOpusModel()
+  return getDefaultMainLoopModel()
 }
 
-// @[MODEL LAUNCH]: Update the default Opus model (3P providers may lag so keep defaults unchanged).
-export function getDefaultOpusModel(): ModelName {
-  if (process.env.ANTHROPIC_DEFAULT_OPUS_MODEL) {
-    return process.env.ANTHROPIC_DEFAULT_OPUS_MODEL
-  }
-  return getModelStrings().opus46
-}
 
-// @[MODEL LAUNCH]: Update the default Sonnet model (3P providers may lag so keep defaults unchanged).
 export function getMidModel(): ModelName {
-  // Config-driven: midModel → currentModel → first model → Sonnet fallback
+  // Config-driven: midModel → currentModel → first model
   const config = getGlobalConfig()
   if (config.midModel && config.models?.[config.midModel]) return config.midModel
   if (config.currentModel && config.models?.[config.currentModel]) return config.currentModel
   const firstModel = Object.keys(config.models ?? {})[0]
   if (firstModel) return firstModel
-  return getModelStrings().sonnet45
+  return getDefaultMainLoopModel()
 }
 
-// @[MODEL LAUNCH]: Update the default Haiku model (3P providers may lag so keep defaults unchanged).
-export function getDefaultHaikuModel(): ModelName {
-  return getModelStrings().haiku45
-}
 
 /**
  * Get the model to use for runtime, depending on the runtime context.
@@ -151,7 +139,7 @@ export function getRuntimeMainLoopModel(params: {
     permissionMode === 'plan' &&
     !exceeds200kTokens
   ) {
-    return getDefaultOpusModel()
+    return getDefaultMainLoopModel()
   }
 
   // sonnetplan by default
@@ -355,9 +343,9 @@ export function parseUserSpecifiedModel(
       case 'sonnet':
         return getMidModel() + (has1mTag ? '[1m]' : '')
       case 'haiku':
-        return getDefaultHaikuModel() + (has1mTag ? '[1m]' : '')
+        return getFastModel() + (has1mTag ? '[1m]' : '')
       case 'opus':
-        return getDefaultOpusModel() + (has1mTag ? '[1m]' : '')
+        return getDefaultMainLoopModel() + (has1mTag ? '[1m]' : '')
       case 'best':
         return getBestModel()
       default:

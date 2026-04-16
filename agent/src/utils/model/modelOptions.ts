@@ -14,8 +14,8 @@ import {
   getCanonicalName,
   getClaudeAiUserDefaultModelDescription,
   getMidModel,
-  getDefaultOpusModel,
-  getDefaultHaikuModel,
+  getDefaultMainLoopModel,
+  getFastModel,
   getDefaultMainLoopModelSetting,
   getMarketingNameForModel,
   getUserSpecifiedModelSetting,
@@ -148,7 +148,7 @@ function getHaiku35Option(): ModelOption {
 
 function getHaikuOption(): ModelOption {
   // Return correct Haiku option based on provider
-  const haikuModel = getDefaultHaikuModel()
+  const haikuModel = getFastModel()
   return haikuModel === getModelStrings().haiku45
     ? getHaiku45Option()
     : getHaiku35Option()
@@ -277,7 +277,7 @@ function getModelFamilyInfo(
 
   // Opus family
   if (canonical.includes('claude-opus-4')) {
-    const currentName = getMarketingNameForModel(getDefaultOpusModel())
+    const currentName = getMarketingNameForModel(getDefaultMainLoopModel())
     if (currentName) {
       return { alias: 'Opus', currentVersionName: currentName }
     }
@@ -288,7 +288,7 @@ function getModelFamilyInfo(
     canonical.includes('claude-haiku') ||
     canonical.includes('claude-3-5-haiku')
   ) {
-    const currentName = getMarketingNameForModel(getDefaultHaikuModel())
+    const currentName = getMarketingNameForModel(getFastModel())
     if (currentName) {
       return { alias: 'Haiku', currentVersionName: currentName }
     }
