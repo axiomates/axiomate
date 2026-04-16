@@ -187,7 +187,7 @@ export async function cacheAndRegisterPlugin(
       // errors when /tmp is on a different filesystem (e.g., tmpfs)
       const tempPath = join(
         dirname(cacheResult.path),
-        `.axiomate-plugin-temp-${Date.now()}-${randomBytes(4).toString('hex')}`,
+        `.claude-plugin-temp-${Date.now()}-${randomBytes(4).toString('hex')}`,
       )
       await rename(cacheResult.path, tempPath)
       await getFsImplementation().mkdir(dirname(versionedPath))

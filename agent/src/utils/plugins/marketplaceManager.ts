@@ -14,7 +14,7 @@
  *       └── marketplaces/              # Cache directory for marketplace data
  *           ├── my-marketplace.json    # Cached marketplace from URL source
  *           └── github-marketplace/    # Cloned repository for GitHub source
- *               └── .axiomate-plugin/
+ *               └── .claude-plugin/
  *                   └── marketplace.json
  */
 
@@ -1068,7 +1068,7 @@ export async function reconcileSparseCheckout(
  * Example repository structure:
  * ```
  * my-marketplace/
- *   ├── .axiomate-plugin/
+ *   ├── .claude-plugin/
  *   │   └── marketplace.json    # Default location for marketplace manifest
  *   ├── plugins/                # Plugin implementations
  *   └── README.md
@@ -1407,7 +1407,7 @@ async function parseFileWithSchema<T>(
  *
  * Handles different source types:
  * - URL: Downloads marketplace.json directly
- * - GitHub: Clones repo and looks for .axiomate-plugin/marketplace.json
+ * - GitHub: Clones repo and looks for .claude-plugin/marketplace.json
  * - Git: Clones repository from git URL
  * - NPM: (Not yet implemented) Would fetch from npm package
  * - File: Reads from local filesystem
@@ -1419,7 +1419,7 @@ async function parseFileWithSchema<T>(
  * ~/.axiomate/plugins/marketplaces/
  *   ├── official-marketplace.json     # From URL source
  *   ├── github-marketplace/          # From GitHub/Git source
- *   │   └── .axiomate-plugin/
+ *   │   └── .claude-plugin/
  *   │       └── marketplace.json
  *   └── local-marketplace.json       # From file source
  *
@@ -1591,7 +1591,7 @@ async function loadAndCacheMarketplace(
 
         marketplacePath = join(
           temporaryCachePath,
-          source.path || '.axiomate-plugin/marketplace.json',
+          source.path || '.claude-plugin/marketplace.json',
         )
         break
       }
@@ -1608,7 +1608,7 @@ async function loadAndCacheMarketplace(
         )
         marketplacePath = join(
           temporaryCachePath,
-          source.path || '.axiomate-plugin/marketplace.json',
+          source.path || '.claude-plugin/marketplace.json',
         )
         break
       }
@@ -1620,8 +1620,8 @@ async function loadAndCacheMarketplace(
 
       case 'file': {
         // For local files, resolve paths relative to marketplace root directory
-        // File sources point to .axiomate-plugin/marketplace.json, so the marketplace
-        // root is two directories up (parent of .axiomate-plugin/)
+        // File sources point to .claude-plugin/marketplace.json, so the marketplace
+        // root is two directories up (parent of .claude-plugin/)
         // Resolve to absolute so error messages show the actual path checked
         // (legacy known_marketplaces.json entries may have relative paths)
         const absPath = resolve(source.path)
@@ -1632,11 +1632,11 @@ async function loadAndCacheMarketplace(
       }
 
       case 'directory': {
-        // For directories, look for .axiomate-plugin/marketplace.json
+        // For directories, look for .claude-plugin/marketplace.json
         // Resolve to absolute so error messages show the actual path checked
         // (legacy known_marketplaces.json entries may have relative paths)
         const absPath = resolve(source.path)
-        marketplacePath = join(absPath, '.axiomate-plugin', 'marketplace.json')
+        marketplacePath = join(absPath, '.claude-plugin', 'marketplace.json')
         temporaryCachePath = absPath
         cleanupNeeded = false
         break
@@ -1658,7 +1658,7 @@ async function loadAndCacheMarketplace(
         temporaryCachePath = join(cacheDir, source.name)
         marketplacePath = join(
           temporaryCachePath,
-          '.axiomate-plugin',
+          '.claude-plugin',
           'marketplace.json',
         )
         cleanupNeeded = false
@@ -2056,11 +2056,11 @@ export async function removeMarketplaceSource(name: string): Promise<void> {
 async function readCachedMarketplace(
   installLocation: string,
 ): Promise<PluginMarketplace> {
-  // For git-sourced directories, the manifest lives at .axiomate-plugin/marketplace.json.
+  // For git-sourced directories, the manifest lives at .claude-plugin/marketplace.json.
   // For url/file/directory sources it is the installLocation itself.
   // Try the nested path first; fall back to installLocation when it is a plain file
   // (ENOTDIR) or the nested file is simply missing (ENOENT).
-  const nestedPath = join(installLocation, '.axiomate-plugin', 'marketplace.json')
+  const nestedPath = join(installLocation, '.claude-plugin', 'marketplace.json')
   try {
     return await parseFileWithSchema(nestedPath, PluginMarketplaceSchema())
   } catch (e) {

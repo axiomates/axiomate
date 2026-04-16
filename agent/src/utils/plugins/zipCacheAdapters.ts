@@ -114,12 +114,12 @@ export async function saveMarketplaceJsonToZipCache(
 
 /**
  * Read marketplace.json content from a cloned marketplace directory or file.
- * For directory sources: checks .axiomate-plugin/marketplace.json, marketplace.json
+ * For directory sources: checks .claude-plugin/marketplace.json, marketplace.json
  * For URL sources: the installLocation IS the marketplace JSON file itself.
  */
 async function readMarketplaceJsonContent(dir: string): Promise<string | null> {
   const candidates = [
-    join(dir, '.axiomate-plugin', 'marketplace.json'),
+    join(dir, '.claude-plugin', 'marketplace.json'),
     join(dir, 'marketplace.json'),
     dir, // For URL sources, installLocation IS the marketplace JSON file
   ]
