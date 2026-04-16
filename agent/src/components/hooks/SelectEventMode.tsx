@@ -45,8 +45,8 @@ export function SelectEventMode({
             </Text>
             <Text dimColor>
               Only hooks from managed settings can run. User-defined hooks from
-              ~/.claude/settings.json, .claude/settings.json, and
-              .claude/settings.local.json are blocked.
+              ~/.axiomate/settings.json, .axiomate/settings.json, and
+              .axiomate/settings.local.json are blocked.
             </Text>
           </Box>
         )}

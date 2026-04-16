@@ -130,7 +130,7 @@ export function MemoryFileSelector({
     const isGit = projectIsInGitRepo(getOriginalCwd())
 
     if (file.type === 'User' && !file.isNested) {
-      description = 'Saved in ~/.claude/CLAUDE.md'
+      description = 'Saved in ~/.axiomate/CLAUDE.md'
     } else if (
       file.type === 'Project' &&
       !file.isNested &&
