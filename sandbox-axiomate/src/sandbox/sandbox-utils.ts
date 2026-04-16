@@ -31,14 +31,14 @@ export const DANGEROUS_DIRECTORIES = ['.git', '.vscode', '.idea'];
 export function getDangerousDirectories(): string[] {
     return [
         ...DANGEROUS_DIRECTORIES.filter(d => d !== '.git'),
-        '.claude/commands',
-        '.claude/agents',
+        '.axiomate/commands',
+        '.axiomate/agents',
     ];
 }
 /**
  * Normalizes a path for case-insensitive comparison.
  * This prevents bypassing security checks using mixed-case paths on case-insensitive
- * filesystems (macOS/Windows) like `.cLauDe/Settings.locaL.json`.
+ * filesystems (macOS/Windows) like `.aXioMaTe/Settings.locaL.json`.
  *
  * We always normalize to lowercase regardless of platform for consistent security.
  * @param path The path to normalize
@@ -244,10 +244,10 @@ export function getDefaultWritePaths(): string[] {
         '/dev/tty',
         '/dev/dtracehelper',
         '/dev/autofs_nowait',
-        '/tmp/claude',
-        '/private/tmp/claude',
+        '/tmp/axiomate',
+        '/private/tmp/axiomate',
         path.join(homeDir, '.npm/_logs'),
-        path.join(homeDir, '.claude/debug'),
+        path.join(homeDir, '.axiomate/debug'),
     ];
     return recommendedPaths;
 }
