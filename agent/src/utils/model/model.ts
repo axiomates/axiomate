@@ -21,14 +21,22 @@ export type ModelShortName = string
 export type ModelName = string
 export type ModelSetting = ModelName | ModelAlias | null
 
-export function getFastModel(): ModelName {
-  // Config-driven: fastModel → currentModel → first model → Haiku fallback
+/**
+ * Get the user's current model. This is the primary model configured in ~/.axiomate.json.
+ * Throws if no models are configured at all.
+ */
+function getCurrentModel(): ModelName {
   const config = getGlobalConfig()
-  if (config.fastModel && config.models?.[config.fastModel]) return config.fastModel
   if (config.currentModel && config.models?.[config.currentModel]) return config.currentModel
   const firstModel = Object.keys(config.models ?? {})[0]
   if (firstModel) return firstModel
-  return getFastModel()
+  throw new Error('No models configured. Add models to ~/.axiomate.json')
+}
+
+export function getFastModel(): ModelName {
+  const config = getGlobalConfig()
+  if (config.fastModel && config.models?.[config.fastModel]) return config.fastModel
+  return getCurrentModel()
 }
 
 export function isNonCustomOpusModel(model: ModelName): boolean {
@@ -111,13 +119,9 @@ export function getBestModel(): ModelName {
 
 
 export function getMidModel(): ModelName {
-  // Config-driven: midModel → currentModel → first model
   const config = getGlobalConfig()
   if (config.midModel && config.models?.[config.midModel]) return config.midModel
-  if (config.currentModel && config.models?.[config.currentModel]) return config.currentModel
-  const firstModel = Object.keys(config.models ?? {})[0]
-  if (firstModel) return firstModel
-  return getDefaultMainLoopModel()
+  return getCurrentModel()
 }
 
 
@@ -160,13 +164,7 @@ export function getRuntimeMainLoopModel(params: {
  * @returns The default model setting to use
  */
 export function getDefaultMainLoopModelSetting(): ModelName | ModelAlias {
-  // Max users get Opus as default
-
-  // Team Premium gets Opus (same as Max)
-
-  // PAYG (1P and 3P), Enterprise, Team Standard, and Pro get Sonnet as default
-  // Note that PAYG (3P) may default to an older Sonnet model
-  return getMidModel()
+  return getCurrentModel()
 }
 
 /**
