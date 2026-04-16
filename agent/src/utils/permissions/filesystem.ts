@@ -1514,38 +1514,6 @@ export function checkEditableInternalPath(
   // e.g. ~/.ssh/authorized_keys does not get a free write. Resolving both
   // sides handles the macOS /tmp → /private/tmp case where the config dir
   // lives under a symlinked root.
-  if (feature('TEMPLATES')) {
-    const jobDir = process.env.CLAUDE_JOB_DIR
-    if (jobDir) {
-      const jobsRoot = join(getConfigHomeDir(), 'jobs')
-      const jobDirForms = getPathsForPermissionCheck(jobDir).map(normalize)
-      const jobsRootForms = getPathsForPermissionCheck(jobsRoot).map(normalize)
-      // Hijack guard: every resolved form of the job dir must sit under
-      // some resolved form of the jobs root. Resolving both sides handles
-      // the case where ~/.axiomate is a symlink (e.g. to /data/claude-config).
-      const isUnderJobsRoot = jobDirForms.every(jd =>
-        jobsRootForms.some(jr => jd.startsWith(jr + sep)),
-      )
-      if (isUnderJobsRoot) {
-        const targetForms = getPathsForPermissionCheck(absolutePath)
-        const allInsideJobDir = targetForms.every(p => {
-          const np = normalize(p)
-          return jobDirForms.some(jd => np === jd || np.startsWith(jd + sep))
-        })
-        if (allInsideJobDir) {
-          return {
-            behavior: 'allow',
-            updatedInput: input,
-            decisionReason: {
-              type: 'other',
-              reason:
-                'Job directory files for current job are allowed for writing',
-            },
-          }
-        }
-      }
-    }
-  }
 
   // Agent memory directory (for self-improving agents)
   if (isAgentMemoryPath(normalizedPath)) {

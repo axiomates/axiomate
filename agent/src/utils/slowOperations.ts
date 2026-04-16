@@ -151,7 +151,7 @@ function slowLoggingExternal(): Disposable {
  */
 export const slowLogging: {
   (strings: TemplateStringsArray, ...values: unknown[]): Disposable
-} = feature('SLOW_OPERATION_LOGGING') ? slowLoggingAnt : slowLoggingExternal
+} = false ? slowLoggingAnt : slowLoggingExternal
 
 // --- Wrapped operations ---
 

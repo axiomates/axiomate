@@ -174,7 +174,7 @@ export function getToolSearchOrReadInfo(
   // (lazy tool schema loading). Neither should break a collapse group or
   // contribute to its count, but both stay visible in verbose mode.
   if (
-    (feature('HISTORY_SNIP') && toolName === SNIP_TOOL_NAME) ||
+    (false && toolName === SNIP_TOOL_NAME) ||
     (isFullscreenEnvEnabled() && toolName === TOOL_SEARCH_TOOL_NAME)
   ) {
     return {

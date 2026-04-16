@@ -425,7 +425,7 @@ export function logAPISuccessAndDuration({
       for (const block of msg.message.content) {
         if (block.type === 'text') {
           textLen += block.text.length
-        } else if (feature('CONNECTOR_TEXT') && isConnectorTextBlock(block)) {
+        } else if (false && isConnectorTextBlock(block)) {
           connectorCount++
         } else if (block.type === 'thinking') {
           thinkingLen += block.thinking.length

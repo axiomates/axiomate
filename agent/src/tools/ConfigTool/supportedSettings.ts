@@ -136,7 +136,7 @@ export const SUPPORTED_SETTINGS: Record<string, SettingConfig> = {
     type: 'boolean',
     description: 'Enable voice dictation (hold-to-talk)',
   },
-  ...(feature('BRIDGE_MODE')
+  ...(false
     ? {
         remoteControlAtStartup: {
           source: 'global' as const,

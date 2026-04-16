@@ -98,7 +98,7 @@ const LogoHeader = React.memo(function LogoHeader({
 // Dead code elimination: conditional import for proactive mode
 /* eslint-disable @typescript-eslint/no-require-imports */
 const proactiveModule =
-  feature('PROACTIVE')
+  false
     ? require('../proactive/index.js')
     : null
 const BRIEF_TOOL_NAME: string | null = null

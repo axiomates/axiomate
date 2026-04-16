@@ -37,7 +37,7 @@ export function AutoUpdaterWrapper({
       // Skip installation type detection if auto-updates are disabled (ant-only)
       // This avoids potentially slow package manager detection (spawnSync calls)
       if (
-        feature('SKIP_DETECTION_WHEN_AUTOUPDATES_DISABLED') &&
+        false &&
         isAutoUpdaterDisabled()
       ) {
         logForDebugging(

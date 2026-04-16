@@ -65,7 +65,7 @@ import { isMcpInstructionsDeltaEnabled } from '../utils/mcpInstructionsDelta.js'
 const getCachedMCConfigForFRC = null
 
 const proactiveModule =
-  feature('PROACTIVE')
+  false
     ? require('../proactive/index.js')
     : null
 const DISCOVER_SKILLS_TOOL_NAME: string | null = feature(
@@ -77,7 +77,7 @@ const DISCOVER_SKILLS_TOOL_NAME: string | null = feature(
   : null
 // Capture the module (not .isSkillSearchEnabled directly) so spyOn() in tests
 // patches what we actually call — a captured function ref would point past the spy.
-const skillSearchFeatureCheck = feature('EXPERIMENTAL_SKILL_SEARCH')
+const skillSearchFeatureCheck = false
   ? (require('../services/skillSearch/featureCheck.js') as typeof import('../services/skillSearch/featureCheck.js'))
   : null
 /* eslint-enable @typescript-eslint/no-require-imports */
@@ -287,7 +287,7 @@ function getAgentToolSection(): string {
  */
 function getDiscoverSkillsGuidance(): string | null {
   if (
-    feature('EXPERIMENTAL_SKILL_SEARCH') &&
+    false &&
     DISCOVER_SKILLS_TOOL_NAME !== null
   ) {
     return `Relevant skills are automatically surfaced each turn as "Skills relevant to your task:" reminders. If you're about to do something those don't cover — a mid-task pivot, an unusual workflow, a multi-step plan — call ${DISCOVER_SKILLS_TOOL_NAME} with a specific description of what you're doing. Skills already visible or loaded are filtered automatically. Skip this if the surfaced skills already cover your next action.`
@@ -405,7 +405,7 @@ export async function getSystemPrompt(
   const enabledTools = new Set(tools.map(_ => _.name))
 
   if (
-    feature('PROACTIVE') &&
+    false &&
     proactiveModule?.isProactiveActive()
   ) {
     logForDebugging(`[SystemPrompt] path=simple-proactive`)
@@ -675,7 +675,7 @@ export async function enhanceSystemPromptWithEnvDetails(
   // AgentTool.tsx:768 builds the prompt before assembleToolPool:830 so it
   // omits this param — `?? true` preserves guidance there.
   const discoverSkillsGuidance =
-    feature('EXPERIMENTAL_SKILL_SEARCH') &&
+    false &&
     skillSearchFeatureCheck?.isSkillSearchEnabled() &&
     DISCOVER_SKILLS_TOOL_NAME !== null &&
     (enabledToolNames?.has(DISCOVER_SKILLS_TOOL_NAME) ?? true)
@@ -719,7 +719,7 @@ The scratchpad directory is session-specific, isolated from the user's project, 
 }
 
 function getFunctionResultClearingSection(model: string): string | null {
-  if (!feature('CACHED_MICROCOMPACT') || !getCachedMCConfigForFRC) {
+  if (!false || !getCachedMCConfigForFRC) {
     return null
   }
   const config = getCachedMCConfigForFRC()
@@ -741,7 +741,7 @@ Old tool results will be automatically cleared from context to free up space. Th
 const SUMMARIZE_TOOL_RESULTS_SECTION = `When working with tool results, write down any important information you might need later in your response, as the original tool result may be cleared later.`
 
 function getProactiveSection(): string | null {
-  if (!feature('PROACTIVE')) return null
+  if (!false) return null
   if (!proactiveModule?.isProactiveActive()) return null
 
   return `# Autonomous work

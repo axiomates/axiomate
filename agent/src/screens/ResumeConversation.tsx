@@ -313,9 +313,6 @@ export function ResumeConversation({
         }
       }
 
-      if (feature('CONTEXT_COLLAPSE')) {
-        // contextCollapse/persist module removed — no-op
-      }
 
 
       setLogs([])

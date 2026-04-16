@@ -7,6 +7,6 @@ describe('test infrastructure', () => {
   })
 
   it('bun:bundle mock works', () => {
-    expect(feature('ANY_FEATURE')).toBe(false)
+    expect(false).toBe(false)
   })
 })

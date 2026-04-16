@@ -45,7 +45,7 @@ export function AttachmentMessage({
 }: Props): React.ReactNode {
   const bg = useSelectedMessageBg()
   // Hoisted to mount-time — per-message component, re-renders on every scroll.
-  const isDemoEnv = feature('EXPERIMENTAL_SKILL_SEARCH')
+  const isDemoEnv = false
     ? // biome-ignore lint/correctness/useHookAtTopLevel: feature() is a compile-time constant
       useMemo(() => isEnvTruthy(process.env.IS_DEMO), [])
     : false
@@ -134,26 +134,6 @@ export function AttachmentMessage({
   // skill_discovery rendered here (not in the switch) so the 'skill_discovery'
   // string literal stays inside a feature()-guarded block. A case label can't
   // be conditionally eliminated; an if-body can.
-  if (feature('EXPERIMENTAL_SKILL_SEARCH')) {
-    if (attachment.type === 'skill_discovery') {
-      if (attachment.skills.length === 0) return null
-      // Ant users get shortIds inline so they can /skill-feedback while the
-      // turn is still fresh. External users (when this un-gates) just see
-      // names — shortId is undefined outside ant builds anyway.
-      const names = attachment.skills
-        .map(s => (s.shortId ? `${s.name} [${s.shortId}]` : s.name))
-        .join(', ')
-      const firstId = attachment.skills[0]?.shortId
-      const hint = ''
-      return (
-        <Line>
-          <Text bold>{attachment.skills.length}</Text> relevant{' '}
-          {plural(attachment.skills.length, 'skill')}: {names}
-          {hint && <Text dimColor>{hint}</Text>}
-        </Line>
-      )
-    }
-  }
 
   // eslint-disable-next-line @typescript-eslint/switch-exhaustiveness-check -- teammate_mailbox/skill_discovery handled before switch
   switch (attachment.type) {

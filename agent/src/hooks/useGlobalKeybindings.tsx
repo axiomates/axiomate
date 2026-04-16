@@ -140,11 +140,6 @@ export function GlobalKeybindingHandlers({
   // Toggle built-in terminal panel (meta+j).
   // toggle() blocks in spawnSync until the user detaches from tmux.
   const handleToggleTerminal = useCallback(() => {
-    if (feature('TERMINAL_PANEL')) {
-      // ax_terminal_panel gate removed — terminal panel disabled
-      return;
-      getTerminalPanel().toggle();
-    }
   }, []);
   useKeybinding('app:toggleTerminal', handleToggleTerminal, {
     context: 'Global'

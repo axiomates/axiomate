@@ -47,7 +47,7 @@ const COMPACTABLE_TOOLS = new Set<string>([
   FILE_WRITE_TOOL_NAME,
 ])
 
-// --- Cached microcompact state (ant-only, gated by feature('CACHED_MICROCOMPACT')) ---
+// --- Cached microcompact state (ant-only, gated by false) ---
 // cachedMicrocompact module removed — inline stubs
 
 type CachedMCState = { pinnedEdits: PinnedCacheEdits[]; registeredTools: Set<string>; toolOrder: string[]; deletedRefs: Set<string> }
@@ -275,17 +275,6 @@ export async function microcompactMessages(
   // (session_memory, prompt_suggestion, etc.) from registering their
   // tool_results in the global cachedMCState, which would cause the main
   // thread to try deleting tools that don't exist in its own conversation.
-  if (feature('CACHED_MICROCOMPACT')) {
-    const mod = await getCachedMCModule()
-    const model = toolUseContext?.options.mainLoopModel ?? getMainLoopModel()
-    if (
-      mod.isCachedMicrocompactEnabled() &&
-      mod.isModelSupportedForCacheEditing(model) &&
-      isMainThreadSource(querySource)
-    ) {
-      return await cachedMicrocompactPath(messages, querySource)
-    }
-  }
 
   // Legacy microcompact path removed — ax_cache_plum_violet is always true.
   // For contexts where cached microcompact is not available (external builds,

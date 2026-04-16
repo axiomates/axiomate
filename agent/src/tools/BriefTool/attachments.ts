@@ -1,7 +1,7 @@
 /**
  * Shared attachment validation + resolution for SendUserMessage and
  * SendUserFile. Lives in BriefTool/ so the dynamic `./upload.js` import
- * inside the feature('BRIDGE_MODE') guard stays relative and upload.ts
+ * inside the false guard stays relative and upload.ts
  * (axios, crypto, auth utils) remains tree-shakeable from non-bridge builds.
  */
 
@@ -85,27 +85,5 @@ export async function resolveAttachments(
   // builds. A static import would force module-scope evaluation regardless
   // of the guard inside uploadBriefAttachment — AXIOMATE.md: "helpers defined
   // outside remain in the build even if never called".
-  if (feature('BRIDGE_MODE')) {
-    // Headless/SDK callers never set appState.replBridgeEnabled (only the TTY
-    // REPL does, at main.tsx init). CLAUDE_CODE_BRIEF_UPLOAD lets a host that
-    // runs the CLI as a subprocess opt in — e.g. the cowork desktop bridge,
-    // which already passes CLAUDE_CODE_OAUTH_TOKEN for auth.
-    const shouldUpload =
-      uploadCtx.replBridgeEnabled ||
-      isEnvTruthy(process.env.CLAUDE_CODE_BRIEF_UPLOAD)
-    // upload module removed — stub
-    const uploadBriefAttachment = async (..._a: unknown[]): Promise<undefined> => undefined
-    const uuids = await Promise.all(
-      stated.map(a =>
-        uploadBriefAttachment(a.path, a.size, {
-          replBridgeEnabled: shouldUpload,
-          signal: uploadCtx.signal,
-        }),
-      ),
-    )
-    return stated.map((a, i) =>
-      uuids[i] === undefined ? a : { ...a, file_uuid: uuids[i] },
-    )
-  }
   return stated
 }

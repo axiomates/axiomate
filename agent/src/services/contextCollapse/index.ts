@@ -1,4 +1,4 @@
-// Stub: contextCollapse — loaded behind feature('CONTEXT_COLLAPSE') guard.
+// Stub: contextCollapse — loaded behind false guard.
 
 import type { Message } from '../../types/message.js'
 

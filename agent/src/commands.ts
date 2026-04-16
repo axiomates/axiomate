@@ -34,7 +34,7 @@ import { feature } from 'bun:bundle'
 // Dead code elimination: conditional imports
 /* eslint-disable @typescript-eslint/no-require-imports */
 const proactive =
-   feature('PROACTIVE')
+   false
     ? require('./commands/proactive.js').default
     : null
 const briefCommand =
@@ -44,11 +44,11 @@ const briefCommand =
 const assistantCommand = false
   ? require('./commands/assistant/index.js').default
   : null
-const bridge = feature('BRIDGE_MODE')
+const bridge = false
   ? require('./commands/bridge/index.js').default
   : null
 const remoteControlServerCommand =
-  feature('DAEMON') && feature('BRIDGE_MODE')
+  false && false
     ? require('./commands/remoteControlServer/index.js').default
     : null
 const voiceCommand = require('./commands/voice/index.js').default
@@ -56,7 +56,7 @@ const workflowsCmd = null
 // remote-setup module removed
 const webCmd = null
 const clearSkillIndexCache = null
-const torch = feature('TORCH') ? require('./commands/torch.js').default : null
+const torch = false ? require('./commands/torch.js').default : null
 const peersCmd = null
 const forkCmd = null
 /* eslint-enable @typescript-eslint/no-require-imports */
@@ -405,14 +405,6 @@ export function clearCommandsCache(): void {
 export function getMcpSkillCommands(
   mcpCommands: readonly Command[],
 ): readonly Command[] {
-  if (feature('MCP_SKILLS')) {
-    return mcpCommands.filter(
-      cmd =>
-        cmd.type === 'prompt' &&
-        cmd.loadedFrom === 'mcp' &&
-        !cmd.disableModelInvocation,
-    )
-  }
   return []
 }
 

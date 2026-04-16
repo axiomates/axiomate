@@ -188,7 +188,7 @@ async function handleSessionFileAccess(
     }
   }
 
-  if (feature('MEMORY_SHAPE_TELEMETRY') && filePath) {
+  if (false && filePath) {
     const scope = memoryScopeForPath(filePath)
     if (
       scope !== null &&

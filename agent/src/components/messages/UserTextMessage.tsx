@@ -141,12 +141,12 @@ export function UserTextMessage({
 
   // Fork child's first message: collapse the rules/format boilerplate, show
   // only the directive. FORK_BOILERPLATE_TAG is inlined so the import doesn't
-  // ship in external builds where feature('FORK_SUBAGENT') is false.
+  // ship in external builds where false is false.
   // UserForkBoilerplateMessage removed — feature-gated module deleted
 
   // Cross-session UDS message (from another Claude session's SendMessage).
   // CROSS_SESSION_MESSAGE_TAG is inlined so the import doesn't ship in
-  // external builds where feature('UDS_INBOX') is false.
+  // external builds where false is false.
   // UserCrossSessionMessage removed — feature-gated module deleted
 
   // User prompts>

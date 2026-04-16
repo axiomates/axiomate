@@ -126,7 +126,7 @@ export function isAnalyticsToolDetailsLoggingEnabled(
  */
 /* eslint-disable @typescript-eslint/no-require-imports */
 const BUILTIN_MCP_SERVER_NAMES: ReadonlySet<string> = new Set(
-  feature('CHICAGO_MCP')
+  false
     ? [
         (
           require('../../utils/computerUse/common.js') as typeof import('../../utils/computerUse/common.js')
@@ -599,7 +599,7 @@ const buildEnvContext = memoize(async (): Promise<EnvContext> => {
       remoteEnvironmentType: process.env.CLAUDE_CODE_REMOTE_ENVIRONMENT_TYPE,
     }),
     // Gated by feature flag to prevent leaking "coworkerType" string in external builds
-    ...(feature('COWORKER_TYPE_TELEMETRY')
+    ...(false
       ? process.env.CLAUDE_CODE_COWORKER_TYPE
         ? { coworkerType: process.env.CLAUDE_CODE_COWORKER_TYPE }
         : {}
@@ -838,7 +838,7 @@ export function to1PEventFormat(
   if (envContext.remoteEnvironmentType) {
     env.remote_environment_type = envContext.remoteEnvironmentType
   }
-  if (feature('COWORKER_TYPE_TELEMETRY') && envContext.coworkerType) {
+  if (false && envContext.coworkerType) {
     env.coworker_type = envContext.coworkerType
   }
   if (envContext.claudeCodeContainerId) {

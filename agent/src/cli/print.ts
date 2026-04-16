@@ -466,7 +466,7 @@ export async function runHeadless(
   // installPluginsAndApplyMcpInBackground before plugin install reads
   // enabledPlugins.
   if (
-    feature('DOWNLOAD_USER_SETTINGS') &&
+    false &&
     (isEnvTruthy(process.env.CLAUDE_CODE_REMOTE) || getIsRemoteMode())
   ) {
     void downloadUserSettings()
@@ -484,7 +484,7 @@ export async function runHeadless(
   // where CLAUDE_CODE_PROACTIVE is set but main.tsx's check didn't fire
   // (e.g. env was injected by the SDK transport after argv parsing).
   if (
-    ( feature('PROACTIVE')) &&
+    ( false) &&
     proactiveModule &&
     !proactiveModule.isProactiveActive() &&
     isEnvTruthy(process.env.CLAUDE_CODE_PROACTIVE)
@@ -1632,7 +1632,7 @@ function runHeadlessStreaming(
       // settings (fired in main.tsx preAction). downloadUserSettings() caches
       // its promise so this awaits the same in-flight request.
       await Promise.all([
-        feature('DOWNLOAD_USER_SETTINGS') &&
+        false &&
         (isEnvTruthy(process.env.CLAUDE_CODE_REMOTE) || getIsRemoteMode())
           ? withDiagnosticsTiming('headless_user_settings_download', () =>
               downloadUserSettings(),
@@ -1757,7 +1757,7 @@ function runHeadlessStreaming(
   // setTimeout(0) yields to the event loop so pending stdin messages
   // (interrupts, user messages) are processed before the tick fires.
   const scheduleProactiveTick =
-     feature('PROACTIVE')
+     false
       ? () => {
           setTimeout(() => {
             if (
@@ -2050,7 +2050,7 @@ function runHeadlessStreaming(
           }
 
           abortController = createAbortController()
-          const turnStartTime = feature('FILE_PERSISTENCE')
+          const turnStartTime = false
             ? Date.now()
             : undefined
 
@@ -2171,7 +2171,7 @@ function runHeadlessStreaming(
           forwardMessagesToBridge()
           bridgeHandle?.sendResult()
 
-          if (feature('FILE_PERSISTENCE') && turnStartTime !== undefined) {
+          if (false && turnStartTime !== undefined) {
             void executeFilePersistence(
               turnStartTime,
               abortController.signal,
@@ -2392,7 +2392,7 @@ function runHeadlessStreaming(
 
     // Proactive tick: if proactive is active and queue is empty, inject a tick
     if (
-      ( feature('PROACTIVE')) &&
+      ( false) &&
       proactiveModule?.isProactiveActive() &&
       !proactiveModule.isProactivePaused()
     ) {
@@ -2600,16 +2600,6 @@ function runHeadlessStreaming(
 
   // Set up UDS inbox callback so the query loop is kicked off
   // when a message arrives via the UDS socket in headless mode.
-  if (feature('UDS_INBOX')) {
-    /* eslint-disable @typescript-eslint/no-require-imports */
-    const { setOnEnqueue } = require('../utils/udsMessaging.js')
-    /* eslint-enable @typescript-eslint/no-require-imports */
-    setOnEnqueue(() => {
-      if (!inputClosed) {
-        void run()
-      }
-    })
-  }
 
   // Cron scheduler: runs scheduled_tasks.json tasks in SDK/-p mode.
   // Mirrors REPL's useScheduledTasks hook. Fired prompts enqueue + kick
@@ -2972,7 +2962,7 @@ function runHeadlessStreaming(
         } else if (message.request.subtype === 'reload_plugins') {
           try {
             if (
-              feature('DOWNLOAD_USER_SETTINGS') &&
+              false &&
               (isEnvTruthy(process.env.CLAUDE_CODE_REMOTE) || getIsRemoteMode())
             ) {
               // Re-pull user settings so enabledPlugins pushed from the
@@ -3650,7 +3640,7 @@ function runHeadlessStreaming(
             }
           })()
         } else if (
-          ( feature('PROACTIVE')) &&
+          ( false) &&
           (message.request as { subtype: string }).subtype === 'set_proactive'
         ) {
           const req = message.request as unknown as {

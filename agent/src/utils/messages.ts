@@ -2317,7 +2317,7 @@ export function normalizeMessagesForAPI(
   // VCR fixture lookup. Gate must match SnipTool.isEnabled() — don't
   // inject [id:] tags when the tool isn't available (confuses the model
   // and wastes tokens on every non-meta user message for every ant).
-  if (feature('HISTORY_SNIP') && process.env.NODE_ENV !== 'test') {
+  if (false && process.env.NODE_ENV !== 'test') {
     const { isSnipRuntimeEnabled } =
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       require('../services/compact/snipCompact.js') as typeof import('../services/compact/snipCompact.js')
@@ -2380,31 +2380,6 @@ function isToolResultMessage(msg: Message): boolean {
 export function mergeUserMessages(a: UserMessage, b: UserMessage): UserMessage {
   const lastContent = normalizeUserTextContent(a.message.content)
   const currentContent = normalizeUserTextContent(b.message.content)
-  if (feature('HISTORY_SNIP')) {
-    // A merged message is only meta if ALL merged messages are meta. If any
-    // operand is real user content, the result must not be flagged isMeta
-    // (so [id:] tags get injected and it's treated as user-visible content).
-    // Gated behind the full runtime check because changing isMeta semantics
-    // affects downstream callers (e.g., VCR fixture hashing in SDK harness
-    // tests), so this must only fire when snip is actually enabled — not
-    // for all ants.
-    const { isSnipRuntimeEnabled } =
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      require('../services/compact/snipCompact.js') as typeof import('../services/compact/snipCompact.js')
-    if (isSnipRuntimeEnabled()) {
-      return {
-        ...a,
-        isMeta: a.isMeta && b.isMeta ? (true as const) : undefined,
-        uuid: a.isMeta ? b.uuid : a.uuid,
-        message: {
-          ...a.message,
-          content: hoistToolResults(
-            joinTextAtSeam(lastContent, currentContent),
-          ),
-        },
-      }
-    }
-  }
   return {
     ...a,
     // Preserve the non-meta message's uuid so [id:] tags (derived from uuid)
@@ -3354,21 +3329,6 @@ Read the team config to discover your teammates' names. Check the task list peri
   // skill_discovery handled here (not in the switch) so the 'skill_discovery'
   // string literal lives inside a feature()-guarded block. A case label can't
   // be gated, but this pattern can — same approach as teammate_mailbox above.
-  if (feature('EXPERIMENTAL_SKILL_SEARCH')) {
-    if (attachment.type === 'skill_discovery') {
-      if (attachment.skills.length === 0) return []
-      const lines = attachment.skills.map(s => `- ${s.name}: ${s.description}`)
-      return wrapMessagesInSystemReminder([
-        createUserMessage({
-          content:
-            `Skills relevant to your task:\n\n${lines.join('\n')}\n\n` +
-            `These skills encode project-specific conventions. ` +
-            `Invoke via Skill("<name>") for complete instructions.`,
-          isMeta: true,
-        }),
-      ])
-    }
-  }
 
   // eslint-disable-next-line @typescript-eslint/switch-exhaustiveness-check -- teammate_mailbox/team_context/skill_discovery/bagel_console handled above
   // biome-ignore lint/nursery/useExhaustiveSwitchCases: teammate_mailbox/team_context/max_turns_reached/skill_discovery/bagel_console handled above, can't add case for dead code elimination
@@ -3997,17 +3957,6 @@ You have exited auto mode. The user may now want to interact more directly. You 
       ])
     }
     case 'context_efficiency': {
-      if (feature('HISTORY_SNIP')) {
-        const { SNIP_NUDGE_TEXT } =
-          // eslint-disable-next-line @typescript-eslint/no-require-imports
-          require('../services/compact/snipCompact.js') as typeof import('../services/compact/snipCompact.js')
-        return wrapMessagesInSystemReminder([
-          createUserMessage({
-            content: SNIP_NUDGE_TEXT,
-            isMeta: true,
-          }),
-        ])
-      }
       return []
     }
     case 'date_change': {
@@ -4488,7 +4437,7 @@ export function getMessagesAfterCompactBoundary<
 >(messages: T[], options?: { includeSnipped?: boolean }): T[] {
   const boundaryIndex = findLastCompactBoundaryIndex(messages)
   const sliced = boundaryIndex === -1 ? messages : messages.slice(boundaryIndex)
-  if (!options?.includeSnipped && feature('HISTORY_SNIP')) {
+  if (!options?.includeSnipped && false) {
     // snipProjection module removed — return sliced directly
     return sliced
   }
@@ -4889,9 +4838,6 @@ export function stripSignatureBlocks(messages: Message[]): Message[] {
 
     const filtered = content.filter(block => {
       if (isThinkingBlock(block)) return false
-      if (feature('CONNECTOR_TEXT')) {
-        if (isConnectorTextBlock(block)) return false
-      }
       return true
     })
     if (filtered.length === content.length) return msg

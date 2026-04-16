@@ -295,7 +295,7 @@ function useCanUseTool(
                     awaitAutomatedChecksBeforeDialog:
                       appState.toolPermissionContext
                         .awaitAutomatedChecksBeforeDialog,
-                    bridgeCallbacks: feature('BRIDGE_MODE')
+                    bridgeCallbacks: false
                       ? appState.replBridgePermissionCallbacks
                       : undefined,
                   },

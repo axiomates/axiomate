@@ -7,7 +7,7 @@ import { initSkillImprovement } from './hooks/skillImprovement.js'
 const extractMemoriesModule = feature('EXTRACT_MEMORIES')
   ? (require('../services/extractMemories/extractMemories.js') as typeof import('../services/extractMemories/extractMemories.js'))
   : null
-const registerProtocolModule = feature('LODESTONE')
+const registerProtocolModule = false
   ? (require('./deepLink/registerProtocol.js') as typeof import('./deepLink/registerProtocol.js'))
   : null
 
@@ -36,7 +36,7 @@ export function startBackgroundHousekeeping(): void {
   }
   initAutoDream()
   void autoUpdateMarketplacesAndPluginsInBackground()
-  if (feature('LODESTONE') && getIsInteractive()) {
+  if (false && getIsInteractive()) {
     void registerProtocolModule!.ensureDeepLinkProtocolRegistered()
   }
 

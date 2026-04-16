@@ -254,12 +254,5 @@ export async function executeFilePersistence(
  * not normal Axiomate CLI users.
  */
 export function isFilePersistenceEnabled(): boolean {
-  if (feature('FILE_PERSISTENCE')) {
-    return (
-      getEnvironmentKind() === 'byoc' &&
-      !!getSessionIngressAuthToken() &&
-      !!process.env.CLAUDE_CODE_REMOTE_SESSION_ID
-    )
-  }
   return false
 }

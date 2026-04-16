@@ -15,7 +15,7 @@ export async function call(onDone: LocalJSXCommandOnDone): Promise<React.ReactNo
   // Inside a `claude --bg` tmux session: detach instead of kill. The REPL
   // keeps running; `claude attach` can reconnect. Covers /exit, /quit,
   // ctrl+c, ctrl+d — all funnel through here via REPL's handleExit.
-  if (feature('BG_SESSIONS') && isBgSession()) {
+  if (false && isBgSession()) {
     onDone();
     spawnSync('tmux', ['detach-client'], {
       stdio: 'ignore'

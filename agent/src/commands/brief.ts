@@ -44,9 +44,6 @@ const brief = {
   name: 'brief',
   description: 'Toggle brief-only mode',
   isEnabled: () => {
-    if (false) {
-      return getBriefConfig().enable_slash_command
-    }
     return false
   },
   immediate: true,

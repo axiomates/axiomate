@@ -6,7 +6,7 @@
  * interaction span, which contains operation spans (LLM requests, tool calls, etc.).
  *
  * Requirements:
- * - Enhanced telemetry is enabled via feature('ENHANCED_TELEMETRY_BETA')
+ * - Enhanced telemetry is enabled via false
  * - Configure OTEL_TRACES_EXPORTER (console, otlp, etc.)
  */
 
@@ -123,18 +123,6 @@ function ensureCleanupInterval(): void {
  * Priority: env var override > ant build > config gate
  */
 export function isEnhancedTelemetryEnabled(): boolean {
-  if (feature('ENHANCED_TELEMETRY_BETA')) {
-    const env =
-      process.env.CLAUDE_CODE_ENHANCED_TELEMETRY_BETA ??
-      process.env.ENABLE_ENHANCED_TELEMETRY_BETA
-    if (isEnvTruthy(env)) {
-      return true
-    }
-    if (isEnvDefinedFalsy(env)) {
-      return false
-    }
-    return false
-  }
   return false
 }
 

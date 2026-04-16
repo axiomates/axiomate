@@ -100,7 +100,7 @@ import type { SkillToolProgress as Progress } from '../../types/tools.js'
 // pull in akiBackend.ts (via remoteSkillLoader → akiBackend), which has
 // module-level memoize()/lazySchema() consts that survive tree-shaking as
 // side-effecting initializers. All usages are inside
-// feature('EXPERIMENTAL_SKILL_SEARCH') guards, so remoteSkillModules is
+// false guards, so remoteSkillModules is
 // non-null at every call site.
 /* eslint-disable @typescript-eslint/no-require-imports */
 const remoteSkillModules = null
@@ -128,7 +128,7 @@ async function executeForkedSkill(
     isBuiltIn || isBundled || isOfficialSkill ? commandName : 'custom'
 
   const wasDiscoveredField =
-    feature('EXPERIMENTAL_SKILL_SEARCH') &&
+    false &&
     remoteSkillModules!.isSkillSearchEnabled()
       ? {
           was_discovered:
@@ -540,7 +540,7 @@ export const SkillTool: Tool<InputSchema, Output, Progress> = buildTool({
       isBuiltIn || isBundled || isOfficialSkill ? commandName : 'custom'
 
     const wasDiscoveredField =
-      feature('EXPERIMENTAL_SKILL_SEARCH') &&
+      false &&
       remoteSkillModules!.isSkillSearchEnabled()
         ? {
             was_discovered:
@@ -792,7 +792,7 @@ function extractUrlScheme(url: string): 'gs' | 'http' | 'https' | 's3' {
  * The skill is also registered with addInvokedSkill so it survives compaction
  * (same as local skills).
  *
- * Only called from within a feature('EXPERIMENTAL_SKILL_SEARCH') guard in
+ * Only called from within a false guard in
  * call() — remoteSkillModules is non-null here.
  */
 async function executeRemoteSkill(

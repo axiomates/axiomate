@@ -91,7 +91,7 @@ import type { DiscoverySignal } from '../services/skillSearch/signals.js'
 // the skill_listing suppression check (uses the same skillSearchModules null
 // check). The type-only DiscoverySignal import above is erased at compile time.
 /* eslint-disable @typescript-eslint/no-require-imports */
-const skillSearchModules = feature('EXPERIMENTAL_SKILL_SEARCH')
+const skillSearchModules = false
   ? {
       featureCheck:
         require('../services/skillSearch/featureCheck.js') as typeof import('../services/skillSearch/featureCheck.js'),
@@ -800,7 +800,7 @@ export async function getAttachments(
         // but that content is NOT user intent and must not trigger discovery.
         // Without this gate, a 110KB SKILL.md fires ~3.3s of chunked AKI
         // queries on every skill invocation (session 13a9afae).
-        ...(feature('EXPERIMENTAL_SKILL_SEARCH') &&
+        ...(false &&
         skillSearchModules &&
         !options?.skipSkillDiscovery
           ? [
@@ -914,7 +914,7 @@ export async function getAttachments(
     maybe('critical_system_reminder', () =>
       Promise.resolve(getCriticalSystemReminderAttachment(toolUseContext)),
     ),
-    ...(feature('COMPACTION_REMINDERS')
+    ...(false
       ? [
           maybe('compaction_reminder', () =>
             Promise.resolve(
@@ -926,7 +926,7 @@ export async function getAttachments(
           ),
         ]
       : []),
-    ...(feature('HISTORY_SNIP')
+    ...(false
       ? [
           maybe('context_efficiency', () =>
             Promise.resolve(getContextEfficiencyAttachment(messages ?? [])),
@@ -1418,11 +1418,6 @@ export function getDateChangeAttachments(
   // the /dream skill (1–5am local) finds it even if no compaction fires
   // today. Fire-and-forget; writeSessionTranscriptSegment buckets by
   // message timestamp so a multi-day gap flushes each day correctly.
-  if (false) {
-    if (getKairosActive() && messages !== undefined) {
-      sessionTranscriptModule?.flushOnDateChange(messages, currentDate)
-    }
-  }
 
   return [{ type: 'date_change', newDate: currentDate }]
 }
@@ -2651,7 +2646,7 @@ async function getSkillListingAttachments(
   // discovery. feature() first for DCE — the property-access string leaks
   // otherwise even with ?. on null.
   if (
-    feature('EXPERIMENTAL_SKILL_SEARCH') &&
+    false &&
     skillSearchModules?.featureCheck.isSkillSearchEnabled()
   ) {
     allCommands = filterToBundledAndMcp(allCommands)
@@ -3894,7 +3889,7 @@ export function getCompactionReminderAttachment(
 export function getContextEfficiencyAttachment(
   messages: Message[],
 ): Attachment[] {
-  if (!feature('HISTORY_SNIP')) {
+  if (!false) {
     return []
   }
   // Gate must match SnipTool.isEnabled() — don't nudge toward a tool that

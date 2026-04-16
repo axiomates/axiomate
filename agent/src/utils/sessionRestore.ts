@@ -124,9 +124,6 @@ export function restoreSessionStateFromLog(
   // undefined/empty entries) because restoreFromEntries resets the store
   // first — without that, an in-session /resume into a session with no
   // commits would leave the prior session's stale commit log intact.
-  if (feature('CONTEXT_COLLAPSE')) {
-    // contextCollapse/persist module removed — no-op
-  }
 
   // Restore TodoWrite state from transcript (SDK/non-interactive only).
   // Interactive mode uses file-backed v2 tasks, so AppState.todos is unused there.
@@ -484,9 +481,6 @@ export async function processResumedConversation(
   // /resume path goes through restoreSessionStateFromLog (REPL.tsx); CLI
   // --continue/--resume goes through here instead. Called unconditionally
   // — see the restoreSessionStateFromLog callsite above for why.
-  if (feature('CONTEXT_COLLAPSE')) {
-    // contextCollapse/persist module removed — no-op
-  }
 
   // Restore agent setting from resumed session
   const { agentDefinition: restoredAgent, agentType: resumedAgentType } =

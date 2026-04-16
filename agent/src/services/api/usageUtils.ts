@@ -71,7 +71,7 @@ export function updateUsage(
     // so the string is eliminated from external builds by dead code elimination.
     // Uses the same > 0 guard as other token fields to prevent message_delta
     // from overwriting the real value with 0.
-    ...(feature('CACHED_MICROCOMPACT')
+    ...(false
       ? {
           cache_deleted_input_tokens:
             (partUsage as unknown as { cache_deleted_input_tokens?: number })
@@ -125,7 +125,7 @@ export function accumulateUsage(
     },
     // See comment in updateUsage — field is not on NonNullableUsage to keep
     // the string out of external builds.
-    ...(feature('CACHED_MICROCOMPACT')
+    ...(false
       ? {
           cache_deleted_input_tokens:
             ((totalUsage as unknown as { cache_deleted_input_tokens?: number })

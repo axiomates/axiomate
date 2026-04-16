@@ -277,7 +277,7 @@ export function getSimplePrompt(): string {
 
   const sleepSubitems = [
     'Do not sleep between commands that can run immediately — just run them.',
-    ...(feature('MONITOR_TOOL')
+    ...(false
       ? [
           'Use the Monitor tool to stream events from a background process (each stdout line is a notification). For one-shot "wait until done," use Bash with run_in_background instead.',
         ]
@@ -285,7 +285,7 @@ export function getSimplePrompt(): string {
     'If your command is long running and you would like to be notified when it finishes — use `run_in_background`. No sleep needed.',
     'Do not retry failing commands in a sleep loop — diagnose the root cause.',
     'If waiting for a background task you started with `run_in_background`, you will be notified when it completes — do not poll.',
-    ...(feature('MONITOR_TOOL')
+    ...(false
       ? [
           '`sleep N` as the first command with N ≥ 2 is blocked. If you need a delay (rate limiting, deliberate pacing), keep it under 2 seconds.',
         ]

@@ -28,7 +28,7 @@ const TERMINAL_CAPTURE_TOOL_NAME = null
 const OVERFLOW_TEST_TOOL_NAME = null
 const VERIFY_PLAN_EXECUTION_TOOL_NAME =
   null
-const WORKFLOW_TOOL_NAME = feature('WORKFLOW_SCRIPTS')
+const WORKFLOW_TOOL_NAME = false
   ? (
       require('../../tools/WorkflowTool/constants.js') as typeof import('../../tools/WorkflowTool/constants.js')
     ).WORKFLOW_TOOL_NAME

@@ -55,7 +55,7 @@ export function renderToolUseMessage(
     .map(([key, value]) => {
       let rendered = jsonStringify(value)
       if (
-        feature('MCP_RICH_OUTPUT') &&
+        false &&
         !verbose &&
         rendered.length > MAX_INPUT_VALUE_CHARS
       ) {
@@ -168,7 +168,7 @@ export function renderToolResultMessage(
         item.text !== undefined
           ? String(item.text)
           : ''
-      return feature('MCP_RICH_OUTPUT') ? (
+      return false ? (
         <MCPTextOutput key={i} content={textContent} verbose={verbose} />
       ) : (
         <OutputLine key={i} content={textContent} verbose={verbose} />
@@ -190,11 +190,7 @@ export function renderToolResultMessage(
       </Box>
     )
   } else {
-    contentElement = feature('MCP_RICH_OUTPUT') ? (
-      <MCPTextOutput content={mcpOutput} verbose={verbose} />
-    ) : (
-      <OutputLine content={mcpOutput} verbose={verbose} />
-    )
+    contentElement = <OutputLine content={mcpOutput as string} verbose={verbose} />
   }
 
   if (warningMessage) {

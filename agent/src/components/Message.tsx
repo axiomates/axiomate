@@ -205,17 +205,6 @@ function MessageImpl({
         // Logged at creation time in createMicrocompactBoundaryMessage
         return null
       }
-      if (feature('HISTORY_SNIP')) {
-        /* eslint-disable @typescript-eslint/no-require-imports */
-        const { isSnipMarkerMessage } =
-          require('../services/compact/snipCompact.js') as typeof import('../services/compact/snipCompact.js')
-        /* eslint-enable @typescript-eslint/no-require-imports */
-        if (isSnipMarkerMessage(message)) {
-          // Internal registration marker — not user-facing. The boundary
-          // message (above) is what shows when snips actually execute.
-          return null
-        }
-      }
       if (message.subtype === 'local_command') {
         return (
           <UserTextMessage
@@ -389,20 +378,6 @@ function AssistantMessageBlock({
   lastThinkingBlockId?: string | null
   advisorModel?: string
 }): React.ReactNode {
-  if (feature('CONNECTOR_TEXT')) {
-    if (isConnectorTextBlock(param)) {
-      return (
-        <AssistantTextMessage
-          param={{ type: 'text', text: param.connector_text }}
-          addMargin={addMargin}
-          shouldShowDot={shouldShowDot}
-          verbose={verbose}
-          width={width}
-          onOpenRateLimitOptions={onOpenRateLimitOptions}
-        />
-      )
-    }
-  }
   switch (param.type) {
     case 'tool_use':
       return (

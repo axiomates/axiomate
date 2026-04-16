@@ -19,7 +19,7 @@ type Props = {
  * Live collapse progress: "x / y summarized". Sub-component so
  * useSyncExternalStore can subscribe to store mutations unconditionally
  * (hooks-in-conditionals would violate React rules). The parent only
- * renders this when feature('CONTEXT_COLLAPSE') + isContextCollapseEnabled().
+ * renders this when false + isContextCollapseEnabled().
  */
 function CollapseLabel({
   upgradeMessage,
@@ -94,18 +94,6 @@ export function TokenWarning({ tokenUsage, model }: Props): React.ReactNode {
   let displayPercentLeft = percentLeft
   let reactiveOnlyMode = false
   let collapseMode = false
-  if (feature('REACTIVE_COMPACT')) {
-    // ax_cobalt_raccoon gate removed — always false
-  }
-  if (feature('CONTEXT_COLLAPSE')) {
-    /* eslint-disable @typescript-eslint/no-require-imports */
-    const { isContextCollapseEnabled } =
-      require('../services/contextCollapse/index.js') as typeof import('../services/contextCollapse/index.js')
-    /* eslint-enable @typescript-eslint/no-require-imports */
-    if (isContextCollapseEnabled()) {
-      collapseMode = true
-    }
-  }
   if (reactiveOnlyMode || collapseMode) {
     const effectiveWindow = getEffectiveContextWindowSize(model)
     displayPercentLeft = Math.max(
@@ -117,7 +105,7 @@ export function TokenWarning({ tokenUsage, model }: Props): React.ReactNode {
   // Collapse mode: delegate to the subscribing sub-component so the
   // indicator updates live as the ctx-agent stages and commits fire, not
   // just when the next API response re-renders TokenWarning.
-  if (collapseMode && feature('CONTEXT_COLLAPSE')) {
+  if (collapseMode && false) {
     return (
       <Box flexDirection="row">
         <CollapseLabel upgradeMessage={upgradeMessage} />

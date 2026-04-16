@@ -785,7 +785,7 @@ export const SettingsSchema = lazySchema(() =>
         .enum(['latest', 'stable'])
         .optional()
         .describe('Release channel for auto-updates (latest or stable)'),
-      ...(feature('LODESTONE')
+      ...(false
         ? {
             disableDeepLinkRegistration: z
               .enum(['disable'])
@@ -808,7 +808,7 @@ export const SettingsSchema = lazySchema(() =>
           'Custom directory for plan files, relative to project root. ' +
             'If not set, defaults to ~/.axiomate/plans/',
         ),
-      ...( feature('PROACTIVE')
+      ...( false
         ? {
             minSleepDurationMs: z
               .number()

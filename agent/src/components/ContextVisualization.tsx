@@ -22,53 +22,6 @@ const RESERVED_CATEGORY_NAME = 'Autocompact buffer'
  * and don't appear in the conversation view.
  */
 function CollapseStatus(): React.ReactNode {
-  if (feature('CONTEXT_COLLAPSE')) {
-    /* eslint-disable @typescript-eslint/no-require-imports */
-    const { getStats, isContextCollapseEnabled } =
-      require('../services/contextCollapse/index.js') as typeof import('../services/contextCollapse/index.js')
-    /* eslint-enable @typescript-eslint/no-require-imports */
-    if (!isContextCollapseEnabled()) return null
-
-    const s = getStats()
-    const { health: h } = s
-
-    const parts: string[] = []
-    if (s.collapsedSpans > 0) {
-      parts.push(
-        `${s.collapsedSpans} ${plural(s.collapsedSpans, 'span')} summarized (${s.collapsedMessages} msgs)`,
-      )
-    }
-    if (s.stagedSpans > 0) parts.push(`${s.stagedSpans} staged`)
-    const summary =
-      parts.length > 0
-        ? parts.join(', ')
-        : h.totalSpawns > 0
-          ? `${h.totalSpawns} ${plural(h.totalSpawns, 'spawn')}, nothing staged yet`
-          : 'waiting for first trigger'
-
-    let line2: React.ReactNode = null
-    if (h.totalErrors > 0) {
-      line2 = (
-        <Text color="warning">
-          Collapse errors: {h.totalErrors}/{h.totalSpawns} spawns failed
-          {h.lastError ? ` (last: ${h.lastError.slice(0, 60)})` : ''}
-        </Text>
-      )
-    } else if (h.emptySpawnWarningEmitted) {
-      line2 = (
-        <Text color="warning">
-          Collapse idle: {h.totalEmptySpawns} consecutive empty runs
-        </Text>
-      )
-    }
-
-    return (
-      <>
-        <Text dimColor>Context strategy: collapse ({summary})</Text>
-        {line2}
-      </>
-    )
-  }
   return null
 }
 
