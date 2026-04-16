@@ -179,11 +179,11 @@ const restoreRemoteAgentTasks = async (..._args: unknown[]) => {} // RemoteAgent
 import { useInboxPoller } from '../hooks/useInboxPoller.js';
 // Dead code elimination: conditional import for loop mode
 /* eslint-disable @typescript-eslint/no-require-imports */
-const proactiveModule =  false ? require('../proactive/index.js') : null;
+const proactiveModule =  null;
 const PROACTIVE_NO_OP_SUBSCRIBE = (_cb: () => void) => () => {};
 const PROACTIVE_FALSE = () => false;
 const SUGGEST_BG_PR_NOOP = (_p: string, _n: string): boolean => false;
-const useProactive =  false ? require('../proactive/useProactive.js').useProactive : null;
+const useProactive =  null;
 const useScheduledTasks = feature('AGENT_TRIGGERS') ? require('../hooks/useScheduledTasks.js').useScheduledTasks : null;
 /* eslint-enable @typescript-eslint/no-require-imports */
 import { isAgentSwarmsEnabled } from '../utils/agentSwarmsEnabled.js';
@@ -1225,16 +1225,7 @@ export function REPL({
   // KAIROS build + config.viewerOnly. feature() is build-time constant so
   // the branch is dead-code-eliminated in non-KAIROS builds (same pattern
   // as useUnseenDivider above).
-  const {
-    maybeLoadOlder
-  } = false ?
-  // biome-ignore lint/correctness/useHookAtTopLevel: feature() is a compile-time constant
-  useAssistantHistory({
-    config: remoteSessionConfig,
-    setMessages,
-    scrollRef,
-    onPrepend: shiftDivider
-  }) : HISTORY_STUB;
+  const { maybeLoadOlder } = HISTORY_STUB;
   // Compose useUnseenDivider's callbacks with the lazy-load trigger.
   const composedOnScroll = useCallback((sticky: boolean, handle: ScrollBoxHandle) => {
     lastUserScrollTsRef.current = Date.now();
@@ -1242,7 +1233,6 @@ export function REPL({
       onRepin();
     } else {
       onScrollAway(handle);
-      if (false) maybeLoadOlder(handle);
     }
   }, [onRepin, onScrollAway, maybeLoadOlder, setAppState]);
   // Deferred SessionStart hook messages — REPL renders immediately and
@@ -2248,9 +2238,7 @@ export function REPL({
         debug,
         verbose: s.verbose,
         mainLoopModel,
-        thinkingConfig: s.thinkingEnabled !== false ? thinkingConfig : {
-          type: 'disabled'
-        },
+        thinkingConfig: s.thinkingEnabled ? { type: 'adaptive' as const } : { type: 'disabled' as const },
         // Merge fresh from store rather than closing over useMergedClients'
         // memoized output. initialMcpClients is a prop (session-constant).
         mcpClients: mergeClients(initialMcpClients, s.mcp.clients),
@@ -4212,7 +4200,7 @@ export function REPL({
               {toolJSX && !(toolJSX.isLocalJSXCommand && toolJSX.isImmediate) && !toolJsxCentered && <Box flexDirection="column" width="100%">
                     {toolJSX.jsx}
                   </Box>}
-              {false ? WebBrowserPanelModule && <WebBrowserPanelModule.WebBrowserPanel /> : null}
+              {null}
               <Box flexGrow={1} />
               {/* @ts-ignore - apiMetricsRef prop not in type */}
               {showSpinner && <SpinnerWithVerb mode={streamMode} spinnerTip={spinnerTip} responseLengthRef={responseLengthRef} apiMetricsRef={apiMetricsRef} overrideMessage={spinnerMessage} spinnerSuffix={stopHookSpinnerSuffix} verbose={verbose} loadingStartTimeRef={loadingStartTimeRef} totalPausedMsRef={totalPausedMsRef} pauseStartTimeRef={pauseStartTimeRef} overrideColor={spinnerColor} overrideShimmerColor={spinnerShimmerColor} hasActiveTools={inProgressToolUseIDs.size > 0} leaderIsIdle={!isLoading} />}

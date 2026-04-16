@@ -492,20 +492,14 @@ type PendingConnect = {
   url: string | undefined;
   authToken: string | undefined;
 };
-const _pendingConnect: PendingConnect | undefined = false ? {
-  url: undefined,
-  authToken: undefined
-} : undefined;
+const _pendingConnect: PendingConnect | undefined = undefined;
 
 // Set by early argv processing when `claude assistant [sessionId]` is detected
 type PendingAssistantChat = {
   sessionId?: string;
   discover: boolean;
 };
-const _pendingAssistantChat: PendingAssistantChat | undefined = false ? {
-  sessionId: undefined,
-  discover: false
-} : undefined;
+const _pendingAssistantChat: PendingAssistantChat | undefined = undefined;
 
 // `claude ssh <host> [dir]` — parsed from argv early (same pattern as
 // DIRECT_CONNECT above) so the main command path can pick it up and hand
@@ -519,13 +513,7 @@ type PendingSSH = {
   /** Extra CLI args to forward to the remote CLI on initial spawn (--resume, -c). */
   extraCliArgs: string[];
 };
-const _pendingSSH: PendingSSH | undefined = false ? {
-  host: undefined,
-  cwd: undefined,
-  permissionMode: undefined,
-  local: false,
-  extraCliArgs: []
-} : undefined;
+const _pendingSSH: PendingSSH | undefined = undefined;
 export async function main() {
   profileCheckpoint('main_function_start');
 
@@ -1618,9 +1606,7 @@ async function run(): Promise<CommanderCommand> {
     const {
       setup
     } = await import('./setup.js');
-    const messagingSocketPath = false ? (options as {
-      messagingSocketPath?: string;
-    }).messagingSocketPath : undefined;
+    const messagingSocketPath = undefined;
     // Parallelize setup() with commands+agents loading. setup()'s ~28ms is
     // mostly startUdsMessaging (socket bind, ~20ms) — not disk-bound, so it
     // doesn't contend with getCommands' file reads. Gated on !worktreeEnabled
@@ -1920,9 +1906,7 @@ async function run(): Promise<CommanderCommand> {
     if (( false) && ((options as {
       proactive?: boolean;
     }).proactive || isEnvTruthy(process.env.CLAUDE_CODE_PROACTIVE)) && !coordinatorModeModule?.isCoordinatorMode()) {
-      /* eslint-disable @typescript-eslint/no-require-imports */
-      const briefVisibility = false ? (require('./tools/BriefTool/BriefTool.js') as typeof import('./tools/BriefTool/BriefTool.js')).isBriefEnabled() ? 'Call SendUserMessage at checkpoints to mark where things stand.' : 'The user will see any text you output.' : 'The user will see any text you output.';
-      /* eslint-enable @typescript-eslint/no-require-imports */
+      const briefVisibility = 'The user will see any text you output.';
       const proactivePrompt = `\n# Proactive Mode\n\nYou are in proactive mode. Take initiative — explore, act, and make progress without waiting for instructions.\n\nStart by briefly greeting the user.\n\nYou will receive periodic <tick> prompts. These are check-ins. Do whatever seems most useful, or call Sleep if there's nothing to do. ${briefVisibility}`;
       appendSystemPrompt = appendSystemPrompt ? `${appendSystemPrompt}\n\n${proactivePrompt}` : proactivePrompt;
     }
@@ -2293,8 +2277,7 @@ async function run(): Promise<CommanderCommand> {
         // scheduled tasks and Agent-tool calls ran synchronously — N
         // overdue cron tasks on spawn = N serial subagent turns blocking
         // user input. Computed at :1620, well before this branch.
-        ...(false ? {
-        } : {})
+        
       };
 
       // Init app state
@@ -2541,7 +2524,7 @@ async function run(): Promise<CommanderCommand> {
     };
     // All startup opt-in paths (--tools, --brief, defaultView) have fired
     // above; initialIsBriefOnly just reads the resulting state.
-    const initialIsBriefOnly = false ? getUserMsgOptIn() : false;
+    const initialIsBriefOnly = false;
     const fullRemoteControl = remoteControl || getRemoteControlAtStartup();
     let ccrMirrorEnabled = false;
     if (false && !fullRemoteControl) {
@@ -2655,7 +2638,7 @@ async function run(): Promise<CommanderCommand> {
       // KAIROS block so Agent(name: "foo") can spawn in-process teammates
       // without TeamCreate. computeInitialTeamContext() is for tmux-spawned
       // teammates reading their own identity, not the assistant-mode leader.
-      teamContext: false ? assistantTeamContext ?? computeInitialTeamContext?.() : computeInitialTeamContext?.()
+      teamContext: computeInitialTeamContext?.()
     };
 
     // Add CLI initial prompt to history

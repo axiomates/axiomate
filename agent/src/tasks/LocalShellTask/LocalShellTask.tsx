@@ -166,7 +166,7 @@ function enqueueShellNotification(taskId: string, description: string, status: '
   enqueuePendingNotification({
     value: message,
     mode: 'task-notification',
-    priority: false ? 'next' : 'later',
+    priority: 'later',
     agentId
   });
 }

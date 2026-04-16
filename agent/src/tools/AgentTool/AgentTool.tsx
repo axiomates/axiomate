@@ -105,7 +105,7 @@ const fullInputSchema = lazySchema(() => {
 // type, but call() destructures via the explicit AgentToolInput type below
 // which always includes all optional fields.
 export const inputSchema = lazySchema(() => {
-  const schema = false ? fullInputSchema() : fullInputSchema().omit({
+  const schema = fullInputSchema().omit({
     cwd: true
   });
 

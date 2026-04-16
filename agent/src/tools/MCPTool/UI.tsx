@@ -168,11 +168,7 @@ export function renderToolResultMessage(
         item.text !== undefined
           ? String(item.text)
           : ''
-      return false ? (
-        <MCPTextOutput key={i} content={textContent} verbose={verbose} />
-      ) : (
-        <OutputLine key={i} content={textContent} verbose={verbose} />
-      )
+      return <OutputLine key={i} content={textContent} verbose={verbose} />
     })
 
     // Wrap array content in a column layout

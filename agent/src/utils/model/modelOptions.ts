@@ -165,7 +165,7 @@ function getMaxOpusOption(): ModelOption {
 
 export function getMaxSonnet46_1MOption(): ModelOption {
   const is3P = true
-  const billingInfo = false ? ' · Billed as extra usage' : ''
+  const billingInfo = ''
   return {
     value: 'sonnet[1m]',
     label: 'Sonnet (1M context)',
@@ -174,7 +174,7 @@ export function getMaxSonnet46_1MOption(): ModelOption {
 }
 
 export function getMaxOpus46_1MOption(): ModelOption {
-  const billingInfo = false ? ' · Billed as extra usage' : ''
+  const billingInfo = ''
   return {
     value: 'opus[1m]',
     label: 'Opus (1M context)',

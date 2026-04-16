@@ -41,7 +41,7 @@ export const ALL_AGENT_DISALLOWED_TOOLS = new Set([
   ASK_USER_QUESTION_TOOL_NAME,
   TASK_STOP_TOOL_NAME,
   // Prevent recursive workflow execution inside subagents.
-  ...(false ? [WORKFLOW_TOOL_NAME] : []),
+  ,
 ])
 
 export const CUSTOM_AGENT_DISALLOWED_TOOLS = new Set([

@@ -56,7 +56,7 @@ const workflowsCmd = null
 // remote-setup module removed
 const webCmd = null
 const clearSkillIndexCache = null
-const torch = false ? require('./commands/torch.js').default : null
+const torch = null
 const peersCmd = null
 const forkCmd = null
 /* eslint-enable @typescript-eslint/no-require-imports */

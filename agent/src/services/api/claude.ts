@@ -470,7 +470,7 @@ export function assistantMessageToMessageParam(
           ...(i === message.message.content.length - 1 &&
           _.type !== 'thinking' &&
           _.type !== 'redacted_thinking' &&
-          (false ? !isConnectorTextBlock(_) : true)
+          (true)
             ? enablePromptCaching
               ? { cache_control: getCacheControl({ querySource }) }
               : {}

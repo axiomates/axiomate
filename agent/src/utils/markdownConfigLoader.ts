@@ -31,7 +31,7 @@ export const AXIOMATE_CONFIG_DIRECTORIES = [
   'output-styles',
   'skills',
   'workflows',
-  ...(false ? (['templates'] as const) : []),
+  ...([]),
 ] as const
 
 export type ConfigDirectory = (typeof AXIOMATE_CONFIG_DIRECTORIES)[number]
