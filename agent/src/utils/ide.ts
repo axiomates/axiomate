@@ -588,37 +588,10 @@ export interface IDEExtensionInstallationStatus {
 }
 
 export async function maybeInstallIDEExtension(
-  ideType: IdeType,
+  _ideType: IdeType,
 ): Promise<IDEExtensionInstallationStatus | null> {
-  try {
-    // Install/update the extension
-    const installedVersion = await installIDEExtension(ideType)
-    // Only track successful installations
-    logEvent('ax_ext_installed', {})
-
-    // Set diff tool config to auto if it has not been set already
-    const globalConfig = getGlobalConfig()
-    if (!globalConfig.diffTool) {
-      saveGlobalConfig(current => ({ ...current, diffTool: 'auto' }))
-    }
-    return {
-      installed: true,
-      error: null,
-      installedVersion,
-      ideType: ideType,
-    }
-  } catch (error) {
-    logEvent('ax_ext_install_error', {})
-    // Handle installation errors
-    const errorMessage = error instanceof Error ? error.message : String(error)
-    logError(error as Error)
-    return {
-      installed: false,
-      error: errorMessage,
-      installedVersion: null,
-      ideType: ideType,
-    }
-  }
+  // axiomate has no IDE extension — skip auto-installation
+  return null
 }
 
 let currentIDESearch: AbortController | null = null
