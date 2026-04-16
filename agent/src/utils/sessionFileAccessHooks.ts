@@ -188,22 +188,6 @@ async function handleSessionFileAccess(
     }
   }
 
-  if (false && filePath) {
-    const scope = memoryScopeForPath(filePath)
-    if (
-      scope !== null &&
-      (input.tool_name === FILE_EDIT_TOOL_NAME ||
-        input.tool_name === FILE_WRITE_TOOL_NAME)
-    ) {
-      memoryShapeTelemetry!.logMemoryWriteShape(
-        input.tool_name,
-        input.tool_input,
-        filePath,
-        scope,
-      )
-    }
-  }
-
   return {}
 }
 

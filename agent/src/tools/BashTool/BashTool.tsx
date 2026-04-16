@@ -506,16 +506,6 @@ export const BashTool = buildTool({
     return `Running ${desc}`;
   },
   async validateInput(input: BashToolInput): Promise<ValidationResult> {
-    if (false && !isBackgroundTasksDisabled && !input.run_in_background) {
-      const sleepPattern = detectBlockedSleepPattern(input.command);
-      if (sleepPattern !== null) {
-        return {
-          result: false,
-          message: `Blocked: ${sleepPattern}. Run blocking commands in the background with run_in_background: true — you'll get a completion notification when done. For streaming events (watching logs, polling APIs), use the Monitor tool. If you genuinely need a delay (rate limiting, deliberate pacing), keep it under 2 seconds.`,
-          errorCode: 10
-        };
-      }
-    }
     return {
       result: true
     };
@@ -938,15 +928,6 @@ async function* runShellCommand({
   // In assistant mode, the main agent should stay responsive. Auto-background
   // blocking commands after ASSISTANT_BLOCKING_BUDGET_MS so the agent can keep
   // coordinating instead of waiting. The command keeps running — no state loss.
-  if (false && false && isMainThread && !isBackgroundTasksDisabled && run_in_background !== true) {
-    setTimeout(() => {
-      if (shellCommand.status === 'running' && backgroundShellId === undefined) {
-        assistantAutoBackgrounded = true;
-        startBackgrounding('ax_bash_command_assistant_auto_backgrounded');
-      }
-    }, ASSISTANT_BLOCKING_BUDGET_MS).unref();
-  }
-
   // Handle Claude asking to run it in the background explicitly
   // When explicitly requested via run_in_background, always honor the request
   // regardless of the command type (isAutobackgroundingAllowed only applies to automatic backgrounding)

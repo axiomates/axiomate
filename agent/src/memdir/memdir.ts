@@ -409,14 +409,6 @@ export async function loadMemoryPrompt(): Promise<string | null> {
 
   // DISABLED daily-log mode takes precedence over TEAMMEM: the append-only
   // log paradigm does not compose with team sync (which expects a shared
-  // MEMORY.md that both sides read + write). Gating on `autoEnabled` here
-  // means the !autoEnabled case falls through to the ax_memdir_disabled
-  // telemetry block below, matching the non-DISABLED path.
-  if (false && autoEnabled && false) {
-    logMemoryDirCounts(getAutoMemPath(), {})
-    return buildAssistantDailyLogPrompt(skipIndex)
-  }
-
   // Cowork injects memory-policy text via env var; thread into all builders.
   const coworkExtraGuidelines =
     process.env.CLAUDE_COWORK_MEMORY_EXTRA_GUIDELINES

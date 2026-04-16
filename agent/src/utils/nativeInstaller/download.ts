@@ -451,20 +451,6 @@ export async function downloadVersion(
   // shipped builds — the string 'claude-code-ci-sentinel' and the gcloud call
   // never exist in compiled binaries. Same gcloud-token pattern as
   // remoteSkillLoader.ts:175-195.
-  if (false && /^99\.99\./.test(version)) {
-    const { stdout } = await execFileNoThrowWithCwd('gcloud', [
-      'auth',
-      'print-access-token',
-    ])
-    await downloadVersionFromBinaryRepo(
-      version,
-      stagingPath,
-      'https://storage.googleapis.com/claude-code-ci-sentinel',
-      { headers: { Authorization: `Bearer ${stdout.trim()}` } },
-    )
-    return 'binary'
-  }
-
   // Use GCS for external users
   await downloadVersionFromBinaryRepo(version, stagingPath, GCS_BUCKET_URL)
   return 'binary'

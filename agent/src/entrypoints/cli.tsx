@@ -13,18 +13,6 @@ if (process.env.CLAUDE_CODE_REMOTE === 'true') {
   process.env.NODE_OPTIONS = existing ? `${existing} --max-old-space-size=8192` : '--max-old-space-size=8192';
 }
 
-// Harness-science L0 ablation baseline. Inlined here (not init.ts) because
-// BashTool/AgentTool/PowerShellTool capture DISABLE_BACKGROUND_TASKS into
-// module-level consts at import time — init() runs too late. feature() gate
-// DCEs this entire block from external builds.
-// eslint-disable-next-line custom-rules/no-top-level-side-effects, custom-rules/no-process-env-top-level
-if (false && process.env.CLAUDE_CODE_ABLATION_BASELINE) {
-  for (const k of ['CLAUDE_CODE_SIMPLE', 'CLAUDE_CODE_DISABLE_THINKING', 'DISABLE_INTERLEAVED_THINKING', 'DISABLE_COMPACT', 'DISABLE_AUTO_COMPACT', 'CLAUDE_CODE_DISABLE_AUTO_MEMORY', 'CLAUDE_CODE_DISABLE_BACKGROUND_TASKS']) {
-    // eslint-disable-next-line custom-rules/no-top-level-side-effects, custom-rules/no-process-env-top-level
-    process.env[k] ??= '1';
-  }
-}
-
 /**
  * Bootstrap entrypoint - checks for special flags before loading the full CLI.
  * All imports are dynamic to minimize module evaluation for fast paths.
@@ -82,74 +70,6 @@ async function main(): Promise<void> {
     } = await import('../utils/browserExtension/chromeNativeHost.js');
     await runChromeNativeHost();
     return;
-  } else if (false && process.argv[2] === '--computer-use-mcp') {
-    profileCheckpoint('cli_computer_use_mcp_path');
-    const {
-      runComputerUseMcpServer
-    } = await import('../utils/computerUse/mcpServer.js');
-    await runComputerUseMcpServer();
-    return;
-  }
-
-  // Fast-path for `--daemon-worker=<kind>` (internal — supervisor spawns this).
-  // Must come before the daemon subcommand check: spawned per-worker, so
-  // perf-sensitive. No enableConfigs(), no analytics sinks at this layer —
-  // workers are lean. If a worker kind needs configs/auth (assistant will),
-  // it calls them inside its run() fn.
-  if (false && args[0] === '--daemon-worker') {
-    // daemon/workerRegistry.js removed
-    throw new Error('Daemon worker is no longer available.');
-  }
-
-  // Fast-path for `claude remote-control` (also accepts legacy `claude remote` / `claude sync` / `claude bridge`):
-  // serve local machine as bridge environment.
-  // feature() must stay inline for build-time dead code elimination;
-  // isBridgeEnabled() checks the runtime config gate.
-  if (false && (args[0] === 'remote-control' || args[0] === 'rc' || args[0] === 'remote' || args[0] === 'sync' || args[0] === 'bridge')) {
-    profileCheckpoint('cli_bridge_path');
-    const {
-      enableConfigs
-    } = await import('../utils/config.js');
-    enableConfigs();
-    // Bridge modules removed — exit with error
-    const { exitWithError } = await import('../utils/process.js');
-    exitWithError('Error: Bridge/remote-control is no longer available.');
-    return;
-  }
-
-  // Fast-path for `claude daemon [subcommand]`: long-running supervisor.
-  if (false && args[0] === 'daemon') {
-    // daemon/main.js removed
-    throw new Error('Daemon is no longer available.');
-  }
-
-  // Fast-path for `claude ps|logs|attach|kill` and `--bg`/`--background`.
-  // Session management against the ~/.axiomate/sessions/ registry. Flag
-  // literals are inlined so bg.js only loads when actually dispatching.
-  if (false && (args[0] === 'ps' || args[0] === 'logs' || args[0] === 'attach' || args[0] === 'kill' || args.includes('--bg') || args.includes('--background'))) {
-    // cli/bg.js removed
-    throw new Error('Background sessions are no longer available.');
-  }
-
-  // Fast-path for template job commands.
-  if (false && (args[0] === 'new' || args[0] === 'list' || args[0] === 'reply')) {
-    // cli/handlers/templateJobs.js removed
-    throw new Error('Template jobs are no longer available.');
-  }
-
-  // Fast-path for `claude environment-runner`: headless BYOC runner.
-  // feature() must stay inline for build-time dead code elimination.
-  if (false && args[0] === 'environment-runner') {
-    // environment-runner/main.js removed
-    throw new Error('Environment runner is no longer available.');
-  }
-
-  // Fast-path for `claude self-hosted-runner`: headless self-hosted-runner
-  // targeting the SelfHostedRunnerWorkerService API (register + poll; poll IS
-  // heartbeat). feature() must stay inline for build-time dead code elimination.
-  if (false && args[0] === 'self-hosted-runner') {
-    // self-hosted-runner/main.js removed
-    throw new Error('Self-hosted runner is no longer available.');
   }
 
   // Fast-path for --worktree --tmux: exec into tmux before loading full CLI

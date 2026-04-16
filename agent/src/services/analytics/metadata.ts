@@ -834,9 +834,6 @@ export function to1PEventFormat(
   if (envContext.remoteEnvironmentType) {
     env.remote_environment_type = envContext.remoteEnvironmentType
   }
-  if (false && envContext.coworkerType) {
-    env.coworker_type = envContext.coworkerType
-  }
   if (envContext.claudeCodeContainerId) {
     env.claude_code_container_id = envContext.claudeCodeContainerId
   }

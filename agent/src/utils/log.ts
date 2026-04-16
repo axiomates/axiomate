@@ -156,12 +156,6 @@ const isHardFailMode = memoize((): boolean => {
 
 export function logError(error: unknown): void {
   const err = toError(error)
-  if (false && isHardFailMode()) {
-    // biome-ignore lint/suspicious/noConsole:: intentional crash output
-    console.error('[HARD FAIL] logError called with:', err.stack || err.message)
-    // eslint-disable-next-line custom-rules/no-process-exit
-    process.exit(1)
-  }
   try {
     // Check if error reporting should be disabled
     if (

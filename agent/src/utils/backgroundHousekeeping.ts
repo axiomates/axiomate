@@ -7,10 +7,6 @@ import { initSkillImprovement } from './hooks/skillImprovement.js'
 const extractMemoriesModule = feature('EXTRACT_MEMORIES')
   ? (require('../services/extractMemories/extractMemories.js') as typeof import('../services/extractMemories/extractMemories.js'))
   : null
-const registerProtocolModule = false
-  ? (require('./deepLink/registerProtocol.js') as typeof import('./deepLink/registerProtocol.js'))
-  : null
-
 /* eslint-enable @typescript-eslint/no-require-imports */
 
 import { getIsInteractive, getLastInteractionTime } from '../bootstrap/state.js'
@@ -36,10 +32,6 @@ export function startBackgroundHousekeeping(): void {
   }
   initAutoDream()
   void autoUpdateMarketplacesAndPluginsInBackground()
-  if (false && getIsInteractive()) {
-    void registerProtocolModule!.ensureDeepLinkProtocolRegistered()
-  }
-
   let needsCleanup = true
   async function runVerySlowOps(): Promise<void> {
     // If the user did something in the last minute, don't make them wait for these slow operations to run.

@@ -75,12 +75,12 @@ const coordinatorModeModule = feature('COORDINATOR_MODE') ? require('./coordinat
 import { relative, resolve } from 'path';
 import { isAnalyticsDisabled } from './services/analytics/config.js';
 import { initializeAnalyticsGates } from './services/analytics/sink.js';
-import { type ChannelEntry, getInitialMainLoopModel, getIsNonInteractiveSession, getOriginalCwd, getSdkBetas, getUserMsgOptIn, setAdditionalDirectoriesForClaudeMd, setAllowedSettingSources, setChromeFlagOverride, setClientType, setCwdState, setDirectConnectServerUrl, setFlagSettingsPath, setInitialMainLoopModel, setInlinePlugins, setIsInteractive, setIsRemoteMode, setMainLoopModelOverride, setMainThreadAgentType, setOriginalCwd, setQuestionPreviewFormat, setSdkBetas, setSessionBypassPermissionsMode, setSessionPersistenceDisabled, setSessionSource, setTeleportedSessionInfo, setUserMsgOptIn, switchSession } from './bootstrap/state.js';
+import { type ChannelEntry, getInitialMainLoopModel, getIsNonInteractiveSession, getOriginalCwd, getSdkBetas, getUserMsgOptIn, setAdditionalDirectoriesForClaudeMd, setAllowedSettingSources, setChromeFlagOverride, setClientType, setCwdState, setFlagSettingsPath, setInitialMainLoopModel, setInlinePlugins, setIsInteractive, setIsRemoteMode, setMainLoopModelOverride, setMainThreadAgentType, setOriginalCwd, setQuestionPreviewFormat, setSdkBetas, setSessionBypassPermissionsMode, setSessionPersistenceDisabled, setSessionSource, setTeleportedSessionInfo, setUserMsgOptIn, switchSession } from './bootstrap/state.js';
 import { filterCommandsForRemoteMode, getCommands } from './commands.js';
 import type { StatsStore } from './context/stats.js';
-import { launchAssistantInstallWizard, launchAssistantSessionChooser, launchInvalidSettingsDialog, launchResumeChooser, launchSnapshotUpdateDialog, launchTeleportRepoMismatchDialog, launchTeleportResumeWrapper } from './dialogLaunchers.js';
+import { launchInvalidSettingsDialog, launchResumeChooser, launchTeleportRepoMismatchDialog, launchTeleportResumeWrapper } from './dialogLaunchers.js';
 import { SHOW_CURSOR } from './ink/termio/dec.js';
-import { exitWithError, exitWithMessage, getRenderContext, renderAndRun, showSetupScreens } from './interactiveHelpers.js';
+import { exitWithError, getRenderContext, renderAndRun, showSetupScreens } from './interactiveHelpers.js';
 import { initBuiltinPlugins } from './plugins/bundled/index.js';
 /* eslint-enable @typescript-eslint/no-require-imports */
 // apiLimits stub inlined
@@ -165,9 +165,6 @@ const autoModeStateModule = feature('TRANSCRIPT_CLASSIFIER') ? require('./utils/
 // RemoteSessionManager removed
 const createRemoteSessionConfig = (..._args: unknown[]) => { throw new Error('Remote sessions removed') }
 /* eslint-enable @typescript-eslint/no-require-imports */
-// createDirectConnectSession removed
-const createDirectConnectSession = async (..._args: unknown[]): Promise<{ workDir?: string; config: { sessionId: string } }> => { throw new Error('Direct connect removed') }
-class DirectConnectError extends Error {}
 import { initializeLspServerManager } from './services/lsp/manager.js';
 import { shouldEnablePromptSuggestion } from './services/PromptSuggestion/promptSuggestion.js';
 import { type AppState, getDefaultAppState, IDLE_SPECULATION_STATE } from './state/AppStateStore.js';
@@ -480,19 +477,6 @@ function initializeEntrypoint(isNonInteractive: boolean): void {
   process.env.CLAUDE_CODE_ENTRYPOINT = isNonInteractive ? 'sdk-cli' : 'cli';
 }
 
-// Set by early argv processing when `claude open <url>` is detected (interactive mode only)
-type PendingConnect = {
-  url: string | undefined;
-  authToken: string | undefined;
-};
-const _pendingConnect: PendingConnect | undefined = undefined;
-
-// Set by early argv processing when `claude assistant [sessionId]` is detected
-type PendingAssistantChat = {
-  sessionId?: string;
-  discover: boolean;
-};
-const _pendingAssistantChat: PendingAssistantChat | undefined = undefined;
 
 // `claude ssh <host> [dir]` — parsed from argv early (same pattern as
 // DIRECT_CONNECT above) so the main command path can pick it up and hand
@@ -528,29 +512,6 @@ export async function main() {
   // Handle deep link URIs early — this is invoked by the OS protocol handler
   // and should bail out before full init since it only needs to parse the URI
   // and open a terminal.
-
-  // `claude assistant [sessionId]` — stash and strip so the main
-  // command handles it, giving the full interactive TUI. Position-0 only
-  // (matching the ssh pattern below) — indexOf would false-positive on
-  // `claude -p "explain assistant"`. Root-flag-before-subcommand
-  // (e.g. `--debug assistant`) falls through to the stub, which
-  // prints usage.
-  if (false && _pendingAssistantChat) {
-    const rawArgs = process.argv.slice(2);
-    if (rawArgs[0] === 'assistant') {
-      const nextArg = rawArgs[1];
-      if (nextArg && !nextArg.startsWith('-')) {
-        _pendingAssistantChat.sessionId = nextArg;
-        rawArgs.splice(0, 2); // drop 'assistant' and sessionId
-        process.argv = [process.argv[0]!, process.argv[1]!, ...rawArgs];
-      } else if (!nextArg) {
-        _pendingAssistantChat.discover = true;
-        rawArgs.splice(0, 1); // drop 'assistant'
-        process.argv = [process.argv[0]!, process.argv[1]!, ...rawArgs];
-      }
-      // else: `claude assistant --help` → fall through to stub
-    }
-  }
 
   // Check for -p/--print and --init-only flags early to set isInteractiveSession before init()
   // This is needed because telemetry initialization calls auth functions that need this flag
@@ -1247,40 +1208,6 @@ async function run(): Promise<CommanderCommand> {
       }
     }
 
-    // chicago MCP: guarded Computer Use (app allowlist + frontmost gate +
-    // are silent (this is dogfooding). Platform + interactive checks inline
-    // so non-macOS / print-mode ants skip the heavy @ant/computer-use-mcp
-    // import entirely. gates.js is light (type-only package import).
-    //
-    // Placed AFTER the enterprise-MCP-config check: that check rejects any
-    // dynamicMcpConfig entry with `type !== 'sdk'`, and our config is
-    // `type: 'stdio'`. An enterprise-config ant with the GB gate on would
-    // otherwise process.exit(1). Chrome has the same latent issue but has
-    // shipped without incident; chicago places itself correctly.
-    if (false && getPlatform() === 'macos' && !getIsNonInteractiveSession()) {
-      try {
-        const {
-          getChicagoEnabled
-        } = await import('./utils/computerUse/gates.js');
-        if (getChicagoEnabled()) {
-          const {
-            setupComputerUseMCP
-          } = await import('./utils/computerUse/setup.js');
-          const {
-            mcpConfig,
-            allowedTools: cuTools
-          } = setupComputerUseMCP();
-          dynamicMcpConfig = {
-            ...dynamicMcpConfig,
-            ...mcpConfig
-          };
-          allowedTools.push(...cuTools);
-        }
-      } catch (error) {
-        logForDebugging(`[Computer Use MCP] Setup failed: ${errorMessage(error)}`);
-      }
-    }
-
     // Store additional directories for AXIOMATE.md loading (controlled by env var)
     setAdditionalDirectoriesForClaudeMd(addDir);
 
@@ -1751,28 +1678,6 @@ async function run(): Promise<CommanderCommand> {
       const setupScreensStart = Date.now();
       const onboardingShown = await showSetupScreens(root, permissionMode, commands, enableClaudeInChrome, devChannels);
       logForDebugging(`[STARTUP] showSetupScreens() completed in ${Date.now() - setupScreensStart}ms`);
-
-      // Now that trust is established and config has auth headers,
-      // resolve the --remote-control / --rc entitlement gate.
-      if (false && remoteControlOption !== undefined) {
-        // Bridge modules removed — remote control disabled
-        remoteControl = false;
-        process.stderr.write(chalk.yellow('Bridge modules removed.\n--rc flag ignored.\n'));
-      }
-
-      if (false && mainThreadAgentDefinition && isCustomAgent(mainThreadAgentDefinition) && mainThreadAgentDefinition.memory && mainThreadAgentDefinition.pendingSnapshotUpdate) {
-        const agentDef = mainThreadAgentDefinition;
-        const choice = await launchSnapshotUpdateDialog(root, {
-          agentType: agentDef.agentType,
-          scope: agentDef.memory!,
-          snapshotTimestamp: agentDef.pendingSnapshotUpdate!.snapshotTimestamp
-        });
-        if (choice === 'merge') {
-          // SnapshotUpdateDialog removed — buildMergePrompt no longer available
-          // launchSnapshotUpdateDialog now returns 'keep', so this branch is unreachable
-        }
-        agentDef.pendingSnapshotUpdate = undefined;
-      }
 
       // Skip executing /login if we just completed onboarding for it
       if (onboardingShown && prompt?.trim().toLowerCase() === '/login') {
@@ -2341,11 +2246,7 @@ async function run(): Promise<CommanderCommand> {
     // above; initialIsBriefOnly just reads the resulting state.
     const initialIsBriefOnly = false;
     const fullRemoteControl = remoteControl || getRemoteControlAtStartup();
-    let ccrMirrorEnabled = false;
-    if (false && !fullRemoteControl) {
-      // bridgeEnabled module removed — CCR mirror disabled
-      ccrMirrorEnabled = false;
-    }
+    const ccrMirrorEnabled = false;
     const initialState: AppState = {
       settings: getInitialSettings(),
       tasks: {},
@@ -2540,131 +2441,6 @@ async function run(): Promise<CommanderCommand> {
         logError(error);
         process.exit(1);
       }
-    } else if (false && _pendingConnect?.url) {
-      // `claude connect <url>` — full interactive TUI connected to a remote server
-      let directConnectConfig;
-      try {
-        const session = await createDirectConnectSession({
-          serverUrl: _pendingConnect.url,
-          authToken: _pendingConnect.authToken,
-          cwd: getOriginalCwd()
-        });
-        if (session.workDir) {
-          setOriginalCwd(session.workDir);
-          setCwdState(session.workDir);
-        }
-        setDirectConnectServerUrl(_pendingConnect.url);
-        directConnectConfig = session.config;
-      } catch (err) {
-        return await exitWithError(root, err instanceof DirectConnectError ? err.message : String(err), () => gracefulShutdown(1));
-      }
-      const connectInfoMessage = createSystemMessage(`Connected to server at ${_pendingConnect.url}\nSession: ${directConnectConfig.sessionId}`, 'info');
-      await launchRepl(root, {
-        getFpsMetrics,
-        stats,
-        initialState
-      }, {
-        debug: debug || debugToStderr,
-        commands,
-        initialTools: [],
-        initialMessages: [connectInfoMessage],
-        mcpClients: [],
-        autoConnectIdeFlag: ide,
-        mainThreadAgentDefinition,
-        disableSlashCommands,
-        directConnectConfig,
-        thinkingConfig
-      }, renderAndRun);
-      return;
-    } else if (false && _pendingAssistantChat && (_pendingAssistantChat.sessionId || _pendingAssistantChat.discover)) {
-      // `claude assistant [sessionId]` — REPL as a pure viewer client
-      // of a remote assistant session. The agentic loop runs remotely; this
-      // process streams live events and POSTs messages. History is lazy-
-      // loaded by useAssistantHistory on scroll-up (no blocking fetch here).
-      const {
-        discoverAssistantSessions
-      } = await import('./assistant/sessionDiscovery.js');
-      let targetSessionId = _pendingAssistantChat.sessionId;
-
-      // Discovery flow — list bridge environments, filter sessions
-      if (!targetSessionId) {
-        let sessions;
-        try {
-          sessions = await discoverAssistantSessions();
-        } catch (e) {
-          return await exitWithError(root, `Failed to discover sessions: ${e instanceof Error ? e.message : e}`, () => gracefulShutdown(1));
-        }
-        if (sessions.length === 0) {
-          let installedDir: string | null;
-          try {
-            installedDir = await launchAssistantInstallWizard(root);
-          } catch (e) {
-            return await exitWithError(root, `Assistant installation failed: ${e instanceof Error ? e.message : e}`, () => gracefulShutdown(1));
-          }
-          if (installedDir === null) {
-            await gracefulShutdown(0);
-            process.exit(0);
-          }
-          // The daemon needs a few seconds to spin up its worker and
-          // establish a bridge session before discovery will find it.
-          return await exitWithMessage(root, `Assistant installed in ${installedDir}. The daemon is starting up — run \`claude assistant\` again in a few seconds to connect.`, {
-            exitCode: 0,
-            beforeExit: () => gracefulShutdown(0)
-          });
-        }
-        if (sessions.length === 1) {
-          targetSessionId = sessions[0]!.id;
-        } else {
-          const picked = await launchAssistantSessionChooser(root, {
-            sessions
-          });
-          if (!picked) {
-            await gracefulShutdown(0);
-            process.exit(0);
-          }
-          targetSessionId = picked;
-        }
-      }
-
-      // Auth — call prepareApiRequest() once for orgUUID, but use a
-      // getAccessToken closure for the token so reconnects get fresh tokens.
-      let apiCreds;
-      try {
-        apiCreds = await prepareApiRequest();
-      } catch (e) {
-        return await exitWithError(root, `Error: ${e instanceof Error ? e.message : 'Failed to authenticate'}`, () => gracefulShutdown(1));
-      }
-      const getAccessToken = (): string => apiCreds.accessToken;
-
-      // and entitlement for isBriefEnabled() (BriefTool.ts:124-132).
-      setUserMsgOptIn(true);
-      setIsRemoteMode(true);
-      const remoteSessionConfig = createRemoteSessionConfig(targetSessionId, getAccessToken, apiCreds.orgUUID, /* hasInitialPrompt */false, /* viewerOnly */true);
-      const infoMessage = createSystemMessage(`Attached to assistant session ${targetSessionId.slice(0, 8)}…`, 'info');
-      const assistantInitialState: AppState = {
-        ...initialState,
-        isBriefOnly: true,
-        
-        replBridgeEnabled: false
-      };
-      const remoteCommands = filterCommandsForRemoteMode(commands);
-      await launchRepl(root, {
-        getFpsMetrics,
-        stats,
-        initialState: assistantInitialState
-      }, {
-        debug: debug || debugToStderr,
-        commands: remoteCommands,
-        initialTools: [],
-        initialMessages: [infoMessage],
-        mcpClients: [],
-        autoConnectIdeFlag: ide,
-        mainThreadAgentDefinition,
-        disableSlashCommands,
-        remoteSessionConfig,
-        thinkingConfig
-      }, renderAndRun);
-      return;
     } else if (options.resume || options.fromPr || teleport || remote !== null) {
 
       // Clear stale caches before resuming to ensure fresh file/skill discovery

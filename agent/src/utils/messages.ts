@@ -2303,24 +2303,6 @@ export function normalizeMessagesForAPI(
   // Append message ID tags for snip tool visibility (after all merging,
   // so tags always match the surviving message's messageId field).
   // Skip in test mode — tags change message content hashes, breaking
-  // VCR fixture lookup. Gate must match SnipTool.isEnabled() — don't
-  // inject [id:] tags when the tool isn't available (confuses the model
-  // and wastes tokens on every non-meta user message for every ant).
-  if (false && process.env.NODE_ENV !== 'test') {
-    const { isSnipRuntimeEnabled } =
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      require('../services/compact/snipCompact.js') as typeof import('../services/compact/snipCompact.js')
-    if (isSnipRuntimeEnabled()) {
-      for (let i = 0; i < sanitized.length; i++) {
-        if (sanitized[i]!.type === 'user') {
-          sanitized[i] = appendMessageTagToUserMessage(
-            sanitized[i] as UserMessage,
-          )
-        }
-      }
-    }
-  }
-
   // Validate all images are within API size limits before sending
   validateImagesForAPI(sanitized)
 

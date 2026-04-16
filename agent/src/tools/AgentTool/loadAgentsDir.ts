@@ -335,13 +335,6 @@ export const getAgentDefinitionsWithOverrides = memoize(
       // loadPluginAgents is memoized and takes no args, so it's independent.
       // Join both so neither becomes a floating promise if the other throws.
       let pluginAgentsPromise = loadPluginAgents()
-      if (false && isAutoMemoryEnabled()) {
-        const [pluginAgents_] = await Promise.all([
-          pluginAgentsPromise,
-          initializeAgentMemorySnapshots(customAgents),
-        ])
-        pluginAgentsPromise = Promise.resolve(pluginAgents_)
-      }
       const pluginAgents = await pluginAgentsPromise
 
       const builtInAgents = getBuiltInAgents()

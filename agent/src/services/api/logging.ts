@@ -12,7 +12,6 @@ import {
   setLastApiCompletionTimestamp,
 } from '../../bootstrap/state.js'
 import type { QueryChainTracking } from '../../Tool.js'
-import { isConnectorTextBlock } from '../../types/connectorText.js'
 import type { AssistantMessage } from '../../types/message.js'
 import { logForDebugging } from '../../utils/debug.js'
 import type { EffortLevel } from '../../utils/effort.js'
@@ -419,14 +418,10 @@ export function logAPISuccessAndDuration({
     let thinkingLen = 0
     let hasToolUse = false
     const toolLengths: Record<string, number> = {}
-    let connectorCount = 0
-
     for (const msg of newMessages) {
       for (const block of msg.message.content) {
         if (block.type === 'text') {
           textLen += block.text.length
-        } else if (false && isConnectorTextBlock(block)) {
-          connectorCount++
         } else if (block.type === 'thinking') {
           thinkingLen += block.thinking.length
         } else if (
@@ -447,7 +442,6 @@ export function logAPISuccessAndDuration({
     textContentLength = textLen
     thinkingContentLength = thinkingLen > 0 ? thinkingLen : undefined
     toolUseContentLengths = hasToolUse ? toolLengths : undefined
-    connectorTextBlockCount = connectorCount > 0 ? connectorCount : undefined
   }
 
   const durationMs = Date.now() - start

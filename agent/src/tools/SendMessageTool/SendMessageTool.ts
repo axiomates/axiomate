@@ -581,21 +581,6 @@ export const SendMessageTool: Tool<InputSchema, SendMessageToolOutput> =
     },
 
     async checkPermissions(input, _context) {
-      if (false && parseAddress(input.to).scheme === 'bridge') {
-        return {
-          behavior: 'ask' as const,
-          message: `Send a message to Remote Control session ${input.to}? It arrives as a user prompt on the receiving Claude (possibly another machine) via Anthropic's servers.`,
-          // safetyCheck (not mode) — permissions.ts guards this before both
-          // bypassPermissions (step 1g) and auto-mode's allowlist/classifier.
-          // Cross-machine prompt injection must stay bypass-immune.
-          decisionReason: {
-            type: 'safetyCheck',
-            reason:
-              'Cross-machine bridge message requires explicit user consent',
-            classifierApprovable: false,
-          },
-        }
-      }
       return { behavior: 'allow' as const, updatedInput: input }
     },
 
@@ -626,36 +611,6 @@ export const SendMessageTool: Tool<InputSchema, SendMessageToolOutput> =
           errorCode: 9,
         }
       }
-      if (false && parseAddress(input.to).scheme === 'bridge') {
-        // Structured-message rejection first — it's the permanent constraint.
-        // Showing "not connected" first would make the user reconnect only to
-        // hit this error on retry.
-        if (typeof input.message !== 'string') {
-          return {
-            result: false,
-            message:
-              'structured messages cannot be sent cross-session — only plain text',
-            errorCode: 9,
-          }
-        }
-        // Bridge handle removed — always reject bridge targets
-        return {
-          result: false,
-          message:
-            'Remote Control is not connected — cannot send to a bridge: target. Reconnect with /remote-control first.',
-          errorCode: 9,
-        }
-      }
-      if (
-        false &&
-        parseAddress(input.to).scheme === 'uds' &&
-        typeof input.message === 'string'
-      ) {
-        // UDS cross-session send: summary isn't rendered (UI.tsx returns null
-        // for string messages), so don't require it. Structured messages fall
-        // through to the rejection below.
-        return { result: true }
-      }
       if (typeof input.message === 'string') {
         if (!input.summary || input.summary.trim().length === 0) {
           return {
@@ -674,15 +629,6 @@ export const SendMessageTool: Tool<InputSchema, SendMessageToolOutput> =
           errorCode: 9,
         }
       }
-      if (false && parseAddress(input.to).scheme !== 'other') {
-        return {
-          result: false,
-          message:
-            'structured messages cannot be sent cross-session — only plain text',
-          errorCode: 9,
-        }
-      }
-
       if (
         input.message.type === 'shutdown_response' &&
         input.to !== TEAM_LEAD_NAME
@@ -731,41 +677,6 @@ export const SendMessageTool: Tool<InputSchema, SendMessageToolOutput> =
     },
 
     async call(input, context, canUseTool, assistantMessage) {
-      if (false && typeof input.message === 'string') {
-        const addr = parseAddress(input.to)
-        if (addr.scheme === 'bridge') {
-          // Bridge handle removed — always reject bridge targets
-          return {
-            data: {
-              success: false,
-              message: `Remote Control disconnected before send — cannot deliver to ${input.to}`,
-            },
-          }
-        }
-        if (addr.scheme === 'uds') {
-          /* eslint-disable @typescript-eslint/no-require-imports */
-          const { sendToUdsSocket } =
-            require('../../utils/udsClient.js') as typeof import('../../utils/udsClient.js')
-          /* eslint-enable @typescript-eslint/no-require-imports */
-          try {
-            await sendToUdsSocket(addr.target, input.message as string)
-            const preview = input.summary || truncate(input.message as string, 50)
-            return {
-              data: {
-                success: true,
-                message: `“${preview}” → ${input.to}`,
-              },
-            }
-          } catch (e) {
-            return {
-              data: {
-                success: false,
-                message: `Failed to send to ${input.to}: ${errorMessage(e)}`,
-              },
-            }
-          }
-        }
-      }
 
       // Route to in-process subagent by name or raw agentId before falling
       // through to ambient-team resolution. Stopped agents are auto-resumed.

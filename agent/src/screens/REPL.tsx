@@ -172,7 +172,7 @@ import { fileHistoryMakeSnapshot, type FileHistoryState, fileHistoryRewind, type
 import { type AttributionState, incrementPromptCount } from '../utils/commitAttribution.js';
 import { recordAttributionSnapshot } from '../utils/sessionStorage.js';
 import { computeStandaloneAgentContext, restoreAgentFromSession, restoreSessionStateFromLog, restoreWorktreeForResume, exitRestoredWorktree } from '../utils/sessionRestore.js';
-import { isBgSession, updateSessionName, updateSessionActivity } from '../utils/concurrentSessions.js';
+import { updateSessionName, updateSessionActivity } from '../utils/concurrentSessions.js';
 import { isInProcessTeammateTask, type InProcessTeammateTaskState } from '../tasks/InProcessTeammateTask/types.js';
 const restoreRemoteAgentTasks = async (..._args: unknown[]) => {} // RemoteAgentTask removed
 import { useInboxPoller } from '../hooks/useInboxPoller.js';
@@ -3264,16 +3264,6 @@ export function REPL({
   }, []);
   const handleExit = useCallback(async () => {
     setIsExiting(true);
-    // In bg sessions, always detach instead of kill — even when a worktree is
-    // active. Without this guard, the worktree branch below short-circuits into
-    // ExitFlow (which calls gracefulShutdown) before exit.tsx is ever loaded.
-    if (false && isBgSession()) {
-      spawnSync('tmux', ['detach-client'], {
-        stdio: 'ignore'
-      });
-      setIsExiting(false);
-      return;
-    }
     const showWorktree = getCurrentWorktreeSession() !== null;
     if (showWorktree) {
       setExitFlow(<ExitFlow showWorktree onDone={() => {}} onCancel={() => {
