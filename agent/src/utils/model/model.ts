@@ -297,46 +297,16 @@ export function renderModelSetting(setting: ModelName | ModelAlias): string {
   return renderModelName(setting)
 }
 
-// @[MODEL LAUNCH]: Add display name cases for the new model (base + [1m] variant if applicable).
 /**
- * Returns a human-readable display name for known public models, or null
- * if the model is not recognized as a public model.
+ * Returns a human-readable display name for a model.
+ * Checks user config first (name field), then returns null if unknown.
  */
 export function getPublicModelDisplayName(model: ModelName): string | null {
-  switch (model) {
-    case getModelStrings().opus46:
-      return 'Opus 4.6'
-    case getModelStrings().opus46 + '[1m]':
-      return 'Opus 4.6 (1M context)'
-    case getModelStrings().opus45:
-      return 'Opus 4.5'
-    case getModelStrings().opus41:
-      return 'Opus 4.1'
-    case getModelStrings().opus40:
-      return 'Opus 4'
-    case getModelStrings().sonnet46 + '[1m]':
-      return 'Sonnet 4.6 (1M context)'
-    case getModelStrings().sonnet46:
-      return 'Sonnet 4.6'
-    case getModelStrings().sonnet45 + '[1m]':
-      return 'Sonnet 4.5 (1M context)'
-    case getModelStrings().sonnet45:
-      return 'Sonnet 4.5'
-    case getModelStrings().sonnet40:
-      return 'Sonnet 4'
-    case getModelStrings().sonnet40 + '[1m]':
-      return 'Sonnet 4 (1M context)'
-    case getModelStrings().sonnet37:
-      return 'Sonnet 3.7'
-    case getModelStrings().sonnet35:
-      return 'Sonnet 3.5'
-    case getModelStrings().haiku45:
-      return 'Haiku 4.5'
-    case getModelStrings().haiku35:
-      return 'Haiku 3.5'
-    default:
-      return null
+  const userConfig = getGlobalConfig().models?.[model]
+  if (userConfig?.name) {
+    return userConfig.name
   }
+  return null
 }
 
 export function renderModelName(model: ModelName): string {
@@ -348,19 +318,12 @@ export function renderModelName(model: ModelName): string {
 }
 
 /**
- * Returns a safe author name for public display (e.g., in git commit trailers).
- * Returns "Claude {ModelName}" for publicly known models, or "Claude ({model})"
- * for unknown/internal models so the exact model name is preserved.
- *
- * @param model The full model name
- * @returns "Claude {ModelName}" for public models, or "Claude ({model})" for non-public models
+ * Returns a display name for use in git commit trailers and attribution.
+ * Uses user-configured name if available, otherwise the raw model ID.
  */
 export function getPublicModelName(model: ModelName): string {
   const publicName = getPublicModelDisplayName(model)
-  if (publicName) {
-    return `Claude ${publicName}`
-  }
-  return `Claude (${model})`
+  return publicName ?? model
 }
 
 /**
@@ -471,51 +434,12 @@ export function modelDisplayString(model: ModelSetting): string {
   return model === resolvedModel ? resolvedModel : `${model} (${resolvedModel})`
 }
 
-// @[MODEL LAUNCH]: Add a marketing name mapping for the new model below.
+/**
+ * Returns a user-friendly display name for a model.
+ * Uses user-configured name if available, otherwise returns undefined.
+ */
 export function getMarketingNameForModel(modelId: string): string | undefined {
-  if (getAPIProvider() === 'foundry') {
-    // deployment ID is user-defined in Foundry, so it may have no relation to the actual model
-    return undefined
-  }
-
-  const has1m = modelId.toLowerCase().includes('[1m]')
-  const canonical = getCanonicalName(modelId)
-
-  if (canonical.includes('claude-opus-4-6')) {
-    return has1m ? 'Opus 4.6 (with 1M context)' : 'Opus 4.6'
-  }
-  if (canonical.includes('claude-opus-4-5')) {
-    return 'Opus 4.5'
-  }
-  if (canonical.includes('claude-opus-4-1')) {
-    return 'Opus 4.1'
-  }
-  if (canonical.includes('claude-opus-4')) {
-    return 'Opus 4'
-  }
-  if (canonical.includes('claude-sonnet-4-6')) {
-    return has1m ? 'Sonnet 4.6 (with 1M context)' : 'Sonnet 4.6'
-  }
-  if (canonical.includes('claude-sonnet-4-5')) {
-    return has1m ? 'Sonnet 4.5 (with 1M context)' : 'Sonnet 4.5'
-  }
-  if (canonical.includes('claude-sonnet-4')) {
-    return has1m ? 'Sonnet 4 (with 1M context)' : 'Sonnet 4'
-  }
-  if (canonical.includes('claude-3-7-sonnet')) {
-    return 'Claude 3.7 Sonnet'
-  }
-  if (canonical.includes('claude-3-5-sonnet')) {
-    return 'Claude 3.5 Sonnet'
-  }
-  if (canonical.includes('claude-haiku-4-5')) {
-    return 'Haiku 4.5'
-  }
-  if (canonical.includes('claude-3-5-haiku')) {
-    return 'Claude 3.5 Haiku'
-  }
-
-  return undefined
+  return getGlobalConfig().models?.[modelId]?.name ?? undefined
 }
 
 export function normalizeModelStringForAPI(model: string): string {
