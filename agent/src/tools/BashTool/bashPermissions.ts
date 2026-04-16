@@ -465,7 +465,6 @@ const ANT_ONLY_SAFE_ENV_VARS = new Set([
   // Credentials (approved subset - these don't change exfil risk)
   'PGPASSWORD', // Postgres password
   'GH_TOKEN', // GitHub token
-  'GROWTHBOOK_API_KEY', // self-hosted config
 ])
 
 /**
