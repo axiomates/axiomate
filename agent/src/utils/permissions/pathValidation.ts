@@ -162,7 +162,7 @@ export function isPathAllowed(
   }
 
   // 2. For write/create operations, check internal editable paths (plan files, scratchpad, agent memory, job dirs)
-  // This MUST come before checkPathSafetyForAutoEdit since .claude is a dangerous directory
+  // This MUST come before checkPathSafetyForAutoEdit since .axiomate is a dangerous directory
   // and internal editable paths live under ~/.axiomate/ — matching the ordering in
   // checkWritePermissionForTool (filesystem.ts step 1.5)
   if (operationType !== 'read') {

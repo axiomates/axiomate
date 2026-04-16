@@ -588,8 +588,8 @@ async function generateFilesystemArgs(readConfig: ReadConfig | undefined, writeC
             }
             // Check for symlinks in the path - if any parent component is a symlink,
             // mount /dev/null there to prevent symlink replacement attacks.
-            // Attack scenario: .claude is a symlink to ./decoy/, attacker deletes
-            // symlink and creates real .claude/settings.json with malicious hooks.
+            // Attack scenario: .axiomate is a symlink to ./decoy/, attacker deletes
+            // symlink and creates real .axiomate/settings.json with malicious hooks.
             const symlinkInPath = findSymlinkInPath(normalizedPath, allowedWritePaths);
             if (symlinkInPath) {
                 args.push('--ro-bind', '/dev/null', symlinkInPath);

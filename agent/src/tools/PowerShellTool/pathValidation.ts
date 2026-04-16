@@ -883,7 +883,7 @@ function isPathAllowed(
   }
 
   // 2. For write/create operations, check internal editable paths (plan files, scratchpad, agent memory, job dirs)
-  // This MUST come before checkPathSafetyForAutoEdit since .claude is a dangerous directory
+  // This MUST come before checkPathSafetyForAutoEdit since .axiomate is a dangerous directory
   // and internal editable paths live under ~/.axiomate/ — matching the ordering in
   // checkWritePermissionForTool (filesystem.ts step 1.5)
   if (operationType !== 'read') {
@@ -1583,11 +1583,11 @@ function checkPathConstraintsForStatement(
   // STALE getCwd() snapshot. Example attack (finding #3):
   //   Set-Location ./.axiomate; Set-Content ./settings.json '...'
   // Validator sees ./settings.json → /project/settings.json (not a config file).
-  // Runtime writes /project/.axiomate/settings.json (Claude's permission config).
+  // Runtime writes /project/.axiomate/settings.json (Axiomate's permission config).
   //
   // ALTERNATIVE APPROACH (rejected): simulate cwd through the statement chain
   // — after `Set-Location ./.axiomate`, validate subsequent statements with
-  // cwd='./.claude'. This would be more permissive but requires careful
+  // cwd='./.axiomate'. This would be more permissive but requires careful
   // handling of:
   //   - Push-Location/Pop-Location stack semantics
   //   - Set-Location with no args (→ home on some platforms)
