@@ -1,6 +1,5 @@
 /**
- * OAuth redirect port helpers — extracted from auth.ts to break the
- * auth.ts ↔ xaaIdpLogin.ts circular dependency.
+ * OAuth redirect port helpers.
  */
 import { createServer } from 'http'
 import { getPlatform } from '../../utils/platform.js'

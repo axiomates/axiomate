@@ -120,9 +120,7 @@ import { validateUuid } from './utils/uuid.js';
 // Plugin startup checks are now handled non-blockingly in REPL.tsx
 
 import { registerMcpAddCommand } from './commands/mcp/addCommand.js';
-import { registerMcpXaaIdpCommand } from './commands/mcp/xaaIdpCommand.js';
 import { areMcpConfigsAllowedWithEnterpriseMcpConfig, doesEnterpriseMcpConfigExist, filterMcpServersByPolicy, getAxiomateMcpConfigs, parseMcpConfig, parseMcpConfigFromFilePath } from './services/mcp/config.js';
-import { isXaaEnabled } from './services/mcp/xaaIdpLogin.js';
 import { getRelevantTips } from './services/tips/tipRegistry.js';
 import { logContextMetrics } from './utils/api.js';
 import { registerCleanup } from './utils/cleanupRegistry.js';
@@ -2607,9 +2605,6 @@ async function run(): Promise<CommanderCommand> {
 
   // Register the mcp add subcommand (extracted for testability)
   registerMcpAddCommand(mcp);
-  if (isXaaEnabled()) {
-    registerMcpXaaIdpCommand(mcp);
-  }
   mcp.command('remove <name>').description('Remove an MCP server').option('-s, --scope <scope>', 'Configuration scope (local, user, or project) - if not specified, removes from whichever scope it exists in').action(async (name: string, options: {
     scope?: string;
   }) => {
