@@ -4277,10 +4277,10 @@ export function hasInstructionsLoadedHook(): boolean {
  * for observability/audit only and does not support blocking.
  *
  * Dispatch sites:
- * - Eager load at session start (getMemoryFiles in claudemd.ts)
+ * - Eager load at session start (getMemoryFiles in axiomatemd.ts)
  * - Eager reload after compaction (getMemoryFiles cache cleared by
  *   runPostCompactCleanup; next call reports load_reason: 'compact')
- * - Lazy load when Claude touches a file that triggers nested AXIOMATE.md or
+ * - Lazy load when the agent touches a file that triggers nested AXIOMATE.md or
  *   conditional rules with paths: frontmatter (memoryFilesToAttachments in
  *   attachments.ts)
  */

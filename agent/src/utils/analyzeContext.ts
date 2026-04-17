@@ -347,7 +347,7 @@ async function countMemoryFileTokens(): Promise<{
     }
   }
 
-  const claudeMdTokenCounts = await Promise.all(
+  const axiomateMdTokenCounts = await Promise.all(
     memoryFilesData.map(async file => {
       const tokens = await countTokensWithFallback(
         [{ role: 'user', content: file.content }],
@@ -358,7 +358,7 @@ async function countMemoryFileTokens(): Promise<{
     }),
   )
 
-  for (const { file, tokens } of claudeMdTokenCounts) {
+  for (const { file, tokens } of axiomateMdTokenCounts) {
     axiomateMdTokens += tokens
     memoryFileDetails.push({
       path: file.path,

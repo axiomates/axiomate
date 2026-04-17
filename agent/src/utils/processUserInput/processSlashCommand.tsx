@@ -389,7 +389,7 @@ async function getMessagesForSlashCommand(commandName: string, args: string, set
           precedingInputBlocks
         })
       }), createUserMessage({
-        content: `This skill can only be invoked by Claude, not directly by users. Ask Axiomate to use the "${commandName}" skill for you.`
+        content: `This skill can only be invoked by Axiomate, not directly by users. Ask Axiomate to use the "${commandName}" skill for you.`
       })],
       shouldQuery: false,
       command

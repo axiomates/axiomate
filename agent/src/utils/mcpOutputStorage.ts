@@ -167,7 +167,7 @@ export async function persistBinaryContent(
 }
 
 /**
- * Build a short message telling Claude where binary content was saved.
+ * Build a short message telling Axiomate where binary content was saved.
  * Just states the path — no prescriptive hint, since what the model can
  * actually do with the file depends on provider/tooling.
  */

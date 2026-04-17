@@ -847,7 +847,7 @@ export const getMemoryFiles = memoize(
     }
 
     // When running from a git worktree nested inside its main repo (e.g.,
-    // .axiomate/worktrees/<name>/ from `claude -w`), the upward walk passes
+    // .axiomate/worktrees/<name>/ from `axiomate -w`), the upward walk passes
     // through both the worktree root and the main repo root. Both contain
     // checked-in files like AXIOMATE.md and .axiomate/rules/*.md, so the same
     // content gets loaded twice. Skip Project-type (checked-in) files from

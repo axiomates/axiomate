@@ -170,7 +170,7 @@ export function getClientSurface(): string {
 
 /**
  * Build a surface key that includes the model name.
- * Format: "surface/model" (e.g., "cli/claude-sonnet")
+ * Format: "surface/model" (e.g., "cli/claude-sonnet-4-5")
  */
 export function buildSurfaceKey(surface: string, model: ModelName): string {
   return `${surface}/${getCanonicalName(model)}`

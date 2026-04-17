@@ -550,7 +550,7 @@ export function normalizeToolInput<T extends Tool>(
       // Validated upstream, won't throw
       const parsedInput = FileEditTool.inputSchema.parse(input)
 
-      // This is a workaround for tokens claude can't see
+      // This is a workaround for tokens the agent can't see
       const { file_path, edits } = normalizeFileEditInput({
         file_path: parsedInput.file_path,
         edits: [

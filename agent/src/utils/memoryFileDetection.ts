@@ -124,7 +124,7 @@ function isAgentMemFile(filePath: string): boolean {
 }
 
 /**
- * Check if a file is a Claude-managed memory file (NOT user-managed instruction files).
+ * Check if a file is an Axiomate-managed memory file (NOT user-managed instruction files).
  * Includes: auto-memory (memdir), agent memory, session memory/transcripts.
  * Excludes: AXIOMATE.md, AXIOMATE.local.md, .axiomate/rules/*.md (user-managed).
  *

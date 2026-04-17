@@ -30,7 +30,7 @@ import { launchInTerminal } from './terminalLauncher.js'
  * This function parses the URI, resolves the axiomate binary, and
  * launches it in the user's terminal.
  *
- * @param uri - The raw URI string (e.g., "claude-cli://prompt?q=hello+world")
+ * @param uri - The raw URI string (e.g., "axiomate://prompt?q=hello+world")
  * @returns exit code (0 = success)
  */
 export async function handleDeepLinkUri(uri: string): Promise<number> {

@@ -8,7 +8,7 @@ import { isEnvTruthy } from './envUtils.js'
  *   that invoke the bun binary with argv0='bfs' / argv0='ugrep' (same trick
  *   as embedded ripgrep)
  * - The dedicated Glob/Grep tools are removed from the tool registry
- * - Prompt guidance steering Claude away from find/grep is omitted
+ * - Prompt guidance steering the agent away from find/grep is omitted
  *
  * Set as a build-time define in scripts/build-with-plugins.ts for native builds.
  */

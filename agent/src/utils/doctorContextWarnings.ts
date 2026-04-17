@@ -22,7 +22,7 @@ const MCP_TOOLS_THRESHOLD = 25_000 // 15k tokens
 
 export type ContextWarning = {
   type:
-    | 'claudemd_files'
+    | 'axiomatemd_files'
     | 'agent_descriptions'
     | 'mcp_tools'
     | 'unreachable_rules'
@@ -58,7 +58,7 @@ async function checkAxiomateMdFiles(): Promise<ContextWarning | null> {
       : `${largeFiles.length} large AXIOMATE.md files detected (each > ${MAX_MEMORY_CHARACTER_COUNT.toLocaleString()} chars)`
 
   return {
-    type: 'claudemd_files',
+    type: 'axiomatemd_files',
     severity: 'warning',
     message,
     details,

@@ -24,7 +24,7 @@ export const TeamMemoryContentSchema = lazySchema(() =>
 )
 
 /**
- * Full response from GET /api/claude_code/team_memory
+ * Full response from GET /api/team_memory (endpoint is stubbed).
  */
 export const TeamMemoryDataSchema = lazySchema(() =>
   z.object({
