@@ -24,10 +24,10 @@ type ShellInfo = {
 function detectShell(): ShellInfo | null {
   const shell = process.env.SHELL || ''
   const home = homedir()
-  const claudeDir = join(home, '.axiomate')
+  const axiomateDir = join(home, '.axiomate')
 
   if (shell.endsWith('/zsh') || shell.endsWith('/zsh.exe')) {
-    const cacheFile = join(claudeDir, 'completion.zsh')
+    const cacheFile = join(axiomateDir, 'completion.zsh')
     return {
       name: 'zsh',
       rcFile: join(home, '.zshrc'),
@@ -37,7 +37,7 @@ function detectShell(): ShellInfo | null {
     }
   }
   if (shell.endsWith('/bash') || shell.endsWith('/bash.exe')) {
-    const cacheFile = join(claudeDir, 'completion.bash')
+    const cacheFile = join(axiomateDir, 'completion.bash')
     return {
       name: 'bash',
       rcFile: join(home, '.bashrc'),
@@ -48,7 +48,7 @@ function detectShell(): ShellInfo | null {
   }
   if (shell.endsWith('/fish') || shell.endsWith('/fish.exe')) {
     const xdg = process.env.XDG_CONFIG_HOME || join(home, '.config')
-    const cacheFile = join(claudeDir, 'completion.fish')
+    const cacheFile = join(axiomateDir, 'completion.fish')
     return {
       name: 'fish',
       rcFile: join(xdg, 'fish', 'config.fish'),

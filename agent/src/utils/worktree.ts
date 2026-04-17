@@ -1154,7 +1154,7 @@ export async function hasWorktreeChanges(
 
 /**
  * Fast-path handler for --worktree --tmux.
- * Creates the worktree and execs into tmux running Claude inside.
+ * Creates the worktree and execs into tmux running axiomate inside.
  * This is called early in cli.tsx before loading the full CLI.
  */
 export async function execIntoTmuxWorktree(args: string[]): Promise<{
@@ -1319,9 +1319,9 @@ export async function execIntoTmuxWorktree(args: string[]): Promise<{
     }
   }
 
-  // Check if tmux prefix conflicts with Claude keybindings
-  // Claude binds: ctrl+b (task:background), ctrl+c, ctrl+d, ctrl+t, ctrl+o, ctrl+r, ctrl+s, ctrl+g, ctrl+e
-  const claudeBindings = [
+  // Check if tmux prefix conflicts with axiomate keybindings
+  // axiomate binds: ctrl+b (task:background), ctrl+c, ctrl+d, ctrl+t, ctrl+o, ctrl+r, ctrl+s, ctrl+g, ctrl+e
+  const axiomateBindings = [
     'C-b',
     'C-c',
     'C-d',
@@ -1332,9 +1332,9 @@ export async function execIntoTmuxWorktree(args: string[]): Promise<{
     'C-g',
     'C-e',
   ]
-  const prefixConflicts = claudeBindings.includes(tmuxPrefix)
+  const prefixConflicts = axiomateBindings.includes(tmuxPrefix)
 
-  // Set env vars for the inner Claude to display tmux info in welcome message
+  // Set env vars for the inner axiomate to display tmux info in welcome message
   const tmuxEnv = {
     ...process.env,
     AXIOMATE_CODE_TMUX_SESSION: tmuxSessionName,
@@ -1378,7 +1378,7 @@ export async function execIntoTmuxWorktree(args: string[]): Promise<{
   const shouldSetupDevPanes = isAnt && isClaudeCliInternal && !sessionExists
 
   if (shouldSetupDevPanes) {
-    // Create detached session with Claude in first pane
+    // Create detached session with axiomate in first pane
     spawnSync(
       'tmux',
       [
@@ -1417,7 +1417,7 @@ export async function execIntoTmuxWorktree(args: string[]): Promise<{
       cwd: worktreeDir,
     })
 
-    // Select the first pane (Claude)
+    // Select the first pane (axiomate)
     spawnSync('tmux', ['select-pane', '-t', `${tmuxSessionName}:0.0`], {
       cwd: worktreeDir,
     })
