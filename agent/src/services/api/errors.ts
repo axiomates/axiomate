@@ -35,10 +35,6 @@ import { ImageSizeError } from '../../utils/imageValidation.js'
 import {
   logEvent,
 } from '../analytics/index.js'
-// apiLimits stubs inlined
-type ClaudeAILimits = { status: string; isUsingOverage: boolean; unifiedRateLimitFallbackAvailable?: boolean; resetsAt?: number; rateLimitType?: string; utilization?: number; overageStatus?: string; overageResetsAt?: number; overageDisabledReason?: OverageDisabledReason; surpassedThreshold?: number }
-type OverageDisabledReason = 'not_subscriber' | 'not_supported' | 'org_disabled' | 'out_of_credits' | 'overage_not_provisioned' | 'org_level_disabled' | 'org_level_disabled_until' | 'seat_tier_level_disabled' | 'member_level_disabled' | 'seat_tier_zero_credit_limit' | 'group_zero_credit_limit' | 'member_zero_credit_limit' | 'org_service_level_disabled' | 'org_service_zero_credit_limit' | 'no_limits_configured' | 'unknown'
-function getRateLimitErrorMessage(_limits?: ClaudeAILimits, _model?: string): null { return null }
 import { shouldProcessRateLimits } from '../rateLimitMocking.js' // Used for /mock-limits command
 import { extractConnectionErrorDetails, formatAPIError } from './errorUtils.js'
 
@@ -190,13 +186,13 @@ export const OAUTH_ORG_NOT_ALLOWED_ERROR_MESSAGE =
 
 export function getTokenRevokedErrorMessage(): string {
   return getIsNonInteractiveSession()
-    ? 'Your account does not have access to Claude. Please login again or contact your administrator.'
+    ? 'Your account does not have access to axiomate. Please login again or contact your administrator.'
     : TOKEN_REVOKED_ERROR_MESSAGE
 }
 
 export function getOauthOrgNotAllowedErrorMessage(): string {
   return getIsNonInteractiveSession()
-    ? 'Your organization does not have access to Claude. Please login again or contact your administrator.'
+    ? 'Your organization does not have access to axiomate. Please login again or contact your administrator.'
     : OAUTH_ORG_NOT_ALLOWED_ERROR_MESSAGE
 }
 
@@ -443,72 +439,10 @@ export function getAssistantMessageFromError(
     error.status === 429 &&
     shouldProcessRateLimits(false)
   ) {
-    // Check if this is the new API with multiple rate limit headers
-    const rateLimitType = getHeader(error.headers,
-      'anthropic-ratelimit-unified-representative-claim',
-    ) as 'five_hour' | 'seven_day' | 'seven_day_opus' | null
-
-    const overageStatus = getHeader(error.headers,
-      'anthropic-ratelimit-unified-overage-status',
-    ) as 'allowed' | 'allowed_warning' | 'rejected' | null
-
-    // If we have the new headers, use the new message generation
-    if (rateLimitType || overageStatus) {
-      // Build limits object from error headers to determine the appropriate message
-      const limits: ClaudeAILimits = {
-        status: 'rejected',
-        unifiedRateLimitFallbackAvailable: false,
-        isUsingOverage: false,
-      }
-
-      // Extract rate limit information from headers
-      const resetHeader = getHeader(error.headers,
-        'anthropic-ratelimit-unified-reset',
-      )
-      if (resetHeader) {
-        limits.resetsAt = Number(resetHeader)
-      }
-
-      if (rateLimitType) {
-        limits.rateLimitType = rateLimitType
-      }
-
-      if (overageStatus) {
-        limits.overageStatus = overageStatus
-      }
-
-      const overageResetHeader = getHeader(error.headers,
-        'anthropic-ratelimit-unified-overage-reset',
-      )
-      if (overageResetHeader) {
-        limits.overageResetsAt = Number(overageResetHeader)
-      }
-
-      const overageDisabledReason = getHeader(error.headers,
-        'anthropic-ratelimit-unified-overage-disabled-reason',
-      ) as OverageDisabledReason | null
-      if (overageDisabledReason) {
-        limits.overageDisabledReason = overageDisabledReason
-      }
-
-      // Use the new message format for all new API rate limits
-      const specificErrorMessage = getRateLimitErrorMessage(limits, model)
-      if (specificErrorMessage) {
-        return createAssistantAPIErrorMessage({
-          content: specificErrorMessage,
-          error: 'rate_limit',
-        })
-      }
-
-      // If getRateLimitErrorMessage returned null, it means the fallback mechanism
-      // will handle this silently (e.g., Opus -> Sonnet fallback for eligible users).
-      // Return NO_RESPONSE_REQUESTED so no error is shown to the user, but the
-      // message is still recorded in conversation history for Claude to see.
-      return createAssistantAPIErrorMessage({
-        content: NO_RESPONSE_REQUESTED,
-        error: 'rate_limit',
-      })
-    }
+    // Claude.ai-subscription rate-limit headers (`anthropic-ratelimit-unified-*`)
+    // carry entitlement/overage metadata specific to Anthropic's consumer
+    // subscription plan. axiomate is API-only, so we surface the generic 429
+    // path below regardless of whether those headers are present.
 
     // No quota headers — this is NOT a quota limit. Surface what the API actually
     // said instead of a generic "Rate limit reached". Entitlement rejections
@@ -1067,13 +1001,8 @@ export function getErrorMessageIfRefusal(
     ? `${API_ERROR_MESSAGE_PREFIX}: Axiomate is unable to respond to this request, which appears to violate the model provider Usage Policy. Try rephrasing the request or attempting a different approach.`
     : `${API_ERROR_MESSAGE_PREFIX}: Axiomate is unable to respond to this request, which appears to violate the model provider Usage Policy. Please double press esc to edit your last message or start a new session for Axiomate to assist with a different task.`
 
-  const modelSuggestion =
-    model !== 'claude-sonnet-4-20250514'
-      ? ' If you are seeing this refusal repeatedly, try running /model claude-sonnet-4-20250514 to switch models.'
-      : ''
-
   return createAssistantAPIErrorMessage({
-    content: baseMessage + modelSuggestion,
+    content: baseMessage,
     error: 'invalid_request',
   })
 }

@@ -1,40 +1,18 @@
 /**
  * Miscellaneous subcommand handlers — extracted from main.tsx for lazy loading.
- * setup-token, doctor, install
+ * doctor, install
  */
 /* eslint-disable custom-rules/no-process-exit -- CLI subcommand handlers intentionally exit */
 
 import { cwd } from 'process'
 import React from 'react'
-import { WelcomeV2 } from '../../components/LogoV2/WelcomeV2.js'
 import { useManagePlugins } from '../../hooks/useManagePlugins.js'
 import type { Root } from '../../ink.js'
-import { Box, Text } from '../../ink.js'
 import { KeybindingSetup } from '../../keybindings/KeybindingProviderSetup.js'
 import { MCPConnectionManager } from '../../services/mcp/MCPConnectionManager.js'
 import { AppStateProvider } from '../../state/AppState.js'
 import { onChangeAppState } from '../../state/onChangeAppState.js'
 import { isAnthropicAuthEnabled } from '../../utils/auth.js'
-
-export async function setupTokenHandler(root: Root): Promise<void> {
-
-  await new Promise<void>(resolve => {
-    root.render(
-      <AppStateProvider onChangeAppState={onChangeAppState}>
-        <KeybindingSetup>
-          <Box flexDirection="column" gap={1}>
-            <WelcomeV2 />
-            <Text>OAuth token setup is not available. Use an API key instead.</Text>
-          </Box>
-        </KeybindingSetup>
-      </AppStateProvider>,
-    )
-    // Auto-resolve after render
-    void resolve()
-  })
-  root.unmount()
-  process.exit(0)
-}
 
 // DoctorWithPlugins wrapper + doctor handler
 const DoctorLazy = React.lazy(() =>
