@@ -27,8 +27,11 @@ import {
 } from '../../utils/platform.js'
 import type { CoreUserData } from '../../utils/user.js'
 import { getAgentContext } from '../../utils/agentContext.js'
-import type { EnvironmentMetadata } from '../../types/generated/events_mono/claude_code/v1/claude_code_internal_event.js'
-import type { PublicApiAuth } from '../../types/generated/events_mono/common/v1/auth.js'
+// Analytics sink is a no-op stub in axiomate (see services/analytics/sink.ts).
+// The payload shapes here are kept loose; if a real sink lands later it can
+// replace these with concrete types.
+type EnvironmentMetadata = Record<string, unknown>
+type PublicApiAuth = Record<string, unknown>
 import { jsonStringify } from '../../utils/slowOperations.js'
 import {
   getAgentId,
@@ -91,7 +94,7 @@ export function isToolDetailsLoggingEnabled(): boolean {
  * Per go/taxonomy, MCP names are medium PII. We log them for:
  * - Cowork (entrypoint=local-agent) — no ZDR concept, log all MCPs
  * - Servers whose URL matches the official MCP registry — directory
- *   connectors added via `claude mcp add`, not customer-specific config
+ *   connectors added via `axiomate mcp add`, not customer-specific config
  *
  * Custom/user-configured MCPs stay sanitized (toolName='mcp_tool').
  */
@@ -423,12 +426,9 @@ export type EnvContext = {
   isConductor: boolean
   remoteEnvironmentType?: string
   coworkerType?: string
-  claudeCodeContainerId?: string
-  claudeCodeRemoteSessionId?: string
   tags?: string
   isGithubAction: boolean
   isAxiomateAction: boolean
-  isClaudeAiAuth: boolean
   version: string
   versionBase?: string
   buildTime: string
@@ -598,18 +598,11 @@ const buildEnvContext = memoize(async (): Promise<EnvContext> => {
         ? { coworkerType: process.env.AXIOMATE_CODE_COWORKER_TYPE }
         : {}
       : {}),
-    ...(process.env.AXIOMATE_CODE_CONTAINER_ID && {
-      claudeCodeContainerId: process.env.AXIOMATE_CODE_CONTAINER_ID,
-    }),
-    ...(process.env.AXIOMATE_CODE_REMOTE_SESSION_ID && {
-      claudeCodeRemoteSessionId: process.env.AXIOMATE_CODE_REMOTE_SESSION_ID,
-    }),
     ...(process.env.AXIOMATE_CODE_TAGS && {
       tags: process.env.AXIOMATE_CODE_TAGS,
     }),
     isGithubAction: isEnvTruthy(process.env.GITHUB_ACTIONS),
     isAxiomateAction: isEnvTruthy(process.env.AXIOMATE_CODE_ACTION),
-    isClaudeAiAuth: false,
     version: MACRO.VERSION,
     versionBase: getVersionBase(),
     buildTime: MACRO.BUILD_TIME,
@@ -793,15 +786,9 @@ export function to1PEventFormat(
     ...coreFields
   } = metadata
 
-  // Convert envContext to snake_case.
-  // IMPORTANT: env is typed as the proto-generated EnvironmentMetadata so that
-  // adding a field here that the proto doesn't define is a compile error. The
-  // generated toJSON() serializer silently drops unknown keys — a hand-written
-  // parallel type previously let #11318, #13924, #19448, and coworker_type all
-  // ship fields that never reached BQ.
-  // Adding a field? Update the monorepo proto first (go/cc-logging):
-  //   event_schemas/.../claude_code/v1/axiomate_internal_event.proto
-  // then run `bun run generate:proto` here.
+  // envContext → snake_case payload shape. axiomate's analytics sink is a
+  // no-op stub (services/analytics/sink.ts), so the payload is assembled but
+  // never transmitted; the shape is maintained for whenever a real sink lands.
   const env: EnvironmentMetadata = {
     platform: envContext.platform,
     platform_raw: envContext.platformRaw,
@@ -818,7 +805,6 @@ export function to1PEventFormat(
     is_conductor: envContext.isConductor,
     is_github_action: envContext.isGithubAction,
     is_axiomate_action: envContext.isAxiomateAction,
-    is_claude_ai_auth: envContext.isClaudeAiAuth,
     version: envContext.version,
     build_time: envContext.buildTime,
     deployment_environment: envContext.deploymentEnvironment,
@@ -827,12 +813,6 @@ export function to1PEventFormat(
   // Add optional env fields
   if (envContext.remoteEnvironmentType) {
     env.remote_environment_type = envContext.remoteEnvironmentType
-  }
-  if (envContext.claudeCodeContainerId) {
-    env.claude_code_container_id = envContext.claudeCodeContainerId
-  }
-  if (envContext.claudeCodeRemoteSessionId) {
-    env.claude_code_remote_session_id = envContext.claudeCodeRemoteSessionId
   }
   if (envContext.tags) {
     env.tags = envContext.tags
