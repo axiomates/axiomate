@@ -46,7 +46,6 @@ import {
 import {
   getPlan,
   getPlanFilePath,
-  persistFileSnapshotIfRemote,
 } from './plans.js'
 import { getPlatform } from './platform.js'
 import { countFilesRoundedRg } from './ripgrep.js'
@@ -486,8 +485,6 @@ export function normalizeToolInput<T extends Tool>(
       // The V2 tool reads plan from file instead of input, but hooks/SDK
       const plan = getPlan(agentId)
       const planFilePath = getPlanFilePath(agentId)
-      // Persist file snapshot for CCR sessions so the plan survives pod recycling
-      void persistFileSnapshotIfRemote()
       return plan !== null ? { ...input, plan, planFilePath } : input
     }
     case BashTool.name: {
