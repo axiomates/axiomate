@@ -11,7 +11,7 @@ function modelBelongsToFamily(model: string, family: string): boolean {
   if (model.includes(family)) {
     return true
   }
-  // Resolve aliases like "best" → "claude-opus-4-6" to check family membership
+  // Resolve aliases (e.g. "best") to a concrete model ID and check containment
   if (isModelAlias(model)) {
     const resolved = parseUserSpecifiedModel(model).toLowerCase()
     return resolved.includes(family)
@@ -22,7 +22,6 @@ function modelBelongsToFamily(model: string, family: string): boolean {
 /**
  * Check if a model name starts with a prefix at a segment boundary.
  * The prefix must match up to the end of the name or a "-" separator.
- * e.g. "claude-opus-4-5" matches "claude-opus-4-5-20251101" but not "claude-opus-4-50".
  */
 function prefixMatchesModel(modelName: string, prefix: string): boolean {
   if (!modelName.startsWith(prefix)) {
@@ -32,28 +31,16 @@ function prefixMatchesModel(modelName: string, prefix: string): boolean {
 }
 
 /**
- * Check if a model matches a version-prefix entry in the allowlist.
- * Supports shorthand like "opus-4-5" (mapped to "claude-opus-4-5") and
- * full prefixes like "claude-opus-4-5". Resolves input aliases before matching.
+ * Check if a model matches a version-prefix entry in the allowlist. Resolves
+ * input aliases before matching. Entries match exactly the string the admin
+ * wrote — no implicit provider-specific prefixing.
  */
 function modelMatchesVersionPrefix(model: string, entry: string): boolean {
-  // Resolve the input model to a full name if it's an alias
   const resolvedModel = isModelAlias(model)
     ? parseUserSpecifiedModel(model).toLowerCase()
     : model
 
-  // Try the entry as-is (e.g. "claude-opus-4-5")
-  if (prefixMatchesModel(resolvedModel, entry)) {
-    return true
-  }
-  // Try with "claude-" prefix (e.g. "opus-4-5" → "claude-opus-4-5")
-  if (
-    !entry.startsWith('claude-') &&
-    prefixMatchesModel(resolvedModel, `claude-${entry}`)
-  ) {
-    return true
-  }
-  return false
+  return prefixMatchesModel(resolvedModel, entry)
 }
 
 /**
@@ -94,8 +81,8 @@ function familyHasSpecificEntries(
  * 1. Family aliases ("opus", "sonnet", "haiku") — wildcard for the entire family,
  *    UNLESS more specific entries for that family also exist (e.g., "opus-4-5").
  *    In that case, the family wildcard is ignored and only the specific entries apply.
- * 2. Version prefixes ("opus-4-5", "claude-opus-4-5") — any build of that version
- * 3. Full model IDs ("claude-opus-4-5-20251101") — exact match only
+ * 2. Version prefixes ("opus-4-5") — any build of that version
+ * 3. Full model IDs — exact match only
  */
 export function isModelAllowed(model: string): boolean {
   const settings = getSettings_DEPRECATED() || {}
