@@ -14,9 +14,6 @@ import { parseRateLimitHeaders, updateRateLimitInfo } from './rateLimitTracker.j
 import { getAPIProviderForanalytics } from '../../utils/model/providers.js'
 import { processStream } from './streamAccumulator.js'
 import {
-  getAPIProvider,
-} from '../../utils/model/providers.js'
-import {
   getAttributionHeader,
   getCLISyspromptPrefix,
 } from '../../constants/system.js'
@@ -47,7 +44,6 @@ import {
   toolToAPISchema,
 } from '../../utils/api.js'
 import {
-  getBedrockExtraBodyParamsBetas,
   getMergedBetas,
 } from '../../utils/betas.js'
 import { getGlobalConfig, getOrCreateUserID } from '../../utils/config.js'
@@ -137,7 +133,6 @@ import {
 import { count } from '../../utils/array.js'
 import { validateBoundedIntEnvVar } from '../../utils/envValidation.js'
 import { safeParseJSON } from '../../utils/json.js'
-import { getInferenceProfileBackingModel } from '../../utils/model/bedrock.js'
 import {
   normalizeModelStringForAPI,
   parseUserSpecifiedModel,
@@ -658,12 +653,7 @@ async function* queryModel(
   // Also naturally handles rollback/undo since removed messages won't be in the array.
   const previousRequestId = getPreviousRequestIdFromMessages(messages)
 
-  const resolvedModel =
-    getAPIProvider() === 'bedrock' &&
-    options.model.includes('application-inference-profile')
-      ? ((await getInferenceProfileBackingModel(options.model)) ??
-        options.model)
-      : options.model
+  const resolvedModel = options.model
 
   queryCheckpoint('query_tool_schema_build_start')
   const isAgenticQuery =
@@ -731,13 +721,9 @@ async function* queryModel(
   }
 
   // Add tool search beta header if enabled - required for defer_loading to be accepted
-  // Header differs by provider: 1P/Foundry use advanced-tool-use, Vertex/Bedrock use tool-search-tool
-  // For Bedrock, this header must go in extraBodyParams, not the betas array
   const toolSearchHeader = useToolSearch ? getToolSearchBetaHeader() : null
-  if (toolSearchHeader && getAPIProvider() !== 'bedrock') {
-    if (!betas.includes(toolSearchHeader)) {
-      betas.push(toolSearchHeader)
-    }
+  if (toolSearchHeader && !betas.includes(toolSearchHeader)) {
+    betas.push(toolSearchHeader)
   }
 
   const useGlobalCacheFeature = shouldUseGlobalCacheScope()
@@ -974,15 +960,7 @@ async function* queryModel(
     const betasParams = [...betas]
 
 
-    // For Bedrock, include both model-based betas and dynamically-added tool search header
-    const bedrockBetas =
-      getAPIProvider() === 'bedrock'
-        ? [
-            ...getBedrockExtraBodyParamsBetas(retryContext.model),
-            ...(toolSearchHeader ? [toolSearchHeader] : []),
-          ]
-        : []
-    const extraBodyParams = getExtraBodyParams(bedrockBetas)
+    const extraBodyParams = getExtraBodyParams([])
 
     const outputConfig: OutputConfig = {
       ...((extraBodyParams.output_config as OutputConfig) ?? {}),

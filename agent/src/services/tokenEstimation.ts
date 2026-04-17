@@ -1,17 +1,9 @@
-// @aws-sdk/client-bedrock-runtime is imported dynamically in countTokensWithBedrock()
-// to defer ~279KB of AWS SDK code until a Bedrock call is actually made
-import type { CountTokensCommandInput } from '@aws-sdk/client-bedrock-runtime'
 import { VERTEX_COUNT_TOKENS_ALLOWED_BETAS } from '../constants/betas.js'
 import type { Attachment } from '../utils/attachments.js'
 import { getModelBetas } from '../utils/betas.js'
-import { getVertexRegionForModel, isEnvTruthy } from '../utils/envUtils.js'
+import { isEnvTruthy } from '../utils/envUtils.js'
 import { logError } from '../utils/log.js'
 import { normalizeAttachmentForAPI } from '../utils/messages.js'
-import {
-  createBedrockRuntimeClient,
-  getInferenceProfileBackingModel,
-  isFoundationModel,
-} from '../utils/model/bedrock.js'
 import {
   getMidModel,
   getMainLoopModel,
@@ -351,62 +343,3 @@ function roughTokenCountEstimationForBlock(
   return roughTokenCountEstimation(jsonStringify(block))
 }
 
-async function countTokensWithBedrock({
-  model,
-  messages,
-  tools,
-  betas,
-  containsThinking,
-}: {
-  model: string
-  messages: MessageParam[]
-  tools: unknown[]
-  betas: string[]
-  containsThinking: boolean
-}): Promise<number | null> {
-  try {
-    const client = await createBedrockRuntimeClient()
-    // Bedrock CountTokens requires a model ID, not an inference profile / ARN
-    const modelId = isFoundationModel(model)
-      ? model
-      : await getInferenceProfileBackingModel(model)
-    if (!modelId) {
-      return null
-    }
-
-    const requestBody = {
-      anthropic_version: 'bedrock-2023-05-31',
-      // When we pass tools and no messages, we need to pass a dummy message
-      // to get an accurate tool token count.
-      messages:
-        messages.length > 0 ? messages : [{ role: 'user', content: 'foo' }],
-      max_tokens: containsThinking ? TOKEN_COUNT_MAX_TOKENS : 1,
-      ...(tools.length > 0 && { tools }),
-      ...(betas.length > 0 && { anthropic_beta: betas }),
-      ...(containsThinking && {
-        thinking: {
-          type: 'enabled',
-          budget_tokens: TOKEN_COUNT_THINKING_BUDGET,
-        },
-      }),
-    }
-
-    const { CountTokensCommand } = await import(
-      '@aws-sdk/client-bedrock-runtime'
-    )
-    const input: CountTokensCommandInput = {
-      modelId,
-      input: {
-        invokeModel: {
-          body: new TextEncoder().encode(jsonStringify(requestBody)),
-        },
-      },
-    }
-    const response = await client.send(new CountTokensCommand(input))
-    const tokenCount = response.inputTokens ?? null
-    return tokenCount
-  } catch (error) {
-    logError(error)
-    return null
-  }
-}

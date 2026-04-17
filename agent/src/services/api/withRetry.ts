@@ -5,11 +5,6 @@ import { logForDebugging } from '../../utils/debug.js'
 import { logError } from '../../utils/log.js'
 import { createSystemAPIErrorMessage } from '../../utils/messages.js'
 import { getAPIProviderForanalytics } from '../../utils/model/providers.js'
-import {
-  clearAwsCredentialsCache,
-  clearGcpCredentialsCache,
-} from '../../utils/auth.js'
-import { isAwsCredentialsProviderError } from '../../utils/aws.js'
 import { isEnvTruthy } from '../../utils/envUtils.js'
 import { errorMessage } from '../../utils/errors.js'
 import { disableKeepAlive } from '../../utils/proxy.js'
@@ -153,8 +148,6 @@ export async function* withRetry<C, T>(
         client === null ||
         (lastError instanceof LLMAPIError && lastError.status === 401) ||
         isOAuthTokenRevokedError(lastError) ||
-        isBedrockAuthError(lastError) ||
-        isVertexAuthError(lastError) ||
         isStaleConnection
       ) {
         client = await getClient()
@@ -380,25 +373,8 @@ function isOAuthTokenRevokedError(error: unknown): boolean {
   )
 }
 
-function isBedrockAuthError(_error: unknown): boolean {
-  return false
-}
-
-function isVertexAuthError(_error: unknown): boolean {
-  return false
-}
-
-/**
- * Clear cloud auth caches if the error looks like a cloud credential issue.
- * Side effect only — does not influence retry decision (that's the classifier's job).
- */
-function handleCloudAuthCacheClearing(error: unknown): void {
-  if (isBedrockAuthError(error)) {
-    clearAwsCredentialsCache()
-  }
-  if (isVertexAuthError(error)) {
-    clearGcpCredentialsCache()
-  }
+function handleCloudAuthCacheClearing(_error: unknown): void {
+  // no-op — cloud auth (Bedrock/Vertex) not used in axiomate
 }
 
 export function getDefaultMaxRetries(): number {
