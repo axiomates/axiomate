@@ -26,14 +26,14 @@ export function AxiomateMdExternalIncludesDialog({
         // Mark that we've shown the dialog but it was declined
         saveCurrentProjectConfig(current => ({
           ...current,
-          hasClaudeMdExternalIncludesApproved: false,
-          hasClaudeMdExternalIncludesWarningShown: true,
+          hasAxiomateMdExternalIncludesApproved: false,
+          hasAxiomateMdExternalIncludesWarningShown: true,
         }))
       } else {
         saveCurrentProjectConfig(current => ({
           ...current,
-          hasClaudeMdExternalIncludesApproved: true,
-          hasClaudeMdExternalIncludesWarningShown: true,
+          hasAxiomateMdExternalIncludesApproved: true,
+          hasAxiomateMdExternalIncludesWarningShown: true,
         }))
       }
 

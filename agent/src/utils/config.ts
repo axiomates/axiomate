@@ -107,8 +107,8 @@ export type ProjectConfig = {
 
   hasCompletedProjectOnboarding?: boolean
   projectOnboardingSeenCount: number
-  hasClaudeMdExternalIncludesApproved?: boolean
-  hasClaudeMdExternalIncludesWarningShown?: boolean
+  hasAxiomateMdExternalIncludesApproved?: boolean
+  hasAxiomateMdExternalIncludesWarningShown?: boolean
   // MCP server approval fields - migrated to settings but kept for backward compatibility
   enabledMcpjsonServers?: string[]
   disabledMcpjsonServers?: string[]
@@ -126,7 +126,7 @@ export type ProjectConfig = {
     sessionId: string
     hookBased?: boolean
   }
-  /** Spawn mode for `claude remote-control` multi-session. Set by first-run dialog or `w` toggle. */
+  /** Spawn mode for `axiomate remote-control` multi-session. Set by first-run dialog or `w` toggle. */
   remoteControlSpawnMode?: 'same-dir' | 'worktree'
 }
 
@@ -138,8 +138,8 @@ const DEFAULT_PROJECT_CONFIG: ProjectConfig = {
   disabledMcpjsonServers: [],
   hasTrustDialogAccepted: false,
   projectOnboardingSeenCount: 0,
-  hasClaudeMdExternalIncludesApproved: false,
-  hasClaudeMdExternalIncludesWarningShown: false,
+  hasAxiomateMdExternalIncludesApproved: false,
+  hasAxiomateMdExternalIncludesWarningShown: false,
 }
 
 export type InstallMethod = 'local' | 'native' | 'global' | 'unknown'
@@ -261,7 +261,7 @@ export type ModelProviderUsageMapping = {
 
 /** Per-model provider configuration in ~/.axiomate.json */
 export type ModelProviderConfig = {
-  /** API model ID (e.g. "Qwen/Qwen3.5-397B-A17B", "claude-sonnet-4-6") */
+  /** Provider-native model ID (e.g. "Qwen/Qwen3.5-397B-A17B", "claude-sonnet-4-6", "minimax-m2") */
   model: string
   /** Display name for UI */
   name?: string
@@ -368,11 +368,6 @@ export type GlobalConfig = {
   // @deprecated - Migrated to ~/.axiomate/cache/changelog.md. Keep for migration support.
   cachedChangelog?: string
   mcpServers?: Record<string, McpServerConfig>
-  // Used to gate "connector unavailable" / "needs auth" startup notifications:
-  // a connector the user has actually used is worth flagging when it breaks,
-  // but an org-configured connector that's been needs-auth since day one is
-  // something the user has demonstrably ignored and shouldn't nag about.
-  claudeAiMcpEverConnected?: string[]
   preferredNotifChannel: NotificationChannel
   verbose: boolean
   customApiKeyResponses?: {
@@ -509,7 +504,7 @@ export type GlobalConfig = {
   showSpinnerTree?: boolean // Whether to show the teammate spinner tree instead of pills
 
 
-  messageIdleNotifThresholdMs: number // How long the user has to have been idle to get a notification that Claude is done generating
+  messageIdleNotifThresholdMs: number // How long the user has to have been idle to get a notification that axiomate is done generating
 
   githubActionSetupCount?: number // Number of times the user has set up the GitHub Action
   slackAppInstallCount?: number // Number of times the user has clicked to install the Slack app
@@ -529,10 +524,6 @@ export type GlobalConfig = {
   taskCompleteNotifEnabled?: boolean
   inputNeededNotifEnabled?: boolean
   agentPushNotifEnabled?: boolean
-
-  // Axiomate usage tracking
-  claudeCodeFirstTokenDate?: string // ISO timestamp of the user's first Axiomate OAuth token
-
 
   // Effort callout tracking - shown once for Opus 4.6 users
   effortCalloutDismissed?: boolean // v1 - legacy, read to suppress v2 for Pro users who already saw it
@@ -583,7 +574,7 @@ export type GlobalConfig = {
   // Key: "owner/repo" (lowercase), Value: array of absolute paths where repo is cloned
   githubRepoPaths?: Record<string, string[]>
 
-  // Terminal emulator to launch for claude-cli:// deep links. Captured from
+  // Terminal emulator to launch for axiomate:// deep links. Captured from
   // TERM_PROGRAM during interactive sessions since the deep link handler runs
   // headless (LaunchServices/xdg) with no TERM_PROGRAM set.
   deepLinkTerminal?: string
@@ -610,8 +601,9 @@ export type GlobalConfig = {
   lspRecommendationNeverPlugins?: string[] // Plugin IDs to never suggest
   lspRecommendationIgnoredCount?: number // Track ignored recommendations (stops after 5)
 
-  // Axiomate hint protocol state (<claude-code-hint /> tags from CLIs/SDKs).
-  // Nested by hint type so future types (docs, mcp, ...) slot in without new
+  // Code-hint protocol state. The wire tag is still <claude-code-hint /> for
+  // interop with external CLIs that follow the Anthropic convention; the
+  // stored config nests by hint type so future types slot in without new
   // top-level keys.
   claudeCodeHints?: {
     // Plugin IDs the user has already been prompted for. Show-once semantics:
@@ -653,9 +645,9 @@ export type GlobalConfig = {
   speculationEnabled?: boolean // Whether speculation is enabled (default: true)
 
 
-  // Disk cache for /api/claude_code/organizations/metrics_enabled.
-  // Org-level settings change rarely; persisting across processes avoids a
-  // cold API call on every `claude -p` invocation.
+  // Disk cache for organizations/metrics_enabled lookup. Org-level settings
+  // change rarely; persisting across processes avoids a cold API call on
+  // every `axiomate -p` invocation.
   metricsStatusCache?: {
     enabled: boolean
     timestamp: number
@@ -1265,7 +1257,7 @@ function saveConfigWithLock<A extends object>(
     const lockTime = Date.now() - startTime
     if (lockTime > 100) {
       logForDebugging(
-        'Lock acquisition took longer than expected - another Claude instance may be running',
+        'Lock acquisition took longer than expected - another axiomate instance may be running',
       )
     }
 
@@ -1575,7 +1567,7 @@ function getConfig<A>(
       }
 
       process.stderr.write(
-        `\nClaude configuration file at ${file} is corrupted: ${error.message}\n`,
+        `\nAxiomate configuration file at ${file} is corrupted: ${error.message}\n`,
       )
 
       // Try to backup the corrupted config file (only if not already backed up)

@@ -787,7 +787,7 @@ export const getMemoryFiles = memoize(
     const config = getCurrentProjectConfig()
     const includeExternal =
       forceIncludeExternal ||
-      config.hasClaudeMdExternalIncludesApproved ||
+      config.hasAxiomateMdExternalIncludesApproved ||
       false
 
     // Process Managed file first (always loaded - policy settings)
@@ -1388,8 +1388,8 @@ export function hasExternalAxiomateMdIncludes(files: MemoryFileInfo[]): boolean 
 export async function shouldShowAxiomateMdExternalIncludesWarning(): Promise<boolean> {
   const config = getCurrentProjectConfig()
   if (
-    config.hasClaudeMdExternalIncludesApproved ||
-    config.hasClaudeMdExternalIncludesWarningShown
+    config.hasAxiomateMdExternalIncludesApproved ||
+    config.hasAxiomateMdExternalIncludesWarningShown
   ) {
     return false
   }

@@ -73,23 +73,12 @@ export function resetUserCache(): void {
 export const getCoreUserData = memoize(
   (includeAnalyticsMetadata?: boolean): CoreUserData => {
     const deviceId = getOrCreateUserID()
-    const config = getGlobalConfig()
 
-    let subscriptionType: string | undefined
-    let rateLimitTier: string | undefined
-    let firstTokenTime: number | undefined
-    if (includeAnalyticsMetadata) {
-      subscriptionType = undefined
-      rateLimitTier = undefined
-      if (subscriptionType && config.claudeCodeFirstTokenDate) {
-        const configFirstTokenTime = new Date(
-          config.claudeCodeFirstTokenDate,
-        ).getTime()
-        if (!isNaN(configFirstTokenTime)) {
-          firstTokenTime = configFirstTokenTime
-        }
-      }
-    }
+    // axiomate is API-only — no subscription / rate-limit tier / first-token
+    // concept. Kept as explicit undefined here for analytics metadata shape.
+    const subscriptionType: string | undefined = undefined
+    const rateLimitTier: string | undefined = undefined
+    const firstTokenTime: number | undefined = undefined
 
     return {
       deviceId,

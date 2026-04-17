@@ -862,7 +862,7 @@ export function Config({
             label: 'External CLAUDE.md includes',
             value: (() => {
               const projectConfig = getCurrentProjectConfig()
-              if (projectConfig.hasClaudeMdExternalIncludesApproved) {
+              if (projectConfig.hasAxiomateMdExternalIncludesApproved) {
                 return 'true'
               } else {
                 return 'false'
