@@ -377,8 +377,8 @@ export function checkLinuxDependencies(seccompConfig?: SeccompConfig): { warning
  */
 export async function initializeLinuxNetworkBridge(httpProxyPort: number, socksProxyPort: number): Promise<LinuxBridge> {
     const socketId = randomBytes(8).toString('hex');
-    const httpSocketPath = join(tmpdir(), `claude-http-${socketId}.sock`);
-    const socksSocketPath = join(tmpdir(), `claude-socks-${socketId}.sock`);
+    const httpSocketPath = join(tmpdir(), `axiomate-http-${socketId}.sock`);
+    const socksSocketPath = join(tmpdir(), `axiomate-socks-${socketId}.sock`);
     // Start HTTP bridge
     const httpSocatArgs = [
         `UNIX-LISTEN:${httpSocketPath},fork,reuseaddr`,
@@ -629,7 +629,7 @@ async function generateFilesystemArgs(readConfig: ReadConfig | undefined, writeC
                     // of /dev/null. This prevents the component from appearing as a file
                     // which breaks tools that expect to traverse it as a directory.
                     if (firstNonExistent !== normalizedPath) {
-                        const emptyDir = fs.mkdtempSync(path.join(tmpdir(), 'claude-empty-'));
+                        const emptyDir = fs.mkdtempSync(path.join(tmpdir(), 'axiomate-empty-'));
                         args.push('--ro-bind', emptyDir, firstNonExistent);
                         bwrapMountPoints.add(firstNonExistent);
                         registerExitCleanupHandler();
