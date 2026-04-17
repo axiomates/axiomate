@@ -1,12 +1,11 @@
-import * as React from 'react'
-import { type ReactNode, useEffect, useMemo, useState } from 'react'
+import { type ReactNode, useEffect, useMemo } from 'react'
 import {
   type Notification,
   useNotifications,
 } from '../../context/notifications.js'
 import { useAppState } from '../../state/AppState.js'
 import { useVoiceState } from '../../context/voice.js'
-import type { VerificationStatus } from '../../hooks/useApiKeyVerification.js'
+type VerificationStatus = 'loading' | 'valid' | 'invalid' | 'missing' | 'error'
 import { getGlobalConfig } from '../../utils/config.js'
 import { useIdeConnectionStatus } from '../../hooks/useIdeConnectionStatus.js'
 import type { IDESelection } from '../../hooks/useIdeSelection.js'
@@ -16,11 +15,9 @@ import { Box, Text } from '../../ink.js'
 import { calculateTokenWarningState } from '../../services/compact/autoCompact.js'
 import type { MCPServerConnection } from '../../services/mcp/types.js'
 import type { Message } from '../../types/message.js'
-import { getApiKeyHelperElapsedMs, getConfiguredApiKeyHelper } from '../../utils/auth.js'
 import type { AutoUpdaterResult } from '../../utils/autoUpdater.js'
 import { getExternalEditor } from '../../utils/editor.js'
 import { isEnvTruthy } from '../../utils/envUtils.js'
-import { formatDuration } from '../../utils/format.js'
 import { setEnvHookNotifier } from '../../utils/hooks/fileChangedWatcher.js'
 import { toIDEDisplayName } from '../../utils/ide.js'
 import { getMessagesAfterCompactBoundary } from '../../utils/messages.js'
@@ -211,24 +208,6 @@ function NotificationContent({
   onAutoUpdaterResult: (result: AutoUpdaterResult) => void
   onChangeIsUpdating: (isUpdating: boolean) => void
 }): ReactNode {
-  // Poll apiKeyHelper inflight state to show slow-helper notice.
-  // Gated on configuration — most users never set apiKeyHelper, so the
-  // effect is a no-op for them (no interval allocated).
-  const [apiKeyHelperSlow, setApiKeyHelperSlow] = useState<string | null>(null)
-  useEffect(() => {
-    if (!getConfiguredApiKeyHelper()) return
-    const interval = setInterval(
-      (setSlow: React.Dispatch<React.SetStateAction<string | null>>) => {
-        const ms = getApiKeyHelperElapsedMs()
-        const next = ms >= 10_000 ? formatDuration(ms) : null
-        setSlow(prev => (next === prev ? prev : next))
-      },
-      1000,
-      setApiKeyHelperSlow,
-    )
-    return () => clearInterval(interval)
-  }, [])
-
   const voiceState = useVoiceState(s => s.voiceState)
   const voiceEnabled = useVoiceEnabled()
   const voiceError = useVoiceState(s => s.voiceError)
@@ -260,16 +239,6 @@ function NotificationContent({
             {notifications.current.text}
           </Text>
         ))}
-      {apiKeyHelperSlow && (
-        <Box>
-          <Text color="warning" wrap="truncate">
-            apiKeyHelper is taking a while{' '}
-          </Text>
-          <Text dimColor wrap="truncate">
-            ({apiKeyHelperSlow})
-          </Text>
-        </Box>
-      )}
       {(apiKeyStatus === 'invalid' || apiKeyStatus === 'missing') && (
         <Box>
           <Text color="error" wrap="truncate">

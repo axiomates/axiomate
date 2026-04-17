@@ -15,10 +15,6 @@ vi.mock('../../../bootstrap/state.js', () => ({
   getIsNonInteractiveSession: vi.fn().mockReturnValue(false),
 }))
 
-vi.mock('../../../utils/auth.js', () => ({
-  getAnthropicApiKeyWithSource: vi.fn().mockReturnValue({ source: '' }),
-}))
-
 vi.mock('../../../utils/messages.js', () => ({
   createAssistantAPIErrorMessage: vi.fn((_opts: unknown) => ({})),
   NO_RESPONSE_REQUESTED: '__NO_RESPONSE__',

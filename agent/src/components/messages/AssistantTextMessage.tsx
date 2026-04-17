@@ -10,9 +10,6 @@ import {
   CREDIT_BALANCE_TOO_LOW_ERROR_MESSAGE,
   CUSTOM_OFF_SWITCH_MESSAGE,
   INVALID_API_KEY_ERROR_MESSAGE,
-  INVALID_API_KEY_ERROR_MESSAGE_EXTERNAL,
-  ORG_DISABLED_ERROR_MESSAGE_ENV_KEY,
-  ORG_DISABLED_ERROR_MESSAGE_ENV_KEY_WITH_OAUTH,
   PROMPT_TOO_LONG_ERROR_MESSAGE,
   startsWithApiErrorPrefix,
   TOKEN_REVOKED_ERROR_MESSAGE,
@@ -115,21 +112,6 @@ export function AssistantTextMessage({
 
     case INVALID_API_KEY_ERROR_MESSAGE:
       return <InvalidApiKeyMessage />
-
-    case INVALID_API_KEY_ERROR_MESSAGE_EXTERNAL:
-      return (
-        <MessageResponse height={1}>
-          <Text color="error">{INVALID_API_KEY_ERROR_MESSAGE_EXTERNAL}</Text>
-        </MessageResponse>
-      )
-
-    case ORG_DISABLED_ERROR_MESSAGE_ENV_KEY:
-    case ORG_DISABLED_ERROR_MESSAGE_ENV_KEY_WITH_OAUTH:
-      return (
-        <MessageResponse>
-          <Text color="error">{text}</Text>
-        </MessageResponse>
-      )
 
     case TOKEN_REVOKED_ERROR_MESSAGE:
       return (

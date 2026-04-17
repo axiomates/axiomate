@@ -6,7 +6,6 @@ import { getCwd } from './cwd.js';
 import { relative } from 'path';
 import { formatNumber } from './format.js';
 import type { getGlobalConfig } from './config.js';
-import { getAnthropicApiKeyWithSource, getApiKeyFromConfigOrMacOSKeychain, getAuthTokenSource } from './auth.js'
 import type { AgentDefinitionsResult } from '../tools/AgentTool/loadAgentsDir.js';
 import { getAgentDescriptionsTotalTokens, AGENT_DESCRIPTIONS_THRESHOLD } from './statusNoticeHelpers.js';
 import { isSupportedJetBrainsTerminal, toIDEDisplayName, getTerminalIdeType } from './ide.js';
@@ -47,74 +46,6 @@ const largeMemoryFilesNotice: StatusNoticeDefinition = {
             </Box>;
       })}
       </>;
-  }
-};
-const apiKeyConflictNotice: StatusNoticeDefinition = {
-  id: 'api-key-conflict',
-  type: 'warning',
-  isActive: () => {
-    const {
-      source: apiKeySource
-    } = getAnthropicApiKeyWithSource({
-      skipRetrievingKeyFromApiKeyHelper: true
-    });
-    return !!getApiKeyFromConfigOrMacOSKeychain() && (apiKeySource === 'AXIOMATE_API_KEY' || apiKeySource === 'apiKeyHelper');
-  },
-  render: () => {
-    const {
-      source: apiKeySource
-    } = getAnthropicApiKeyWithSource({
-      skipRetrievingKeyFromApiKeyHelper: true
-    });
-    return <Box flexDirection="row" marginTop={1}>
-        <Text color="warning">{figures.warning}</Text>
-        <Text color="warning">
-          Auth conflict: Using {apiKeySource} instead of the configured API key.
-          Unset {apiKeySource} to use the configured key.
-        </Text>
-      </Box>;
-  }
-};
-const bothAuthMethodsNotice: StatusNoticeDefinition = {
-  id: 'both-auth-methods',
-  type: 'warning',
-  isActive: () => {
-    const {
-      source: apiKeySource
-    } = getAnthropicApiKeyWithSource({
-      skipRetrievingKeyFromApiKeyHelper: true
-    });
-    const authTokenInfo = getAuthTokenSource();
-    return apiKeySource !== 'none' && authTokenInfo.source !== 'none' && !(apiKeySource === 'apiKeyHelper' && authTokenInfo.source === 'apiKeyHelper');
-  },
-  render: () => {
-    const {
-      source: apiKeySource
-    } = getAnthropicApiKeyWithSource({
-      skipRetrievingKeyFromApiKeyHelper: true
-    });
-    const authTokenInfo = getAuthTokenSource();
-    return <Box flexDirection="column" marginTop={1}>
-        <Box flexDirection="row">
-          <Text color="warning">{figures.warning}</Text>
-          <Text color="warning">
-            Auth conflict: Both a token ({authTokenInfo.source}) and an API key
-            ({apiKeySource}) are set. This may lead to unexpected behavior.
-          </Text>
-        </Box>
-        <Box flexDirection="column" marginLeft={3}>
-          <Text color="warning">
-            · Trying to use{' '}
-            {authTokenInfo.source}
-            ?{' '}
-            {apiKeySource === 'AXIOMATE_API_KEY' ? 'Unset the AXIOMATE_API_KEY environment variable.' : apiKeySource === 'apiKeyHelper' ? 'Unset the apiKeyHelper setting.' : `Unset ${apiKeySource}.`}
-          </Text>
-          <Text color="warning">
-            · Trying to use {apiKeySource}?{' '}
-            {`Unset the ${authTokenInfo.source} environment variable.`}
-          </Text>
-        </Box>
-      </Box>;
   }
 };
 const largeAgentDescriptionsNotice: StatusNoticeDefinition = {
@@ -169,7 +100,7 @@ const jetbrainsPluginNotice: StatusNoticeDefinition = {
 };
 
 // All notice definitions
-export const statusNoticeDefinitions: StatusNoticeDefinition[] = [largeMemoryFilesNotice, largeAgentDescriptionsNotice, apiKeyConflictNotice, bothAuthMethodsNotice, jetbrainsPluginNotice];
+export const statusNoticeDefinitions: StatusNoticeDefinition[] = [largeMemoryFilesNotice, largeAgentDescriptionsNotice, jetbrainsPluginNotice];
 
 // Helper functions for external use
 export function getActiveNotices(context: StatusNoticeContext): StatusNoticeDefinition[] {
