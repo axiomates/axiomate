@@ -254,24 +254,6 @@ export const SettingsSchema = lazySchema(() =>
         .string()
         .optional()
         .describe('JSON Schema reference for Axiomate settings'),
-      apiKeyHelper: z
-        .string()
-        .optional()
-        .describe('Path to a script that outputs authentication values'),
-      awsCredentialExport: z
-        .string()
-        .optional()
-        .describe('Path to a script that exports AWS credentials'),
-      awsAuthRefresh: z
-        .string()
-        .optional()
-        .describe('Path to a script that refreshes AWS authentication'),
-      gcpAuthRefresh: z
-        .string()
-        .optional()
-        .describe(
-          'Command to refresh GCP authentication (e.g., gcloud auth application-default login)',
-        ),
       // Gated so the SDK generator (which runs without AXIOMATE_CODE_ENABLE_XAA)
       // doesn't surface this in GlobalAxiomateSettings. Read via getXaaIdpSettings().
       // .passthrough() on the outer object keeps an existing settings.json key
@@ -606,10 +588,6 @@ export const SettingsSchema = lazySchema(() =>
             'these exact sources are blocked from being added as marketplaces. The check happens BEFORE ' +
             'downloading, so blocked sources never touch the filesystem.',
         ),
-      otelHeadersHelper: z
-        .string()
-        .optional()
-        .describe('Path to a script that outputs OpenTelemetry headers'),
       outputStyle: z
         .string()
         .optional()

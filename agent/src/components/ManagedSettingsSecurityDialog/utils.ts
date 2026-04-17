@@ -35,7 +35,7 @@ export function extractDangerousSettings(
   // Extract dangerous shell settings
   const shellSettings: Partial<Record<DangerousShellSetting, string>> = {}
   for (const key of DANGEROUS_SHELL_SETTINGS) {
-    const value = settings[key]
+    const value = (settings as Record<string, unknown>)[key]
     if (typeof value === 'string' && value.length > 0) {
       shellSettings[key] = value
     }

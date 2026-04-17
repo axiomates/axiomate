@@ -17,13 +17,9 @@ import { gracefulShutdownSync } from '../../utils/gracefulShutdown.js'
 import { Select } from '../CustomSelect/index.js'
 import { PermissionDialog } from '../permissions/PermissionDialog.js'
 import {
-  getApiKeyHelperSources,
-  getAwsCommandsSources,
   getBashPermissionSources,
   getDangerousEnvVarsSources,
-  getGcpCommandsSources,
   getHooksSources,
-  getOtelHeadersHelperSources,
 } from './utils.js'
 
 type Props = {
@@ -45,18 +41,6 @@ export function TrustDialog({ onDone, commands }: Props): React.ReactNode {
   const hasHooks = hooksSettingSources.length > 0
   // Check whether code execution is allowed in permissions and slash commands
   const bashSettingSources = getBashPermissionSources()
-  // Check for apiKeyHelper which executes arbitrary commands
-  const apiKeyHelperSources = getApiKeyHelperSources()
-  const hasApiKeyHelper = apiKeyHelperSources.length > 0
-  // Check for AWS commands which execute arbitrary commands
-  const awsCommandsSources = getAwsCommandsSources()
-  const hasAwsCommands = awsCommandsSources.length > 0
-  // Check for GCP commands which execute arbitrary commands
-  const gcpCommandsSources = getGcpCommandsSources()
-  const hasGcpCommands = gcpCommandsSources.length > 0
-  // Check for otelHeadersHelper which executes arbitrary commands
-  const otelHeadersHelperSources = getOtelHeadersHelperSources()
-  const hasOtelHeadersHelper = otelHeadersHelperSources.length > 0
   // Check for dangerous environment variables (not in SAFE_ENV_VARS)
   const dangerousEnvVarsSources = getDangerousEnvVarsSources()
   const hasDangerousEnvVars = dangerousEnvVarsSources.length > 0
@@ -99,10 +83,6 @@ export function TrustDialog({ onDone, commands }: Props): React.ReactNode {
     hasMcpServers,
     hasHooks,
     hasAnyBashExecution,
-    hasApiKeyHelper,
-    hasAwsCommands,
-    hasGcpCommands,
-    hasOtelHeadersHelper,
     hasDangerousEnvVars,
   ])
 

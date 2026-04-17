@@ -348,10 +348,6 @@ export type VoiceConfig = {
 }
 
 export type GlobalConfig = {
-  /**
-   * @deprecated Use settings.apiKeyHelper instead.
-   */
-  apiKeyHelper?: string
   projects?: Record<string, ProjectConfig>
   numStartups: number
   installMethod?: InstallMethod
@@ -370,11 +366,6 @@ export type GlobalConfig = {
   mcpServers?: Record<string, McpServerConfig>
   preferredNotifChannel: NotificationChannel
   verbose: boolean
-  customApiKeyResponses?: {
-    approved?: string[]
-    rejected?: string[]
-  }
-  primaryApiKey?: string // Primary API key for the user when no environment variable is set
   hasSeenUndercoverAutoNotice?: boolean
   editorMode?: EditorMode
   hasUsedBackslashReturn?: boolean
@@ -710,7 +701,6 @@ function createDefaultGlobalConfig(): GlobalConfig {
 export const DEFAULT_GLOBAL_CONFIG: GlobalConfig = createDefaultGlobalConfig()
 
 export const GLOBAL_CONFIG_KEYS = [
-  'apiKeyHelper',
   'installMethod',
   'autoUpdates',
   'autoUpdatesProtectedForNative',
