@@ -101,16 +101,20 @@ export function isBlockedOfficialName(name: string): boolean {
 }
 
 /**
- * The official GitHub organization for the reserved marketplaces.
- * Reserved names must come from this org.
+ * The official GitHub organizations for the reserved marketplaces.
+ * Reserved names must come from one of these orgs.
  */
-export const OFFICIAL_GITHUB_ORG = 'anthropics'
+export const OFFICIAL_GITHUB_ORGS = ['anthropics', 'axiomates'] as const
+
+function formatOfficialOrgList(): string {
+  return OFFICIAL_GITHUB_ORGS.map(o => `'github.com/${o}/'`).join(' or ')
+}
 
 /**
- * Validate that a marketplace with a reserved name comes from the official source.
+ * Validate that a marketplace with a reserved name comes from an official source.
  *
  * Reserved names (in ALLOWED_OFFICIAL_MARKETPLACE_NAMES) can only be used by
- * marketplaces from the official GitHub organization.
+ * marketplaces from one of the official GitHub organizations.
  *
  * @param name - The marketplace name
  * @param source - The marketplace source configuration
@@ -129,10 +133,13 @@ export function validateOfficialNameSource(
 
   // Check for GitHub source type
   if (source.source === 'github') {
-    // Verify the repo is from the official org
-    const repo = source.repo || ''
-    if (!repo.toLowerCase().startsWith(`${OFFICIAL_GITHUB_ORG}/`)) {
-      return `The name '${name}' is reserved for the official marketplace set. Only repositories from 'github.com/${OFFICIAL_GITHUB_ORG}/' can use this name.`
+    // Verify the repo is from an official org
+    const repo = (source.repo || '').toLowerCase()
+    const isOfficial = OFFICIAL_GITHUB_ORGS.some(org =>
+      repo.startsWith(`${org}/`),
+    )
+    if (!isOfficial) {
+      return `The name '${name}' is reserved for the official marketplace set. Only repositories from ${formatOfficialOrgList()} can use this name.`
     }
     return null // Valid: reserved name from official GitHub source
   }
@@ -140,20 +147,21 @@ export function validateOfficialNameSource(
   // Check for git URL source type
   if (source.source === 'git' && source.url) {
     const url = source.url.toLowerCase()
-    // Check for HTTPS URL format: https://github.com/axiomates/...
-    // or SSH format: git@github.com:anthropics/...
-    const isHttpsAnthropics = url.includes('github.com/axiomates/')
-    const isSshAnthropics = url.includes('git@github.com:anthropics/')
-
-    if (isHttpsAnthropics || isSshAnthropics) {
+    // Accept both HTTPS (`https://github.com/<org>/...`) and SSH
+    // (`git@github.com:<org>/...`) forms for each official org.
+    const isOfficial = OFFICIAL_GITHUB_ORGS.some(
+      org =>
+        url.includes(`github.com/${org}/`) ||
+        url.includes(`git@github.com:${org}/`),
+    )
+    if (isOfficial) {
       return null // Valid: reserved name from official git URL
     }
-
-    return `The name '${name}' is reserved for the official marketplace set. Only repositories from 'github.com/${OFFICIAL_GITHUB_ORG}/' can use this name.`
+    return `The name '${name}' is reserved for the official marketplace set. Only repositories from ${formatOfficialOrgList()} can use this name.`
   }
 
   // Reserved names must come from GitHub (either 'github' or 'git' source)
-  return `The name '${name}' is reserved for the official marketplace set and can only be used with GitHub sources from the '${OFFICIAL_GITHUB_ORG}' organization.`
+  return `The name '${name}' is reserved for the official marketplace set and can only be used with GitHub sources from ${formatOfficialOrgList()}.`
 }
 
 /**
@@ -968,7 +976,7 @@ export const MarketplaceSourceSchema = lazySchema(() =>
             {
               message:
                 'Reserved official marketplace names cannot be used with settings sources. ' +
-                'validateOfficialNameSource only accepts github/git sources from anthropics/* ' +
+                'validateOfficialNameSource only accepts github/git sources from the official orgs ' +
                 'for these names; a settings source would be rejected after ' +
                 'loadAndCacheMarketplace has already written to disk with cleanupNeeded=false.',
             },
