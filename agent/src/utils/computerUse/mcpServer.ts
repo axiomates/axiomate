@@ -78,7 +78,7 @@ export async function createComputerUseMcpServerForCli(): Promise<
 
 /**
  * Subprocess entrypoint for `--computer-use-mcp`. Mirror of
- * `runClaudeInChromeMcpServer` — stdio transport, exit on stdin close,
+ * `runComputerUseChromeMcpServer` — stdio transport, exit on stdin close,
  * flush analytics before exit.
  */
 export async function runComputerUseMcpServer(): Promise<void> {

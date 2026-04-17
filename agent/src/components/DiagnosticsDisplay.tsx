@@ -49,7 +49,7 @@ export function DiagnosticsDisplay({
                   {file.uri.startsWith('file://')
                     ? '(file://)'
                     : file.uri.startsWith('_claude_fs_right:')
-                      ? '(claude_fs_right)'
+                      ? '(ide diff)'
                       : `(${file.uri.split(':')[0]})`}
                 </Text>
                 :

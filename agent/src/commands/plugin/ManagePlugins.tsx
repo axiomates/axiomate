@@ -895,10 +895,10 @@ export function ManagePlugins({
           });
         }
 
-        // Sort marketplaces: claude-plugin-directory first, then alphabetically
+        // Sort marketplaces: claude-plugins-official first, then alphabetically
         marketplaceInfos.sort((a, b) => {
-          if (a.name === 'claude-plugin-directory') return -1;
-          if (b.name === 'claude-plugin-directory') return 1;
+          if (a.name === 'claude-plugins-official') return -1;
+          if (b.name === 'claude-plugins-official') return 1;
           return a.name.localeCompare(b.name);
         });
         setMarketplaces(marketplaceInfos);

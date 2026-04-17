@@ -119,7 +119,7 @@ export function finalContextTokensFromLastResponse(
  *
  * WARNING: Do NOT use this for threshold comparisons (autocompact, session memory).
  * Use tokenCountWithEstimation() instead, which measures full context size.
- * This function is only useful for measuring how many tokens Claude generated
+ * This function is only useful for measuring how many tokens the agent generated
  * in a single response, not how full the context window is.
  */
 export function messageTokenCountFromLastAPIResponse(

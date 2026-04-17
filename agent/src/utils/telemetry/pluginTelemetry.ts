@@ -31,7 +31,7 @@ const BUILTIN_MARKETPLACE_NAME = 'builtin'
 // sites. Not per-org, not rotated — per-org salt would defeat cross-org
 // distinct-count, rotation would break trend lines. Customers can compute the
 // same hash on their known plugin names to reverse-match their own telemetry.
-const PLUGIN_ID_HASH_SALT = 'claude-plugin-telemetry-v1'
+const PLUGIN_ID_HASH_SALT = 'axiomate-plugin-telemetry-v1'
 
 /**
  * Opaque per-plugin aggregation key. Input is the name@marketplace string as

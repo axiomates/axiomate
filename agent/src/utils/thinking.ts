@@ -86,7 +86,7 @@ export function getRainbowColor(
  * Thinking is opt-in per model: users declare `thinkingParams` on their
  * ModelProviderConfig (~/.axiomate.json) when the model supports it. The
  * ANTHROPIC_DEFAULT_*_MODEL_SUPPORTED_CAPABILITIES env vars also let pinned
- * Claude tiers declare capability without editing config.
+ * Anthropic-family tiers declare capability without editing config.
  */
 export function modelSupportsThinking(model: string): boolean {
   const modelConfig = getGlobalConfig().models?.[model]

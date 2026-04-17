@@ -6,5 +6,5 @@
  */
 
 export function getAxiomateUserAgent(): string {
-  return `claude-code/${MACRO.VERSION}`
+  return `axiomate/${MACRO.VERSION}`
 }

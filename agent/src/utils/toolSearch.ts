@@ -382,7 +382,7 @@ export async function isToolSearchEnabled(
   if (!isConfigModel && !modelSupportsToolReference(model)) {
     logForDebugging(
       `Tool search disabled for model '${model}': model does not support tool_reference blocks. ` +
-        `This feature is only available on Claude Sonnet 4+, Opus 4+, and newer models.`,
+        `This feature requires a model that supports tool_reference blocks (e.g. Claude Sonnet 4+/Opus 4+).`,
     )
     logModeDecision(false, 'standard', 'model_unsupported')
     return false
