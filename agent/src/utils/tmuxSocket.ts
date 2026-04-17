@@ -4,22 +4,22 @@
  * This module manages an isolated tmux socket for Axiomate's operations.
  *
  * WHY THIS EXISTS:
- * Without isolation, Claude could accidentally affect the user's tmux sessions.
+ * Without isolation, axiomate could accidentally affect the user's tmux sessions.
  * For example, running `tmux kill-session` via the Bash tool would kill the
- * user's current session if they started Claude from within tmux.
+ * user's current session if they started axiomate from within tmux.
  *
  * HOW IT WORKS:
- * 1. Claude creates its own tmux socket: `claude-<PID>` (e.g., `claude-12345`)
+ * 1. axiomate creates its own tmux socket: `axiomate-<PID>` (e.g., `axiomate-12345`)
  * 2. ALL Tmux tool commands use this socket via the `-L` flag
  * 3. ALL Bash tool commands inherit TMUX env var pointing to this socket
- *    (set in Shell.ts via getClaudeTmuxEnv())
+ *    (set in Shell.ts via getAxiomateTmuxEnv())
  *
- * This means ANY tmux command run through Claude - whether via the Tmux tool
+ * This means ANY tmux command run through axiomate - whether via the Tmux tool
  * directly or via Bash - will operate on Axiomate's isolated socket, NOT the
  * user's tmux session.
  *
  * IMPORTANT: The user's original TMUX env var is NOT used. After socket
- * initialization, getClaudeTmuxEnv() returns a value that overrides the
+ * initialization, getAxiomateTmuxEnv() returns a value that overrides the
  * user's TMUX in all child processes spawned by Shell.ts.
  */
 
@@ -33,7 +33,7 @@ import { getPlatform } from './platform.js'
 
 // Constants for tmux socket management
 const TMUX_COMMAND = 'tmux'
-const AXIOMATE_SOCKET_PREFIX = 'claude'
+const AXIOMATE_SOCKET_PREFIX = 'axiomate'
 
 /**
  * Executes a tmux command, routing through WSL on Windows.
@@ -86,9 +86,9 @@ let tmuxToolUsed = false
 
 /**
  * Gets the socket name for Axiomate's isolated tmux session.
- * Format: claude-<PID>
+ * Format: axiomate-<PID>
  */
-export function getClaudeSocketName(): string {
+export function getAxiomateSocketName(): string {
   if (!socketName) {
     socketName = `${AXIOMATE_SOCKET_PREFIX}-${process.pid}`
   }
@@ -99,7 +99,7 @@ export function getClaudeSocketName(): string {
  * Gets the socket path if the socket has been initialized.
  * Returns null if not yet initialized.
  */
-export function getClaudeSocketPath(): string | null {
+export function getAxiomateSocketPath(): string | null {
   return socketPath
 }
 
@@ -107,7 +107,7 @@ export function getClaudeSocketPath(): string | null {
  * Sets socket info after initialization.
  * Called after the tmux session is created.
  */
-export function setClaudeSocketInfo(path: string, pid: number): void {
+export function setAxiomateSocketInfo(path: string, pid: number): void {
   socketPath = path
   serverPid = pid
 }
@@ -127,12 +127,12 @@ export function isSocketInitialized(): boolean {
  * the Bash tool will operate on Axiomate's socket, NOT the user's session.
  *
  * Format: "socket_path,server_pid,pane_index" (matches tmux's TMUX env var)
- * Example: "/tmp/tmux-501/claude-12345,54321,0"
+ * Example: "/tmp/tmux-501/axiomate-12345,54321,0"
  *
  * Returns null if socket is not yet initialized.
  * When null, Shell.ts does not override TMUX, preserving user's environment.
  */
-export function getClaudeTmuxEnv(): string | null {
+export function getAxiomateTmuxEnv(): string | null {
   if (!socketPath || serverPid === null) {
     return null
   }
@@ -202,7 +202,7 @@ export function hasTmuxToolBeenUsed(): boolean {
  * Safe to call multiple times; will only initialize once.
  *
  * If tmux is not installed, this function returns gracefully without
- * initializing the socket. getClaudeTmuxEnv() will return null, and
+ * initializing the socket. getAxiomateTmuxEnv() will return null, and
  * Bash commands will run without tmux isolation.
  */
 export async function ensureSocketInitialized(): Promise<void> {
@@ -250,7 +250,7 @@ export async function ensureSocketInitialized(): Promise<void> {
  * Called during graceful shutdown to clean up resources.
  */
 async function killTmuxServer(): Promise<void> {
-  const socket = getClaudeSocketName()
+  const socket = getAxiomateSocketName()
   logForDebugging(`[Socket] Killing tmux server for socket: ${socket}`)
 
   const result = await execTmux(['-L', socket, 'kill-server'])
@@ -266,7 +266,7 @@ async function killTmuxServer(): Promise<void> {
 }
 
 async function doInitialize(): Promise<void> {
-  const socket = getClaudeSocketName()
+  const socket = getAxiomateSocketName()
 
   // Create a new session with our custom socket
   // Pass AXIOMATE_CODE_SKIP_PROMPT_HISTORY via -e so it's set in the initial shell environment
@@ -358,7 +358,7 @@ async function doInitialize(): Promise<void> {
     if (path && pidStr) {
       const pid = parseInt(pidStr, 10)
       if (!isNaN(pid)) {
-        setClaudeSocketInfo(path, pid)
+        setAxiomateSocketInfo(path, pid)
         return
       }
     }
@@ -396,7 +396,7 @@ async function doInitialize(): Promise<void> {
       logForDebugging(
         `[Socket] Using fallback socket path: ${fallbackPath} (server PID: ${pid})`,
       )
-      setClaudeSocketInfo(fallbackPath, pid)
+      setAxiomateSocketInfo(fallbackPath, pid)
       return
     }
     // PID parsing failed

@@ -1,7 +1,7 @@
 /**
  * Download functionality for native installer
  *
- * Handles downloading Claude binaries from various sources:
+ * Handles downloading axiomate binaries from various sources:
  * - Artifactory NPM packages
  * - GCS bucket
  */
@@ -176,7 +176,7 @@ export async function downloadVersionFromArtifactory(
   await fs.mkdir(stagingPath)
 
   const packageJson = {
-    name: 'claude-native-installer',
+    name: 'axiomate-native-installer',
     version: '0.0.1',
     dependencies: {
       [MACRO.NATIVE_PACKAGE_URL!]: version,
@@ -185,13 +185,13 @@ export async function downloadVersionFromArtifactory(
 
   // Create package-lock.json with integrity verification for platform-specific package
   const packageLock = {
-    name: 'claude-native-installer',
+    name: 'axiomate-native-installer',
     version: '0.0.1',
     lockfileVersion: 3,
     requires: true,
     packages: {
       '': {
-        name: 'claude-native-installer',
+        name: 'axiomate-native-installer',
         version: '0.0.1',
         dependencies: {
           [MACRO.NATIVE_PACKAGE_URL!]: version,
@@ -448,7 +448,7 @@ export async function downloadVersion(
   stagingPath: string,
 ): Promise<'npm' | 'binary'> {
   // Test-fixture versions route to the private sentinel bucket. DCE'd in all
-  // shipped builds — the string 'claude-code-ci-sentinel' and the gcloud call
+  // shipped builds — the string 'axiomate-ci-sentinel' and the gcloud call
   // never exist in compiled binaries. Same gcloud-token pattern as
   // remoteSkillLoader.ts:175-195.
   // Use GCS for external users

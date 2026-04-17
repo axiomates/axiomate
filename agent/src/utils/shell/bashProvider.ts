@@ -18,7 +18,7 @@ import { getSessionEnvironmentScript } from '../sessionEnvironment.js'
 import { getSessionEnvVars } from '../sessionEnvVars.js'
 import {
   ensureSocketInitialized,
-  getClaudeTmuxEnv,
+  getAxiomateTmuxEnv,
   hasTmuxToolBeenUsed,
 } from '../tmuxSocket.js'
 import { windowsPathToPosixPath } from '../windowsPaths.js'
@@ -223,13 +223,13 @@ export async function createBashShellProvider(
       ) {
         await ensureSocketInitialized()
       }
-      const claudeTmuxEnv = getClaudeTmuxEnv()
+      const axiomateTmuxEnv = getAxiomateTmuxEnv()
       const env: Record<string, string> = {}
       // CRITICAL: Override TMUX to isolate ALL tmux commands to Axiomate's socket.
       // This is NOT the user's TMUX value - it points to Axiomate's isolated socket.
       // When null (before socket initializes), user's TMUX is preserved.
-      if (claudeTmuxEnv) {
-        env.TMUX = claudeTmuxEnv
+      if (axiomateTmuxEnv) {
+        env.TMUX = axiomateTmuxEnv
       }
       if (currentSandboxTmpDir) {
         let posixTmpDir = currentSandboxTmpDir

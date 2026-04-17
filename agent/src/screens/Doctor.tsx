@@ -209,7 +209,7 @@ export function Doctor({ onDone }: Props): React.ReactNode {
 
       // Fetch version lock info if PID-based locking is enabled
       if (isPidBasedLockingEnabled()) {
-        const locksDir = join(getXDGStateHome(), 'claude', 'locks')
+        const locksDir = join(getXDGStateHome(), 'axiomate', 'locks')
         const staleLocksCleaned = cleanupStaleLocks(locksDir)
         const locks = getAllLockInfo(locksDir)
         setVersionLockInfo({

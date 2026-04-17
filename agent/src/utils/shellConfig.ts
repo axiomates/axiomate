@@ -1,15 +1,15 @@
 /**
  * Utilities for managing shell configuration files (like .bashrc, .zshrc)
- * Used for managing claude aliases and PATH entries
+ * Used for managing axiomate aliases and PATH entries
  */
 
 import { open, readFile, stat } from 'fs/promises'
 import { homedir as osHomedir } from 'os'
 import { join } from 'path'
 import { isFsInaccessible } from './errors.js'
-import { getLocalClaudePath } from './localInstaller.js'
+import { getLocalAxiomatePath } from './localInstaller.js'
 
-export const AXIOMATE_ALIAS_REGEX = /^\s*alias\s+claude\s*=/
+export const AXIOMATE_ALIAS_REGEX = /^\s*alias\s+axiomate\s*=/
 
 type EnvLike = Record<string, string | undefined>
 
@@ -37,32 +37,32 @@ export function getShellConfigPaths(
 }
 
 /**
- * Filter out installer-created claude aliases from an array of lines
- * Only removes aliases pointing to $HOME/.axiomate/local/claude
+ * Filter out installer-created axiomate aliases from an array of lines
+ * Only removes aliases pointing to $HOME/.axiomate/local/axiomate
  * Preserves custom user aliases that point to other locations
  * Returns the filtered lines and whether our default installer alias was found
  */
-export function filterClaudeAliases(lines: string[]): {
+export function filterAxiomateAliases(lines: string[]): {
   filtered: string[]
   hadAlias: boolean
 } {
   let hadAlias = false
   const filtered = lines.filter(line => {
-    // Check if this is a claude alias
+    // Check if this is an axiomate alias
     if (AXIOMATE_ALIAS_REGEX.test(line)) {
       // Extract the alias target - handle spaces, quotes, and various formats
       // First try with quotes
-      let match = line.match(/alias\s+claude\s*=\s*["']([^"']+)["']/)
+      let match = line.match(/alias\s+axiomate\s*=\s*["']([^"']+)["']/)
       if (!match) {
         // Try without quotes (capturing until end of line or comment)
-        match = line.match(/alias\s+claude\s*=\s*([^#\n]+)/)
+        match = line.match(/alias\s+axiomate\s*=\s*([^#\n]+)/)
       }
 
       if (match && match[1]) {
         const target = match[1].trim()
         // Only remove if it points to the installer location
         // The installer always creates aliases with the full expanded path
-        if (target === getLocalClaudePath()) {
+        if (target === getLocalAxiomatePath()) {
           hadAlias = true
           return false // Remove this line
         }
@@ -107,11 +107,11 @@ export async function writeFileLines(
 }
 
 /**
- * Check if a claude alias exists in any shell config file
+ * Check if an axiomate alias exists in any shell config file
  * Returns the alias target if found, null otherwise
  * @param options Optional overrides for testing (env, homedir)
  */
-export async function findClaudeAlias(
+export async function findAxiomateAlias(
   options?: ShellConfigOptions,
 ): Promise<string | null> {
   const configs = getShellConfigPaths(options)
@@ -123,7 +123,7 @@ export async function findClaudeAlias(
     for (const line of lines) {
       if (AXIOMATE_ALIAS_REGEX.test(line)) {
         // Extract the alias target
-        const match = line.match(/alias\s+claude=["']?([^"'\s]+)/)
+        const match = line.match(/alias\s+axiomate=["']?([^"'\s]+)/)
         if (match && match[1]) {
           return match[1]
         }
@@ -135,14 +135,14 @@ export async function findClaudeAlias(
 }
 
 /**
- * Check if a claude alias exists and points to a valid executable
+ * Check if an axiomate alias exists and points to a valid executable
  * Returns the alias target if valid, null otherwise
  * @param options Optional overrides for testing (env, homedir)
  */
-export async function findValidClaudeAlias(
+export async function findValidAxiomateAlias(
   options?: ShellConfigOptions,
 ): Promise<string | null> {
-  const aliasTarget = await findClaudeAlias(options)
+  const aliasTarget = await findAxiomateAlias(options)
   if (!aliasTarget) return null
 
   const home = options?.homedir ?? osHomedir()

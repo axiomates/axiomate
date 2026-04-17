@@ -14,7 +14,7 @@ import { logForDebugging } from '../utils/debug.js'
 import { getDoctorDiagnostic } from '../utils/doctorDiagnostic.js'
 import { gracefulShutdown } from '../utils/gracefulShutdown.js'
 import {
-  installOrUpdateClaudePackage,
+  installOrUpdateAxiomatePackage,
   localInstallationExists,
 } from '../utils/localInstaller.js'
 import {
@@ -355,9 +355,9 @@ export async function update() {
 
   if (useLocalUpdate) {
     logForDebugging(
-      'update: Calling installOrUpdateClaudePackage() for local update',
+      'update: Calling installOrUpdateAxiomatePackage() for local update',
     )
-    status = await installOrUpdateClaudePackage(channel)
+    status = await installOrUpdateAxiomatePackage(channel)
   } else {
     logForDebugging('update: Calling installGlobalPackage() for global update')
     status = await installGlobalPackage()

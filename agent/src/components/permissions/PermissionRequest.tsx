@@ -152,7 +152,7 @@ function getNotificationMessage(toolUseConfirm: ToolUseConfirm): string {
     return 'Axiomate needs your attention'
   }
 
-  return `Claude needs your permission to use ${toolName}`
+  return `Axiomate needs your permission to use ${toolName}`
 }
 
 // TODO: Move this to Tool.renderPermissionRequest

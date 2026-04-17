@@ -440,7 +440,7 @@ function BriefSpinner({
       s.remoteBackgroundTaskCount,
   )
 
-  // Connection trouble overrides the verb — `claude assistant` is a pure viewer,
+  // Connection trouble overrides the verb — `axiomate assistant` is a pure viewer,
   // nothing useful is happening while the WS is down.
   const showConnWarning =
     connStatus === 'reconnecting' || connStatus === 'disconnected'
