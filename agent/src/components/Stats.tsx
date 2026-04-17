@@ -226,9 +226,9 @@ function StatsContent({
   }
 
   return (
-    <Pane color="claude">
+    <Pane color="axiomate">
       <Box flexDirection="row" gap={1} marginBottom={1}>
-        <Tabs title="" color="claude" defaultTab="Overview">
+        <Tabs title="" color="axiomate" defaultTab="Overview">
           <Tab title="Overview">
             <OverviewTab
               stats={displayStats}
@@ -270,7 +270,7 @@ function DateRangeSelector({
           <Text key={range}>
             {i > 0 && <Text dimColor> · </Text>}
             {range === dateRange ? (
-              <Text bold color="claude">
+              <Text bold color="axiomate">
                 {DATE_RANGE_LABELS[range]}
               </Text>
             ) : (
@@ -371,7 +371,7 @@ function OverviewTab({
           {favoriteModel && (
             <Text wrap="truncate">
               Favorite model:{' '}
-              <Text color="claude" bold>
+              <Text color="axiomate" bold>
                 {renderModelName(favoriteModel[0])}
               </Text>
             </Text>
@@ -380,7 +380,7 @@ function OverviewTab({
         <Box flexDirection="column" width={28}>
           <Text wrap="truncate">
             Total tokens:{' '}
-            <Text color="claude">{formatNumber(totalTokens)}</Text>
+            <Text color="axiomate">{formatNumber(totalTokens)}</Text>
           </Text>
         </Box>
       </Box>
@@ -390,14 +390,14 @@ function OverviewTab({
         <Box flexDirection="column" width={28}>
           <Text wrap="truncate">
             Sessions:{' '}
-            <Text color="claude">{formatNumber(stats.totalSessions)}</Text>
+            <Text color="axiomate">{formatNumber(stats.totalSessions)}</Text>
           </Text>
         </Box>
         <Box flexDirection="column" width={28}>
           {stats.longestSession && (
             <Text wrap="truncate">
               Longest session:{' '}
-              <Text color="claude">
+              <Text color="axiomate">
                 {formatDuration(stats.longestSession.duration)}
               </Text>
             </Text>
@@ -409,14 +409,14 @@ function OverviewTab({
       <Box flexDirection="row" gap={4}>
         <Box flexDirection="column" width={28}>
           <Text wrap="truncate">
-            Active days: <Text color="claude">{stats.activeDays}</Text>
+            Active days: <Text color="axiomate">{stats.activeDays}</Text>
             <Text color="subtle">/{rangeDays}</Text>
           </Text>
         </Box>
         <Box flexDirection="column" width={28}>
           <Text wrap="truncate">
             Longest streak:{' '}
-            <Text color="claude" bold>
+            <Text color="axiomate" bold>
               {stats.streaks.longestStreak}
             </Text>{' '}
             {stats.streaks.longestStreak === 1 ? 'day' : 'days'}
@@ -430,14 +430,14 @@ function OverviewTab({
           {stats.peakActivityDay && (
             <Text wrap="truncate">
               Most active day:{' '}
-              <Text color="claude">{formatPeakDay(stats.peakActivityDay)}</Text>
+              <Text color="axiomate">{formatPeakDay(stats.peakActivityDay)}</Text>
             </Text>
           )}
         </Box>
         <Box flexDirection="column" width={28}>
           <Text wrap="truncate">
             Current streak:{' '}
-            <Text color="claude" bold>
+            <Text color="axiomate" bold>
               {allTimeStats.streaks.currentStreak}
             </Text>{' '}
             {allTimeStats.streaks.currentStreak === 1 ? 'day' : 'days'}
@@ -456,14 +456,14 @@ function OverviewTab({
             <Box flexDirection="column" width={28}>
               <Text wrap="truncate">
                 {shotStatsData.buckets[0]!.label}:{' '}
-                <Text color="claude">{shotStatsData.buckets[0]!.count}</Text>
+                <Text color="axiomate">{shotStatsData.buckets[0]!.count}</Text>
                 <Text color="subtle"> ({shotStatsData.buckets[0]!.pct}%)</Text>
               </Text>
             </Box>
             <Box flexDirection="column" width={28}>
               <Text wrap="truncate">
                 {shotStatsData.buckets[1]!.label}:{' '}
-                <Text color="claude">{shotStatsData.buckets[1]!.count}</Text>
+                <Text color="axiomate">{shotStatsData.buckets[1]!.count}</Text>
                 <Text color="subtle"> ({shotStatsData.buckets[1]!.pct}%)</Text>
               </Text>
             </Box>
@@ -472,14 +472,14 @@ function OverviewTab({
             <Box flexDirection="column" width={28}>
               <Text wrap="truncate">
                 {shotStatsData.buckets[2]!.label}:{' '}
-                <Text color="claude">{shotStatsData.buckets[2]!.count}</Text>
+                <Text color="axiomate">{shotStatsData.buckets[2]!.count}</Text>
                 <Text color="subtle"> ({shotStatsData.buckets[2]!.pct}%)</Text>
               </Text>
             </Box>
             <Box flexDirection="column" width={28}>
               <Text wrap="truncate">
                 {shotStatsData.buckets[3]!.label}:{' '}
-                <Text color="claude">{shotStatsData.buckets[3]!.count}</Text>
+                <Text color="axiomate">{shotStatsData.buckets[3]!.count}</Text>
                 <Text color="subtle"> ({shotStatsData.buckets[3]!.pct}%)</Text>
               </Text>
             </Box>
@@ -488,7 +488,7 @@ function OverviewTab({
             <Box flexDirection="column" width={28}>
               <Text wrap="truncate">
                 Avg/session:{' '}
-                <Text color="claude">{shotStatsData.avgShots}</Text>
+                <Text color="axiomate">{shotStatsData.avgShots}</Text>
               </Text>
             </Box>
           </Box>
@@ -909,7 +909,7 @@ function renderStatsToAnsi(
 function renderOverviewToAnsi(stats: AxiomateStats): string[] {
   const lines: string[] = []
   const theme = getTheme(resolveThemeSetting(getGlobalConfig().theme))
-  const h = (text: string) => applyColor(text, theme.claude as Color)
+  const h = (text: string) => applyColor(text, theme.axiomate as Color)
 
   // Two-column helper with fixed spacing
   // Column 1: label (18 chars) + value + padding to reach col 2

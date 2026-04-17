@@ -229,7 +229,7 @@ export function LogoV2(): React.ReactNode {
           <Box
             flexDirection="column"
             borderStyle="round"
-            borderColor="claude"
+            borderColor="axiomate"
             borderText={{
               content: compactBorderTitle,
               position: 'top',
@@ -288,7 +288,7 @@ export function LogoV2(): React.ReactNode {
         <Box
           flexDirection="column"
           borderStyle="round"
-          borderColor="claude"
+          borderColor="axiomate"
           borderText={{
             content: borderTitle,
             position: 'top',
@@ -319,7 +319,7 @@ export function LogoV2(): React.ReactNode {
               <Box
                 height="100%"
                 borderStyle="single"
-                borderColor="claude"
+                borderColor="axiomate"
                 borderDimColor
                 borderTop={false}
                 borderBottom={false}

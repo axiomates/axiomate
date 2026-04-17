@@ -221,7 +221,7 @@ function Install({ onDone, force, target }: InstallProps): React.ReactNode {
   return (
     <Box flexDirection="column" marginTop={1}>
       {state.type === 'checking' && (
-        <Text color="claude">Checking installation status...</Text>
+        <Text color="axiomate">Checking installation status...</Text>
       )}
 
       {state.type === 'cleaning-npm' && (
@@ -229,13 +229,13 @@ function Install({ onDone, force, target }: InstallProps): React.ReactNode {
       )}
 
       {state.type === 'installing' && (
-        <Text color="claude">
+        <Text color="axiomate">
           Installing Axiomate native build {state.version}...
         </Text>
       )}
 
       {state.type === 'setting-up' && (
-        <Text color="claude">Setting up launcher and shell integration...</Text>
+        <Text color="axiomate">Setting up launcher and shell integration...</Text>
       )}
 
       {state.type === 'set-up' && <SetupNotes messages={state.messages} />}
@@ -252,7 +252,7 @@ function Install({ onDone, force, target }: InstallProps): React.ReactNode {
             {state.version !== 'current' && (
               <Box>
                 <Text dimColor>Version: </Text>
-                <Text color="claude">{state.version}</Text>
+                <Text color="axiomate">{state.version}</Text>
               </Box>
             )}
             <Box>
@@ -263,7 +263,7 @@ function Install({ onDone, force, target }: InstallProps): React.ReactNode {
           <Box marginLeft={2} flexDirection="column" gap={1}>
             <Box marginTop={1}>
               <Text dimColor>Next: Run </Text>
-              <Text color="claude" bold>
+              <Text color="axiomate" bold>
                 axiomate --help
               </Text>
               <Text dimColor> to get started</Text>

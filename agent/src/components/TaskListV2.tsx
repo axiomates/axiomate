@@ -277,7 +277,7 @@ function getTaskIcon(status: Task['status']): {
     case 'completed':
       return { icon: figures.tick, color: 'success' }
     case 'in_progress':
-      return { icon: figures.squareSmallFilled, color: 'claude' }
+      return { icon: figures.squareSmallFilled, color: 'axiomate' }
     case 'pending':
       return { icon: figures.squareSmall, color: undefined }
   }

@@ -19,7 +19,7 @@ export function WelcomeV2(): React.ReactNode {
       <Box width={WELCOME_V2_WIDTH}>
         <Text>
           <Text>
-            <Text color="claude">{welcomeMessage} </Text>
+            <Text color="axiomate">{welcomeMessage} </Text>
             <Text dimColor>v{MACRO.VERSION} </Text>
           </Text>
           <Text>
@@ -88,7 +88,7 @@ export function WelcomeV2(): React.ReactNode {
     <Box width={WELCOME_V2_WIDTH}>
       <Text>
         <Text>
-          <Text color="claude">{welcomeMessage} </Text>
+          <Text color="axiomate">{welcomeMessage} </Text>
           <Text dimColor>v{MACRO.VERSION} </Text>
         </Text>
         <Text>
@@ -173,7 +173,7 @@ function AppleTerminalWelcomeV2({
       <Box width={WELCOME_V2_WIDTH}>
         <Text>
           <Text>
-            <Text color="claude">{welcomeMessage} </Text>
+            <Text color="axiomate">{welcomeMessage} </Text>
             <Text dimColor>v{MACRO.VERSION} </Text>
           </Text>
           <Text>
@@ -249,7 +249,7 @@ function AppleTerminalWelcomeV2({
     <Box width={WELCOME_V2_WIDTH}>
       <Text>
         <Text>
-          <Text color="claude">{welcomeMessage} </Text>
+          <Text color="axiomate">{welcomeMessage} </Text>
           <Text dimColor>v{MACRO.VERSION} </Text>
         </Text>
         <Text>

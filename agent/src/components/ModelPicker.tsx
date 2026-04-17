@@ -305,7 +305,7 @@ function EffortLevelIndicator({
   effort?: EffortLevel
 }): React.ReactNode {
   return (
-    <Text color={effort ? 'claude' : 'subtle'}>
+    <Text color={effort ? 'axiomate' : 'subtle'}>
       {effortLevelToSymbol(effort ?? 'low')}
     </Text>
   )

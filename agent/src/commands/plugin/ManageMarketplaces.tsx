@@ -728,7 +728,7 @@ export function ManageMarketplaces({
         {/* Processing indicator */}
         {isUpdating && (
           <Box marginTop={1} flexDirection="column">
-            <Text color="claude">Updating marketplace…</Text>
+            <Text color="axiomate">Updating marketplace…</Text>
             {progressMessage && <Text dimColor>{progressMessage}</Text>}
           </Box>
         )}
@@ -736,7 +736,7 @@ export function ManageMarketplaces({
         {/* Success message */}
         {!isUpdating && successMessage && (
           <Box marginTop={1}>
-            <Text color="claude">{successMessage}</Text>
+            <Text color="axiomate">{successMessage}</Text>
           </Box>
         )}
 
@@ -848,11 +848,11 @@ export function ManageMarketplaces({
                     dimColor={state.pendingRemove}
                   >
                     {state.name === 'claude-plugins-official' && (
-                      <Text color="claude">✻ </Text>
+                      <Text color="axiomate">✻ </Text>
                     )}
                     {state.name}
                     {state.name === 'claude-plugins-official' && (
-                      <Text color="claude"> ✻</Text>
+                      <Text color="axiomate"> ✻</Text>
                     )}
                   </Text>
                   {indicators.length > 0 && (
@@ -905,7 +905,7 @@ export function ManageMarketplaces({
       {/* Processing indicator */}
       {isProcessing && (
         <Box marginTop={1}>
-          <Text color="claude">Processing changes…</Text>
+          <Text color="axiomate">Processing changes…</Text>
         </Box>
       )}
 

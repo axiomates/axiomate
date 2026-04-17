@@ -580,7 +580,7 @@ function ErrorsTabContent({
 
       {actionMessage && (
         <Box marginTop={1} marginLeft={1}>
-          <Text color="claude">{actionMessage}</Text>
+          <Text color="axiomate">{actionMessage}</Text>
         </Box>
       )}
 

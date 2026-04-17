@@ -228,8 +228,8 @@ function SpinnerWithVerbInner({
   // progress updates to s.tasks trigger re-renders that keep this fresh.
   const leaderTokenCount = Math.round(responseLengthRef.current / 4)
 
-  const defaultColor: keyof Theme = 'claude'
-  const defaultShimmerColor = 'claudeShimmer'
+  const defaultColor: keyof Theme = 'axiomate'
+  const defaultShimmerColor = 'axiomateShimmer'
   const messageColor = overrideColor ?? defaultColor
   const shimmerColor = overrideShimmerColor ?? defaultShimmerColor
 

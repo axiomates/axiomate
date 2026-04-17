@@ -46,7 +46,7 @@ export function IdeOnboardingDialog({
       <Dialog
         title={
           <>
-            <Text color="claude">✻ </Text>
+            <Text color="axiomate">✻ </Text>
             <Text>Welcome to Axiomate for {ideName}</Text>
           </>
         }
