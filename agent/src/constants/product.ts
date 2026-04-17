@@ -34,9 +34,9 @@ export function isRemoteSessionLocal(
 }
 
 /**
- * Get the base URL for Claude AI based on environment.
+ * Get the base URL for the remote session backend based on environment.
  */
-export function getClaudeAiBaseUrl(
+export function getAxiomateAiBaseUrl(
   sessionId?: string,
   ingressUrl?: string,
 ): string {
@@ -66,6 +66,6 @@ export function getRemoteSessionUrl(
   ingressUrl?: string,
 ): string {
   const compatId = sessionId
-  const baseUrl = getClaudeAiBaseUrl(compatId, ingressUrl)
+  const baseUrl = getAxiomateAiBaseUrl(compatId, ingressUrl)
   return `${baseUrl}/code/${compatId}`
 }

@@ -9,7 +9,7 @@ The user thinks another Axiomate session on this machine is frozen, stuck, or ve
 
 ## What to look for
 
-Scan for other Axiomate processes (excluding the current one — PID is in \`process.pid\` but for shell commands just exclude the PID you see running this prompt). Process names are typically \`claude\` (installed) or \`cli\` (native dev build).
+Scan for other Axiomate processes (excluding the current one — PID is in \`process.pid\` but for shell commands just exclude the PID you see running this prompt). Process names are typically \`axiomate\` (installed) or \`cli\` (native dev build).
 
 Signs of a stuck session:
 - **High CPU (≥90%) sustained** — likely an infinite loop. Sample twice, 1-2s apart, to confirm it's not a transient spike.
@@ -23,9 +23,9 @@ Signs of a stuck session:
 
 1. **List all Axiomate processes** (macOS/Linux):
    \`\`\`
-   ps -axo pid=,pcpu=,rss=,etime=,state=,comm=,command= | grep -E '(claude|cli)' | grep -v grep
+   ps -axo pid=,pcpu=,rss=,etime=,state=,comm=,command= | grep -E '(axiomate|cli)' | grep -v grep
    \`\`\`
-   Filter to rows where \`comm\` is \`claude\` or (\`cli\` AND the command path contains "claude").
+   Filter to rows where \`comm\` is \`axiomate\` or (\`cli\` AND the command path contains "axiomate").
 
 2. **For anything suspicious**, gather more context:
    - Child processes: \`pgrep -lP <pid>\`

@@ -12,7 +12,7 @@ declare module 'bun:ffi' {
 // --------------------------------------------------------------------------
 // Augment @anthropic-ai/sdk types that are newer than the installed version.
 // The installed SDK's BetaMessageDeltaUsage only has output_tokens;
-// claude-code v2.1.88 accesses several additional fields from a newer API.
+// axiomate accesses several additional fields from a newer API.
 // --------------------------------------------------------------------------
 declare module '@anthropic-ai/sdk/resources/beta/messages/messages.mjs' {
   // Re-export all types that the SDK provides in messages.d.ts but TS can't

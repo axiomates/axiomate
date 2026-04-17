@@ -2082,7 +2082,7 @@ export function buildConversationChain(
  * Post-pass for buildConversationChain: recover sibling assistant blocks and
  * tool_results that the single-parent walk orphaned.
  *
- * Streaming (claude.ts:~2024) emits one AssistantMessage per content_block_stop
+ * Streaming (llm.ts:~2024) emits one AssistantMessage per content_block_stop
  * — N parallel tool_uses → N messages, distinct uuid, same message.id. Each
  * tool_result's sourceToolAssistantUUID points to its own one-block assistant,
  * so insertMessageChain's override (line ~894) writes each TR's parentUuid to a

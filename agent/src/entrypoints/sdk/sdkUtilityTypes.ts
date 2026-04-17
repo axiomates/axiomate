@@ -1,7 +1,7 @@
 /**
  * Anthropic-specific usage type with all fields non-nullable.
  *
- * This is the "storage" format used by claude.ts, QueryEngine, logging,
+ * This is the "storage" format used by llm.ts, QueryEngine, logging,
  * and cost tracking. It extends the basic token counts (input/output/cache)
  * with Anthropic-specific fields: server_tool_use, service_tier,
  * cache_creation breakdown, inference_geo, iterations, speed.

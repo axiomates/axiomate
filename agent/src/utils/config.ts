@@ -261,7 +261,7 @@ export type ModelProviderUsageMapping = {
 
 /** Per-model provider configuration in ~/.axiomate.json */
 export type ModelProviderConfig = {
-  /** Provider-native model ID (e.g. "Qwen/Qwen3.5-397B-A17B", "claude-sonnet-4-6", "minimax-m2") */
+  /** Provider-native model ID (e.g. "Qwen/Qwen3.5-397B-A17B", "Pro/zai-org/GLM-5.1", "minimax-m2") */
   model: string
   /** Display name for UI */
   name?: string

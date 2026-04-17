@@ -339,7 +339,7 @@ export const FileEditTool = buildTool({
       }
     }
 
-    // Additional validation for Claude settings files
+    // Additional validation for Axiomate settings files
     const settingsValidationResult = validateInputForSettingsFileEdit(
       fullFilePath,
       file,

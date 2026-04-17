@@ -17,7 +17,7 @@ export type Step = {
 }
 
 export function getSteps(): Step[] {
-  const hasClaudeMd = getFsImplementation().existsSync(
+  const hasAxiomateMd = getFsImplementation().existsSync(
     join(getCwd(), 'AXIOMATE.md'),
   )
   const isWorkspaceDirEmpty = isDirEmpty(getCwd())
@@ -31,9 +31,9 @@ export function getSteps(): Step[] {
       isEnabled: isWorkspaceDirEmpty,
     },
     {
-      key: 'claudemd',
+      key: 'axiomatemd',
       text: 'Run /init to create a AXIOMATE.md file with instructions for Axiomate',
-      isComplete: hasClaudeMd,
+      isComplete: hasAxiomateMd,
       isCompletable: true,
       isEnabled: !isWorkspaceDirEmpty,
     },

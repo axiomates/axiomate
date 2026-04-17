@@ -2,7 +2,7 @@ import type { NonNullableUsage } from '../../entrypoints/sdk/sdkUtilityTypes.js'
 
 /**
  * Anthropic-specific zero-initialized usage object (NonNullableUsage format).
- * Used by Anthropic Provider path code (claude.ts, QueryEngine, logging).
+ * Used by Anthropic Provider path code (llm.ts, QueryEngine, logging).
  *
  * NOT used by the protocol-neutral layer (processStream has its own
  * neutral EMPTY_USAGE with { inputTokens: 0, outputTokens: 0 }).

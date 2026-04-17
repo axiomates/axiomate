@@ -124,7 +124,7 @@ export type BaseAgentDefinition = {
   /** Omit AXIOMATE.md hierarchy from the agent's userContext. Read-only agents
    * (Explore, Plan) don't need commit/PR/lint guidelines — the main agent has
    * full AXIOMATE.md and interprets their output. Saves ~5-15 Gtok/week across
-   * 34M+ Explore spawns. Kill-switch: ax_slim_subagent_claudemd. */
+   * 34M+ Explore spawns. Kill-switch: ax_slim_subagent_axiomatemd. */
   omitAxiomateMd?: boolean
 }
 

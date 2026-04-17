@@ -2460,7 +2460,7 @@ function generateHtmlReport(
 // ============================================================================
 
 /**
- * Structured export format for claudescope consumption
+ * Structured export format for insights-scope consumption
  */
 export type InsightsExport = {
   metadata: {

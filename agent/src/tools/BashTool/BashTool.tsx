@@ -540,7 +540,7 @@ export const BashTool = buildTool({
       };
     }
 
-    // For image data, format as image content block for Claude
+    // For image data, format as image content block for the agent
     if (isImage) {
       const block = buildImageToolResult(stdout, toolUseID);
       if (block) return block;
@@ -921,7 +921,7 @@ async function* runShellCommand({
   // In assistant mode, the main agent should stay responsive. Auto-background
   // blocking commands after ASSISTANT_BLOCKING_BUDGET_MS so the agent can keep
   // coordinating instead of waiting. The command keeps running — no state loss.
-  // Handle Claude asking to run it in the background explicitly
+  // Handle the agent asking to run it in the background explicitly
   // When explicitly requested via run_in_background, always honor the request
   // regardless of the command type (isAutobackgroundingAllowed only applies to automatic backgrounding)
   // Skip if background tasks are disabled - run in foreground instead

@@ -2017,10 +2017,10 @@ export class AxiomateAuthProvider implements OAuthClientProvider {
     refreshToken: string,
   ): Promise<OAuthTokens | undefined> {
     const serverKey = getServerKey(this.serverName, this.serverConfig)
-    const claudeDir = getConfigHomeDir()
-    await mkdir(claudeDir, { recursive: true })
+    const configDir = getConfigHomeDir()
+    await mkdir(configDir, { recursive: true })
     const sanitizedKey = serverKey.replace(/[^a-zA-Z0-9]/g, '_')
-    const lockfilePath = join(claudeDir, `mcp-refresh-${sanitizedKey}.lock`)
+    const lockfilePath = join(configDir, `mcp-refresh-${sanitizedKey}.lock`)
 
     let release: (() => Promise<void>) | undefined
     for (let retry = 0; retry < MAX_LOCK_RETRIES; retry++) {

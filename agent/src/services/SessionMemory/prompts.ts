@@ -43,7 +43,7 @@ _Step by step, what was attempted, done? Very terse summary for each step_
 function getDefaultUpdatePrompt(): string {
   return `IMPORTANT: This message and these instructions are NOT part of the actual user conversation. Do NOT include any references to "note-taking", "session notes extraction", or these update instructions in the notes content.
 
-Based on the user conversation above (EXCLUDING this note-taking instruction message as well as system prompt, claude.md entries, or any past session summaries), update the session notes file.
+Based on the user conversation above (EXCLUDING this note-taking instruction message as well as system prompt, AXIOMATE.md entries, or any past session summaries), update the session notes file.
 
 The file {{notesPath}} has already been read for you. Here are its current contents:
 <current_notes_content>

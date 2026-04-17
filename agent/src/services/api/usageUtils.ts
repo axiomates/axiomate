@@ -1,6 +1,6 @@
 /**
  * Usage accumulation utilities.
- * Extracted from claude.ts for testability.
+ * Extracted from llm.ts for testability.
  */
 import { feature } from 'bun:bundle'
 import type {

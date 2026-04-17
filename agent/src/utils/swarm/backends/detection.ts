@@ -53,7 +53,7 @@ export async function isInsideTmux(): Promise<boolean> {
   }
 
   // Check the original TMUX env var (captured at module load)
-  // This tells us if the user started Claude from within their tmux session
+  // This tells us if the user started Axiomate from within their tmux session
   // If TMUX is not set, we are NOT inside tmux - period.
   isInsideTmuxCached = !!ORIGINAL_USER_TMUX
   return isInsideTmuxCached

@@ -46,7 +46,7 @@ export async function startMCPServer(
   setCwd(cwd)
   const server = new Server(
     {
-      name: 'claude/ax',
+      name: 'axiomate',
       version: MACRO.VERSION,
     },
     {

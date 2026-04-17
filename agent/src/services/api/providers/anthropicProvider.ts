@@ -5,7 +5,7 @@
  * SDK call, retry (withRetry), stream adaptation, error classification, cost.
  *
  * paramsFromContext is injected as buildParams — it's application logic
- * (reads settings, feature flags, session state) that belongs in claude.ts,
+ * (reads settings, feature flags, session state) that belongs in llm.ts,
  * not in the protocol layer. The Provider orchestrates the call sequence.
  */
 import type { ProviderRequestExt } from '../provider.js'
@@ -123,7 +123,7 @@ export interface AnthropicProviderConfig {
  * Contains provider-specific fields that don't belong in the neutral interface.
  */
 export interface AnthropicRequestExt extends ProviderRequestExt {
-  /** Builds Anthropic SDK params from retry context. Closure from claude.ts. */
+  /** Builds Anthropic SDK params from retry context. Closure from llm.ts. */
   buildParams: (retryContext: RetryContext) => Record<string, unknown>
   /** withRetry options (model, fallbackModel, thinkingConfig, etc.) */
   retryOptions: RetryOptions

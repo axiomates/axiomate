@@ -4,7 +4,7 @@
  * Encapsulates everything protocol-specific: client creation, auth,
  * param building, API call, retry, stream adaptation, cost calculation.
  *
- * The caller (queryModel in claude.ts) only sees neutral types.
+ * The caller (queryModel in llm.ts) only sees neutral types.
  */
 import {
   LLMAPIError,
@@ -46,7 +46,7 @@ export interface StreamRequest {
 /**
  * Request-level hooks for orchestration.
  *
- * These are callbacks that the caller (claude.ts) passes per-request
+ * These are callbacks that the caller (llm.ts) passes per-request
  * to receive lifecycle notifications. They are protocol-neutral —
  * any provider can call them.
  *
@@ -120,7 +120,7 @@ export interface ErrorClassification {
  * Base type for provider-specific request configuration passed to bind().
  *
  * Each provider defines its own extension (e.g. AnthropicRequestExt) that
- * satisfies this base shape. claude.ts uses this neutral type in `satisfies`
+ * satisfies this base shape. llm.ts uses this neutral type in `satisfies`
  * checks so it doesn't import provider-specific modules.
  */
 export interface ProviderRequestExt {

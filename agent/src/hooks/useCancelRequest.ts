@@ -84,14 +84,14 @@ export function CancelRequestHandler(props: CancelRequestHandlerProps): null {
 
   const handleCancel = useCallback(() => {
     // Priority 1: If there's an active task running, cancel it first
-    // This takes precedence over queue management so users can always interrupt Claude
+    // This takes precedence over queue management so users can always interrupt the agent
     if (abortSignal !== undefined && !abortSignal.aborted) {
       setToolUseConfirmQueue(() => [])
       onCancel()
       return
     }
 
-    // Priority 2: Pop queue when Claude is idle (no running task to cancel)
+    // Priority 2: Pop queue when the agent is idle (no running task to cancel)
     if (hasCommandsInQueue()) {
       if (popCommandFromQueue) {
         popCommandFromQueue()

@@ -108,7 +108,7 @@ type State = {
   // Last auto-mode classifier request(s) for /share transcript
   lastClassifierRequests: unknown[] | null
   // AXIOMATE.md content cached by context.ts for the auto-mode classifier.
-  // Breaks the yoloClassifier → claudemd → filesystem → permissions cycle.
+  // Breaks the yoloClassifier → axiomatemd → filesystem → permissions cycle.
   cachedAxiomateMdContent: string | null
   // In-memory error log for recent errors
   inMemoryErrorLog: Array<{ error: string; timestamp: string }>
@@ -1510,7 +1510,7 @@ export function addSlowOperation(operation: string, durationMs: number): void {
   return
   // Skip tracking for editor sessions (user editing a prompt file in $EDITOR)
   // These are intentionally slow since the user is drafting text
-  if (operation.includes('exec') && operation.includes('claude-prompt-')) {
+  if (operation.includes('exec') && operation.includes('axiomate-prompt-')) {
     return
   }
   const now = Date.now()

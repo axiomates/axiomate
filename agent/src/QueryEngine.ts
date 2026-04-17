@@ -705,7 +705,7 @@ export class QueryEngine {
         }
         messages.push(message)
         if (persistSession) {
-          // Fire-and-forget for assistant messages. claude.ts yields one
+          // Fire-and-forget for assistant messages. llm.ts yields one
           // assistant message per content block, then mutates the last
           // one's message.usage/stop_reason on message_delta — relying on
           // the write queue's 100ms lazy jsonStringify. Awaiting here
@@ -1146,8 +1146,8 @@ export class QueryEngine {
 }
 
 /**
- * Sends a single prompt to the Claude API and returns the response.
- * Assumes that claude is being used non-interactively -- will not
+ * Sends a single prompt to the model API and returns the response.
+ * Assumes that axiomate is being used non-interactively -- will not
  * ask the user for permissions or further input.
  *
  * Convenience wrapper around QueryEngine for one-shot usage.

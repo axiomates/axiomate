@@ -170,8 +170,8 @@ export const getUserContext = memoize(
 
     logForDiagnosticsNoPII('info', 'user_context_completed', {
       duration_ms: Date.now() - startTime,
-      claudemd_length: axiomateMd?.length ?? 0,
-      claudemd_disabled: Boolean(shouldDisableAxiomateMd),
+      axiomatemd_length: axiomateMd?.length ?? 0,
+      axiomatemd_disabled: Boolean(shouldDisableAxiomateMd),
     })
 
     return {

@@ -3204,12 +3204,6 @@ function runHeadlessStreaming(
               `No active OAuth flow for server: ${serverName}`,
             )
           }
-        } else if (
-          message.request.subtype === 'claude_authenticate' ||
-          message.request.subtype === 'claude_oauth_callback' ||
-          message.request.subtype === 'claude_oauth_wait_for_completion'
-        ) {
-          sendControlResponseError(message, 'OAuth authentication is not available')
         } else if (message.request.subtype === 'mcp_clear_auth') {
           const { serverName } = message.request
           const currentAppState = getAppState()

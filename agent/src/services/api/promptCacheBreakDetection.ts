@@ -42,13 +42,13 @@ type PreviousState = {
   /** Sorted beta header list. Diffed to show which headers were added/removed. */
   betas: string[]
   /** AFK_MODE_BETA_HEADER presence — should NOT break cache anymore
-   *  (sticky-on latched in claude.ts). Tracked to verify the fix. */
+   *  (sticky-on latched in llm.ts). Tracked to verify the fix. */
   autoModeActive: boolean
   /** Overage state flip — should NOT break cache anymore (eligibility is
    *  latched session-stable in should1hCacheTTL). Tracked to verify the fix. */
   isUsingOverage: boolean
   /** Cache-editing beta header presence — should NOT break cache anymore
-   *  (sticky-on latched in claude.ts). Tracked to verify the fix. */
+   *  (sticky-on latched in llm.ts). Tracked to verify the fix. */
   cachedMCEnabled: boolean
   /** Resolved effort (env → options → model default). Goes into output_config
    *  or anthropic_internal.effort_override. */

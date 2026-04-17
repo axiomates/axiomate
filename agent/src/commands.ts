@@ -42,7 +42,6 @@ import reloadPlugins from './commands/reload-plugins/index.js'
 import rewind from './commands/rewind/index.js'
 import heapDump from './commands/heapdump/index.js'
 import sandboxToggle from './commands/sandbox-toggle/index.js'
-import stickers from './commands/stickers/index.js'
 import { logError } from './utils/log.js'
 import { toError } from './utils/errors.js'
 import { logForDebugging } from './utils/debug.js'
@@ -146,7 +145,6 @@ const COMMANDS = memoize((): Command[] => [
   stats,
   status,
   statusline,
-  stickers,
   theme,
   review,
   ultrareview,
@@ -394,7 +392,6 @@ export const REMOTE_SAFE_COMMANDS: Set<Command> = new Set([
   plan, // Plan mode toggle
   keybindings, // Keybinding management
   statusline, // Status line toggle
-  stickers, // Stickers
 ])
 
 /**

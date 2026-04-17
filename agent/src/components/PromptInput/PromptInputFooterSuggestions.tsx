@@ -150,7 +150,7 @@ const SuggestionItemRow = memo(function SuggestionItemRow({
     0,
     columns - displayTextWidth - tagWidth - 4,
   )
-  // Skill descriptions can contain newlines (e.g. /claude-api's "TRIGGER
+  // Skill descriptions can contain newlines (e.g. a skill's "TRIGGER
   // when:" block). A multi-line row grows the overlay past minHeight; when
   // the filter narrows past that skill, the overlay shrinks and leaves
   // ghost rows. Flatten to one line before truncating.
