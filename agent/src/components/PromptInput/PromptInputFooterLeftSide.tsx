@@ -299,7 +299,7 @@ function ModeIndicator({
   const hasTeammatePills =
     hasInProcessTeammates || (!showSpinnerTree && isViewingTeammate)
 
-  // In remote mode (`claude assistant`, --teleport) the agent runs elsewhere;
+  // In remote mode (`axiomate assistant`, --teleport) the agent runs elsewhere;
   // the local permission mode shown here doesn't reflect the agent's state.
   // Rendered before the tasks pill so a long pill label
   // doesn't push the mode indicator off-screen.

@@ -61,7 +61,7 @@ export function IdeOnboardingDialog({
       >
         <Box flexDirection="column" gap={1}>
           <Text>
-            • Claude has context of <Text color="suggestion">⧉ open files</Text>{' '}
+            • Axiomate has context of <Text color="suggestion">⧉ open files</Text>{' '}
             and <Text color="suggestion">⧉ selected lines</Text>
           </Text>
           <Text>

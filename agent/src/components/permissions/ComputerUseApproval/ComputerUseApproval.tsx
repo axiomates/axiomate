@@ -284,8 +284,8 @@ function ComputerUseAppListPanel({
         {request.willHide && request.willHide.length > 0 ? (
           <Text dimColor>
             {request.willHide.length} other{' '}
-            {plural(request.willHide.length, 'app')} will be hidden while Claude
-            works.
+            {plural(request.willHide.length, 'app')} will be hidden while
+            Axiomate works.
           </Text>
         ) : null}
 

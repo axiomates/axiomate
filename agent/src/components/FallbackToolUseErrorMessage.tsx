@@ -30,7 +30,7 @@ export function FallbackToolUseErrorMessage({
     error = 'Tool execution failed'
   } else {
     const extractedError = extractTag(result, 'tool_use_error') ?? result
-    // Remove sandbox_violations tags from error display (Claude still sees them in the tool result)
+    // Remove sandbox_violations tags from error display (the agent still sees them in the tool result)
     const withoutSandboxViolations = removeSandboxViolationTags(extractedError)
     // Strip <error> tags but keep their content (tags are for the model, not the UI)
     const withoutErrorTags = withoutSandboxViolations.replace(/<\/?error>/g, '')

@@ -136,7 +136,7 @@ export function WebFetchPermissionRequest({
           permissionResult={toolUseConfirm.permissionResult}
           toolType="tool"
         />
-        <Text>Do you want to allow Claude to fetch this content?</Text>
+        <Text>Do you want to allow Axiomate to fetch this content?</Text>
         <Select
           options={options}
           onChange={onChange}

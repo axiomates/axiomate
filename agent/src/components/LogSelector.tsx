@@ -222,7 +222,7 @@ export function LogSelector({
   // Agentic search state
   const [agenticSearchState, setAgenticSearchState] =
     React.useState<AgenticSearchState>({ status: 'idle' })
-  // Track if the "Search deeply using Claude" option is focused
+  // Track if the "Search deeply using Axiomate" option is focused
   const [isAgenticSearchOptionFocused, setIsAgenticSearchOptionFocused] =
     React.useState(false)
   // AbortController for cancelling agentic search
@@ -1219,7 +1219,7 @@ export function LogSelector({
         ) : agenticSearchState.status === 'searching' ? (
           <Text dimColor>
             <Byline>
-              <Text>Searching with Claude…</Text>
+              <Text>Searching with Axiomate…</Text>
               <ConfigurableShortcutHint
                 action="confirm:no"
                 context="Confirmation"

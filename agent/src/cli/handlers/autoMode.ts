@@ -1,6 +1,6 @@
 /**
  * Auto mode subcommand handlers — dump default/merged classifier rules and
- * critique user-written rules. Dynamically imported when `claude auto-mode ...` runs.
+ * critique user-written rules. Dynamically imported when `axiomate auto-mode ...` runs.
  */
 
 import { errorMessage } from '../../utils/errors.js'

@@ -231,7 +231,7 @@ export function SkillPermissionRequest(
 
   return (
     <PermissionDialog title={`Use skill "${skill}"?`} workerBadge={workerBadge}>
-      <Text>Claude may use instructions, code, or files from this Skill.</Text>
+      <Text>Axiomate may use instructions, code, or files from this Skill.</Text>
       <Box flexDirection="column" paddingX={2} paddingY={1}>
         <Text dimColor>{commandObj?.description}</Text>
       </Box>

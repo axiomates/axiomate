@@ -39,12 +39,12 @@ function getInstallationPath(): string {
 
   if (isWindows) {
     // Convert to Windows-style path
-    const windowsPath = join(homeDir, '.local', 'bin', 'claude.exe')
+    const windowsPath = join(homeDir, '.local', 'bin', 'axiomate.exe')
     // Replace forward slashes with backslashes for Windows display
     return windowsPath.replace(/\//g, '\\')
   }
 
-  return '~/.local/bin/claude'
+  return '~/.local/bin/axiomate'
 }
 
 function SetupNotes({ messages }: { messages: string[] }): React.ReactNode {
