@@ -288,7 +288,7 @@ function mcpBaseUrlAnalytics(serverRef: ScopedMcpServerConfig): Record<string, s
 }
 
 /**
- * Shared handler for sse/http/cloudConfig-proxy auth failures during connect:
+ * Shared handler for sse/http auth failures during connect:
  * emits ax_mcp_server_needs_auth, caches the needs-auth entry, and returns
  * the needs-auth connection result.
  */

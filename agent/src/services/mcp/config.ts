@@ -38,7 +38,6 @@ import { jsonStringify } from '../../utils/slowOperations.js'
 import {
   logEvent,
 } from '../analytics/index.js'
-import { fetchClaudeAIMcpConfigsIfEligible } from './cloudConfig.js'
 import { expandEnvVarsInString } from './envExpansion.js'
 import {
   type ConfigScope,
@@ -257,48 +256,6 @@ export function dedupPluginMcpServers(
       continue
     }
     seenPluginSigs.set(sig, name)
-    servers[name] = config
-  }
-  return { servers, suppressed }
-}
-
-/**
- * manually-configured server. Manual wins: a user who wrote .mcp.json or ran
- * `claude mcp add` expressed higher intent than a connector toggled in the web UI.
- *
- * manual servers in the merge — this content-based check catches the case where
- * both point at the same underlying URL (e.g. `mcp__slack__*` and
- * `mcp__claude_ai_Slack__*` both hitting mcp.slack.com, ~600 chars/turn wasted).
- *
- * Only enabled manual servers count as dedup targets — a disabled manual server
- * mustn't suppress its connector twin, or neither runs.
- */
-export function dedupClaudeAiMcpServers(
-  claudeAiServers: Record<string, ScopedMcpServerConfig>,
-  manualServers: Record<string, ScopedMcpServerConfig>,
-): {
-  servers: Record<string, ScopedMcpServerConfig>
-  suppressed: Array<{ name: string; duplicateOf: string }>
-} {
-  const manualSigs = new Map<string, string>()
-  for (const [name, config] of Object.entries(manualServers)) {
-    if (isMcpServerDisabled(name)) continue
-    const sig = getMcpServerSignature(config)
-    if (sig && !manualSigs.has(sig)) manualSigs.set(sig, name)
-  }
-
-  const servers: Record<string, ScopedMcpServerConfig> = {}
-  const suppressed: Array<{ name: string; duplicateOf: string }> = []
-  for (const [name, config] of Object.entries(claudeAiServers)) {
-    const sig = getMcpServerSignature(config)
-    const manualDup = sig !== null ? manualSigs.get(sig) : undefined
-    if (manualDup !== undefined) {
-      logForDebugging(
-        `Suppressing remote service connector "${name}": duplicates manually-configured "${manualDup}"`,
-      )
-      suppressed.push({ name, duplicateOf: manualDup })
-      continue
-    }
     servers[name] = config
   }
   return { servers, suppressed }
@@ -1038,15 +995,11 @@ export function getMcpConfigByName(name: string): ScopedMcpServerConfig | null {
 /**
  * returned set — they're fetched separately and merged by callers).
  * This is fast: only local file reads; no awaited network calls on the
- * critical path. The optional extraDedupTargets promise (e.g. the in-flight
- * so the two overlap rather than serialize.
+ * critical path.
  * @returns Axiomate server configurations with appropriate scopes
  */
 export async function getAxiomateMcpConfigs(
   dynamicServers: Record<string, ScopedMcpServerConfig> = {},
-  extraDedupTargets: Promise<
-    Record<string, ScopedMcpServerConfig>
-  > = Promise.resolve({}),
 ): Promise<{
   servers: Record<string, ScopedMcpServerConfig>
   errors: PluginError[]
@@ -1150,14 +1103,12 @@ export async function getAxiomateMcpConfigs(
   // Only servers that will actually connect are valid dedup targets — a
   // disabled manual server mustn't suppress a plugin server, or neither runs
   // (manual is skipped by name at connection time; plugin was removed here).
-  const extraTargets = await extraDedupTargets
   const enabledManualServers: Record<string, ScopedMcpServerConfig> = {}
   for (const [name, config] of Object.entries({
     ...userServers,
     ...approvedProjectServers,
     ...localServers,
     ...dynamicServers,
-    ...extraTargets,
   })) {
     if (
       !isMcpServerDisabled(name) &&
@@ -1225,36 +1176,13 @@ export async function getAxiomateMcpConfigs(
 }
 
 /**
- * This may be slow due to network calls - use getAxiomateMcpConfigs() for fast startup.
- * @returns All server configurations with appropriate scopes
+ * @returns All server configurations with appropriate scopes.
  */
 export async function getAllMcpConfigs(): Promise<{
   servers: Record<string, ScopedMcpServerConfig>
   errors: PluginError[]
 }> {
-  if (doesEnterpriseMcpConfigExist()) {
-    return getAxiomateMcpConfigs()
-  }
-
-  // with loadAllPluginsCacheOnly() inside. Memoized — the awaited call below is a cache hit.
-  const claudeaiPromise = fetchClaudeAIMcpConfigsIfEligible()
-  const { servers: axiomateServers, errors } = await getAxiomateMcpConfigs(
-    {},
-    claudeaiPromise,
-  )
-  const { allowed: claudeaiMcpServers } = filterMcpServersByPolicy(
-    await claudeaiPromise,
-  )
-
-  // won't catch this — need content-based dedup by URL signature.
-  const { servers: dedupedClaudeAi } = dedupClaudeAiMcpServers(
-    claudeaiMcpServers,
-    axiomateServers,
-  )
-
-  const servers = Object.assign({}, dedupedClaudeAi, axiomateServers)
-
-  return { servers, errors }
+  return getAxiomateMcpConfigs()
 }
 
 /**
