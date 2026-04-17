@@ -430,11 +430,11 @@ export async function cleanupOldDebugLogs(): Promise<CleanupResult> {
 const ONE_DAY_MS = 24 * 60 * 60 * 1000
 
 /**
- * Clean up old npm cache entries for Anthropic packages.
+ * Clean up old npm cache entries for the axiomate package.
  * This helps reduce disk usage since we publish many dev versions per day.
  * Only runs once per day in dev builds.
  */
-export async function cleanupNpmCacheForAnthropicPackages(): Promise<void> {
+export async function cleanupNpmCacheForAxiomatePackage(): Promise<void> {
   const markerPath = join(getConfigHomeDir(), '.npm-cache-cleanup')
 
   try {

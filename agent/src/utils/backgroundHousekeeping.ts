@@ -11,7 +11,7 @@ const extractMemoriesModule = feature('EXTRACT_MEMORIES')
 
 import { getIsInteractive, getLastInteractionTime } from '../bootstrap/state.js'
 import {
-  cleanupNpmCacheForAnthropicPackages,
+  cleanupNpmCacheForAxiomatePackage,
   cleanupOldMessageFilesInBackground,
   cleanupOldVersionsThrottled,
 } from './cleanup.js'

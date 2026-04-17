@@ -361,9 +361,9 @@ function loadSettingsFromFlag(settingsFile: string): void {
 
       // Create a temporary file and write the JSON to it.
       // Use a content-hash-based path instead of random UUID to avoid
-      // busting the Anthropic API prompt cache. The settings path ends up
+      // busting the provider prompt cache. The settings path ends up
       // in the Bash tool's sandbox denyWithinAllow list, which is part of
-      // the tool description sent to the API. A random UUID per subprocess
+      // the tool description sent to the provider. A random UUID per subprocess
       // changes the tool description on every query() call, invalidating
       // the cache prefix and causing a 12x input token cost penalty.
       // The content hash ensures identical settings produce the same path
