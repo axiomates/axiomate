@@ -194,9 +194,3 @@ export const SOURCES = [
   'userSettings',
 ] as const satisfies readonly EditableSettingSource[]
 
-/**
- * The JSON Schema URL for Axiomate settings
- * You can edit the contents at https://github.com/SchemaStore/schemastore/blob/master/src/schemas/json/claude-code-settings.json
- */
-export const AXIOMATE_CODE_SETTINGS_SCHEMA_URL =
-  'https://json.schemastore.org/claude-code-settings.json'

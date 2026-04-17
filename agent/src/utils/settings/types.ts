@@ -8,7 +8,6 @@ import {
   PERMISSION_MODES,
 } from '../permissions/PermissionMode.js'
 import { MarketplaceSourceSchema } from '../plugins/schemas.js'
-import { AXIOMATE_CODE_SETTINGS_SCHEMA_URL } from './constants.js'
 import { PermissionRuleSchema } from './permissionValidation.js'
 
 // Re-export hook schemas and types from centralized location for backward compatibility
@@ -252,7 +251,7 @@ export const SettingsSchema = lazySchema(() =>
   z
     .object({
       $schema: z
-        .literal(AXIOMATE_CODE_SETTINGS_SCHEMA_URL)
+        .string()
         .optional()
         .describe('JSON Schema reference for Axiomate settings'),
       apiKeyHelper: z
