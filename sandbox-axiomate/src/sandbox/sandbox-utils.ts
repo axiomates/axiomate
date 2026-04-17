@@ -86,7 +86,7 @@ export function isSymlinkOutsideBoundary(originalPath: string, resolvedPath: str
     }
     // Handle macOS /tmp -> /private/tmp canonical resolution
     // This is a legitimate system symlink that should be allowed
-    // /tmp/claude -> /private/tmp/claude is OK
+    // /tmp/axiomate -> /private/tmp/axiomate is OK
     // /var/folders/... -> /private/var/folders/... is OK
     if (normalizedOriginal.startsWith('/tmp/') &&
         normalizedResolved === '/private' + normalizedOriginal) {
@@ -116,12 +116,12 @@ export function isSymlinkOutsideBoundary(originalPath: string, resolvedPath: str
         return true;
     }
     // If original path starts with resolved path, the resolved path is an ancestor
-    // e.g., /tmp/claude -> /tmp means the symlink points to a broader scope
+    // e.g., /tmp/axiomate -> /tmp means the symlink points to a broader scope
     if (normalizedOriginal.startsWith(normalizedResolved + '/')) {
         return true;
     }
     // Also check the canonical form of the original path for macOS
-    // e.g., /tmp/claude should also be checked as /private/tmp/claude
+    // e.g., /tmp/axiomate should also be checked as /private/tmp/axiomate
     let canonicalOriginal = normalizedOriginal;
     if (normalizedOriginal.startsWith('/tmp/')) {
         canonicalOriginal = '/private' + normalizedOriginal;
@@ -138,7 +138,7 @@ export function isSymlinkOutsideBoundary(originalPath: string, resolvedPath: str
     // 1. Start with the original path (deeper/same) - already covered by returning false below
     // 2. Start with the canonical original (deeper/same under canonical form)
     // 3. BE the canonical form of the original (e.g., /tmp/x -> /private/tmp/x)
-    // Any other resolution (e.g., /tmp/claude -> /Users/dworken) is outside expected bounds
+    // Any other resolution (e.g., /tmp/axiomate -> /Users/dworken) is outside expected bounds
     const resolvedStartsWithOriginal = normalizedResolved.startsWith(normalizedOriginal + '/');
     const resolvedStartsWithCanonical = canonicalOriginal !== normalizedOriginal &&
         normalizedResolved.startsWith(canonicalOriginal + '/');

@@ -520,7 +520,7 @@ async function wrapWithSandbox(command: string, binShell?: string, customConfig?
     const platform = getPlatform();
     // Get configs - use custom if provided, otherwise fall back to main config
     // If neither exists, defaults to empty arrays (most restrictive)
-    // Always include default system write paths (like /dev/null, /tmp/claude)
+    // Always include default system write paths (like /dev/null, /tmp/axiomate)
     //
     // Strip trailing /** and filter remaining globs on Linux (bwrap needs
     // real paths, not globs; macOS subpath matching is also recursive so
