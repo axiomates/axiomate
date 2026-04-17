@@ -7,7 +7,7 @@ import type { Message } from '../../types/message.js'
 import { logForDebugging } from '../../utils/debug.js'
 import { djb2Hash } from '../../utils/hash.js'
 import { logError } from '../../utils/log.js'
-import { getClaudeTempDir } from '../../utils/permissions/filesystem.js'
+import { getAxiomateTempDir } from '../../utils/permissions/filesystem.js'
 import { jsonStringify } from '../../utils/slowOperations.js'
 import type { QuerySource } from '../../constants/querySource.js'
 import {
@@ -20,7 +20,7 @@ function getCacheBreakDiffPath(): string {
   for (let i = 0; i < 4; i++) {
     suffix += chars[Math.floor(Math.random() * chars.length)]
   }
-  return join(getClaudeTempDir(), `cache-break-${suffix}.diff`)
+  return join(getAxiomateTempDir(), `cache-break-${suffix}.diff`)
 }
 
 type PreviousState = {
@@ -642,7 +642,7 @@ async function writeCacheBreakDiff(
 ): Promise<string | undefined> {
   try {
     const diffPath = getCacheBreakDiffPath()
-    await mkdir(getClaudeTempDir(), { recursive: true })
+    await mkdir(getAxiomateTempDir(), { recursive: true })
     const patch = createPatch(
       'prompt-state',
       prevContent,

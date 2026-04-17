@@ -95,7 +95,7 @@ export function normalizeCaseForComparison(path: string): string {
  * permission dialog and SDK suggestions, so iterating on one skill doesn't
  * require granting session access to all of .axiomate/ (settings.json, hooks/, etc.).
  */
-export function getClaudeSkillScope(
+export function getAxiomateSkillScope(
   filePath: string,
 ): { skillName: string; pattern: string } | null {
   const absolutePath = expandPath(filePath)
@@ -194,7 +194,7 @@ function getSettingsPaths(): string[] {
   ).filter(path => path !== undefined)
 }
 
-export function isClaudeSettingsPath(filePath: string): boolean {
+export function isAxiomateSettingsPath(filePath: string): boolean {
   // SECURITY: Normalize path structure first to prevent bypass via redundant ./
   // sequences like `./.axiomate/./settings.json` which would evade the endsWith() check
   const expandedPath = expandPath(filePath)
@@ -219,8 +219,8 @@ export function isClaudeSettingsPath(filePath: string): boolean {
 }
 
 // Always ask when Axiomate tries to edit its own config files
-function isClaudeConfigFilePath(filePath: string): boolean {
-  if (isClaudeSettingsPath(filePath)) {
+function isAxiomateConfigFilePath(filePath: string): boolean {
+  if (isAxiomateSettingsPath(filePath)) {
     return true
   }
 
@@ -289,7 +289,7 @@ function isProjectDirPath(absolutePath: string): boolean {
 
 /**
  * Checks if the scratchpad directory feature is enabled.
- * The scratchpad is a per-session directory for Claude to write temporary files.
+ * The scratchpad is a per-session directory for axiomate to write temporary files.
  */
 export function isScratchpadEnabled(): boolean {
   return feature('COORDINATOR_MODE') ? true : false
@@ -300,7 +300,7 @@ export function isScratchpadEnabled(): boolean {
  * On Unix: 'axiomate-{uid}' to prevent multi-user permission conflicts
  * On Windows: 'axiomate' (tmpdir() is already per-user)
  */
-export function getClaudeTempDirName(): string {
+export function getAxiomateTempDirName(): string {
   if (getPlatform() === 'windows') {
     return 'axiomate'
   }
@@ -311,10 +311,10 @@ export function getClaudeTempDirName(): string {
 }
 
 /**
- * Returns the Claude temp directory path with symlinks resolved.
+ * Returns the axiomate temp directory path with symlinks resolved.
  * Uses TMPDIR env var if set, otherwise:
  * - On Unix: /tmp/axiomate-{uid}/ (resolved to /private/tmp/axiomate-{uid}/ on macOS)
- * - On Windows: {tmpdir}/claude/ (e.g., C:\Users\{user}\AppData\Local\Temp\claude\)
+ * - On Windows: {tmpdir}/axiomate/ (e.g., C:\Users\{user}\AppData\Local\Temp\axiomate\)
  * This is a per-user temporary directory used by Axiomate for all temp files.
  *
  * NOTE: We resolve symlinks to ensure this path matches the resolved paths used
@@ -324,7 +324,7 @@ export function getClaudeTempDirName(): string {
 // Memoized: called per-tool from permission checks (yoloClassifier, sandbox-adapter)
 // and per-turn from BashTool prompt. Inputs (AXIOMATE_CODE_TMPDIR env + platform) are
 // fixed at startup, and the realpath of the system tmp dir does not change mid-session.
-export const getClaudeTempDir = memoize(function getClaudeTempDir(): string {
+export const getAxiomateTempDir = memoize(function getAxiomateTempDir(): string {
   const baseTmpDir =
     process.env.AXIOMATE_CODE_TMPDIR ||
     (getPlatform() === 'windows' ? tmpdir() : '/tmp')
@@ -339,7 +339,7 @@ export const getClaudeTempDir = memoize(function getClaudeTempDir(): string {
     // If resolution fails, use the original path
   }
 
-  return join(resolvedBaseTmpDir, getClaudeTempDirName()) + sep
+  return join(resolvedBaseTmpDir, getAxiomateTempDirName()) + sep
 })
 
 /**
@@ -361,7 +361,7 @@ export const getClaudeTempDir = memoize(function getClaudeTempDir(): string {
 export const getBundledSkillsRoot = memoize(
   function getBundledSkillsRoot(): string {
     const nonce = randomBytes(16).toString('hex')
-    return join(getClaudeTempDir(), 'bundled-skills', MACRO.VERSION, nonce)
+    return join(getAxiomateTempDir(), 'bundled-skills', MACRO.VERSION, nonce)
   },
 )
 
@@ -370,7 +370,7 @@ export const getBundledSkillsRoot = memoize(
  * Path format: /tmp/axiomate-{uid}/{sanitized-cwd}/
  */
 export function getProjectTempDir(): string {
-  return join(getClaudeTempDir(), sanitizePath(getOriginalCwd())) + sep
+  return join(getAxiomateTempDir(), sanitizePath(getOriginalCwd())) + sep
 }
 
 /**
@@ -603,7 +603,7 @@ function hasSuspiciousWindowsPathPattern(path: string): boolean {
  *
  * This function performs comprehensive safety checks including:
  * - Suspicious Windows path patterns (NTFS streams, 8.3 names, long path prefixes, etc.)
- * - Claude config files (.axiomate/settings.json, .axiomate/commands/, .axiomate/agents/)
+ * - Axiomate config files (.axiomate/settings.json, .axiomate/commands/, .axiomate/agents/)
  * - MCP CLI state files (managed internally by Axiomate)
  * - Dangerous files (.bashrc, .gitconfig, .git/, .vscode/, .idea/, etc.)
  *
@@ -628,18 +628,18 @@ export function checkPathSafetyForAutoEdit(
     if (hasSuspiciousWindowsPathPattern(pathToCheck)) {
       return {
         safe: false,
-        message: `Claude requested permissions to write to ${path}, which contains a suspicious Windows path pattern that requires manual approval.`,
+        message: `axiomate requested permissions to write to ${path}, which contains a suspicious Windows path pattern that requires manual approval.`,
         classifierApprovable: false,
       }
     }
   }
 
-  // Check for Claude config files on all paths
+  // Check for axiomate config files on all paths
   for (const pathToCheck of pathsToCheck) {
-    if (isClaudeConfigFilePath(pathToCheck)) {
+    if (isAxiomateConfigFilePath(pathToCheck)) {
       return {
         safe: false,
-        message: `Claude requested permissions to write to ${path}, but you haven't granted it yet.`,
+        message: `axiomate requested permissions to write to ${path}, but you haven't granted it yet.`,
         classifierApprovable: true,
       }
     }
@@ -650,7 +650,7 @@ export function checkPathSafetyForAutoEdit(
     if (isDangerousFilePathToAutoEdit(pathToCheck)) {
       return {
         safe: false,
-        message: `Claude requested permissions to edit ${path} which is a sensitive file.`,
+        message: `axiomate requested permissions to edit ${path} which is a sensitive file.`,
         classifierApprovable: true,
       }
     }
@@ -1031,7 +1031,7 @@ export function checkReadPermissionForTool(
   if (typeof tool.getPath !== 'function') {
     return {
       behavior: 'ask',
-      message: `Claude requested permissions to use ${tool.name}, but you haven't granted it yet.`,
+      message: `axiomate requested permissions to use ${tool.name}, but you haven't granted it yet.`,
     }
   }
   const path = tool.getPath(input)
@@ -1050,7 +1050,7 @@ export function checkReadPermissionForTool(
     if (pathToCheck.startsWith('\\\\') || pathToCheck.startsWith('//')) {
       return {
         behavior: 'ask',
-        message: `Claude requested permissions to read from ${path}, which appears to be a UNC path that could access network resources.`,
+        message: `axiomate requested permissions to read from ${path}, which appears to be a UNC path that could access network resources.`,
         decisionReason: {
           type: 'other',
           reason: 'UNC path detected (defense-in-depth check)',
@@ -1064,7 +1064,7 @@ export function checkReadPermissionForTool(
     if (hasSuspiciousWindowsPathPattern(pathToCheck)) {
       return {
         behavior: 'ask',
-        message: `Claude requested permissions to read from ${path}, which contains a suspicious Windows path pattern that requires manual approval.`,
+        message: `axiomate requested permissions to read from ${path}, which contains a suspicious Windows path pattern that requires manual approval.`,
         decisionReason: {
           type: 'other',
           reason:
@@ -1108,7 +1108,7 @@ export function checkReadPermissionForTool(
     if (askRule) {
       return {
         behavior: 'ask',
-        message: `Claude requested permissions to read from ${path}, but you haven't granted it yet.`,
+        message: `axiomate requested permissions to read from ${path}, but you haven't granted it yet.`,
         decisionReason: {
           type: 'rule',
           rule: askRule,
@@ -1175,7 +1175,7 @@ export function checkReadPermissionForTool(
   // At this point, isInWorkingDir is false (from step #6), so path is outside working directories
   return {
     behavior: 'ask',
-    message: `Claude requested permissions to read from ${path}, but you haven't granted it yet.`,
+    message: `axiomate requested permissions to read from ${path}, but you haven't granted it yet.`,
     suggestions: generateSuggestions(
       path,
       'read',
@@ -1207,7 +1207,7 @@ export function checkWritePermissionForTool<Input extends AnyObject>(
   if (typeof tool.getPath !== 'function') {
     return {
       behavior: 'ask',
-      message: `Claude requested permissions to use ${tool.name}, but you haven't granted it yet.`,
+      message: `axiomate requested permissions to use ${tool.name}, but you haven't granted it yet.`,
     }
   }
   const path = tool.getPath(input)
@@ -1254,8 +1254,8 @@ export function checkWritePermissionForTool<Input extends AnyObject>(
   // also has a broader Edit(.axiomate) rule in userSettings (e.g. from sandbox
   // write-allow conversion), that rule would be found first and its source check
   // below would fail. Scope the search to session-only rules so the dialog's
-  // "allow Claude to edit its own settings for this session" option actually works.
-  const claudeFolderAllowRule = matchingRuleForInput(
+  // "allow axiomate to edit its own settings for this session" option actually works.
+  const axiomateFolderAllowRule = matchingRuleForInput(
     path,
     {
       ...toolPermissionContext,
@@ -1266,7 +1266,7 @@ export function checkWritePermissionForTool<Input extends AnyObject>(
     'edit',
     'allow',
   )
-  if (claudeFolderAllowRule) {
+  if (axiomateFolderAllowRule) {
     // Check if this rule is scoped under .axiomate/ (project or global).
     // Accepts both the broad patterns ('/.axiomate/**', '~/.axiomate/**') and
     // narrowed ones like '/.axiomate/skills/my-skill/**' so users can grant
@@ -1274,7 +1274,7 @@ export function checkWritePermissionForTool<Input extends AnyObject>(
     // or hooks/. The rule already matched the path via matchingRuleForInput;
     // this is an additional scope check. Reject '..' to prevent a rule like
     // '/.axiomate/../**' from leaking this bypass outside .axiomate/.
-    const ruleContent = claudeFolderAllowRule.ruleValue.ruleContent
+    const ruleContent = axiomateFolderAllowRule.ruleValue.ruleContent
     if (
       ruleContent &&
       (ruleContent.startsWith(AXIOMATE_FOLDER_PERMISSION_PATTERN.slice(0, -2)) ||
@@ -1289,13 +1289,13 @@ export function checkWritePermissionForTool<Input extends AnyObject>(
         updatedInput: input,
         decisionReason: {
           type: 'rule',
-          rule: claudeFolderAllowRule,
+          rule: axiomateFolderAllowRule,
         },
       }
     }
   }
 
-  // 1.7. Check comprehensive safety validations (Windows patterns, Claude config, dangerous files)
+  // 1.7. Check comprehensive safety validations (Windows patterns, axiomate config, dangerous files)
   // This MUST come before checking allow rules to prevent users from accidentally granting
   // permission to edit protected files
   const safetyCheck = checkPathSafetyForAutoEdit(path, pathsToCheck)
@@ -1305,7 +1305,7 @@ export function checkWritePermissionForTool<Input extends AnyObject>(
     // Everything else (.axiomate/settings.json, .git/, .vscode/, .idea/) falls
     // back to generateSuggestions — its setMode suggestion doesn't bypass
     // this check, but preserving it avoids a surprising empty array.
-    const skillScope = getClaudeSkillScope(path)
+    const skillScope = getAxiomateSkillScope(path)
     const safetySuggestions: PermissionUpdate[] = skillScope
       ? [
           {
@@ -1344,7 +1344,7 @@ export function checkWritePermissionForTool<Input extends AnyObject>(
     if (askRule) {
       return {
         behavior: 'ask',
-        message: `Claude requested permissions to write to ${path}, but you haven't granted it yet.`,
+        message: `axiomate requested permissions to write to ${path}, but you haven't granted it yet.`,
         decisionReason: {
           type: 'rule',
           rule: askRule,
@@ -1391,7 +1391,7 @@ export function checkWritePermissionForTool<Input extends AnyObject>(
   // 5. Default to asking for permission
   return {
     behavior: 'ask',
-    message: `Claude requested permissions to write to ${path}, but you haven't granted it yet.`,
+    message: `axiomate requested permissions to write to ${path}, but you haven't granted it yet.`,
     suggestions: generateSuggestions(
       path,
       'write',
@@ -1545,7 +1545,7 @@ export function checkEditableInternalPath(
   }
 
   // .axiomate/launch.json — desktop preview config (dev server command + port).
-  // The desktop's preview_start MCP tool instructs Claude to create/update
+  // The desktop's preview_start MCP tool instructs the agent to create/update
   // this file as part of the preview workflow. Without this carve-out the
   // .axiomate/ DANGEROUS_DIRECTORIES check prompts for it, which in SDK mode
   // cascades: user clicks "Always allow" → setMode:acceptEdits suggestion

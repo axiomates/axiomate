@@ -121,7 +121,7 @@ function checkDangerousRemovalPaths(
  * Here `-/../.axiomate/settings.local.json` starts with `-` so the naive filter
  * drops it, validation sees zero paths, returns passthrough, and the file is
  * deleted without a prompt. With `--` handling, the path IS extracted and
- * validated (blocked by isClaudeConfigFilePath / pathInAllowedWorkingPath).
+ * validated (blocked by isAxiomateConfigFilePath / pathInAllowedWorkingPath).
  */
 function filterOutFlags(args: string[]): string[] {
   const result: string[] = []

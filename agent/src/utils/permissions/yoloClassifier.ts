@@ -38,7 +38,7 @@ import {
   extractToolUseBlock,
   parseClassifierResponse,
 } from './classifierShared.js'
-import { getClaudeTempDir } from './filesystem.js'
+import { getAxiomateTempDir } from './filesystem.js'
 
 // Anthropic-specific: uses Anthropic SDK API directly (countTokens / messages.create)
 
@@ -150,7 +150,7 @@ async function maybeDumpAutoMode(
  */
 export function getAutoModeClassifierErrorDumpPath(): string {
   return join(
-    getClaudeTempDir(),
+    getAxiomateTempDir(),
     'auto-mode-classifier-errors',
     `${getSessionId()}.txt`,
   )

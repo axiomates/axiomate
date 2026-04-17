@@ -1,5 +1,5 @@
 import type { ValidationResult } from '../../Tool.js'
-import { isClaudeSettingsPath } from '../permissions/filesystem.js'
+import { isAxiomateSettingsPath } from '../permissions/filesystem.js'
 import { validateSettingsFileContent } from './validation.js'
 
 /**
@@ -16,8 +16,8 @@ export function validateInputForSettingsFileEdit(
   originalContent: string,
   getUpdatedContent: () => string,
 ): Extract<ValidationResult, { result: false }> | null {
-  // Only validate Claude settings files
-  if (!isClaudeSettingsPath(filePath)) {
+  // Only validate axiomate settings files
+  if (!isAxiomateSettingsPath(filePath)) {
     return null
   }
 
