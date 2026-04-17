@@ -1,17 +1,15 @@
 /**
  * Post-install/post-enable config prompt.
  *
- * Given a LoadedPlugin, checks both the top-level manifest.userConfig and the
- * channel-specific userConfig. Walks PluginOptionsDialog through each
- * unconfigured item, saving via the appropriate storage function. Calls
- * onDone('skipped') immediately if nothing needs filling.
+ * Given a LoadedPlugin, checks the top-level manifest.userConfig. Walks
+ * PluginOptionsDialog through each unconfigured item, saving via the
+ * appropriate storage function. Calls onDone('skipped') immediately if
+ * nothing needs filling.
  */
 
 import * as React from 'react';
 import type { LoadedPlugin } from '../../types/plugin.js';
 import { errorMessage } from '../../utils/errors.js';
-import { loadMcpServerUserConfig, saveMcpServerUserConfig } from '../../utils/plugins/mcpbHandler.js';
-import { getUnconfiguredChannels, type UnconfiguredChannel } from '../../utils/plugins/mcpPluginIntegration.js';
 import { loadAllPlugins } from '../../utils/plugins/pluginLoader.js';
 import { getUnconfiguredOptions, loadPluginOptions, type PluginOptionSchema, type PluginOptionValues, savePluginOptions } from '../../utils/plugins/pluginOptionsStorage.js';
 import { PluginOptionsDialog } from './PluginOptionsDialog.js';
@@ -33,8 +31,7 @@ export async function findPluginOptionsTarget(pluginId: string): Promise<LoadedP
 }
 
 /**
- * A single dialog step in the walk. Top-level options and channels both
- * collapse to this shape — the only difference is which save function runs.
+ * A single dialog step in the walk.
  */
 type ConfigStep = {
   key: string;
@@ -79,18 +76,6 @@ export function PluginOptionsFlow({
       });
     }
 
-    // Per-channel userConfig (assistant-mode channels)
-    const channels: UnconfiguredChannel[] = getUnconfiguredChannels(plugin);
-    for (const channel of channels) {
-      result.push({
-        key: `channel:${channel.server}`,
-        title: `Configure ${channel.displayName}`,
-        subtitle: `Plugin: ${plugin.name}`,
-        schema: channel.configSchema,
-        load: () => loadMcpServerUserConfig(pluginId, channel.server) ?? undefined,
-        save: values_0 => saveMcpServerUserConfig(pluginId, channel.server, values_0, channel.configSchema)
-      });
-    }
     return result;
   });
   const [index, setIndex] = React.useState(0);

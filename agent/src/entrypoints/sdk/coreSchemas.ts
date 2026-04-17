@@ -201,7 +201,7 @@ export const McpServerStatusSchema = lazySchema(() =>
         })
         .optional()
         .describe(
-          "@internal Server capabilities (available when connected). experimental['claude/channel'] is only present if the server's plugin is on the approved channels allowlist — use its presence to decide whether to show an Enable-channel prompt.",
+          '@internal Server capabilities (available when connected).',
         ),
     })
     .describe('Status information for an MCP server connection.'),

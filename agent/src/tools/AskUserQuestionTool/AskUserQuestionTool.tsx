@@ -1,9 +1,6 @@
 import { feature } from 'bun:bundle'
 import * as React from 'react'
-import {
-  getAllowedChannels,
-  getQuestionPreviewFormat,
-} from '../../bootstrap/state.js'
+import { getQuestionPreviewFormat } from '../../bootstrap/state.js'
 import { MessageResponse } from '../../components/MessageResponse.js'
 import { BLACK_CIRCLE } from '../../constants/figures.js'
 import { getModeColor } from '../../utils/permissions/PermissionMode.js'
@@ -223,17 +220,6 @@ export const AskUserQuestionTool: Tool<InputSchema, Output> = buildTool({
     return ''
   },
   isEnabled() {
-    // When --channels is active the user is likely on Telegram/Discord, not
-    // watching the TUI. The multiple-choice dialog would hang with nobody at
-    // the keyboard. Channel permission relay already skips
-    // requiresUserInteraction() tools (interactiveHandler.ts) so there's
-    // no alternate approval path.
-    if (
-      (false) &&
-      getAllowedChannels().length > 0
-    ) {
-      return false
-    }
     return true
   },
   isConcurrencySafe() {

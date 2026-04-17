@@ -54,8 +54,6 @@ import { getEffortSuffix } from '../../utils/effort.js'
 import { useMainLoopModel } from '../../hooks/useMainLoopModel.js'
 import { renderModelSetting } from '../../utils/model/model.js'
 
-const ChannelsNoticeModule = null
-
 const LEFT_PANEL_MAX_WIDTH = 50
 const LOGO_SHIMMER_PADDING = 3
 
@@ -157,7 +155,6 @@ export function LogoV2(): React.ReactNode {
       <>
         <CondensedLogo />
         <VoiceModeNotice />
-        {ChannelsNoticeModule && <ChannelsNoticeModule.ChannelsNotice />}
         {isDebugMode() && (
           <Box paddingLeft={2} flexDirection="column">
             <Text color="warning">Debug mode enabled</Text>
@@ -251,7 +248,6 @@ export function LogoV2(): React.ReactNode {
           </Box>
         </OffscreenFreeze>
         <VoiceModeNotice />
-        {ChannelsNoticeModule && <ChannelsNoticeModule.ChannelsNotice />}
         {showSandboxStatus && (
           <Box marginTop={1} flexDirection="column">
             <Text color="warning">
@@ -357,7 +353,6 @@ export function LogoV2(): React.ReactNode {
         </Box>
       </OffscreenFreeze>
       <VoiceModeNotice />
-      {ChannelsNoticeModule && <ChannelsNoticeModule.ChannelsNotice />}
       {isDebugMode() && (
         <Box paddingLeft={2} flexDirection="column">
           <Text color="warning">Debug mode enabled</Text>

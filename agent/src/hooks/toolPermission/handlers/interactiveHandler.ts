@@ -279,23 +279,6 @@ function handleInteractivePermission(
     signal.addEventListener('abort', unsubscribe, { once: true })
   }
 
-  // Channel permission relay — races alongside the bridge block above. Send a
-  // permission prompt to every active channel (Telegram, iMessage, etc.) via
-  // its MCP send_message tool, then race the reply against local/bridge/hook/
-  // classifier. The inbound "yes abc123" is intercepted in the notification
-  // handler (useManageMCPConnections.ts) BEFORE enqueue, so it never reaches
-  // Claude as a conversation turn.
-  //
-  // Unlike the bridge block, this still guards on `requiresUserInteraction` —
-  // channel replies are pure yes/no with no `updatedInput` path. In practice
-  // the guard is dead code today: all three `requiresUserInteraction` tools
-  // (ExitPlanMode, AskUserQuestion, ReviewArtifact) return `isEnabled()===false`
-  // when channels are configured, so they never reach this handler.
-  //
-  // Fire-and-forget send: if callTool fails (channel down, tool missing),
-  // the subscription never fires and another racer wins. Graceful degradation
-  // — the local dialog is always there as the floor.
-
   // Skip hooks if they were already awaited in the coordinator branch above
   if (!awaitAutomatedChecksBeforeDialog) {
     // Execute PermissionRequest hooks asynchronously

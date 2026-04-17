@@ -9,7 +9,6 @@ type BridgePermissionCallbacks = {
   [key: string]: unknown
 }
 import type { Command } from '../commands.js'
-import type { ChannelPermissionCallbacks } from '../services/mcp/channelPermissions.js'
 import type { ElicitationRequestEvent } from '../services/mcp/elicitationHandler.js'
 import type {
   MCPServerConnection,
@@ -423,10 +422,6 @@ export type AppState = DeepImmutable<{
   effortValue?: EffortValue
   // Always-on bridge: permission callbacks for bidirectional permission checks
   replBridgePermissionCallbacks?: BridgePermissionCallbacks
-  // Channel permission callbacks — permission prompts over Telegram/iMessage/etc.
-  // Races against local UI + bridge + hooks + classifier via claim() in
-  // interactiveHandler.ts. Constructed once in useManageMCPConnections.
-  channelPermissionCallbacks?: ChannelPermissionCallbacks
 }
 
 export type AppStateStore = Store<AppState>

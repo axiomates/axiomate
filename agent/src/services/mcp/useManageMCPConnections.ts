@@ -39,7 +39,6 @@ import {
 import type { AppState } from '../../state/AppState.js'
 import type { PluginError } from '../../types/plugin.js'
 import { logForDebugging } from '../../utils/debug.js'
-import { getAllowedChannels } from '../../bootstrap/state.js'
 import { useNotifications } from '../../context/notifications.js'
 import {
   useAppState,
@@ -50,19 +49,6 @@ import { errorMessage } from '../../utils/errors.js'
 /* eslint-enable @typescript-eslint/no-require-imports */
 import { logMCPDebug, logMCPError } from '../../utils/log.js'
 import { enqueue } from '../../utils/messageQueueManager.js'
-import {
-  CHANNEL_PERMISSION_METHOD,
-  ChannelMessageNotificationSchema,
-  ChannelPermissionNotificationSchema,
-  findChannelEntry,
-  gateChannelServer,
-  wrapChannelMessage,
-} from './channelNotification.js'
-import {
-  type ChannelPermissionCallbacks,
-  createChannelPermissionCallbacks,
-  isChannelPermissionRelayEnabled,
-} from './channelPermissions.js'
 import { registerElicitationHandler } from './elicitationHandler.js'
 import { getMcpPrefix } from './mcpStringUtils.js'
 import { commandBelongsToServer, excludeStalePluginClients } from './utils.js'
@@ -139,28 +125,6 @@ export function useManageMCPConnections(
   // Track active reconnection attempts to allow cancellation
   const reconnectTimersRef = useRef<Map<string, NodeJS.Timeout>>(new Map())
 
-  // Dedup the --channels blocked warning per skip kind so that a user who
-  // sees "run /login" (auth skip), logs in, then hits the policy gate
-  // gets a second toast.
-  const channelWarnedKindsRef = useRef<
-    Set<'disabled' | 'auth' | 'policy' | 'marketplace' | 'allowlist'>
-  >(new Set())
-  // Channel permission callbacks — constructed once, stable ref. Stored in
-  // AppState so interactiveHandler can subscribe. The pending Map lives inside
-  // the closure (not module-level, not AppState — functions-in-state is brittle).
-  const channelPermCallbacksRef = useRef<ChannelPermissionCallbacks | null>(
-    null,
-  )
-  if (
-    (false) &&
-    channelPermCallbacksRef.current === null
-  ) {
-    channelPermCallbacksRef.current = createChannelPermissionCallbacks()
-  }
-  // Store callbacks in AppState so interactiveHandler.ts can reach them via
-  // ctx.toolUseContext.getAppState(). One-time set — the ref is stable.
-  useEffect(() => {
-  }, [setAppState])
   const { addNotification } = useNotifications()
 
   // Batched MCP state updates: queue individual server updates and flush them

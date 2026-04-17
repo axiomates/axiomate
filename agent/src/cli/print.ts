@@ -66,16 +66,6 @@ import type {
   McpSdkServerConfig,
   ScopedMcpServerConfig,
 } from '../services/mcp/types.js'
-import {
-  ChannelMessageNotificationSchema,
-  gateChannelServer,
-  wrapChannelMessage,
-  findChannelEntry,
-} from '../services/mcp/channelNotification.js'
-import {
-  isChannelAllowlisted,
-  isChannelsEnabled,
-} from '../services/mcp/channelAllowlist.js'
 import { parsePluginIdentifier } from '../utils/plugins/pluginIdentifier.js'
 import { validateUuid } from '../utils/uuid.js'
 import { fromArray } from '../utils/generators.js'
@@ -250,9 +240,6 @@ import {
   getFlagSettingsInline,
   setFlagSettingsInline,
   getMainThreadAgentType,
-  getAllowedChannels,
-  setAllowedChannels,
-  type ChannelEntry,
 } from '../bootstrap/state.js'
 import { runWithWorkload, WORKLOAD_CRON } from '../utils/workloadContext.js'
 import type { UUID } from 'crypto'
@@ -1528,29 +1515,6 @@ function runHeadlessStreaming(
               },
             }))
           : undefined
-      // Capabilities passthrough with allowlist pre-filter. The IDE reads
-      // experimental['claude/channel'] to decide whether to show the
-      // Enable-channel prompt — only echo it if channel_enable would
-      // actually pass the allowlist. Not a security boundary (the
-      // handler re-runs the full gate); just avoids dead buttons.
-      let capabilities: { experimental?: Record<string, unknown> } | undefined
-      if (
-        (false) &&
-        connection.type === 'connected' &&
-        connection.capabilities.experimental
-      ) {
-        const exp = { ...connection.capabilities.experimental }
-        if (
-          exp['claude/channel'] &&
-          (!isChannelsEnabled() ||
-            !isChannelAllowlisted(connection.config.pluginSource))
-        ) {
-          delete exp['claude/channel']
-        }
-        if (Object.keys(exp).length > 0) {
-          capabilities = { experimental: exp }
-        }
-      }
       return {
         name: connection.name,
         status: connection.type,
@@ -1560,7 +1524,6 @@ function runHeadlessStreaming(
         config,
         scope: connection.config.scope,
         tools: serverTools,
-        capabilities,
       }
     })
   }
@@ -1817,14 +1780,6 @@ function runHeadlessStreaming(
             ...dynamicMcpState.clients,
           ]
           registerElicitationHandlers(allMcpClients)
-          // Channel handlers for servers allowlisted via --channels at
-          // construction time (or enableChannel() mid-session). Runs every
-          // turn like registerElicitationHandlers — idempotent per-client
-          // (setNotificationHandler replaces, not stacks) and no-ops for
-          // non-allowlisted servers (one feature-flag check).
-          for (const client of allMcpClients) {
-            reregisterChannelHandlerAfterReconnect(client)
-          }
 
           const allTools = buildAllTools(appState)
 
@@ -2946,7 +2901,6 @@ function runHeadlessStreaming(
             }
             if (result.client.type === 'connected') {
               registerElicitationHandlers([result.client])
-              reregisterChannelHandlerAfterReconnect(result.client)
               sendControlResponseSuccess(message)
             } else {
               const errorMessage =
@@ -3037,7 +2991,6 @@ function runHeadlessStreaming(
             }))
             if (result.client.type === 'connected') {
               registerElicitationHandlers([result.client])
-              reregisterChannelHandlerAfterReconnect(result.client)
               sendControlResponseSuccess(message)
             } else {
               const errorMessage =
@@ -3047,19 +3000,6 @@ function runHeadlessStreaming(
               sendControlResponseError(message, errorMessage)
             }
           }
-        } else if (message.request.subtype === 'channel_enable') {
-          const currentAppState = getAppState()
-          handleChannelEnable(
-            message.request_id,
-            message.request.serverName,
-            // Pool spread matches mcp_status — all three client sources.
-            [
-              ...currentAppState.mcp.clients,
-              ...sdkClients,
-              ...dynamicMcpState.clients,
-            ],
-            output,
-          )
         } else if (message.request.subtype === 'mcp_authenticate') {
           const { serverName } = message.request
           const currentAppState = getAppState()
@@ -4109,61 +4049,6 @@ function handleSetPermissionMode(
     ),
     mode: request.mode,
   }
-}
-
-/**
- * IDE-triggered channel enable. Derives the ChannelEntry from the connection's
- * pluginSource (IDE can't spoof kind/marketplace — we only take the server
- * name), appends it to session allowedChannels, and runs the full gate. On
- * gate failure, rolls back the append. On success, registers a notification
- * handler that enqueues channel messages at priority:'next' — drainCommandQueue
- * picks them up between turns.
- *
- * Intentionally does NOT register the claude/channel/permission handler that
- * useManageMCPConnections sets up for interactive mode. That handler resolves
- * a pending dialog inside handleInteractivePermission — but print.ts never
- * calls handleInteractivePermission. When SDK permission lands on 'ask', it
- * goes to the consumer's canUseTool callback over stdio; there is no CLI-side
- * dialog for a remote "yes tbxkq" to resolve. If an IDE wants channel-relayed
- * tool approval, that's IDE-side plumbing against its own pending-map. (Also
- * gated separately by ax_harbor_permissions — not yet shipping on
- * interactive either.)
- */
-function handleChannelEnable(
-  requestId: string,
-  serverName: string,
-  connectionPool: readonly MCPServerConnection[],
-  output: Stream<StdoutMessage>,
-): void {
-  const respondError = (error: string) =>
-    output.enqueue({
-      type: 'control_response',
-      response: { subtype: 'error', request_id: requestId, error },
-    })
-
-  return respondError('channels feature not available in this build')
-}
-
-/**
- * Re-register the channel notification handler after mcp_reconnect /
- * mcp_toggle creates a new client. handleChannelEnable bound the handler to
- * the OLD client object; allowedChannels survives the reconnect but the
- * handler binding does not. Without this, channel messages silently drop
- * after a reconnect while the IDE still believes the channel is live.
- *
- * Mirrors the interactive CLI's onConnectionAttempt in
- * useManageMCPConnections, which re-gates on every new connection. Paired
- * with registerElicitationHandlers at the same call sites.
- *
- * No-op if the server was never channel-enabled: gateChannelServer calls
- * findChannelEntry internally and returns skip/session for an unlisted
- * server, so reconnecting a non-channel MCP server costs one feature-flag
- * check.
- */
-function reregisterChannelHandlerAfterReconnect(
-  _connection: MCPServerConnection,
-): void {
-  // channels feature not available in this build
 }
 
 /**

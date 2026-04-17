@@ -48,10 +48,6 @@ export const REMOTE_REVIEW_PROGRESS_TAG = 'remote-review-progress'
 // XML tag name for teammate messages (swarm inter-agent communication)
 export const TEAMMATE_MESSAGE_TAG = 'teammate-message'
 
-// XML tag name for external channel messages
-export const CHANNEL_MESSAGE_TAG = 'channel-message'
-export const CHANNEL_TAG = 'channel'
-
 // XML tag name for cross-session UDS messages (another Axiomate session's inbox)
 export const CROSS_SESSION_MESSAGE_TAG = 'cross-session-message'
 

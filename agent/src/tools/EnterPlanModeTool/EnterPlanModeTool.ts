@@ -1,9 +1,6 @@
 import { feature } from 'bun:bundle'
 import { z } from 'zod/v4'
-import {
-  getAllowedChannels,
-  handlePlanModeTransition,
-} from '../../bootstrap/state.js'
+import { handlePlanModeTransition } from '../../bootstrap/state.js'
 import type { Tool } from '../../Tool.js'
 import { buildTool, type ToolDef } from '../../Tool.js'
 import { lazySchema } from '../../utils/lazySchema.js'
@@ -54,15 +51,6 @@ export const EnterPlanModeTool: Tool<InputSchema, Output> = buildTool({
   },
   shouldDefer: true,
   isEnabled() {
-    // When --channels is active, ExitPlanMode is disabled (its approval
-    // dialog needs the terminal). Disable entry too so plan mode isn't a
-    // trap the model can enter but never leave.
-    if (
-      (false) &&
-      getAllowedChannels().length > 0
-    ) {
-      return false
-    }
     return true
   },
   isConcurrencySafe() {

@@ -29,14 +29,6 @@ import type { SessionId } from '../types/ids.js'
 
 // DO NOT ADD MORE STATE HERE - BE JUDICIOUS WITH GLOBAL STATE
 
-// dev: true on entries that came via --dangerously-load-development-channels.
-// The allowlist gate checks this per-entry (not the session-wide
-// hasDevChannels bit) so passing both flags doesn't let the dev dialog's
-// acceptance leak allowlist-bypass to the --channels entries.
-export type ChannelEntry =
-  | { kind: 'plugin'; name: string; marketplace: string; dev?: boolean }
-  | { kind: 'server'; name: string; dev?: boolean }
-
 export type AttributedCounter = {
   add(value: number, additionalAttributes?: Attributes): void
 }
@@ -199,16 +191,6 @@ type State = {
   lastEmittedDate: string | null
   // Additional directories from --add-dir flag (for AXIOMATE.md loading)
   additionalDirectoriesForAxiomateMd: string[]
-  // Channel server allowlist from --channels flag (servers whose channel
-  // notifications should register this session). Parsed once in main.tsx —
-  // the tag decides trust model: 'plugin' → marketplace verification +
-  // allowlist, 'server' → allowlist always fails (schema is plugin-only).
-  // Either kind needs entry.dev to bypass allowlist.
-  allowedChannels: ChannelEntry[]
-  // True if any entry in allowedChannels came from
-  // --dangerously-load-development-channels (so ChannelsNotice can name the
-  // right flag in policy-blocked messages)
-  hasDevChannels: boolean
   // Dir containing the session's `.jsonl`; null = derive from originalCwd.
   sessionProjectDir: string | null
   // Cached prompt cache 1h TTL allowlist from config system (session-stable)
@@ -383,9 +365,6 @@ function getInitialState(): State {
     lastEmittedDate: null,
     // Additional directories from --add-dir flag (for AXIOMATE.md loading)
     additionalDirectoriesForAxiomateMd: [],
-    // Channel server allowlist from --channels flag
-    allowedChannels: [],
-    hasDevChannels: false,
     // Session project dir (null = derive from originalCwd)
     sessionProjectDir: null,
     // Prompt cache 1h allowlist (null = not yet fetched from config system)
@@ -1632,22 +1611,6 @@ export function setAdditionalDirectoriesForAxiomateMd(
   directories: string[],
 ): void {
   STATE.additionalDirectoriesForAxiomateMd = directories
-}
-
-export function getAllowedChannels(): ChannelEntry[] {
-  return STATE.allowedChannels
-}
-
-export function setAllowedChannels(entries: ChannelEntry[]): void {
-  STATE.allowedChannels = entries
-}
-
-export function getHasDevChannels(): boolean {
-  return STATE.hasDevChannels
-}
-
-export function setHasDevChannels(value: boolean): void {
-  STATE.hasDevChannels = value
 }
 
 export function getPromptCache1hAllowlist(): string[] | null {

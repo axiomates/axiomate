@@ -71,7 +71,7 @@ const coordinatorModeModule = feature('COORDINATOR_MODE') ? require('./coordinat
 import { relative, resolve } from 'path';
 import { isAnalyticsDisabled } from './services/analytics/config.js';
 import { initializeAnalyticsGates } from './services/analytics/sink.js';
-import { type ChannelEntry, getInitialMainLoopModel, getIsNonInteractiveSession, getOriginalCwd, getSdkBetas, getUserMsgOptIn, setAdditionalDirectoriesForAxiomateMd, setAllowedSettingSources, setClientType, setCwdState, setFlagSettingsPath, setInitialMainLoopModel, setInlinePlugins, setIsInteractive, setIsRemoteMode, setMainLoopModelOverride, setMainThreadAgentType, setOriginalCwd, setQuestionPreviewFormat, setSdkBetas, setSessionBypassPermissionsMode, setSessionPersistenceDisabled, setSessionSource, setTeleportedSessionInfo, setUserMsgOptIn, switchSession } from './bootstrap/state.js';
+import { getInitialMainLoopModel, getIsNonInteractiveSession, getOriginalCwd, getSdkBetas, getUserMsgOptIn, setAdditionalDirectoriesForAxiomateMd, setAllowedSettingSources, setClientType, setCwdState, setFlagSettingsPath, setInitialMainLoopModel, setInlinePlugins, setIsInteractive, setIsRemoteMode, setMainLoopModelOverride, setMainThreadAgentType, setOriginalCwd, setQuestionPreviewFormat, setSdkBetas, setSessionBypassPermissionsMode, setSessionPersistenceDisabled, setSessionSource, setTeleportedSessionInfo, setUserMsgOptIn, switchSession } from './bootstrap/state.js';
 import { filterCommandsForRemoteMode, getCommands } from './commands.js';
 import type { StatsStore } from './context/stats.js';
 import { launchInvalidSettingsDialog, launchResumeChooser, launchTeleportRepoMismatchDialog, launchTeleportResumeWrapper } from './dialogLaunchers.js';
@@ -1136,7 +1136,6 @@ async function run(): Promise<CommanderCommand> {
     // Store additional directories for AXIOMATE.md loading (controlled by env var)
     setAdditionalDirectoriesForAxiomateMd(addDir);
 
-    // Channel server allowlist from --channels flag — servers whose
     // SDK opt-in for SendUserMessage via --tools. All sessions require
     // explicit opt-in; listing it in --tools signals intent. Runs BEFORE
     // initializeToolPermissionContext so getToolsForDefaultPreset() sees

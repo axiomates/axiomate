@@ -266,75 +266,6 @@ async function loadMcpServersFromFile(
 }
 
 /**
- * A channel entry from a plugin's manifest whose userConfig has not yet been
- * filled in (required fields are missing from saved settings).
- */
-export type UnconfiguredChannel = {
-  server: string
-  displayName: string
-  configSchema: UserConfigSchema
-}
-
-/**
- * Find channel entries in a plugin's manifest whose required userConfig
- * fields are not yet saved. Pure function — no React, no prompting.
- * ManagePlugins.tsx calls this after a plugin is enabled to decide whether
- * to show the config dialog.
- *
- * Entries without a `userConfig` schema are skipped (nothing to prompt for).
- * Entries whose saved config already satisfies `validateUserConfig` are
- * skipped. The `configSchema` in the return value is structurally a
- * `UserConfigSchema` because the Zod schema in schemas.ts matches
- * `McpbUserConfigurationOption` field-for-field.
- */
-export function getUnconfiguredChannels(
-  plugin: LoadedPlugin,
-): UnconfiguredChannel[] {
-  const channels = plugin.manifest.channels
-  if (!channels || channels.length === 0) {
-    return []
-  }
-
-  // plugin.repository is already in "plugin@marketplace" format — same key
-  // loadMcpServerUserConfig / saveMcpServerUserConfig use.
-  const pluginId = plugin.repository
-
-  const unconfigured: UnconfiguredChannel[] = []
-  for (const channel of channels) {
-    if (!channel.userConfig || Object.keys(channel.userConfig).length === 0) {
-      continue
-    }
-    const saved = loadMcpServerUserConfig(pluginId, channel.server) ?? {}
-    const validation = validateUserConfig(saved, channel.userConfig)
-    if (!validation.valid) {
-      unconfigured.push({
-        server: channel.server,
-        displayName: channel.displayName ?? channel.server,
-        configSchema: channel.userConfig,
-      })
-    }
-  }
-  return unconfigured
-}
-
-/**
- * Look up saved user config for a server, if this server is declared as a
- * channel in the plugin's manifest. Returns undefined for non-channel servers
- * or channels without a userConfig schema — resolvePluginMcpEnvironment will
- * then skip ${user_config.X} substitution for that server.
- */
-function loadChannelUserConfig(
-  plugin: LoadedPlugin,
-  serverName: string,
-): UserConfigValues | undefined {
-  const channel = plugin.manifest.channels?.find(c => c.server === serverName)
-  if (!channel?.userConfig) {
-    return undefined
-  }
-  return loadMcpServerUserConfig(plugin.repository, serverName) ?? undefined
-}
-
-/**
  * Add plugin scope to MCP server configs
  * This adds a prefix to server names to avoid conflicts between plugins
  */
@@ -429,17 +360,15 @@ export async function extractMcpServersFromPlugins(
 }
 
 /**
- * Build the userConfig map for a single MCP server by merging the plugin's
- * top-level manifest.userConfig values with the channel-specific per-server
- * config (assistant-mode channels). Channel-specific wins on collision so
- * plugins that declare the same key at both levels get the more specific value.
+ * Build the userConfig map for a single MCP server from the plugin's
+ * top-level manifest.userConfig values.
  *
- * Returns undefined when neither source has anything — resolvePluginMcpEnvironment
+ * Returns undefined when nothing is configured — resolvePluginMcpEnvironment
  * skips substituteUserConfigVariables in that case.
  */
 function buildMcpUserConfig(
   plugin: LoadedPlugin,
-  serverName: string,
+  _serverName: string,
 ): UserConfigValues | undefined {
   // Gate on manifest.userConfig. loadPluginOptions always returns at least {}
   // (it spreads two `?? {}` fallbacks), so without this guard topLevel is never
@@ -448,13 +377,8 @@ function buildMcpUserConfig(
   // substituteUserConfigVariables against an empty map → throws on any
   // ${user_config.X} ref. The manifest check also skips the unconditional
   // keychain read (~50-100ms on macOS) for plugins that don't use options.
-  const topLevel = plugin.manifest.userConfig
-    ? loadPluginOptions(getPluginStorageId(plugin))
-    : undefined
-  const channelSpecific = loadChannelUserConfig(plugin, serverName)
-
-  if (!topLevel && !channelSpecific) return undefined
-  return { ...topLevel, ...channelSpecific }
+  if (!plugin.manifest.userConfig) return undefined
+  return loadPluginOptions(getPluginStorageId(plugin))
 }
 
 /**
