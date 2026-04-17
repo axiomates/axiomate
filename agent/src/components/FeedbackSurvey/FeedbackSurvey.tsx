@@ -4,21 +4,12 @@ import {
   FeedbackSurveyView,
   isValidResponseInput,
 } from './FeedbackSurveyView.js'
-import type { TranscriptShareResponse } from './TranscriptSharePrompt.js'
-import { TranscriptSharePrompt } from './TranscriptSharePrompt.js'
 import type { FeedbackSurveyResponse } from './utils.js'
 
 type Props = {
-  state:
-    | 'closed'
-    | 'open'
-    | 'thanks'
-    | 'transcript_prompt'
-    | 'submitting'
-    | 'submitted'
+  state: 'closed' | 'open' | 'thanks'
   lastResponse: FeedbackSurveyResponse | null
   handleSelect: (selected: FeedbackSurveyResponse) => void
-  handleTranscriptSelect?: (selected: TranscriptShareResponse) => void
   inputValue: string
   setInputValue: (value: string) => void
   message?: string
@@ -28,7 +19,6 @@ export function FeedbackSurvey({
   state,
   lastResponse,
   handleSelect,
-  handleTranscriptSelect,
   inputValue,
   setInputValue,
   message,
@@ -41,41 +31,6 @@ export function FeedbackSurvey({
     return (
       <FeedbackSurveyThanks
         lastResponse={lastResponse}
-      />
-    )
-  }
-
-  if (state === 'submitted') {
-    return (
-      <Box marginTop={1}>
-        <Text color="success">
-          {'\u2713'} Thanks for sharing your transcript!
-        </Text>
-      </Box>
-    )
-  }
-
-  if (state === 'submitting') {
-    return (
-      <Box marginTop={1}>
-        <Text dimColor>Sharing transcript{'\u2026'}</Text>
-      </Box>
-    )
-  }
-
-  if (state === 'transcript_prompt') {
-    if (!handleTranscriptSelect) {
-      return null
-    }
-    // Hide prompt if user is typing non-response characters
-    if (inputValue && !['1', '2', '3'].includes(inputValue)) {
-      return null
-    }
-    return (
-      <TranscriptSharePrompt
-        onSelect={handleTranscriptSelect}
-        inputValue={inputValue}
-        setInputValue={setInputValue}
       />
     )
   }

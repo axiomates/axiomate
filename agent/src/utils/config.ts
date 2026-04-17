@@ -419,9 +419,6 @@ export type GlobalConfig = {
     lastShownTime?: number
   }
 
-  // Transcript share prompt tracking ("Don't ask again")
-  transcriptShareDismissed?: boolean
-
   // Memory usage tracking
   memoryUsageCount: number // Number of times user has added to memory
 

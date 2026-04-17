@@ -6,14 +6,12 @@ export function useFrustrationDetection(
   _isSurveyActive?: boolean,
 ): {
   state: 'closed' | 'open' | string
-  handleTranscriptSelect: (...args: unknown[]) => void
   isFrustrated?: boolean
   frustrationScore?: number
   resetDetection?: () => void
 } {
   return {
     state: 'closed',
-    handleTranscriptSelect() {},
     isFrustrated: false,
     frustrationScore: 0,
     resetDetection() {},

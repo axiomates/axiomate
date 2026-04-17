@@ -40,13 +40,7 @@ export function usePostCompactSurvey(
   hasActivePrompt = false,
   { enabled = true }: { enabled?: boolean } = {},
 ): {
-  state:
-    | 'closed'
-    | 'open'
-    | 'thanks'
-    | 'transcript_prompt'
-    | 'submitting'
-    | 'submitted'
+  state: 'closed' | 'open' | 'thanks'
   lastResponse: FeedbackSurveyResponse | null
   handleSelect: (selected: FeedbackSurveyResponse) => void
 } {
