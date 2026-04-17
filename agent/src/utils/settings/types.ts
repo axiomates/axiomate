@@ -274,7 +274,7 @@ export const SettingsSchema = lazySchema(() =>
           'Command to refresh GCP authentication (e.g., gcloud auth application-default login)',
         ),
       // Gated so the SDK generator (which runs without AXIOMATE_CODE_ENABLE_XAA)
-      // doesn't surface this in GlobalClaudeSettings. Read via getXaaIdpSettings().
+      // doesn't surface this in GlobalAxiomateSettings. Read via getXaaIdpSettings().
       // .passthrough() on the outer object keeps an existing settings.json key
       // alive across env-var-off sessions — it's just not schema-validated then.
       ...(isEnvTruthy(process.env.AXIOMATE_CODE_ENABLE_XAA)
@@ -616,18 +616,6 @@ export const SettingsSchema = lazySchema(() =>
             'these exact sources are blocked from being added as marketplaces. The check happens BEFORE ' +
             'downloading, so blocked sources never touch the filesystem.',
         ),
-      // Force a specific login method: 'claudeai' for Claude Pro/Max, 'console' for Console billing
-      forceLoginMethod: z
-        .enum(['claudeai', 'console'])
-        .optional()
-        .describe(
-          'Force a specific login method: "claudeai" for Claude Pro/Max, "console" for Console billing',
-        ),
-      // Organization UUID to use for OAuth login (will be added as URL param to authorization URL)
-      forceLoginOrgUUID: z
-        .string()
-        .optional()
-        .describe('Organization UUID to use for OAuth login'),
       otelHeadersHelper: z
         .string()
         .optional()
@@ -787,7 +775,7 @@ export const SettingsSchema = lazySchema(() =>
               .enum(['disable'])
               .optional()
               .describe(
-                'Prevent claude-cli:// protocol handler registration with the OS',
+                'Prevent axiomate:// protocol handler registration with the OS',
               ),
           }
         : {}),
@@ -836,7 +824,7 @@ export const SettingsSchema = lazySchema(() =>
               .boolean()
               .optional()
               .describe(
-                'Start Claude in assistant mode (custom system prompt, brief view, scheduled check-in skills)',
+                'Start Axiomate in assistant mode (custom system prompt, brief view, scheduled check-in skills)',
               ),
             assistantName: z
               .string()

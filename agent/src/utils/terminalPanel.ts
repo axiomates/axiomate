@@ -2,9 +2,9 @@
  * Built-in terminal panel toggled with Meta+J.
  *
  * Uses tmux for shell persistence: a separate tmux server with a per-instance
- * socket (e.g., "claude-panel-a1b2c3d4") holds the shell session. Each Claude
- * Code instance gets its own isolated terminal panel that persists within the
- * session but is destroyed when the instance exits.
+ * socket (e.g., "axiomate-panel-a1b2c3d4") holds the shell session. Each
+ * Axiomate instance gets its own isolated terminal panel that persists within
+ * the session but is destroyed when the instance exits.
  *
  * Meta+J is bound to detach-client inside tmux, so pressing it returns to
  * Axiomate while the shell keeps running. Next toggle re-attaches to the
@@ -32,7 +32,7 @@ const TMUX_SESSION = 'panel'
 export function getTerminalPanelSocket(): string {
   // Use first 8 chars of session UUID for uniqueness while keeping name short
   const sessionId = getSessionId()
-  return `claude-panel-${sessionId.slice(0, 8)}`
+  return `axiomate-panel-${sessionId.slice(0, 8)}`
 }
 
 let instance: TerminalPanel | undefined
@@ -118,7 +118,7 @@ class TerminalPanel {
       'bind-key', '-n', 'M-j', 'detach-client', ';',
       'set-option', '-g', 'status-style', 'bg=default', ';',
       'set-option', '-g', 'status-left', '', ';',
-      'set-option', '-g', 'status-right', ' Alt+J to return to Claude ', ';',
+      'set-option', '-g', 'status-right', ' Alt+J to return to Axiomate ', ';',
       'set-option', '-g', 'status-right-style', 'fg=brightblack',
     ])
 

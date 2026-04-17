@@ -291,7 +291,7 @@ export async function generateUniqueTeammateName(
 /**
  * Handle spawn operation using split-pane view (default).
  * When inside tmux: Creates teammates in a shared window with leader on left, teammates on right.
- * When outside tmux: Creates a claude-swarm session with all teammates in a tiled layout.
+ * When outside tmux: Creates an axiomate-swarm session with all teammates in a tiled layout.
  */
 async function handleSpawnSplitPane(
   input: SpawnInput,
@@ -375,7 +375,7 @@ async function handleSpawnSplitPane(
   // Create a pane in the swarm view
   // - Inside tmux: splits current window (leader on left, teammates on right)
   // - In iTerm2 with it2: uses native iTerm2 split panes
-  // - Outside both: creates claude-swarm session with tiled teammates
+  // - Outside both: creates axiomate-swarm session with tiled teammates
   const { paneId, isFirstTeammate } = await createTeammatePaneInSwarmView(
     sanitizedName,
     teammateColor,

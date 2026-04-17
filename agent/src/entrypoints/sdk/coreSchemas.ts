@@ -177,7 +177,7 @@ export const McpServerStatusSchema = lazySchema(() =>
         .string()
         .optional()
         .describe(
-          'Configuration scope (e.g., project, user, local, claudeai, managed)',
+          'Configuration scope (e.g., project, user, local, managed)',
         ),
       tools: z
         .array(

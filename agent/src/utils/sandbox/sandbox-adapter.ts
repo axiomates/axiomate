@@ -220,7 +220,7 @@ export function convertToSandboxRuntimeConfig(
   }
 
   // Extract filesystem paths from Edit and Read rules
-  // Always include current directory and Claude temp directory as writable
+  // Always include current directory and Axiomate temp directory as writable
   // The temp directory is needed for Shell.ts cwd tracking files
   const allowWrite: string[] = ['.', getAxiomateTempDir()]
   const denyWrite: string[] = []
@@ -247,7 +247,7 @@ export function convertToSandboxRuntimeConfig(
   // Block writes to .axiomate/skills in both original and current working directories.
   // The sandbox-runtime's getDangerousDirectories() protects .axiomate/commands and
   // .axiomate/agents but not .axiomate/skills. Skills have the same privilege level
-  // (auto-discovered, auto-loaded, full Claude capabilities) so they need the
+  // (auto-discovered, auto-loaded, full Axiomate capabilities) so they need the
   // same OS-level sandbox protection.
   denyWrite.push(resolve(originalCwd, '.axiomate', 'skills'))
   if (cwd !== originalCwd) {
@@ -381,7 +381,7 @@ export function convertToSandboxRuntimeConfig(
 }
 
 // ============================================================================
-// Claude CLI-specific state
+// Axiomate CLI-specific state
 // ============================================================================
 
 let initializationPromise: Promise<void> | undefined
@@ -823,7 +823,7 @@ async function reset(): Promise<void> {
 
 /**
  * Add a command to the excluded commands list (commands that should not be sandboxed)
- * This is a Claude CLI-specific function that updates local settings.
+ * This is an Axiomate CLI-specific function that updates local settings.
  */
 export function addToExcludedCommands(
   command: string,

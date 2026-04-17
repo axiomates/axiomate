@@ -9,9 +9,9 @@ import { registerPendingLSPDiagnostic } from './LSPDiagnosticRegistry.js'
 import type { LSPServerManager } from './LSPServerManager.js'
 
 /**
- * Map LSP severity to Claude diagnostic severity
+ * Map LSP severity to Axiomate diagnostic severity
  *
- * Maps LSP severity numbers to Claude diagnostic severity strings.
+ * Maps LSP severity numbers to Axiomate diagnostic severity strings.
  * Accepts numeric severity values (1=Error, 2=Warning, 3=Information, 4=Hint)
  * or undefined, defaulting to 'Error' for invalid/missing values.
  */
@@ -35,7 +35,7 @@ function mapLSPSeverity(
 }
 
 /**
- * Convert LSP diagnostics to Claude diagnostic format
+ * Convert LSP diagnostics to Axiomate diagnostic format
  *
  * Converts LSP PublishDiagnosticsParams to DiagnosticFile[] format
  * used by Axiomate's attachment system.
@@ -187,7 +187,7 @@ export function registerLSPNotificationHandlers(
               `Received diagnostics from ${serverName}: ${diagnosticParams.diagnostics.length} diagnostic(s) for ${diagnosticParams.uri}`,
             )
 
-            // Convert LSP diagnostics to Claude format (can throw on invalid URIs)
+            // Convert LSP diagnostics to Axiomate format (can throw on invalid URIs)
             const diagnosticFiles =
               formatDiagnosticsForAttachment(diagnosticParams)
 
