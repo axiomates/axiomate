@@ -799,7 +799,7 @@ export const connectToServer = memoize(
           name: 'axiomate',
           title: 'Axiomate',
           version: MACRO.VERSION ?? 'unknown',
-          description: "Anthropic's agentic coding tool",
+          description: "Axiomate's agentic coding tool",
           websiteUrl: PRODUCT_URL,
         },
         {
@@ -2969,7 +2969,7 @@ export async function setupSdkMcpClients(
           name: 'axiomate',
           title: 'Axiomate',
           version: MACRO.VERSION ?? 'unknown',
-          description: "Anthropic's agentic coding tool",
+          description: "Axiomate's agentic coding tool",
           websiteUrl: PRODUCT_URL,
         },
         {

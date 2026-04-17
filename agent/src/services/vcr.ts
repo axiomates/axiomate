@@ -129,7 +129,7 @@ export async function withVCR(
 
   if (env.isCI && !isEnvTruthy(process.env.VCR_RECORD)) {
     throw new Error(
-      `Anthropic API fixture missing: ${filename}. Re-run tests with VCR_RECORD=1, then commit the result. Input messages:\n${jsonStringify(dehydratedInput, null, 2)}`,
+      `API fixture missing: ${filename}. Re-run tests with VCR_RECORD=1, then commit the result. Input messages:\n${jsonStringify(dehydratedInput, null, 2)}`,
     )
   }
 
