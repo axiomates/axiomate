@@ -56,7 +56,7 @@ export type PermissionHandlerOptions = {
   hasFeedback?: boolean
   feedback?: string
   enteredFeedbackMode?: boolean
-  scope?: 'claude-folder' | 'global-claude-folder'
+  scope?: 'axiomate-folder' | 'global-axiomate-folder'
 }
 
 function handleAcceptOnce(
@@ -91,13 +91,13 @@ function handleAcceptSession(
 
   logPermissionEvent('accept', completionType, languageName, messageId)
 
-  // For claude-folder scope, grant session-level access to all .axiomate/ files
+  // For axiomate-folder scope, grant session-level access to all .axiomate/ files
   if (
-    options?.scope === 'claude-folder' ||
-    options?.scope === 'global-claude-folder'
+    options?.scope === 'axiomate-folder' ||
+    options?.scope === 'global-axiomate-folder'
   ) {
     const pattern =
-      options.scope === 'global-claude-folder'
+      options.scope === 'global-axiomate-folder'
         ? GLOBAL_AXIOMATE_FOLDER_PERMISSION_PATTERN
         : AXIOMATE_FOLDER_PERMISSION_PATTERN
     const suggestions: PermissionUpdate[] = [

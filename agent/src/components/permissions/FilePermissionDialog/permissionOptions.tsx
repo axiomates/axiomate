@@ -12,18 +12,18 @@ import type { OptionWithDescription } from '../../CustomSelect/select.js';
  * Check if a path is within the project's .axiomate/ folder.
  * This is used to determine whether to show the special ".axiomate folder" permission option.
  */
-export function isInClaudeFolder(filePath: string): boolean {
+export function isInAxiomateFolder(filePath: string): boolean {
   const absolutePath = expandPath(filePath);
-  const claudeFolderPath = expandPath(`${getOriginalCwd()}/.axiomate`);
+  const axiomateFolderPath = expandPath(`${getOriginalCwd()}/.axiomate`);
 
   // Check if the path is within the project's .axiomate folder
   const normalizedAbsolutePath = normalizeCaseForComparison(absolutePath);
-  const normalizedClaudeFolderPath = normalizeCaseForComparison(claudeFolderPath);
+  const normalizedAxiomateFolderPath = normalizeCaseForComparison(axiomateFolderPath);
 
   // Path must start with the .axiomate folder path (and be inside it, not just the folder itself)
-  return normalizedAbsolutePath.startsWith(normalizedClaudeFolderPath + sep.toLowerCase()) ||
+  return normalizedAbsolutePath.startsWith(normalizedAxiomateFolderPath + sep.toLowerCase()) ||
   // Also match case where sep is / on posix systems
-  normalizedAbsolutePath.startsWith(normalizedClaudeFolderPath + '/');
+  normalizedAbsolutePath.startsWith(normalizedAxiomateFolderPath + '/');
 }
 
 /**
@@ -31,18 +31,18 @@ export function isInClaudeFolder(filePath: string): boolean {
  * This is used to determine whether to show the special ".axiomate folder" permission option
  * for files in the user's home directory.
  */
-export function isInGlobalClaudeFolder(filePath: string): boolean {
+export function isInGlobalAxiomateFolder(filePath: string): boolean {
   const absolutePath = expandPath(filePath);
-  const globalClaudeFolderPath = join(homedir(), '.axiomate');
+  const globalAxiomateFolderPath = join(homedir(), '.axiomate');
   const normalizedAbsolutePath = normalizeCaseForComparison(absolutePath);
-  const normalizedGlobalClaudeFolderPath = normalizeCaseForComparison(globalClaudeFolderPath);
-  return normalizedAbsolutePath.startsWith(normalizedGlobalClaudeFolderPath + sep.toLowerCase()) || normalizedAbsolutePath.startsWith(normalizedGlobalClaudeFolderPath + '/');
+  const normalizedGlobalAxiomateFolderPath = normalizeCaseForComparison(globalAxiomateFolderPath);
+  return normalizedAbsolutePath.startsWith(normalizedGlobalAxiomateFolderPath + sep.toLowerCase()) || normalizedAbsolutePath.startsWith(normalizedGlobalAxiomateFolderPath + '/');
 }
 export type PermissionOption = {
   type: 'accept-once';
 } | {
   type: 'accept-session';
-  scope?: 'claude-folder' | 'global-claude-folder';
+  scope?: 'axiomate-folder' | 'global-axiomate-folder';
 } | {
   type: 'reject';
 };
@@ -95,20 +95,20 @@ export function getFilePermissionOptions({
   const inAllowedPath = pathInAllowedWorkingPath(filePath, toolPermissionContext);
 
   // Check if this is a .axiomate/ folder path (project or global)
-  const inClaudeFolder = isInClaudeFolder(filePath);
-  const inGlobalClaudeFolder = isInGlobalClaudeFolder(filePath);
+  const inAxiomateFolder = isInAxiomateFolder(filePath);
+  const inGlobalAxiomateFolder = isInGlobalAxiomateFolder(filePath);
 
   // Option 2: For .axiomate/ folder, show special option instead of generic session option
   // Note: Session-level options are always shown since they only affect in-memory state,
   // not persisted settings. The allowManagedPermissionRulesOnly setting only restricts
   // persisted permission rules.
-  if ((inClaudeFolder || inGlobalClaudeFolder) && operationType !== 'read') {
+  if ((inAxiomateFolder || inGlobalAxiomateFolder) && operationType !== 'read') {
     options.push({
-      label: 'Yes, and allow Claude to edit its own settings for this session',
-      value: 'yes-claude-folder',
+      label: 'Yes, and allow axiomate to edit its own settings for this session',
+      value: 'yes-axiomate-folder',
       option: {
         type: 'accept-session',
-        scope: inGlobalClaudeFolder ? 'global-claude-folder' : 'claude-folder'
+        scope: inGlobalAxiomateFolder ? 'global-axiomate-folder' : 'axiomate-folder'
       }
     });
   } else {
