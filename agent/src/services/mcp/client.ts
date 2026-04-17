@@ -598,7 +598,7 @@ export const connectToServer = memoize(
         const wsHeaders = {
           'User-Agent': getMCPUserAgent(),
           ...(serverRef.authToken && {
-            'X-Claude-Code-Ide-Authorization': serverRef.authToken,
+            Authorization: `Bearer ${serverRef.authToken}`,
           }),
         }
 
@@ -1592,9 +1592,6 @@ export const fetchToolsForClient = memoizeWithLRU(
               onProgress?: ToolCallProgress<MCPProgress>,
             ) {
               const toolUseId = extractToolUseId(parentMessage)
-              const meta = toolUseId
-                ? { 'claudecode/toolUseId': toolUseId }
-                : {}
 
               // Emit progress when tool starts
               if (onProgress && toolUseId) {
@@ -1619,7 +1616,6 @@ export const fetchToolsForClient = memoizeWithLRU(
                     clientConnection: client,
                     tool: tool.name,
                     args,
-                    meta,
                     signal: context.abortController.signal,
                     setAppState: context.setAppState,
                     onProgress:
@@ -2792,7 +2788,7 @@ async function callMCPTool({
         {
           name: tool,
           arguments: args,
-          _meta: meta,
+          ...(meta ? { _meta: meta } : {}),
         },
         CallToolResultSchema,
         {

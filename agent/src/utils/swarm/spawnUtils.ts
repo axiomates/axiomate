@@ -95,7 +95,7 @@ const TEAMMATE_ENV_VARS = [
   // Config directory override
   'AXIOMATE_CONFIG_DIR',
   // CCR marker — teammates need this for CCR-aware code paths. Auth finds
-  // its own way via /home/claude/.axiomate/remote/.oauth_token regardless;
+  // its own way via the Axiomate remote token directory regardless;
   // the FD env var wouldn't help (pipe FDs don't cross tmux).
   'AXIOMATE_CODE_REMOTE',
   // Auto-memory gate (memdir/paths.ts) checks REMOTE && !MEMORY_DIR to
@@ -120,11 +120,11 @@ const TEAMMATE_ENV_VARS = [
 
 /**
  * Builds the `env KEY=VALUE ...` string for teammate spawn commands.
- * Always includes CLAUDECODE=1 and AXIOMATE_CODE_EXPERIMENTAL_AGENT_TEAMS=1,
+ * Always includes AXIOMATE_CODE=1 and AXIOMATE_CODE_EXPERIMENTAL_AGENT_TEAMS=1,
  * plus any provider/config env vars that are set in the current process.
  */
 export function buildInheritedEnvVars(): string {
-  const envVars = ['CLAUDECODE=1', 'AXIOMATE_CODE_EXPERIMENTAL_AGENT_TEAMS=1']
+  const envVars = ['AXIOMATE_CODE=1', 'AXIOMATE_CODE_EXPERIMENTAL_AGENT_TEAMS=1']
 
   for (const key of TEAMMATE_ENV_VARS) {
     const value = process.env[key]

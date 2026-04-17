@@ -18,7 +18,7 @@ vi.mock('../withRetry.js', () => ({
 vi.mock('../../../utils/diagLogs.js', () => ({ logForDiagnosticsNoPII: vi.fn() }))
 vi.mock('../../../utils/betas.js', () => ({ getModelBetas: vi.fn().mockReturnValue([]) }))
 vi.mock('../../../utils/model/model.js', () => ({
-  getFastModel: vi.fn().mockReturnValue('claude-haiku-4-5-20251001'),
+  getFastModel: vi.fn().mockReturnValue('provider-fast-model'),
   normalizeModelStringForAPI: vi.fn((m: string) => m),
 }))
 vi.mock('../llm.js', () => ({
@@ -58,7 +58,7 @@ function createMockClient(events: Array<Record<string, unknown>> = [{ type: 'mes
 }
 
 const dummyIntent: StreamIntent = {
-  model: 'claude-opus-4-6',
+  model: 'provider-main-model',
   messages: [],
   systemPrompt: [],
   tools: [],
@@ -73,8 +73,8 @@ function createProvider(mockClient?: any) {
 }
 
 const baseExt = {
-  buildParams: () => ({ model: 'claude-opus-4-6', max_tokens: 4096 }),
-  retryOptions: { model: 'claude-opus-4-6', thinkingConfig: { type: 'disabled' } },
+  buildParams: () => ({ model: 'provider-main-model', max_tokens: 4096 }),
+  retryOptions: { model: 'provider-main-model', thinkingConfig: { type: 'disabled' } },
 }
 
 async function consumeProvider(
@@ -121,7 +121,7 @@ describe('AnthropicProvider.bind', () => {
     const bound = provider.bind(baseExt)
 
     const { result } = await consumeProvider(bound.createStream({
-      model: 'claude-opus-4-6',
+      model: 'provider-main-model',
       signal: new AbortController().signal,
       intent: dummyIntent,
     }))
@@ -132,12 +132,12 @@ describe('AnthropicProvider.bind', () => {
   it('different binds are independent', () => {
     const provider = createProvider()
     const ext1 = {
-      buildParams: () => ({ model: 'claude-opus-4-6', max_tokens: 4096 }),
-      retryOptions: { model: 'claude-opus-4-6', thinkingConfig: { type: 'disabled' } },
+      buildParams: () => ({ model: 'provider-main-model', max_tokens: 4096 }),
+      retryOptions: { model: 'provider-main-model', thinkingConfig: { type: 'disabled' } },
     }
     const ext2 = {
-      buildParams: () => ({ model: 'claude-opus-4-6', max_tokens: 8192 }),
-      retryOptions: { model: 'claude-opus-4-6', thinkingConfig: { type: 'disabled' } },
+      buildParams: () => ({ model: 'provider-main-model', max_tokens: 8192 }),
+      retryOptions: { model: 'provider-main-model', thinkingConfig: { type: 'disabled' } },
     }
     const bound1 = provider.bind(ext1)
     const bound2 = provider.bind(ext2)
@@ -148,7 +148,7 @@ describe('AnthropicProvider.bind', () => {
     const provider = createProvider()
     await expect(
       consumeProvider(provider.createStream({
-        model: 'claude-opus-4-6',
+        model: 'provider-main-model',
         signal: new AbortController().signal,
         intent: dummyIntent,
       })),
@@ -159,7 +159,7 @@ describe('AnthropicProvider.bind', () => {
     const provider = createProvider()
     await expect(
       consumeProvider(provider.createNonStreamingFallback!({
-        model: 'claude-opus-4-6',
+        model: 'provider-main-model',
         signal: new AbortController().signal,
         intent: dummyIntent,
       })),

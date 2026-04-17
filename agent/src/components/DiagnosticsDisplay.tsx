@@ -42,13 +42,13 @@ export function DiagnosticsDisplay({
                     getCwd(),
                     file.uri
                       .replace('file://', '')
-                      .replace('_claude_fs_right:', ''),
+                      .replace('_axiomate_fs_right:', ''),
                   )}
                 </Text>{' '}
                 <Text dimColor>
                   {file.uri.startsWith('file://')
                     ? '(file://)'
-                    : file.uri.startsWith('_claude_fs_right:')
+                    : file.uri.startsWith('_axiomate_fs_right:')
                       ? '(ide diff)'
                       : `(${file.uri.split(':')[0]})`}
                 </Text>

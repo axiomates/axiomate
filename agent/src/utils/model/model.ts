@@ -34,11 +34,6 @@ export function getFastModel(): ModelName {
   return getCurrentModel()
 }
 
-/** Always returns false — axiomate uses user-configured models only. */
-export function isNonCustomOpusModel(_model: ModelName): boolean {
-  return false
-}
-
 /**
  * Get the model from /model command, --model flag, settings, or config.
  *

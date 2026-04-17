@@ -12,7 +12,7 @@ vi.mock('../withRetry.js', () => ({
 vi.mock('../../../utils/diagLogs.js', () => ({ logForDiagnosticsNoPII: vi.fn() }))
 vi.mock('../../../utils/betas.js', () => ({ getModelBetas: vi.fn().mockReturnValue([]) }))
 vi.mock('../../../utils/model/model.js', () => ({
-  getFastModel: vi.fn().mockReturnValue('claude-haiku-4-5-20251001'),
+  getFastModel: vi.fn().mockReturnValue('provider-fast-model'),
   normalizeModelStringForAPI: vi.fn((m: string) => m),
 }))
 vi.mock('../llm.js', () => ({
@@ -69,7 +69,7 @@ describe('AnthropicProvider.verifyConnection', () => {
 
     expect(mockClient.messages.create).toHaveBeenCalledTimes(1)
     const params = mockClient.messages.create.mock.calls[0][0]
-    expect(params.model).toBe('claude-haiku-4-5-20251001')
+    expect(params.model).toBe('provider-fast-model')
     expect(params.max_tokens).toBe(1)
     expect(params.temperature).toBe(1)
     expect(params.messages).toEqual([{ role: 'user', content: 'test' }])

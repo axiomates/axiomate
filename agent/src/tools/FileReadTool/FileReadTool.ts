@@ -713,8 +713,8 @@ export const CYBER_RISK_MITIGATION_REMINDER =
   '\n\n<system-reminder>\nWhenever you read a file, you should consider whether it would be considered malware. You CAN and SHOULD provide analysis of malware, what it is doing. But you MUST refuse to improve or augment the code. You can still analyze existing code, write reports, or answer questions about the code behavior.\n</system-reminder>\n'
 
 function shouldIncludeFileReadMitigation(): boolean {
-  // Always include the cyber-risk mitigation reminder. An earlier Anthropic
-  // build exempted claude-opus-4-6 from this reminder; axiomate runs on any
+  // Always include the cyber-risk mitigation reminder. An earlier provider
+  // build exempted one model from this reminder; axiomate runs on any
   // user-configured model, so the safer default is to include it for all.
   return true
 }
@@ -947,7 +947,7 @@ async function callInner(
 
     if (!isPDFSupported()) {
       throw new Error(
-        'Reading full PDFs is not supported with this model. Use a newer model (Sonnet 3.5 v2 or later), ' +
+        'Reading full PDFs is not supported with this model. Use a newer model with PDF support, ' +
           `or use the pages parameter to read specific page ranges (e.g., pages: "1-5", maximum ${PDF_MAX_PAGES_PER_READ} pages per request). ` +
           'Page extraction requires poppler-utils: install with `brew install poppler` on macOS or `apt-get install poppler-utils` on Debian/Ubuntu.',
       )

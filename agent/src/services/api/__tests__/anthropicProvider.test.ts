@@ -27,7 +27,7 @@ vi.mock('../withRetry.js', () => ({
 vi.mock('../../../utils/diagLogs.js', () => ({ logForDiagnosticsNoPII: vi.fn() }))
 vi.mock('../../../utils/betas.js', () => ({ getModelBetas: vi.fn().mockReturnValue([]) }))
 vi.mock('../../../utils/model/model.js', () => ({
-  getFastModel: vi.fn().mockReturnValue('claude-haiku-4-5-20251001'),
+  getFastModel: vi.fn().mockReturnValue('provider-fast-model'),
   normalizeModelStringForAPI: vi.fn((m: string) => m),
 }))
 vi.mock('../llm.js', () => ({
@@ -69,7 +69,7 @@ function createMockClient(events: Array<Record<string, unknown>>) {
 }
 
 const dummyIntent: StreamIntent = {
-  model: 'claude-opus-4-6',
+  model: 'provider-main-model',
   messages: [],
   systemPrompt: [],
   tools: [],
@@ -84,13 +84,13 @@ function createProvider(mockClient?: any) {
 }
 
 const baseExt = {
-  buildParams: () => ({ model: 'claude-opus-4-6', max_tokens: 4096 }),
-  retryOptions: { model: 'claude-opus-4-6', thinkingConfig: { type: 'disabled' } },
+  buildParams: () => ({ model: 'provider-main-model', max_tokens: 4096 }),
+  retryOptions: { model: 'provider-main-model', thinkingConfig: { type: 'disabled' } },
 }
 
 function baseRequest(overrides: Partial<StreamRequest> = {}): StreamRequest {
   return {
-    model: 'claude-opus-4-6',
+    model: 'provider-main-model',
     signal: new AbortController().signal,
     intent: dummyIntent,
     ...overrides,
@@ -132,7 +132,7 @@ describe('AnthropicProvider', () => {
             type: 'message',
             role: 'assistant',
             content: [],
-            model: 'claude-opus-4-6',
+            model: 'provider-main-model',
             stop_reason: null,
             stop_sequence: null,
             usage: { input_tokens: 50, output_tokens: 0, cache_creation_input_tokens: null, cache_read_input_tokens: null },
@@ -161,11 +161,11 @@ describe('AnthropicProvider', () => {
       const provider = createProvider(mockClient)
 
       const bound = provider.bind({
-        buildParams: () => ({ model: 'claude-opus-4-6', max_tokens: 4096 }),
-        retryOptions: { model: 'claude-opus-4-6', thinkingConfig: { type: 'disabled' } },
+        buildParams: () => ({ model: 'provider-main-model', max_tokens: 4096 }),
+        retryOptions: { model: 'provider-main-model', thinkingConfig: { type: 'disabled' } },
       })
       const { result } = await consumeProvider(bound.createStream({
-        model: 'claude-opus-4-6',
+        model: 'provider-main-model',
         signal: new AbortController().signal,
         intent: dummyIntent,
       }))
@@ -185,7 +185,7 @@ describe('AnthropicProvider', () => {
     it('passes buildParams result to SDK create call', async () => {
       const mockClient = createMockClient([{ type: 'message_stop' }])
       const buildParams = vi.fn().mockReturnValue({
-        model: 'claude-opus-4-6',
+        model: 'provider-main-model',
         messages: [{ role: 'user', content: 'hi' }],
         max_tokens: 4096,
         tools: [{ name: 'Read', input_schema: { type: 'object' } }],
@@ -193,9 +193,9 @@ describe('AnthropicProvider', () => {
       })
       const provider = createProvider(mockClient)
 
-      const bound = provider.bind({ buildParams, retryOptions: { model: 'claude-opus-4-6', thinkingConfig: { type: 'disabled' } } })
+      const bound = provider.bind({ buildParams, retryOptions: { model: 'provider-main-model', thinkingConfig: { type: 'disabled' } } })
       await consumeProvider(bound.createStream({
-        model: 'claude-opus-4-6',
+        model: 'provider-main-model',
         signal: new AbortController().signal,
         intent: dummyIntent,
       }))
@@ -204,7 +204,7 @@ describe('AnthropicProvider', () => {
       const createCall = mockClient.messages.create
       expect(createCall).toHaveBeenCalledTimes(1)
       const params = createCall.mock.calls[0][0]
-      expect(params.model).toBe('claude-opus-4-6')
+      expect(params.model).toBe('provider-main-model')
       expect(params.stream).toBe(true)
     })
 
@@ -215,11 +215,11 @@ describe('AnthropicProvider', () => {
       const provider = createProvider(mockClient)
 
       const bound = provider.bind({
-        buildParams: () => ({ model: 'claude-opus-4-6', max_tokens: 8192 }),
-        retryOptions: { model: 'claude-opus-4-6', thinkingConfig: { type: 'disabled' } },
+        buildParams: () => ({ model: 'provider-main-model', max_tokens: 8192 }),
+        retryOptions: { model: 'provider-main-model', thinkingConfig: { type: 'disabled' } },
       })
       await consumeProvider(bound.createStream({
-        model: 'claude-opus-4-6',
+        model: 'provider-main-model',
         signal: new AbortController().signal,
         intent: dummyIntent,
         hooks: { onAttemptStart, onRequestSent },
@@ -239,7 +239,7 @@ describe('AnthropicProvider', () => {
           type: 'message_start',
           message: {
             id: 'msg_01', type: 'message', role: 'assistant', content: [],
-            model: 'claude-opus-4-6', stop_reason: null, stop_sequence: null,
+            model: 'provider-main-model', stop_reason: null, stop_sequence: null,
             usage: { input_tokens: 10, output_tokens: 0, cache_creation_input_tokens: null, cache_read_input_tokens: null },
           },
         },
@@ -250,11 +250,11 @@ describe('AnthropicProvider', () => {
       const provider = createProvider(mockClient)
 
       const bound = provider.bind({
-        buildParams: () => ({ model: 'claude-opus-4-6', max_tokens: 4096 }),
-        retryOptions: { model: 'claude-opus-4-6', thinkingConfig: { type: 'disabled' } },
+        buildParams: () => ({ model: 'provider-main-model', max_tokens: 4096 }),
+        retryOptions: { model: 'provider-main-model', thinkingConfig: { type: 'disabled' } },
       })
       const { result } = await consumeProvider(bound.createStream({
-        model: 'claude-opus-4-6',
+        model: 'provider-main-model',
         signal: new AbortController().signal,
         intent: dummyIntent,
         hooks: { onProviderEvent },
@@ -276,11 +276,11 @@ describe('AnthropicProvider', () => {
       const provider = createProvider(mockClient)
 
       const bound = provider.bind({
-        buildParams: () => ({ model: 'claude-opus-4-6', max_tokens: 32000 }),
-        retryOptions: { model: 'claude-opus-4-6', thinkingConfig: { type: 'disabled' } },
+        buildParams: () => ({ model: 'provider-main-model', max_tokens: 32000 }),
+        retryOptions: { model: 'provider-main-model', thinkingConfig: { type: 'disabled' } },
       })
       const { result } = await consumeProvider(bound.createStream({
-        model: 'claude-opus-4-6',
+        model: 'provider-main-model',
         signal: new AbortController().signal,
         intent: dummyIntent,
       }))
@@ -334,14 +334,14 @@ describe('AnthropicProvider', () => {
         calculateUSDCost: mockCostFn,
       })
 
-      const cost = provider.calculateCost('claude-opus-4-6', {
+      const cost = provider.calculateCost('provider-main-model', {
         inputTokens: 1000,
         outputTokens: 500,
         cacheReadTokens: 200,
       })
 
       expect(cost).toBe(0.05)
-      expect(mockCostFn).toHaveBeenCalledWith('claude-opus-4-6', {
+      expect(mockCostFn).toHaveBeenCalledWith('provider-main-model', {
         input_tokens: 1000,
         output_tokens: 500,
         cache_read_input_tokens: 200,

@@ -12,7 +12,7 @@ import type { QuerySource } from '../../constants/querySource.js'
 import {
   logEvent,
 } from '../../services/analytics/index.js'
-import { queryHaiku } from '../../services/api/llm.js'
+import { queryFastModel } from '../../services/api/llm.js'
 import { startsWithApiErrorPrefix } from '../../services/api/errors.js'
 import { memoizeWithLRU } from '../memoize.js'
 import { jsonStringify } from '../slowOperations.js'
@@ -212,7 +212,7 @@ async function getCommandPrefixImpl(
 
     const useSystemPromptPolicySpec = false
 
-    const response = await queryHaiku({
+    const response = await queryFastModel({
       systemPrompt: asSystemPrompt(
         useSystemPromptPolicySpec
           ? [

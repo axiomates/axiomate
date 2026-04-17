@@ -68,7 +68,6 @@ import {
   getDefaultMainLoopModel,
   getMidModel,
   getFastModel,
-  isNonCustomOpusModel,
 } from '../../utils/model/model.js'
 import {
   asSystemPrompt,
@@ -240,21 +239,21 @@ export function getPromptCachingEnabled(model: string): boolean {
   if (isEnvTruthy(process.env.DISABLE_PROMPT_CACHING)) return false
 
   // Check if we should disable for small/fast model
-  if (isEnvTruthy(process.env.DISABLE_PROMPT_CACHING_HAIKU)) {
+  if (isEnvTruthy(process.env.AXIOMATE_DISABLE_PROMPT_CACHING_FAST_MODEL)) {
     const smallFastModel = getFastModel()
     if (model === smallFastModel) return false
   }
 
-  // Check if we should disable for default Sonnet
-  if (isEnvTruthy(process.env.DISABLE_PROMPT_CACHING_SONNET)) {
-    const defaultSonnet = getMidModel()
-    if (model === defaultSonnet) return false
+  // Check if we should disable for the configured mid model
+  if (isEnvTruthy(process.env.AXIOMATE_DISABLE_PROMPT_CACHING_MID_MODEL)) {
+    const midModel = getMidModel()
+    if (model === midModel) return false
   }
 
-  // Check if we should disable for default Opus
-  if (isEnvTruthy(process.env.DISABLE_PROMPT_CACHING_OPUS)) {
-    const defaultOpus = getDefaultMainLoopModel()
-    if (model === defaultOpus) return false
+  // Check if we should disable for the configured main model
+  if (isEnvTruthy(process.env.AXIOMATE_DISABLE_PROMPT_CACHING_MAIN_MODEL)) {
+    const mainModel = getDefaultMainLoopModel()
+    if (model === mainModel) return false
   }
 
   return true
@@ -635,18 +634,6 @@ async function* queryModel(
   StreamEvent | AssistantMessage | SystemAPIErrorMessage,
   void
 > {
-  // Off-switch check. Previously blocked on config init; now always false.
-  if (
-    isNonCustomOpusModel(options.model) &&
-    false
-  ) {
-    yield getAssistantMessageFromError(
-      new Error(CUSTOM_OFF_SWITCH_MESSAGE),
-      options.model,
-    )
-    return
-  }
-
   // Derive previous request ID from the last assistant message in this query chain.
   // This is scoped per message array (main thread, subagent, teammate each have their own),
   // so concurrent agents don't clobber each other's request chain tracking.
@@ -789,7 +776,7 @@ async function* queryModel(
   //   called from ~20 places (analytics, feedback, sharing, etc.), many of which
   //   don't have model context. Adding model to its signature would be a large refactor.
   // - This post-processing uses the model-aware isToolSearchEnabled() check
-  // - This handles mid-conversation model switching (e.g., Sonnet → Haiku) where
+  // - This handles mid-conversation model switching where
   //   stale tool-search fields from the previous model would cause 400 errors
   //
   // Note: For assistant messages, normalizeMessagesForAPI already normalized the
@@ -1942,9 +1929,9 @@ export function buildSystemPromptBlocks(
   })
 }
 
-type HaikuOptions = Omit<Options, 'model' | 'getToolPermissionContext'>
+type FastModelOptions = Omit<Options, 'model' | 'getToolPermissionContext'>
 
-export async function queryHaiku({
+export async function queryFastModel({
   systemPrompt = asSystemPrompt([]),
   userPrompt,
   outputFormat,
@@ -1955,7 +1942,7 @@ export async function queryHaiku({
   userPrompt: string
   outputFormat?: import('./streamTypes.js').NeutralOutputFormat
   signal: AbortSignal
-  options: HaikuOptions
+  options: FastModelOptions
 }): Promise<AssistantMessage> {
   const result = await withVCR(
     [
@@ -1992,7 +1979,7 @@ export async function queryHaiku({
       return [result]
     },
   )
-  // We don't use streaming for Haiku so this is safe
+  // We don't use streaming for this fast-model path so this is safe
   return result[0]! as AssistantMessage
 }
 

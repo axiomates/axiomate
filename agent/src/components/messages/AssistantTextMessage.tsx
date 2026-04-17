@@ -159,7 +159,7 @@ export function AssistantTextMessage({
         <MessageResponse>
           <Box flexDirection="column" gap={1}>
             <Text color="error">
-              We are experiencing high demand for Opus 4.
+              The selected model is experiencing high demand.
             </Text>
             <Text>
               To continue immediately, use /model to switch to{' '}

@@ -36,7 +36,7 @@ const BASE_MESSAGE: BetaMessage = {
   type: 'message',
   role: 'assistant',
   content: [],
-  model: 'claude-opus-4-6',
+  model: 'provider-main-model',
   stop_reason: null,
   stop_sequence: null,
   usage: {

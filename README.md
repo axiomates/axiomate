@@ -1,6 +1,6 @@
 # Axiomate
 
-Terminal AI agent with multi-provider support. Fork of Claude Code, rewired to work with any OpenAI-compatible or Anthropic-compatible API endpoint.
+Terminal AI agent with multi-provider support, built to work with any OpenAI-compatible or Anthropic-compatible API endpoint.
 
 Use any model from any provider — SiliconFlow, OpenRouter, local ollama, vLLM, etc. No Anthropic account required.
 
@@ -408,7 +408,7 @@ Transport types: `stdio` (default, runs a local process), `http` (remote HTTP en
 
 ### Plugins
 
-Axiomate supports the Claude Code plugin ecosystem. The official plugin marketplace at [anthropics/claude-plugins-official](https://github.com/anthropics/claude-plugins-official) is auto-installed on first run.
+Axiomate supports the public plugin ecosystem. The official plugin marketplace at [anthropics/claude-plugins-official](https://github.com/anthropics/claude-plugins-official) is auto-installed on first run.
 
 ```bash
 # Browse and install plugins

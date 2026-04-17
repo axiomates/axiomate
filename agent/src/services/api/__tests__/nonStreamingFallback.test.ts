@@ -30,7 +30,7 @@ vi.mock('../../../utils/betas.js', () => ({
   getModelBetas: vi.fn().mockReturnValue([]),
 }))
 vi.mock('../../../utils/model/model.js', () => ({
-  getFastModel: vi.fn().mockReturnValue('claude-haiku-4-5-20251001'),
+  getFastModel: vi.fn().mockReturnValue('provider-fast-model'),
   normalizeModelStringForAPI: (m: any) => mockNormalizeModel(m),
 }))
 vi.mock('../llm.js', () => ({
@@ -44,7 +44,7 @@ vi.mock('../../../utils/log.js', () => ({ logError: vi.fn() }))
 // --- Helpers ---
 
 const dummyIntent: StreamIntent = {
-  model: 'claude-opus-4-6',
+  model: 'provider-main-model',
   messages: [],
   systemPrompt: [],
   tools: [],
@@ -65,7 +65,7 @@ function createMockSDKResponse() {
     id: 'msg_fallback_01',
     type: 'message',
     role: 'assistant',
-    model: 'claude-opus-4-6',
+    model: 'provider-main-model',
     content: [{ type: 'text', text: 'Fallback response' }],
     stop_reason: 'end_turn',
     stop_sequence: null,
@@ -105,14 +105,14 @@ describe('AnthropicProvider.createNonStreamingFallback', () => {
 
   it('returns NonStreamingResult with neutral LLMMessage', async () => {
     const request: StreamRequest = {
-      model: 'claude-opus-4-6',
+      model: 'provider-main-model',
       signal: new AbortController().signal,
       intent: dummyIntent,
     }
 
     const bound = provider.bind({
-      buildParams: () => ({ model: 'claude-opus-4-6', max_tokens: 4096 }),
-      retryOptions: { model: 'claude-opus-4-6', thinkingConfig: { type: 'disabled' } },
+      buildParams: () => ({ model: 'provider-main-model', max_tokens: 4096 }),
+      retryOptions: { model: 'provider-main-model', thinkingConfig: { type: 'disabled' } },
     })
     const { result } = await consumeGenerator(
       bound.createNonStreamingFallback!(request),
@@ -122,7 +122,7 @@ describe('AnthropicProvider.createNonStreamingFallback', () => {
       id: 'msg_fallback_01',
       type: 'message',
       role: 'assistant',
-      model: 'claude-opus-4-6',
+      model: 'provider-main-model',
       stop_reason: 'end_turn',
     })
     expect(result.message.content).toEqual([{ type: 'text', text: 'Fallback response' }])
@@ -134,39 +134,39 @@ describe('AnthropicProvider.createNonStreamingFallback', () => {
 
   it('calls buildParams with retry context', async () => {
     const buildParams = vi.fn().mockReturnValue({
-      model: 'claude-opus-4-6',
+      model: 'provider-main-model',
       max_tokens: 8192,
     })
 
     const request: StreamRequest = {
-      model: 'claude-opus-4-6',
+      model: 'provider-main-model',
       signal: new AbortController().signal,
       intent: dummyIntent,
     }
 
     const bound = provider.bind({
       buildParams,
-      retryOptions: { model: 'claude-opus-4-6', thinkingConfig: { type: 'disabled' } },
+      retryOptions: { model: 'provider-main-model', thinkingConfig: { type: 'disabled' } },
     })
     await consumeGenerator(bound.createNonStreamingFallback!(request))
 
     expect(buildParams).toHaveBeenCalledTimes(1)
     // Called with RetryContext from withRetry mock
     expect(buildParams.mock.calls[0][0]).toMatchObject({
-      model: 'claude-opus-4-6',
+      model: 'provider-main-model',
     })
   })
 
   it('calls adjustParamsForNonStreaming', async () => {
     const request: StreamRequest = {
-      model: 'claude-opus-4-6',
+      model: 'provider-main-model',
       signal: new AbortController().signal,
       intent: dummyIntent,
     }
 
     const bound = provider.bind({
-      buildParams: () => ({ model: 'claude-opus-4-6', max_tokens: 128000 }),
-      retryOptions: { model: 'claude-opus-4-6', thinkingConfig: { type: 'disabled' } },
+      buildParams: () => ({ model: 'provider-main-model', max_tokens: 128000 }),
+      retryOptions: { model: 'provider-main-model', thinkingConfig: { type: 'disabled' } },
     })
     await consumeGenerator(bound.createNonStreamingFallback!(request))
 
@@ -176,14 +176,14 @@ describe('AnthropicProvider.createNonStreamingFallback', () => {
 
   it('calls normalizeModelStringForAPI on model', async () => {
     const request: StreamRequest = {
-      model: 'claude-opus-4-6',
+      model: 'provider-main-model',
       signal: new AbortController().signal,
       intent: dummyIntent,
     }
 
     const bound = provider.bind({
-      buildParams: () => ({ model: 'claude-opus-4-6', max_tokens: 4096 }),
-      retryOptions: { model: 'claude-opus-4-6', thinkingConfig: { type: 'disabled' } },
+      buildParams: () => ({ model: 'provider-main-model', max_tokens: 4096 }),
+      retryOptions: { model: 'provider-main-model', thinkingConfig: { type: 'disabled' } },
     })
     await consumeGenerator(bound.createNonStreamingFallback!(request))
 
@@ -194,14 +194,14 @@ describe('AnthropicProvider.createNonStreamingFallback', () => {
     const onNonStreamingAttempt = vi.fn()
 
     const request: StreamRequest = {
-      model: 'claude-opus-4-6',
+      model: 'provider-main-model',
       signal: new AbortController().signal,
       intent: dummyIntent,
     }
 
     const bound = provider.bind({
-      buildParams: () => ({ model: 'claude-opus-4-6', max_tokens: 4096 }),
-      retryOptions: { model: 'claude-opus-4-6', thinkingConfig: { type: 'disabled' } },
+      buildParams: () => ({ model: 'provider-main-model', max_tokens: 4096 }),
+      retryOptions: { model: 'provider-main-model', thinkingConfig: { type: 'disabled' } },
       onNonStreamingAttempt,
     })
     await consumeGenerator(bound.createNonStreamingFallback!(request))
@@ -214,17 +214,17 @@ describe('AnthropicProvider.createNonStreamingFallback', () => {
 
   it('calls captureRequest with params', async () => {
     const captureRequest = vi.fn()
-    const params = { model: 'claude-opus-4-6', max_tokens: 4096, messages: [] }
+    const params = { model: 'provider-main-model', max_tokens: 4096, messages: [] }
 
     const request: StreamRequest = {
-      model: 'claude-opus-4-6',
+      model: 'provider-main-model',
       signal: new AbortController().signal,
       intent: dummyIntent,
     }
 
     const bound = provider.bind({
       buildParams: () => params,
-      retryOptions: { model: 'claude-opus-4-6', thinkingConfig: { type: 'disabled' } },
+      retryOptions: { model: 'provider-main-model', thinkingConfig: { type: 'disabled' } },
       captureRequest,
     })
     await consumeGenerator(bound.createNonStreamingFallback!(request))
@@ -241,14 +241,14 @@ describe('AnthropicProvider.createNonStreamingFallback', () => {
     })
 
     const request: StreamRequest = {
-      model: 'claude-opus-4-6',
+      model: 'provider-main-model',
       signal: new AbortController().signal,
       intent: dummyIntent,
     }
 
     const bound = failProvider.bind({
-      buildParams: () => ({ model: 'claude-opus-4-6', max_tokens: 4096 }),
-      retryOptions: { model: 'claude-opus-4-6', thinkingConfig: { type: 'disabled' } },
+      buildParams: () => ({ model: 'provider-main-model', max_tokens: 4096 }),
+      retryOptions: { model: 'provider-main-model', thinkingConfig: { type: 'disabled' } },
       originatingRequestId: 'req_original_123',
     })
     await expect(

@@ -25,7 +25,7 @@ function makeAPIError(status: number, message: string): LLMAPIError {
 
 const defaultContext: ErrorClassificationContext = {
   provider: 'anthropic',
-  model: 'claude-opus-4-6',
+  model: 'provider-main-model',
 }
 
 const largeSessionContext: ErrorClassificationContext = {
@@ -347,7 +347,7 @@ describe('classifyError: transport errors', () => {
   it('server disconnected + small session → unknown', () => {
     const result = classifyError(
       new Error('server disconnected without sending a response'),
-      { provider: 'anthropic', model: 'claude-opus-4-6', approxTokens: 1000 },
+      { provider: 'anthropic', model: 'provider-main-model', approxTokens: 1000 },
     )
     // small session, not context overflow
     expect(result.reason).toBe('unknown')

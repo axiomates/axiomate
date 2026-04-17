@@ -12,7 +12,7 @@ vi.mock('../withRetry.js', () => ({
 vi.mock('../../../utils/diagLogs.js', () => ({ logForDiagnosticsNoPII: vi.fn() }))
 vi.mock('../../../utils/betas.js', () => ({ getModelBetas: vi.fn().mockReturnValue([]) }))
 vi.mock('../../../utils/model/model.js', () => ({
-  getFastModel: vi.fn().mockReturnValue('claude-haiku-4-5-20251001'),
+  getFastModel: vi.fn().mockReturnValue('provider-fast-model'),
   normalizeModelStringForAPI: vi.fn((m: string) => m),
 }))
 vi.mock('../llm.js', () => ({
@@ -58,16 +58,16 @@ function createProvider(mockClient?: any) {
 }
 
 const baseExt = {
-  buildParams: () => ({ model: 'claude-opus-4-6', max_tokens: 4096 }),
-  retryOptions: { model: 'claude-opus-4-6', thinkingConfig: { type: 'disabled' } },
+  buildParams: () => ({ model: 'provider-main-model', max_tokens: 4096 }),
+  retryOptions: { model: 'provider-main-model', thinkingConfig: { type: 'disabled' } },
 }
 
 function baseRequest(_mockClient: any, onProviderEvent?: (e: ProviderEvent) => void) {
   return {
-    model: 'claude-opus-4-6',
+    model: 'provider-main-model',
     signal: new AbortController().signal,
     intent: {
-      model: 'claude-opus-4-6',
+      model: 'provider-main-model',
       messages: [],
       systemPrompt: [],
       tools: [],
@@ -106,7 +106,7 @@ describe('AnthropicProvider — ProviderEvents', () => {
         type: 'message_start',
         message: {
           id: 'msg_01', type: 'message', role: 'assistant', content: [],
-          model: 'claude-opus-4-6', stop_reason: null, stop_sequence: null,
+          model: 'provider-main-model', stop_reason: null, stop_sequence: null,
           usage: { input_tokens: 10, output_tokens: 0, cache_creation_input_tokens: null, cache_read_input_tokens: null },
         },
       },
@@ -130,7 +130,7 @@ describe('AnthropicProvider — ProviderEvents', () => {
         type: 'message_start',
         message: {
           id: 'msg_01', type: 'message', role: 'assistant', content: [],
-          model: 'claude-opus-4-6', stop_reason: null, stop_sequence: null,
+          model: 'provider-main-model', stop_reason: null, stop_sequence: null,
           usage: { input_tokens: 10, output_tokens: 0, cache_creation_input_tokens: null, cache_read_input_tokens: null },
           research: { query: 'test' },
         },
@@ -155,7 +155,7 @@ describe('AnthropicProvider — ProviderEvents', () => {
         type: 'message_start',
         message: {
           id: 'msg_01', type: 'message', role: 'assistant', content: [],
-          model: 'claude-opus-4-6', stop_reason: null, stop_sequence: null,
+          model: 'provider-main-model', stop_reason: null, stop_sequence: null,
           usage: { input_tokens: 10, output_tokens: 0, cache_creation_input_tokens: null, cache_read_input_tokens: null },
         },
       },
@@ -176,7 +176,7 @@ describe('AnthropicProvider — ProviderEvents', () => {
         type: 'message_start',
         message: {
           id: 'msg_01', type: 'message', role: 'assistant', content: [],
-          model: 'claude-opus-4-6', stop_reason: null, stop_sequence: null,
+          model: 'provider-main-model', stop_reason: null, stop_sequence: null,
           usage: { input_tokens: 10, output_tokens: 0, cache_creation_input_tokens: null, cache_read_input_tokens: null },
         },
       },

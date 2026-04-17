@@ -3,7 +3,7 @@ import {
   setSessionIngressToken,
 } from '../bootstrap/state.js'
 import {
-  CCR_SESSION_INGRESS_TOKEN_PATH,
+  getRemoteSessionIngressTokenPath,
   maybePersistTokenForSubprocesses,
   readTokenFromWellKnownFile,
 } from './authFileDescriptor.js'
@@ -28,7 +28,7 @@ function getTokenFromFileDescriptor(): string | null {
     // parent stripped the (useless) FD env var. Try the well-known file.
     const path =
       process.env.AXIOMATE_SESSION_INGRESS_TOKEN_FILE ??
-      CCR_SESSION_INGRESS_TOKEN_PATH
+      getRemoteSessionIngressTokenPath()
     const fromFile = readTokenFromWellKnownFile(path, 'session ingress token')
     setSessionIngressToken(fromFile)
     return fromFile
@@ -64,7 +64,7 @@ function getTokenFromFileDescriptor(): string | null {
     logForDebugging(`Successfully read token from file descriptor ${fd}`)
     setSessionIngressToken(token)
     maybePersistTokenForSubprocesses(
-      CCR_SESSION_INGRESS_TOKEN_PATH,
+      getRemoteSessionIngressTokenPath(),
       token,
       'session ingress token',
     )
@@ -78,7 +78,7 @@ function getTokenFromFileDescriptor(): string | null {
     // inherited the env var but not the FD (ENXIO). Try the well-known file.
     const path =
       process.env.AXIOMATE_SESSION_INGRESS_TOKEN_FILE ??
-      CCR_SESSION_INGRESS_TOKEN_PATH
+      getRemoteSessionIngressTokenPath()
     const fromFile = readTokenFromWellKnownFile(path, 'session ingress token')
     setSessionIngressToken(fromFile)
     return fromFile
@@ -95,7 +95,7 @@ function getTokenFromFileDescriptor(): string | null {
  *  2. File descriptor (legacy path) — AXIOMATE_CODE_WEBSOCKET_AUTH_FILE_DESCRIPTOR,
  *     read once and cached.
  *  3. Well-known file — AXIOMATE_SESSION_INGRESS_TOKEN_FILE env var path, or
- *     /home/claude/.axiomate/remote/.session_ingress_token. Covers subprocesses
+ *     the Axiomate remote token directory's .session_ingress_token. Covers subprocesses
  *     that can't inherit the FD.
  */
 export function getSessionIngressAuthToken(): string | null {

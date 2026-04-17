@@ -14,6 +14,6 @@
 - Protocol-neutral `RequestHooks` and `ProviderEvent` system
 
 ### Architecture
-- Zero SDK imports in claude.ts orchestration layer
+- Zero SDK imports in the LLM orchestration layer
 - 237 unit tests covering provider abstraction, error handling, streaming pipeline
 - Compatible with Anthropic firstParty, Bedrock, Vertex, Foundry backends

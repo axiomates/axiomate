@@ -538,7 +538,7 @@ export const PowerShellTool = buildTool({
 
       let stdout = stripEmptyLines(stdoutAccumulator.toString());
 
-      // Axiomate hints protocol: CLIs/SDKs gated on CLAUDECODE=1 emit an
+      // Axiomate hints protocol: CLIs/SDKs gated on AXIOMATE_CODE=1 emit an
       // `<axiomate-hint />` tag to stderr (merged into stdout here). Scan,
       // record for useAxiomateHintRecommendation to surface, then strip
       // so the model never sees the tag — a zero-token side channel.

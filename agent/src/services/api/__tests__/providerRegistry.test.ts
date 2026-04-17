@@ -19,7 +19,7 @@ vi.mock('../withRetry.js', () => ({
 vi.mock('../../../utils/diagLogs.js', () => ({ logForDiagnosticsNoPII: vi.fn() }))
 vi.mock('../../../utils/betas.js', () => ({ getModelBetas: vi.fn().mockReturnValue([]) }))
 vi.mock('../../../utils/model/model.js', () => ({
-  getFastModel: vi.fn().mockReturnValue('claude-haiku-4-5-20251001'),
+  getFastModel: vi.fn().mockReturnValue('provider-fast-model'),
   normalizeModelStringForAPI: vi.fn((m: string) => m),
 }))
 vi.mock('../llm.js', () => ({
@@ -55,15 +55,15 @@ describe('providerRegistry', () => {
   it('returns AnthropicProvider for protocol: anthropic', () => {
     mockGlobalConfig.mockReturnValue({
       models: {
-        'claude-sonnet-4-6': {
-          model: 'claude-sonnet-4-6',
+        'provider-configured-model': {
+          model: 'provider-configured-model',
           protocol: 'anthropic',
           baseUrl: 'https://api.example.com',
           apiKey: 'test-api-key',
         },
       },
     })
-    const provider = getProviderForModel('claude-sonnet-4-6')
+    const provider = getProviderForModel('provider-configured-model')
     expect(provider.name).toBe('anthropic')
   })
 

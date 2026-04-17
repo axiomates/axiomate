@@ -73,9 +73,8 @@ export const EXPLORE_AGENT: BuiltInAgentDefinition = {
   ],
   source: 'built-in',
   baseDir: 'built-in',
-  // Dev builds inherit the main agent's model; release builds use a fast model for speed
-  // Note: In dev builds, getAgentModel() checks ax_explore_agent config flag at runtime
-  model: 'haiku',
+  // Built-in agents inherit the main agent's configured model unless the user overrides them.
+  model: 'inherit',
   // Explore is a fast read-only search agent — it doesn't need commit/PR/lint
   // rules from AXIOMATE.md. The main agent has full context and interprets results.
   omitAxiomateMd: true,

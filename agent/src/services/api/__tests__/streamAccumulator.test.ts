@@ -73,7 +73,7 @@ function responseStart(
     type: 'response_start',
     response: {
       id: overrides.id ?? 'msg_test',
-      model: overrides.model ?? 'claude-opus-4-6',
+      model: overrides.model ?? 'provider-main-model',
       stopReason: null,
       usage: {
         inputTokens: 100,
@@ -153,7 +153,7 @@ async function collectOutputs(
 ) {
   const fullConfig: StreamAccumulatorConfig = {
     tools: [] as any,
-    model: 'claude-opus-4-6',
+    model: 'provider-main-model',
     maxOutputTokens: 16384,
     ...config,
   }

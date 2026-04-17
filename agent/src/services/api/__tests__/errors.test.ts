@@ -25,8 +25,7 @@ vi.mock('../../../utils/messages.js', () => ({
 }))
 
 vi.mock('../../../utils/model/model.js', () => ({
-  getDefaultMainLoopModelSetting: vi.fn().mockReturnValue('claude-sonnet-4-20250514'),
-  isNonCustomOpusModel: vi.fn().mockReturnValue(false),
+  getDefaultMainLoopModelSetting: vi.fn().mockReturnValue('provider-main-model'),
 }))
 
 vi.mock('../../../utils/model/providers.js', () => ({

@@ -6,7 +6,7 @@
  * `scaleCoord` stays coherent.
  *
  * Rust reference: api/api/image_transcoder/rust_transcoder/src/utils/resize.rs
- * Sibling TS port: apps/claude-browser-use/src/utils/imageResize.ts (identical
+ * Sibling TS port: the browser-use extension imageResize.ts (identical
  * algorithm, lives in the Chrome extension tree — not a shared package).
  *
  * See COORDINATES.md for why this matters for click accuracy.

@@ -235,7 +235,7 @@ function scaleCoord(
 
   // mode === "pixels": model sent image-space pixel coords.
   if (lastScreenshot) {
-    // The transform. Chrome coordinateScaling.ts:22-34 + claude-in-a-box
+    // The transform. Chrome coordinateScaling.ts:22-34 + native computer-use
     // ComputerTool.swift:70-80 — two independent convergent impls.
     // Uses the display geometry stashed AT CAPTURE TIME, not fresh.
     // Origin from the same snapshot keeps clicks coherent with the captured display.

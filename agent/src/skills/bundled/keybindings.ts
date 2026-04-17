@@ -112,7 +112,7 @@ function generateReservedShortcuts(): string {
 }
 
 const FILE_FORMAT_EXAMPLE: KeybindingsSchemaType = {
-  $schema: 'https://www.schemastore.org/claude-code-keybindings.json',
+  $schema: 'https://www.schemastore.org/axiomate-keybindings.json',
   $docs: 'https://github.com/axiomates/axiomate/keybindings',
   bindings: [
     {

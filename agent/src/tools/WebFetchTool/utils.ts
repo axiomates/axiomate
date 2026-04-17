@@ -3,7 +3,7 @@ import { LRUCache } from 'lru-cache'
 import {
   logEvent,
 } from '../../services/analytics/index.js'
-import { queryHaiku } from '../../services/api/llm.js'
+import { queryFastModel } from '../../services/api/llm.js'
 import { AbortError } from '../../utils/errors.js'
 import { getWebFetchUserAgent } from '../../utils/http.js'
 import { logError } from '../../utils/log.js'
@@ -493,7 +493,7 @@ export async function applyPromptToMarkdown(
     prompt,
     isPreapprovedDomain,
   )
-  const assistantMessage = await queryHaiku({
+  const assistantMessage = await queryFastModel({
     systemPrompt: asSystemPrompt([]),
     userPrompt: modelPrompt,
     signal,
