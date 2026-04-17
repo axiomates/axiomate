@@ -112,13 +112,13 @@ type SessionFacets = {
   goal_categories: Record<string, number>
   outcome: string
   user_satisfaction_counts: Record<string, number>
-  claude_helpfulness: string
+  agent_helpfulness: string
   session_type: string
   friction_counts: Record<string, number>
   friction_detail: string
   primary_success: string
   brief_summary: string
-  user_instructions_to_claude?: string[]
+  user_instructions_to_agent?: string[]
 }
 
 type AggregatedData = {
@@ -226,7 +226,7 @@ const LABEL_MAP: Record<string, string> = {
   wrong_approach: 'Wrong Approach',
   buggy_code: 'Buggy Code',
   user_rejected_action: 'User Rejected Action',
-  claude_got_blocked: 'Got Blocked',
+  agent_got_blocked: 'Got Blocked',
   user_stopped_early: 'User Stopped Early',
   wrong_file_or_location: 'Wrong File/Location',
   excessive_changes: 'Excessive Changes',
@@ -282,7 +282,7 @@ CRITICAL GUIDELINES:
 
 1. **goal_categories**: Count ONLY what the USER explicitly asked for.
    - DO NOT count Axiomate's autonomous codebase exploration
-   - DO NOT count work Claude decided to do on its own
+   - DO NOT count work axiomate decided to do on its own
    - ONLY count when user says "can you...", "please...", "I need...", "let's..."
 
 2. **user_satisfaction_counts**: Base ONLY on explicit user signals.
@@ -864,7 +864,7 @@ RESPOND WITH ONLY A VALID JSON OBJECT matching this schema:
   "goal_categories": {"category_name": count, ...},
   "outcome": "fully_achieved|mostly_achieved|partially_achieved|not_achieved|unclear_from_transcript",
   "user_satisfaction_counts": {"level": count, ...},
-  "claude_helpfulness": "unhelpful|slightly_helpful|moderately_helpful|very_helpful|essential",
+  "agent_helpfulness": "unhelpful|slightly_helpful|moderately_helpful|very_helpful|essential",
   "session_type": "single_task|multi_task|iterative_refinement|exploration|quick_question",
   "friction_counts": {"friction_type": count, ...},
   "friction_detail": "One sentence describing friction or empty",
@@ -904,7 +904,7 @@ RESPOND WITH ONLY A VALID JSON OBJECT matching this schema:
 }
 
 /**
- * Detects multi-clauding (using multiple Claude sessions concurrently).
+ * Detects multi-agent usage (using multiple axiomate sessions concurrently).
  * Uses a sliding window to find the pattern: session1 -> session2 -> session1
  * within a 30-minute window.
  */
@@ -934,8 +934,8 @@ export function detectMultiClauding(
 
   allSessionMessages.sort((a, b) => a.ts - b.ts)
 
-  const multiClaudeSessionPairs = new Set<string>()
-  const messagesDuringMulticlaude = new Set<string>()
+  const multiAgentSessionPairs = new Set<string>()
+  const messagesDuringMultiAgent = new Set<string>()
 
   // Sliding window: sessionLastIndex tracks the most recent index for each session
   let windowStart = 0
@@ -963,12 +963,12 @@ export function detectMultiClauding(
         const between = allSessionMessages[j]!
         if (between.sessionId !== msg.sessionId) {
           const pair = [msg.sessionId, between.sessionId].sort().join(':')
-          multiClaudeSessionPairs.add(pair)
-          messagesDuringMulticlaude.add(
+          multiAgentSessionPairs.add(pair)
+          messagesDuringMultiAgent.add(
             `${allSessionMessages[prevIndex]!.ts}:${msg.sessionId}`,
           )
-          messagesDuringMulticlaude.add(`${between.ts}:${between.sessionId}`)
-          messagesDuringMulticlaude.add(`${msg.ts}:${msg.sessionId}`)
+          messagesDuringMultiAgent.add(`${between.ts}:${between.sessionId}`)
+          messagesDuringMultiAgent.add(`${msg.ts}:${msg.sessionId}`)
           break
         }
       }
@@ -978,16 +978,16 @@ export function detectMultiClauding(
   }
 
   const sessionsWithOverlaps = new Set<string>()
-  for (const pair of multiClaudeSessionPairs) {
+  for (const pair of multiAgentSessionPairs) {
     const [s1, s2] = pair.split(':')
     if (s1) sessionsWithOverlaps.add(s1)
     if (s2) sessionsWithOverlaps.add(s2)
   }
 
   return {
-    overlap_events: multiClaudeSessionPairs.size,
+    overlap_events: multiAgentSessionPairs.size,
     sessions_involved: sessionsWithOverlaps.size,
-    user_messages_during: messagesDuringMulticlaude.size,
+    user_messages_during: messagesDuringMultiAgent.size,
   }
 }
 
@@ -1111,8 +1111,8 @@ function aggregateData(
       }
 
       // Helpfulness
-      result.helpfulness[sessionFacets.claude_helpfulness] =
-        (result.helpfulness[sessionFacets.claude_helpfulness] || 0) + 1
+      result.helpfulness[sessionFacets.agent_helpfulness] =
+        (result.helpfulness[sessionFacets.agent_helpfulness] || 0) + 1
 
       // Session types
       result.session_types[sessionFacets.session_type] =
@@ -1203,7 +1203,7 @@ Include 4-5 areas. Skip internal CC operations.`,
 
 RESPOND WITH ONLY A VALID JSON OBJECT:
 {
-  "narrative": "2-3 paragraphs analyzing HOW the user interacts with Axiomate. Use second person 'you'. Describe patterns: iterate quickly vs detailed upfront specs? Interrupt often or let Claude run? Include specific examples. Use **bold** for key insights.",
+  "narrative": "2-3 paragraphs analyzing HOW the user interacts with Axiomate. Use second person 'you'. Describe patterns: iterate quickly vs detailed upfront specs? Interrupt often or let axiomate run? Include specific examples. Use **bold** for key insights.",
   "key_pattern": "One sentence summary of most distinctive interaction style"
 }`,
     maxTokens: 8192,
@@ -1243,7 +1243,7 @@ Include 3 friction categories with 2 examples each.`,
     prompt: `Analyze this Axiomate usage data and suggest improvements.
 
 ## CC FEATURES REFERENCE (pick from these for features_to_try):
-1. **MCP Servers**: Connect Claude to external tools, databases, and APIs via Model Context Protocol.
+1. **MCP Servers**: Connect axiomate to external tools, databases, and APIs via Model Context Protocol.
    - How to use: Run \`axiomate mcp add <server-name> -- <command>\`
    - Good for: database queries, Slack integration, GitHub issue lookup, connecting to internal APIs
 
@@ -1255,17 +1255,17 @@ Include 3 friction categories with 2 examples each.`,
    - How to use: Add to \`.axiomate/settings.json\` under "hooks" key.
    - Good for: auto-formatting code, running type checks, enforcing conventions
 
-4. **Headless Mode**: Run Claude non-interactively from scripts and CI/CD.
+4. **Headless Mode**: Run axiomate non-interactively from scripts and CI/CD.
    - How to use: \`axiomate -p "fix lint errors" --allowedTools "Edit,Read,Bash"\`
    - Good for: CI/CD integration, batch code fixes, automated reviews
 
-5. **Task Agents**: Claude spawns focused sub-agents for complex exploration or parallel work.
+5. **Task Agents**: axiomate spawns focused sub-agents for complex exploration or parallel work.
    - How to use: Axiomate auto-invokes when helpful, or ask "use an agent to explore X"
    - Good for: codebase exploration, understanding complex systems
 
 RESPOND WITH ONLY A VALID JSON OBJECT:
 {
-  "claude_md_additions": [
+  "axiomate_md_additions": [
     {"addition": "A specific line or block to add to AXIOMATE.md based on workflow patterns. E.g., 'Always run tests after modifying auth-related files'", "why": "1 sentence explaining why this would help based on actual sessions", "prompt_scaffold": "Instructions for where to add this in AXIOMATE.md. E.g., 'Add under ## Testing section'"}
   ],
   "features_to_try": [
@@ -1276,7 +1276,7 @@ RESPOND WITH ONLY A VALID JSON OBJECT:
   ]
 }
 
-IMPORTANT for claude_md_additions: PRIORITIZE instructions that appear MULTIPLE TIMES in the user data. If user told Claude the same thing in 2+ sessions (e.g., 'always run tests', 'use TypeScript'), that's a PRIME candidate - they shouldn't have to repeat themselves.
+IMPORTANT for axiomate_md_additions: PRIORITIZE instructions that appear MULTIPLE TIMES in the user data. If user told axiomate the same thing in 2+ sessions (e.g., 'always run tests', 'use TypeScript'), that's a PRIME candidate - they shouldn't have to repeat themselves.
 
 IMPORTANT for features_to_try: Pick 2-3 from the CC FEATURES REFERENCE above. Include 2-3 items for each category.`,
     maxTokens: 8192,
@@ -1338,7 +1338,7 @@ type InsightResults = {
     }>
   }
   suggestions?: {
-    claude_md_additions?: Array<{
+    axiomate_md_additions?: Array<{
       addition: string
       why: string
       where?: string
@@ -1433,7 +1433,7 @@ async function generateParallelInsights(
   // Build data context string
   const facetSummaries = Array.from(facets.values())
     .slice(0, 50)
-    .map(f => `- ${f.brief_summary} (${f.outcome}, ${f.claude_helpfulness})`)
+    .map(f => `- ${f.brief_summary} (${f.outcome}, ${f.agent_helpfulness})`)
     .join('\n')
 
   const frictionDetails = Array.from(facets.values())
@@ -1443,7 +1443,7 @@ async function generateParallelInsights(
     .join('\n')
 
   const userInstructions = Array.from(facets.values())
-    .flatMap(f => f.user_instructions_to_claude || [])
+    .flatMap(f => f.user_instructions_to_agent || [])
     .slice(0, 15)
     .map(i => `- ${i}`)
     .join('\n')
@@ -1552,11 +1552,11 @@ async function generateParallelInsights(
       .join('\n') || ''
 
   // Now generate "At a Glance" with access to other sections' outputs
-  const atAGlancePrompt = `You're writing an "At a Glance" summary for a Axiomate usage insights report for Axiomate users. The goal is to help them understand their usage and improve how they can use Claude better, especially as models improve.
+  const atAGlancePrompt = `You're writing an "At a Glance" summary for an Axiomate usage insights report for Axiomate users. The goal is to help them understand their usage and improve how they can use axiomate better, especially as models improve.
 
 Use this 4-part structure:
 
-1. **What's working** - What is the user's unique style of interacting with Claude and what are some impactful things they've done? You can include one or two details, but keep it high level since things might not be fresh in the user's memory. Don't be fluffy or overly complimentary. Also, don't focus on the tool calls they use.
+1. **What's working** - What is the user's unique style of interacting with axiomate and what are some impactful things they've done? You can include one or two details, but keep it high level since things might not be fresh in the user's memory. Don't be fluffy or overly complimentary. Also, don't focus on the tool calls they use.
 
 2. **What's hindering you** - Split into (a) Axiomate's fault (misunderstandings, wrong approaches, bugs) and (b) user-side friction (not providing enough context, environment issues -- ideally more general than just one project). Be honest but constructive.
 
@@ -1881,20 +1881,20 @@ function generateHtmlReport(
   const suggestionsHtml = suggestions
     ? `
     ${
-      suggestions.claude_md_additions &&
-      suggestions.claude_md_additions.length > 0
+      suggestions.axiomate_md_additions &&
+      suggestions.axiomate_md_additions.length > 0
         ? `
     <h2 id="section-features">Existing CC Features to Try</h2>
-    <div class="claude-md-section">
+    <div class="axiomate-md-section">
       <h3>Suggested AXIOMATE.md Additions</h3>
       <p style="font-size: 12px; color: #64748b; margin-bottom: 12px;">Just copy this into Axiomate to add it to your AXIOMATE.md.</p>
-      <div class="claude-md-actions">
-        <button class="copy-all-btn" onclick="copyAllCheckedClaudeMd()">Copy All Checked</button>
+      <div class="axiomate-md-actions">
+        <button class="copy-all-btn" onclick="copyAllCheckedAxiomateMd()">Copy All Checked</button>
       </div>
-      ${suggestions.claude_md_additions
+      ${suggestions.axiomate_md_additions
         .map(
           (add, i) => `
-        <div class="claude-md-item">
+        <div class="axiomate-md-item">
           <input type="checkbox" id="cmd-${i}" class="cmd-checkbox" checked data-text="${escapeHtml(add.prompt_scaffold || add.where || 'Add to AXIOMATE.md')}\\n\\n${escapeHtml(add.addition)}">
           <label for="cmd-${i}">
             <code class="cmd-code">${escapeHtml(add.addition)}</code>
@@ -2216,7 +2216,7 @@ function generateHtmlReport(
         });
       }
     }
-    function copyAllCheckedClaudeMd() {
+    function copyAllCheckedAxiomateMd() {
       const checkboxes = document.querySelectorAll('.cmd-checkbox:checked');
       const texts = [];
       checkboxes.forEach(cb => {
@@ -2798,7 +2798,7 @@ export async function generateUsageReport(options?: {
   const aggregated = aggregateData(substantiveSessions, substantiveFacets)
   aggregated.total_sessions_scanned = totalSessionsScanned
 
-  // Generate parallel insights from Claude (6 sections)
+  // Generate parallel insights from the LLM (6 sections)
   const insights = await generateParallelInsights(aggregated, facets)
 
   // Generate HTML report
@@ -2899,7 +2899,7 @@ ${remoteInfo}
 
 Your full shareable insights report is ready: ${reportUrl}${uploadHint}`
 
-    // Return prompt for Claude to respond to
+    // Return prompt for the agent to respond to
     return [
       {
         type: 'text',
