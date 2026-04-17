@@ -23,7 +23,7 @@ const inputToResponse: Record<ResponseInput, FeedbackSurveyResponse> = {
 export const isValidResponseInput = (input: string): input is ResponseInput =>
   (RESPONSE_INPUTS as readonly string[]).includes(input)
 
-const DEFAULT_MESSAGE = 'How is Claude doing this session? (optional)'
+const DEFAULT_MESSAGE = 'How is this session going? (optional)'
 
 export function FeedbackSurveyView({
   onSelect,
