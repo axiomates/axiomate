@@ -255,8 +255,8 @@ export function getDefaultWritePaths(): string[] {
  * Generate proxy environment variables for sandboxed processes
  */
 export function generateProxyEnvVars(httpProxyPort: number | undefined, socksProxyPort: number | undefined): string[] {
-    // Respect CLAUDE_TMPDIR if set, otherwise default to /tmp/claude
-    const tmpdir = process.env.CLAUDE_TMPDIR || '/tmp/claude';
+    // Respect CLAUDE_TMPDIR if set, otherwise default to /tmp/axiomate
+    const tmpdir = process.env.CLAUDE_TMPDIR || '/tmp/axiomate';
     const envVars = [`SANDBOX_RUNTIME=1`, `TMPDIR=${tmpdir}`];
     // If no proxy ports provided, return minimal env vars
     if (!httpProxyPort && !socksProxyPort) {
