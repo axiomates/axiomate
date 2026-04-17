@@ -59,7 +59,7 @@ import {
   isOpus1mMergeEnabled,
 } from '../../utils/model/model.js'
 function isBilledAsExtraUsage(_model?: string, _opus1mMerge?: boolean): boolean { return false }
-import { ClaudeMdExternalIncludesDialog } from '../MdExternalIncludesDialog.js'
+import { AxiomateMdExternalIncludesDialog } from '../MdExternalIncludesDialog.js'
 import {
   ChannelDowngradeDialog,
   type ChannelDowngradeChoice,
@@ -69,9 +69,9 @@ import { Select } from '../CustomSelect/index.js'
 import { OutputStylePicker } from '../OutputStylePicker.js'
 import { LanguagePicker } from '../LanguagePicker.js'
 import {
-  getExternalClaudeMdIncludes,
+  getExternalAxiomateMdIncludes,
   getMemoryFiles,
-  hasExternalClaudeMdIncludes,
+  hasExternalAxiomateMdIncludes,
 } from '../../utils/axiomatemd.js'
 import { KeyboardShortcutHint } from '../design-system/KeyboardShortcutHint.js'
 import { ConfigurableShortcutHint } from '../ConfigurableShortcutHint.js'
@@ -279,7 +279,7 @@ export function Config({
 
   const memoryFiles = React.use(getMemoryFiles(true))
   const shouldShowExternalIncludesToggle =
-    hasExternalClaudeMdIncludes(memoryFiles)
+    hasExternalAxiomateMdIncludes(memoryFiles)
 
   const autoUpdaterDisabledReason = getAutoUpdaterDisabledReason()
 
@@ -1603,12 +1603,12 @@ export function Config({
         </>
       ) : showSubmenu === 'ExternalIncludes' ? (
         <>
-          <ClaudeMdExternalIncludesDialog
+          <AxiomateMdExternalIncludesDialog
             onDone={() => {
               setShowSubmenu(null)
               setTabsHidden(false)
             }}
-            externalIncludes={getExternalClaudeMdIncludes(memoryFiles)}
+            externalIncludes={getExternalAxiomateMdIncludes(memoryFiles)}
           />
           <Text dimColor>
             <Byline>

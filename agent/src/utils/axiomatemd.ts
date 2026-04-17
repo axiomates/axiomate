@@ -1021,7 +1021,7 @@ export const getMemoryFiles = memoize(
     // AutoMem/TeamMem are intentionally excluded — they're a separate
     // memory system, not "instructions" in the AXIOMATE.md/rules sense.
     // Gated on !forceIncludeExternal: the forceIncludeExternal=true variant
-    // is only used by getExternalClaudeMdIncludes() for approval checks, not
+    // is only used by getExternalAxiomateMdIncludes() for approval checks, not
     // for building context — firing the hook there would double-fire on startup.
     // The one-shot flag is consumed on every !forceIncludeExternal cache miss
     // (NOT gated on hasInstructionsLoadedHook) so the flag is released even
@@ -1364,15 +1364,15 @@ export async function processConditionedMdRules(
   })
 }
 
-export type ExternalClaudeMdInclude = {
+export type ExternalAxiomateMdInclude = {
   path: string
   parent: string
 }
 
-export function getExternalClaudeMdIncludes(
+export function getExternalAxiomateMdIncludes(
   files: MemoryFileInfo[],
-): ExternalClaudeMdInclude[] {
-  const externals: ExternalClaudeMdInclude[] = []
+): ExternalAxiomateMdInclude[] {
+  const externals: ExternalAxiomateMdInclude[] = []
   for (const file of files) {
     if (file.type !== 'User' && file.parent && !pathInOriginalCwd(file.path)) {
       externals.push({ path: file.path, parent: file.parent })
@@ -1381,11 +1381,11 @@ export function getExternalClaudeMdIncludes(
   return externals
 }
 
-export function hasExternalClaudeMdIncludes(files: MemoryFileInfo[]): boolean {
-  return getExternalClaudeMdIncludes(files).length > 0
+export function hasExternalAxiomateMdIncludes(files: MemoryFileInfo[]): boolean {
+  return getExternalAxiomateMdIncludes(files).length > 0
 }
 
-export async function shouldShowClaudeMdExternalIncludesWarning(): Promise<boolean> {
+export async function shouldShowAxiomateMdExternalIncludesWarning(): Promise<boolean> {
   const config = getCurrentProjectConfig()
   if (
     config.hasClaudeMdExternalIncludesApproved ||
@@ -1394,7 +1394,7 @@ export async function shouldShowClaudeMdExternalIncludesWarning(): Promise<boole
     return false
   }
 
-  return hasExternalClaudeMdIncludes(await getMemoryFiles(true))
+  return hasExternalAxiomateMdIncludes(await getMemoryFiles(true))
 }
 
 /**

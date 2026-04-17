@@ -1,6 +1,6 @@
 import React, { useCallback } from 'react'
 import { Box, Link, Text } from '../ink.js'
-import type { ExternalClaudeMdInclude } from '../utils/axiomatemd.js'
+import type { ExternalAxiomateMdInclude } from '../utils/axiomatemd.js'
 import { saveCurrentProjectConfig } from '../utils/config.js'
 import { Select } from './CustomSelect/index.js'
 import { Dialog } from './design-system/Dialog.js'
@@ -8,10 +8,10 @@ import { Dialog } from './design-system/Dialog.js'
 type Props = {
   onDone(): void
   isStandaloneDialog?: boolean
-  externalIncludes?: ExternalClaudeMdInclude[]
+  externalIncludes?: ExternalAxiomateMdInclude[]
 }
 
-export function ClaudeMdExternalIncludesDialog({
+export function AxiomateMdExternalIncludesDialog({
   onDone,
   isStandaloneDialog,
   externalIncludes,
@@ -48,14 +48,14 @@ export function ClaudeMdExternalIncludesDialog({
 
   return (
     <Dialog
-      title="Allow external CLAUDE.md file imports?"
+      title="Allow external AXIOMATE.md file imports?"
       color="warning"
       onCancel={handleEscape}
       hideBorder={!isStandaloneDialog}
       hideInputGuide={!isStandaloneDialog}
     >
       <Text>
-        This project&apos;s CLAUDE.md imports files outside the current working
+        This project&apos;s AXIOMATE.md imports files outside the current working
         directory. Never allow this for third-party repositories.
       </Text>
 

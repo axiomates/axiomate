@@ -154,10 +154,10 @@ export function generateHeatmap(
   lines.push(
     '    Less ' +
       [
-        claudeOrange('░'),
-        claudeOrange('▒'),
-        claudeOrange('▓'),
-        claudeOrange('█'),
+        heatColor('░'),
+        heatColor('▒'),
+        heatColor('▓'),
+        heatColor('█'),
       ].join(' ') +
       ' More',
   )
@@ -177,21 +177,21 @@ function getIntensity(
   return 1
 }
 
-// Claude orange color (hex #da7756)
-const claudeOrange = chalk.hex('#da7756')
+// Axiomate pink (matches theme.axiomate: rgb(255,105,180))
+const heatColor = chalk.hex('#ff69b4')
 
 function getHeatmapChar(intensity: number): string {
   switch (intensity) {
     case 0:
       return chalk.gray('·')
     case 1:
-      return claudeOrange('░')
+      return heatColor('░')
     case 2:
-      return claudeOrange('▒')
+      return heatColor('▒')
     case 3:
-      return claudeOrange('▓')
+      return heatColor('▓')
     case 4:
-      return claudeOrange('█')
+      return heatColor('█')
     default:
       return chalk.gray('·')
   }
