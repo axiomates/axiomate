@@ -1,4 +1,3 @@
-import { isRemoteManagedSettingsEligible } from '../services/remoteManagedSettings/syncCache.js'
 import { clearCACertsCache } from './caCerts.js'
 import { getGlobalConfig } from './config.js'
 import { isEnvTruthy } from './envUtils.js'
@@ -87,31 +86,17 @@ export function applySafeConfigEnvironmentVariables(): void {
   // Global config (~/.axiomate.json) is user-controlled.
   Object.assign(process.env, filterSettingsEnv(getGlobalConfig().env))
 
-  // Apply ALL env vars from trusted setting sources, policySettings last.
+  // Apply ALL env vars from trusted setting sources.
   // Gate on isSettingSourceEnabled so SDK settingSources: [] (isolation mode)
   // doesn't get clobbered by ~/.axiomate/settings.json env (gh#217). policy/flag
   // sources are always enabled, so this only ever filters userSettings.
   for (const source of TRUSTED_SETTING_SOURCES) {
-    if (source === 'policySettings') continue
     if (!isSettingSourceEnabled(source)) continue
     Object.assign(
       process.env,
       filterSettingsEnv(getSettingsForSource(source)?.env),
     )
   }
-
-  // Compute remote-managed-settings eligibility now, with userSettings and
-  // flagSettings env applied. Eligibility reads AXIOMATE_CODE_USE_BEDROCK,
-  // AXIOMATE_BASE_URL — both settable via settings.env.
-  // getSettingsForSource('policySettings') below consults the remote cache,
-  // which guards on this. The two-phase structure makes the ordering
-  // dependency visible: non-policy env → eligibility → policy env.
-  isRemoteManagedSettingsEligible()
-
-  Object.assign(
-    process.env,
-    filterSettingsEnv(getSettingsForSource('policySettings')?.env),
-  )
 
   // Apply only safe env vars from the fully-merged settings (which includes
   // project-scoped sources). For safe vars that also exist in trusted sources,

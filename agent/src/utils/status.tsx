@@ -133,8 +133,6 @@ export function buildSettingSourcesProperties(): Property[] {
         return null; // Skip - no policy settings exist
       }
       switch (origin) {
-        case 'remote':
-          return 'Enterprise managed settings (remote)';
         case 'plist':
           return 'Enterprise managed settings (plist)';
         case 'hklm':

@@ -1,7 +1,6 @@
 import { feature } from 'bun:bundle'
 import { readFile, stat } from 'fs/promises'
 import { dirname } from 'path'
-import { waitForRemoteManagedSettingsToLoad } from '../services/remoteManagedSettings/index.js'
 import { StructuredIO } from './structuredIO.js'
 import {
   type Command,
@@ -19,10 +18,7 @@ import { mergeAndFilterTools } from '../utils/toolPool.js'
 import {
 } from '../services/analytics/index.js'
 import { logForDebugging } from '../utils/debug.js'
-import {
-  logForDiagnosticsNoPII,
-  withDiagnosticsTiming,
-} from '../utils/diagLogs.js'
+import { logForDiagnosticsNoPII } from '../utils/diagLogs.js'
 import { toolMatchesName, type Tool, type Tools } from '../Tool.js'
 import {
   type AgentDefinition,
@@ -1525,11 +1521,6 @@ function runHeadlessStreaming(
   // NOTE: Nested function required - needs closure access to applyMcpServerChanges and updateSdkMcp
   async function installPluginsAndApplyMcpInBackground(): Promise<void> {
     try {
-      // Wait for managed settings (fired in main.tsx preAction).
-      await withDiagnosticsTiming('headless_managed_settings_wait', () =>
-        waitForRemoteManagedSettingsToLoad(),
-      )
-
       const pluginsInstalled = await installPluginsForHeadless()
 
       if (pluginsInstalled) {
