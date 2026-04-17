@@ -465,24 +465,25 @@ export async function cleanupNpmCacheForAnthropicPackages(): Promise<void> {
     const cacache = await import('cacache')
     const cutoff = startTime - ONE_DAY_MS
 
-    // Stream index entries and collect all Anthropic package entries.
+    // Stream index entries and collect entries for this package only.
     // Previous implementation used cacache.verify() which does a full
     // integrity check + GC of the ENTIRE cache — O(all content blobs).
     // On large caches this took 60+ seconds and blocked the event loop.
+    const packagePrefix = MACRO.PACKAGE_URL
     const stream = cacache.ls.stream(npmCachePath)
-    const anthropicEntries: { key: string; time: number }[] = []
+    const axiomateEntries: { key: string; time: number }[] = []
     for await (const entry of stream as AsyncIterable<{
       key: string
       time: number
     }>) {
-      if (entry.key.includes('@anthropic-ai/claude-')) {
-        anthropicEntries.push({ key: entry.key, time: entry.time })
+      if (entry.key.includes(packagePrefix)) {
+        axiomateEntries.push({ key: entry.key, time: entry.time })
       }
     }
 
     // Group by package name (everything before the last @version separator)
     const byPackage = new Map<string, { key: string; time: number }[]>()
-    for (const entry of anthropicEntries) {
+    for (const entry of axiomateEntries) {
       const atVersionIdx = entry.key.lastIndexOf('@')
       const pkgName =
         atVersionIdx > 0 ? entry.key.slice(0, atVersionIdx) : entry.key
@@ -512,7 +513,7 @@ export async function cleanupNpmCacheForAnthropicPackages(): Promise<void> {
     const durationMs = Date.now() - startTime
     if (keysToRemove.length > 0) {
       logForDebugging(
-        `npm cache cleanup: Removed ${keysToRemove.length} old @anthropic-ai entries in ${durationMs}ms`,
+        `npm cache cleanup: Removed ${keysToRemove.length} old ${packagePrefix} entries in ${durationMs}ms`,
       )
     } else {
       logForDebugging(`npm cache cleanup: completed in ${durationMs}ms`)
