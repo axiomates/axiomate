@@ -20,7 +20,6 @@ import {
   getCurrentProjectConfig,
   type OutputStyle,
 } from '../../utils/config.js'
-import { normalizeApiKeyForConfig } from '../../utils/authPortable.js'
 import {
   getGlobalConfig,
   getAutoUpdaterDisabledReason,
@@ -86,7 +85,7 @@ import {
 } from '../../utils/settings/settings.js'
 import { getUserMsgOptIn, setUserMsgOptIn } from '../../bootstrap/state.js'
 import { DEFAULT_OUTPUT_STYLE_NAME } from '../../constants/outputStyles.js'
-import { isEnvTruthy, isRunningOnHomespace } from '../../utils/envUtils.js'
+import { isEnvTruthy } from '../../utils/envUtils.js'
 import type {
   LocalJSXCommandContext,
   CommandResultDisplay,
@@ -875,86 +874,6 @@ export function Config({
           },
         ]
       : []),
-    ...(process.env.AXIOMATE_API_KEY && !isRunningOnHomespace()
-      ? [
-          {
-            id: 'apiKey',
-            label: (
-              <Text>
-                Use custom API key:{' '}
-                <Text bold>
-                  {normalizeApiKeyForConfig(process.env.AXIOMATE_API_KEY)}
-                </Text>
-              </Text>
-            ),
-            searchText: 'Use custom API key',
-            value: Boolean(
-              process.env.AXIOMATE_API_KEY &&
-                globalConfig.customApiKeyResponses?.approved?.includes(
-                  normalizeApiKeyForConfig(process.env.AXIOMATE_API_KEY),
-                ),
-            ),
-            type: 'boolean' as const,
-            onChange(useCustomKey: boolean) {
-              saveGlobalConfig(current => {
-                const updated = { ...current }
-                if (!updated.customApiKeyResponses) {
-                  updated.customApiKeyResponses = {
-                    approved: [],
-                    rejected: [],
-                  }
-                }
-                if (!updated.customApiKeyResponses.approved) {
-                  updated.customApiKeyResponses = {
-                    ...updated.customApiKeyResponses,
-                    approved: [],
-                  }
-                }
-                if (!updated.customApiKeyResponses.rejected) {
-                  updated.customApiKeyResponses = {
-                    ...updated.customApiKeyResponses,
-                    rejected: [],
-                  }
-                }
-                if (process.env.AXIOMATE_API_KEY) {
-                  const truncatedKey = normalizeApiKeyForConfig(
-                    process.env.AXIOMATE_API_KEY,
-                  )
-                  if (useCustomKey) {
-                    updated.customApiKeyResponses = {
-                      ...updated.customApiKeyResponses,
-                      approved: [
-                        ...(
-                          updated.customApiKeyResponses.approved ?? []
-                        ).filter(k => k !== truncatedKey),
-                        truncatedKey,
-                      ],
-                      rejected: (
-                        updated.customApiKeyResponses.rejected ?? []
-                      ).filter(k => k !== truncatedKey),
-                    }
-                  } else {
-                    updated.customApiKeyResponses = {
-                      ...updated.customApiKeyResponses,
-                      approved: (
-                        updated.customApiKeyResponses.approved ?? []
-                      ).filter(k => k !== truncatedKey),
-                      rejected: [
-                        ...(
-                          updated.customApiKeyResponses.rejected ?? []
-                        ).filter(k => k !== truncatedKey),
-                        truncatedKey,
-                      ],
-                    }
-                  }
-                }
-                return updated
-              })
-              setGlobalConfig(getGlobalConfig())
-            },
-          },
-        ]
-      : []),
   ]
 
   // Filter settings based on search query
@@ -1015,29 +934,6 @@ export function Config({
         return `Set ${key} to ${chalk.bold(value)}`
       },
     )
-    // Check for API key changes
-    // On homespace, AXIOMATE_API_KEY is preserved in process.env for child
-    // processes but ignored by Axiomate itself (see auth.ts).
-    const effectiveApiKey = isRunningOnHomespace()
-      ? undefined
-      : process.env.AXIOMATE_API_KEY
-    const initialUsingCustomKey = Boolean(
-      effectiveApiKey &&
-        initialConfig.current.customApiKeyResponses?.approved?.includes(
-          normalizeApiKeyForConfig(effectiveApiKey),
-        ),
-    )
-    const currentUsingCustomKey = Boolean(
-      effectiveApiKey &&
-        globalConfig.customApiKeyResponses?.approved?.includes(
-          normalizeApiKeyForConfig(effectiveApiKey),
-        ),
-    )
-    if (initialUsingCustomKey !== currentUsingCustomKey) {
-      formattedChanges.push(
-        `${currentUsingCustomKey ? 'Enabled' : 'Disabled'} custom API key`,
-      )
-    }
     if (globalConfig.theme !== initialConfig.current.theme) {
       formattedChanges.push(`Set theme to ${chalk.bold(globalConfig.theme)}`)
     }

@@ -687,10 +687,6 @@ function createDefaultGlobalConfig(): GlobalConfig {
     hasUsedBackgroundTask: false,
     queuedCommandUpHintCount: 0,
     diffTool: 'auto',
-    customApiKeyResponses: {
-      approved: [],
-      rejected: [],
-    },
     env: {},
     tipsHistory: {},
     memoryUsageCount: 0,
@@ -1172,19 +1168,6 @@ export function getRemoteControlAtStartup(): boolean {
   const explicit = getGlobalConfig().remoteControlAtStartup
   if (explicit !== undefined) return explicit
   return false
-}
-
-export function getCustomApiKeyStatus(
-  truncatedApiKey: string,
-): 'approved' | 'rejected' | 'new' {
-  const config = getGlobalConfig()
-  if (config.customApiKeyResponses?.approved?.includes(truncatedApiKey)) {
-    return 'approved'
-  }
-  if (config.customApiKeyResponses?.rejected?.includes(truncatedApiKey)) {
-    return 'rejected'
-  }
-  return 'new'
 }
 
 function saveConfig<A extends object>(
