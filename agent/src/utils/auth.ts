@@ -78,10 +78,6 @@ export type ApiKeySource =
  */
 export function isAnthropicAuthEnabled(): boolean {
   if (isBareMode()) return false
-  const is3P =
-    isEnvTruthy(process.env.AXIOMATE_CODE_USE_BEDROCK) ||
-    isEnvTruthy(process.env.AXIOMATE_CODE_USE_VERTEX) ||
-    isEnvTruthy(process.env.AXIOMATE_CODE_USE_FOUNDRY)
   const settings = getSettings_DEPRECATED() || {}
   const apiKeyHelper = settings.apiKeyHelper
   const hasExternalAuthToken =
@@ -92,9 +88,7 @@ export function isAnthropicAuthEnabled(): boolean {
   })
   const hasExternalApiKey =
     apiKeySource === 'ANTHROPIC_API_KEY' || apiKeySource === 'apiKeyHelper'
-  const shouldDisableAuth =
-    is3P || hasExternalAuthToken || hasExternalApiKey
-  return !shouldDisableAuth
+  return !(hasExternalAuthToken || hasExternalApiKey)
 }
 
 /** Where the auth token is being sourced from, if any. */
@@ -805,11 +799,7 @@ export function prefetchAwsCredentialsAndBedRockInfoIfSafe(): void {
 // ---------------------------------------------------------------------------
 
 export function isUsing3PServices(): boolean {
-  return !!(
-    isEnvTruthy(process.env.AXIOMATE_CODE_USE_BEDROCK) ||
-    isEnvTruthy(process.env.AXIOMATE_CODE_USE_VERTEX) ||
-    isEnvTruthy(process.env.AXIOMATE_CODE_USE_FOUNDRY)
-  )
+  return false
 }
 
 // ---------------------------------------------------------------------------

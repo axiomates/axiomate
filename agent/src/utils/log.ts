@@ -157,15 +157,7 @@ const isHardFailMode = memoize((): boolean => {
 export function logError(error: unknown): void {
   const err = toError(error)
   try {
-    // Check if error reporting should be disabled
-    if (
-      // Cloud providers (Bedrock/Vertex/Foundry) always disable features
-      isEnvTruthy(process.env.AXIOMATE_CODE_USE_BEDROCK) ||
-      isEnvTruthy(process.env.AXIOMATE_CODE_USE_VERTEX) ||
-      isEnvTruthy(process.env.AXIOMATE_CODE_USE_FOUNDRY) ||
-      process.env.DISABLE_ERROR_REPORTING ||
-      isEssentialTrafficOnly()
-    ) {
+    if (process.env.DISABLE_ERROR_REPORTING || isEssentialTrafficOnly()) {
       return
     }
 

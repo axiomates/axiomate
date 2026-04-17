@@ -380,36 +380,11 @@ function isOAuthTokenRevokedError(error: unknown): boolean {
   )
 }
 
-function isBedrockAuthError(error: unknown): boolean {
-  if (isEnvTruthy(process.env.AXIOMATE_CODE_USE_BEDROCK)) {
-    // AWS libs reject without an API call if .aws holds a past Expiration value
-    // otherwise, API calls that receive expired tokens give generic 403
-    // "The security token included in the request is invalid"
-    if (
-      isAwsCredentialsProviderError(error) ||
-      (error instanceof LLMAPIError && error.status === 403)
-    ) {
-      return true
-    }
-  }
+function isBedrockAuthError(_error: unknown): boolean {
   return false
 }
 
-function isGoogleAuthLibraryCredentialError(error: unknown): boolean {
-  if (!(error instanceof Error)) return false
-  const msg = error.message
-  return (
-    msg.includes('Could not load the default credentials') ||
-    msg.includes('Could not refresh access token') ||
-    msg.includes('invalid_grant')
-  )
-}
-
-function isVertexAuthError(error: unknown): boolean {
-  if (isEnvTruthy(process.env.AXIOMATE_CODE_USE_VERTEX)) {
-    if (isGoogleAuthLibraryCredentialError(error)) return true
-    if (error instanceof LLMAPIError && error.status === 401) return true
-  }
+function isVertexAuthError(_error: unknown): boolean {
   return false
 }
 
