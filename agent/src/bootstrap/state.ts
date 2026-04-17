@@ -1206,8 +1206,7 @@ export function setAllowedSettingSources(sources: SettingSource[]): void {
 }
 
 export function preferThirdPartyAuthentication(): boolean {
-  // IDE extension should behave as 1P for authentication reasons.
-  return getIsNonInteractiveSession() && STATE.clientType !== 'claude-vscode'
+  return getIsNonInteractiveSession()
 }
 
 export function setInlinePlugins(plugins: Array<string>): void {

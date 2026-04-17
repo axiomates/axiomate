@@ -519,9 +519,7 @@ export async function main() {
     if (process.env.AXIOMATE_CODE_ENTRYPOINT === 'sdk-ts') return 'sdk-typescript';
     if (process.env.AXIOMATE_CODE_ENTRYPOINT === 'sdk-py') return 'sdk-python';
     if (process.env.AXIOMATE_CODE_ENTRYPOINT === 'sdk-cli') return 'sdk-cli';
-    if (process.env.AXIOMATE_CODE_ENTRYPOINT === 'claude-vscode') return 'claude-vscode';
     if (process.env.AXIOMATE_CODE_ENTRYPOINT === 'local-agent') return 'local-agent';
-    if (process.env.AXIOMATE_CODE_ENTRYPOINT === 'claude-desktop') return 'claude-desktop';
 
     // Check if session-ingress token is provided (indicates remote session)
     const hasSessionIngressToken = process.env.AXIOMATE_CODE_SESSION_ACCESS_TOKEN || process.env.AXIOMATE_CODE_WEBSOCKET_AUTH_FILE_DESCRIPTOR;
@@ -535,9 +533,9 @@ export async function main() {
   if (previewFormat === 'markdown' || previewFormat === 'html') {
     setQuestionPreviewFormat(previewFormat);
   } else if (!clientType.startsWith('sdk-') &&
-  // Desktop and CCR pass previewFormat via toolConfig; when the feature is
-  // gated off they pass undefined — don't override that with markdown.
-  clientType !== 'claude-desktop' && clientType !== 'local-agent' && clientType !== 'remote') {
+  // local-agent and remote hosts pass previewFormat via toolConfig; when the
+  // feature is gated off they pass undefined — don't override with markdown.
+  clientType !== 'local-agent' && clientType !== 'remote') {
     setQuestionPreviewFormat('markdown');
   }
 

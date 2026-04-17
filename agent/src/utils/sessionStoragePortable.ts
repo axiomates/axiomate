@@ -2,8 +2,8 @@
  * Portable session storage utilities.
  *
  * Pure Node.js — no internal dependencies on logging, experiments, or feature
- * flags. Shared between the CLI (src/utils/sessionStorage.ts) and the VS Code
- * extension (packages/claude-vscode/src/common-host/sessionStorage.ts).
+ * flags. Kept portable so shared helpers stay callable from contexts that
+ * can't import the CLI's logging/state layer.
  */
 
 import type { UUID } from 'crypto'

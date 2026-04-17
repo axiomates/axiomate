@@ -44,35 +44,12 @@ function withoutHostManagedProviderVars(
 }
 
 /**
- * Snapshot of env keys present before any settings.env is applied — for CCD,
- * these are the keys the desktop host set to orchestrate the subprocess.
- * Settings must not override them (OTEL_LOGS_EXPORTER=console would corrupt
- * the stdio JSON-RPC transport). Keys added LATER by user/project settings
- * are not in this set, so mid-session settings.json changes still apply.
- * Lazy-captured on first applySafeConfigEnvironmentVariables() call.
- */
-let ccdSpawnEnvKeys: Set<string> | null | undefined
-
-function withoutCcdSpawnEnvKeys(
-  env: Record<string, string> | undefined,
-): Record<string, string> {
-  if (!env || !ccdSpawnEnvKeys) return env || {}
-  const out: Record<string, string> = {}
-  for (const [key, value] of Object.entries(env)) {
-    if (!ccdSpawnEnvKeys.has(key)) out[key] = value
-  }
-  return out
-}
-
-/**
  * Compose the strip filters applied to every settings-sourced env object.
  */
 function filterSettingsEnv(
   env: Record<string, string> | undefined,
 ): Record<string, string> {
-  return withoutCcdSpawnEnvKeys(
-    withoutHostManagedProviderVars(withoutSSHTunnelVars(env)),
-  )
+  return withoutHostManagedProviderVars(withoutSSHTunnelVars(env))
 }
 
 /**
@@ -107,17 +84,7 @@ const TRUSTED_SETTING_SOURCES = [
  * fully established via applyConfigEnvironmentVariables().
  */
 export function applySafeConfigEnvironmentVariables(): void {
-  // Capture CCD spawn-env keys before any settings.env is applied (once).
-  if (ccdSpawnEnvKeys === undefined) {
-    ccdSpawnEnvKeys =
-      process.env.AXIOMATE_CODE_ENTRYPOINT === 'claude-desktop'
-        ? new Set(Object.keys(process.env))
-        : null
-  }
-
-  // Global config (~/.axiomate.json) is user-controlled. In CCD mode,
-  // filterSettingsEnv strips keys that were in the spawn env snapshot so
-  // the desktop host's operational vars (OTEL, etc.) are not overridden.
+  // Global config (~/.axiomate.json) is user-controlled.
   Object.assign(process.env, filterSettingsEnv(getGlobalConfig().env))
 
   // Apply ALL env vars from trusted setting sources, policySettings last.
