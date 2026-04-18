@@ -215,8 +215,8 @@ ${
     return shared
   }
 
-  // Ant-native builds alias find/grep to embedded bfs/ugrep and remove the
-  // dedicated Glob/Grep tools, so point at find via Bash instead.
+  // Builds with embedded search tools alias find/grep to bfs/ugrep and remove
+  // the dedicated Glob/Grep tools, so point at find via Bash instead.
   const embedded = hasEmbeddedSearchTools()
   const fileSearchHint = embedded
     ? '`find` via the Bash tool'

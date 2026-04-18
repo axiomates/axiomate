@@ -77,7 +77,6 @@ function buildHookSchemas() {
       .positive()
       .optional()
       .describe('Timeout in seconds for this specific prompt evaluation'),
-    // @[MODEL LAUNCH]: Update the example model ID in the .describe() strings below (prompt + agent hooks).
     model: z
       .string()
       .optional()

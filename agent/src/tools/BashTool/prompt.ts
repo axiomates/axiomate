@@ -241,8 +241,8 @@ function getSimpleSandboxSection(): string {
 }
 
 export function getSimplePrompt(): string {
-  // Ant-native builds alias find/grep to embedded bfs/ugrep in Axiomate's shell,
-  // so we don't steer away from them (and Glob/Grep tools are removed).
+  // Builds with embedded search tools alias find/grep to bfs/ugrep in Axiomate's
+  // shell, so we don't steer away from them (and Glob/Grep tools are removed).
   const embedded = hasEmbeddedSearchTools()
 
   const toolPreferenceItems = [

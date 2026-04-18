@@ -132,7 +132,6 @@ export function unstable_v2_resumeSession(
   throw new Error('unstable_v2_resumeSession is not implemented in the SDK')
 }
 
-// @[MODEL LAUNCH]: Update the example model ID in this docstring.
 /**
  * V2 API - UNSTABLE
  * One-shot convenience function for single prompts.

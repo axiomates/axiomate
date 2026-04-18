@@ -176,8 +176,8 @@ export function getAllBaseTools(): Tools {
     AgentTool,
     TaskOutputTool,
     BashTool,
-    // Ant-native builds have bfs/ugrep embedded in the bun binary (same ARGV0
-    // trick as ripgrep). When available, find/grep in Axiomate's shell are aliased
+    // Some builds have bfs/ugrep embedded in the bun binary (same ARGV0 trick
+    // as ripgrep). When available, find/grep in Axiomate's shell are aliased
     // to these fast tools, so the dedicated Glob/Grep tools are unnecessary.
     ...(hasEmbeddedSearchTools() ? [] : [GlobTool, GrepTool]),
     ExitPlanModeV2Tool,

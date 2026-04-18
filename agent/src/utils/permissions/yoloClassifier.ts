@@ -602,8 +602,7 @@ function replaceOutputFormatWithXml(systemPrompt: string): string {
  * Models with alwaysOnThinking (declared in ax_ant_model_override) default
  * to adaptive thinking server-side and reject `disabled` with a 400. For those:
  * don't pass `thinking: false`, instead pad max_tokens so adaptive thinking
- * (observed 0–1114 tokens replaying go/ccshare/shawnm-20260310-202833) doesn't
- * exhaust the budget before <block> is emitted. Without headroom,
+ * doesn't exhaust the budget before <block> is emitted. Without headroom,
  * stop_reason=max_tokens yields an empty text response → parseXmlBlock('')
  * → null → "unparseable" → safe commands blocked.
  *

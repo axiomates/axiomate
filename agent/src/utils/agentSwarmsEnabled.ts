@@ -15,10 +15,8 @@ function isAgentTeamsFlagSet(): boolean {
  * This is the single gate that should be checked everywhere teammates
  * are referenced (prompts, code, tools isEnabled, UI, etc.).
  *
- * Ant builds: always enabled.
- * External builds require both:
- * 1. Opt-in via AXIOMATE_CODE_EXPERIMENTAL_AGENT_TEAMS env var OR --agent-teams flag
- * 2. config gate 'ax_amber_flint' enabled (killswitch)
+ * Requires opt-in via AXIOMATE_CODE_EXPERIMENTAL_AGENT_TEAMS env var
+ * OR --agent-teams flag.
  */
 export function isAgentSwarmsEnabled(): boolean {
   // Require opt-in via env var or --agent-teams flag

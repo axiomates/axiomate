@@ -1384,8 +1384,8 @@ async function run(): Promise<CommanderCommand> {
       cacheSessionTitle(sessionNameArg);
     }
 
-    // Ant model aliases (capybara-fast etc.) resolve via the
-    // ax_ant_model_override config flag. _CACHED_MAY_BE_STALE reads
+    // Model overrides via the ax_ant_model_override config flag
+    // resolve through this path. _CACHED_MAY_BE_STALE reads
     // disk synchronously; disk is populated by a fire-and-forget write. On a
     // cold cache, parseUserSpecifiedModel returns the unresolved alias, the
     // API 404s, and -p exits before the async write lands — crashloop on

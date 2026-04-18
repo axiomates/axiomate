@@ -11,8 +11,8 @@ import { AGENT_TOOL_NAME } from '../constants.js'
 import type { BuiltInAgentDefinition } from '../loadAgentsDir.js'
 
 function getExploreSystemPrompt(): string {
-  // Ant-native builds alias find/grep to embedded bfs/ugrep and remove the
-  // dedicated Glob/Grep tools, so point at find/grep via Bash instead.
+  // Builds with embedded search tools alias find/grep to bfs/ugrep and remove
+  // the dedicated Glob/Grep tools, so point at find/grep via Bash instead.
   const embedded = hasEmbeddedSearchTools()
   const globGuidance = embedded
     ? `- Use \`find\` via ${BASH_TOOL_NAME} for broad file pattern matching`

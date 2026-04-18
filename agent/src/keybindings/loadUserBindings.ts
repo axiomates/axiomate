@@ -5,7 +5,7 @@
  * for changes to reload them automatically.
  *
  * NOTE: User keybinding customization is currently only available for
- * Dev builds (USER_TYPE === 'ant'). Default builds always
+ * dev builds (controlled by USER_TYPE). Default builds always
  * use the default bindings.
  */
 

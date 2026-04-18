@@ -3094,8 +3094,8 @@ NOTE: At any point in time through this workflow you should feel free to ask the
 }
 
 function getReadOnlyToolNames(): string {
-  // Ant-native builds alias find/grep to embedded bfs/ugrep and remove the
-  // dedicated Glob/Grep tools from the registry, so point at find/grep via
+  // Builds with embedded search tools alias find/grep to bfs/ugrep and remove
+  // the dedicated Glob/Grep tools from the registry, so point at find/grep via
   // Bash instead.
   const tools = hasEmbeddedSearchTools()
     ? [FILE_READ_TOOL_NAME, '`find`', '`grep`']

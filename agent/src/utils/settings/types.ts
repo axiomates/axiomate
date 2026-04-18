@@ -728,48 +728,10 @@ export const SettingsSchema = lazySchema(() =>
           'Custom directory for plan files, relative to project root. ' +
             'If not set, defaults to ~/.axiomate/plans/',
         ),
-      ...( false
-        ? {
-            minSleepDurationMs: z
-              .number()
-              .nonnegative()
-              .int()
-              .optional()
-              .describe(
-                'Minimum duration in milliseconds that the Sleep tool must sleep for.',
-              ),
-            maxSleepDurationMs: z
-              .number()
-              .int()
-              .min(-1)
-              .optional()
-              .describe(
-                'Maximum duration in milliseconds that the Sleep tool can sleep for. ' +
-                  'Set to -1 for indefinite sleep (waits for user input). ' +
-                  'Useful for limiting idle time in remote/managed environments.',
-              ),
-          }
-        : {}),
       voiceEnabled: z
         .boolean()
         .optional()
         .describe('Enable voice mode (hold-to-talk dictation)'),
-      ...(false
-        ? {
-            assistant: z
-              .boolean()
-              .optional()
-              .describe(
-                'Start Axiomate in assistant mode (custom system prompt, brief view, scheduled check-in skills)',
-              ),
-            assistantName: z
-              .string()
-              .optional()
-              .describe(
-                'Display name for the assistant, shown in the remote service session list',
-              ),
-          }
-        : {}),
       ...(false
         ? {
             defaultView: z
