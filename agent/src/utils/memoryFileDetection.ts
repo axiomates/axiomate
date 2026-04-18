@@ -1,4 +1,3 @@
-import { feature } from 'bun:bundle'
 import { normalize, posix, win32 } from 'path'
 import {
   getAutoMemPath,
@@ -12,12 +11,6 @@ import {
   posixPathToWindowsPath,
   windowsPathToPosixPath,
 } from './windowsPaths.js'
-
-/* eslint-disable @typescript-eslint/no-require-imports */
-const teamMemPaths = feature('TEAMMEM')
-  ? (require('../memdir/teamMemPaths.js') as typeof import('../memdir/teamMemPaths.js'))
-  : null
-/* eslint-enable @typescript-eslint/no-require-imports */
 
 const IS_WINDOWS = process.platform === 'win32'
 
@@ -91,22 +84,9 @@ export function isAutoMemFile(filePath: string): boolean {
   return false
 }
 
-export type MemoryScope = 'personal' | 'team'
+export type MemoryScope = 'personal'
 
-/**
- * Determine which memory store (if any) a path belongs to.
- *
- * Team dir is a subdirectory of memdir (getTeamMemPath = join(getAutoMemPath, 'team')),
- * so a team path matches both isTeamMemFile and isAutoMemFile. Check team first.
- *
- * Use this for scope-keyed telemetry where a single event name distinguishes
- * by scope field — the existing ax_memdir_* / ax_team_mem_* event-name
- * hierarchy handles the overlap differently (team writes intentionally fire both).
- */
 export function memoryScopeForPath(filePath: string): MemoryScope | null {
-  if (feature('TEAMMEM') && teamMemPaths!.isTeamMemFile(filePath)) {
-    return 'team'
-  }
   if (isAutoMemFile(filePath)) {
     return 'personal'
   }
@@ -134,9 +114,6 @@ export function isAutoManagedMemoryFile(filePath: string): boolean {
   if (isAutoMemFile(filePath)) {
     return true
   }
-  if (feature('TEAMMEM') && teamMemPaths!.isTeamMemFile(filePath)) {
-    return true
-  }
   if (detectSessionFileType(filePath) !== null) {
     return true
   }
@@ -162,14 +139,6 @@ export function isMemoryDirectory(dirPath: string): boolean {
     isAutoMemoryEnabled() &&
     (normalizedCmp.includes('/agent-memory/') ||
       normalizedCmp.includes('/agent-memory-local/'))
-  ) {
-    return true
-  }
-  // Team memory directories live under <autoMemPath>/team/
-  if (
-    feature('TEAMMEM') &&
-    teamMemPaths!.isTeamMemoryEnabled() &&
-    teamMemPaths!.isTeamMemPath(normalizedPath)
   ) {
     return true
   }

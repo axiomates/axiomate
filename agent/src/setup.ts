@@ -321,11 +321,6 @@ export async function setup(
     void import('./utils/sessionFileAccessHooks.js').then(m =>
       m.registerSessionFileAccessHooks(),
     ) // Register session file access analytics hooks
-    if (feature('TEAMMEM')) {
-      void import('./services/teamMemorySync/watcher.js').then(m =>
-        m.startTeamMemoryWatcher({} as any),
-      ) // Start team memory sync watcher
-    }
   }
   initSinks() // Attach error log + analytics sinks and drain queued events
 

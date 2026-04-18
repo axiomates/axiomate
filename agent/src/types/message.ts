@@ -432,9 +432,6 @@ export type CollapsedReadSearchGroup = BaseMessage & {
   hookCount?: number
   hookInfos?: StopHookInfo[]
   relevantMemories?: Array<{ path: string; content: string; [key: string]: any }>
-  teamMemorySearchCount?: number
-  teamMemoryReadCount?: number
-  teamMemoryWriteCount?: number
 }
 
 export type GroupedToolUseMessage = {

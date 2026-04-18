@@ -1,5 +1,4 @@
 import { Box, Text, type TextProps } from '../../ink.js'
-import { feature } from 'bun:bundle'
 import * as React from 'react'
 import { useState } from 'react'
 import sample from 'lodash-es/sample.js'
@@ -13,11 +12,6 @@ import { basename } from 'path'
 import { MessageResponse } from '../MessageResponse.js'
 import { FilePathLink } from '../FilePathLink.js'
 import { openPath } from '../../utils/browser.js'
-/* eslint-disable @typescript-eslint/no-require-imports */
-const teamMemSaved = feature('TEAMMEM')
-  ? (require('./teamMemSaved.js') as typeof import('./teamMemSaved.js'))
-  : null
-/* eslint-enable @typescript-eslint/no-require-imports */
 import { TURN_COMPLETION_VERBS } from '../../constants/turnCompletionVerbs.js'
 import { useTerminalSize } from '../../hooks/useTerminalSize.js'
 import type {
@@ -384,16 +378,9 @@ function MemorySavedMessage({
 }): React.ReactNode {
   const bg = useSelectedMessageBg()
   const { writtenPaths } = message
-  const team = feature('TEAMMEM')
-    ? teamMemSaved!.teamMemSavedPart(message)
-    : null
-  const privateCount = writtenPaths.length - (team?.count ?? 0)
-  const parts = [
-    privateCount > 0
-      ? `${privateCount} ${privateCount === 1 ? 'memory' : 'memories'}`
-      : null,
-    team?.segment,
-  ].filter(Boolean)
+  const count = writtenPaths.length
+  const parts =
+    count > 0 ? [`${count} ${count === 1 ? 'memory' : 'memories'}`] : []
   return (
     <Box
       flexDirection="column"

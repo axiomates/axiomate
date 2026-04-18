@@ -1,4 +1,3 @@
-import { feature } from 'bun:bundle'
 import { randomBytes } from 'crypto'
 import { unwatchFile, watchFile } from 'fs'
 import memoize from 'lodash-es/memoize.js'
@@ -29,13 +28,8 @@ import { getEssentialTrafficOnlyReason } from './privacyLevel.js'
 import { getManagedFilePath } from './settings/managedPath.js'
 import type { ThemeSetting } from './theme.js'
 
-/* eslint-disable @typescript-eslint/no-require-imports */
-const teamMemPaths = feature('TEAMMEM')
-  ? (require('../memdir/teamMemPaths.js') as typeof import('../memdir/teamMemPaths.js'))
-  : null
 const ccrAutoConnect: { getCcrAutoConnectDefault?(): boolean } | null = null
 
-/* eslint-enable @typescript-eslint/no-require-imports */
 import type { ImageDimensions } from './imageResizer.js'
 import type { ModelOption } from './model/modelOptions.js'
 import { jsonParse, jsonStringify } from './slowOperations.js'
@@ -1814,11 +1808,6 @@ export function getMemoryPath(memoryType: MemoryType): string {
     case 'AutoMem':
       return getAutoMemEntrypoint()
   }
-  // TeamMem is only a valid MemoryType when feature('TEAMMEM') is true
-  if (feature('TEAMMEM')) {
-    return teamMemPaths!.getTeamMemEntrypoint()
-  }
-  return '' // unreachable in external builds where TeamMem is not in MemoryType
 }
 
 export function getManagedAxiomateRulesDir(): string {

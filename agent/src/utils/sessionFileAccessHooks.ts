@@ -3,7 +3,6 @@
  * Tracks access to session memory and transcript files via Read, Grep, Glob tools.
  * Also tracks memdir file access via Read, Grep, Glob, Edit, and Write tools.
  */
-import { feature } from 'bun:bundle'
 import { registerHookCallbacks } from '../bootstrap/state.js'
 import type { HookInput, HookJSONOutput } from '../entrypoints/agentSdkTypes.js'
 import {
@@ -27,16 +26,6 @@ import {
   memoryScopeForPath,
 } from './memoryFileDetection.js'
 
-/* eslint-disable @typescript-eslint/no-require-imports */
-const teamMemPaths = feature('TEAMMEM')
-  ? (require('../memdir/teamMemPaths.js') as typeof import('../memdir/teamMemPaths.js'))
-  : null
-const teamMemWatcher = feature('TEAMMEM')
-  ? (require('../services/teamMemorySync/watcher.js') as typeof import('../services/teamMemorySync/watcher.js'))
-  : null
-const memoryShapeTelemetry = null
-
-/* eslint-enable @typescript-eslint/no-require-imports */
 import { getSubagentLogName } from './agentContext.js'
 
 /**
@@ -126,11 +115,7 @@ export function isMemoryFileAccess(
   }
 
   const filePath = getFilePathFromInput(toolName, toolInput)
-  if (
-    filePath &&
-    (isAutoMemFile(filePath) ||
-      (feature('TEAMMEM') && teamMemPaths!.isTeamMemFile(filePath)))
-  ) {
+  if (filePath && isAutoMemFile(filePath)) {
     return true
   }
 
@@ -169,21 +154,6 @@ async function handleSessionFileAccess(
       case FILE_EDIT_TOOL_NAME:
         break
       case FILE_WRITE_TOOL_NAME:
-        break
-    }
-  }
-
-  // Team memory access tracking
-  if (feature('TEAMMEM') && filePath && teamMemPaths!.isTeamMemFile(filePath)) {
-
-    switch (input.tool_name) {
-      case FILE_READ_TOOL_NAME:
-        break
-      case FILE_EDIT_TOOL_NAME:
-        teamMemWatcher?.notifyTeamMemoryWrite()
-        break
-      case FILE_WRITE_TOOL_NAME:
-        teamMemWatcher?.notifyTeamMemoryWrite()
         break
     }
   }

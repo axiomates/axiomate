@@ -4,12 +4,6 @@ import { getFsImplementation } from '../utils/fsOperations.js'
 import { getOriginalCwd } from '../bootstrap/state.js'
 import { getAutoMemPath, isAutoMemoryEnabled } from './paths.js'
 
-/* eslint-disable @typescript-eslint/no-require-imports */
-const teamMemPaths = feature('TEAMMEM')
-  ? (require('./teamMemPaths.js') as typeof import('./teamMemPaths.js'))
-  : null
-
-/* eslint-enable @typescript-eslint/no-require-imports */
 import { GREP_TOOL_NAME } from '../tools/GrepTool/prompt.js'
 import { isReplModeEnabled } from '../tools/REPLTool/constants.js'
 import { logForDebugging } from '../utils/debug.js'
@@ -96,12 +90,6 @@ export function truncateEntrypointContent(raw: string): EntrypointTruncation {
     wasByteTruncated,
   }
 }
-
-/* eslint-disable @typescript-eslint/no-require-imports */
-const teamMemPrompts = feature('TEAMMEM')
-  ? (require('./teamMemPrompts.js') as typeof import('./teamMemPrompts.js'))
-  : null
-/* eslint-enable @typescript-eslint/no-require-imports */
 
 /**
  * Shared guidance text appended to each memory directory prompt line.
@@ -393,13 +381,7 @@ export function buildSearchingPastContextSection(autoMemDir: string): string[] {
 }
 
 /**
- * Load the unified memory prompt for inclusion in the system prompt.
- * Dispatches based on which memory systems are enabled:
- *   - auto + team: combined prompt (both directories)
- *   - auto only: memory lines (single directory)
- * Team memory requires auto memory (enforced by isTeamMemoryEnabled), so
- * there is no team-only branch.
- *
+ * Load the memory prompt for inclusion in the system prompt.
  * Returns null when auto memory is disabled.
  */
 export async function loadMemoryPrompt(): Promise<string | null> {
@@ -407,8 +389,6 @@ export async function loadMemoryPrompt(): Promise<string | null> {
 
   const skipIndex = feature('DEV') ? true : false
 
-  // DISABLED daily-log mode takes precedence over TEAMMEM: the append-only
-  // log paradigm does not compose with team sync (which expects a shared
   // Cowork injects memory-policy text via env var; thread into all builders.
   const coworkExtraGuidelines =
     process.env.AXIOMATE_COWORK_MEMORY_EXTRA_GUIDELINES
@@ -416,27 +396,6 @@ export async function loadMemoryPrompt(): Promise<string | null> {
     coworkExtraGuidelines && coworkExtraGuidelines.trim().length > 0
       ? [coworkExtraGuidelines]
       : undefined
-
-  if (feature('TEAMMEM')) {
-    if (teamMemPaths!.isTeamMemoryEnabled()) {
-      const autoDir = getAutoMemPath()
-      const teamDir = teamMemPaths!.getTeamMemPath()
-      // Harness guarantees these directories exist so the model can write
-      // without checking. The prompt text reflects this ("already exists").
-      // Only creating teamDir is sufficient: getTeamMemPath() is defined as
-      // join(getAutoMemPath(), 'team'), so recursive mkdir of the team dir
-      // creates the auto dir as a side effect. If the team dir ever moves
-      // out from under the auto dir, add a second ensureMemoryDirExists call
-      // for autoDir here.
-      await ensureMemoryDirExists(teamDir)
-      logMemoryDirCounts(autoDir, {})
-      logMemoryDirCounts(teamDir, {})
-      return teamMemPrompts!.buildCombinedMemoryPrompt(
-        extraGuidelines,
-        skipIndex,
-      )
-    }
-  }
 
   if (autoEnabled) {
     const autoDir = getAutoMemPath()
@@ -452,10 +411,5 @@ export async function loadMemoryPrompt(): Promise<string | null> {
     ).join('\n')
   }
 
-  // Gate on the feature flag directly, not isTeamMemoryEnabled() — that function
-  // checks isAutoMemoryEnabled() first, which is definitionally false in this
-  // branch. We want "was this user in the team-memory cohort at all."
-  if (feature('TEAMMEM')) {
-  }
   return null
 }
