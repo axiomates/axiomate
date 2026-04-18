@@ -26,17 +26,6 @@ import {
   type LLMRequestNewContext,
   truncateContent,
 } from './betaSessionTracing.js'
-import {
-  endInteractionPerfettoSpan,
-  endLLMRequestPerfettoSpan,
-  endToolPerfettoSpan,
-  endUserInputPerfettoSpan,
-  isPerfettoTracingEnabled,
-  startInteractionPerfettoSpan,
-  startLLMRequestPerfettoSpan,
-  startToolPerfettoSpan,
-  startUserInputPerfettoSpan,
-} from './perfettoTracing.js'
 
 // Re-export for callers
 export type { Span }
@@ -58,7 +47,6 @@ interface SpanContext {
   startTime: number
   attributes: Record<string, string | number | boolean>
   ended?: boolean
-  perfettoSpanId?: string
 }
 
 // ALS stores SpanContext directly so it holds a strong reference while a span
@@ -160,26 +148,7 @@ function createSpanAttributes(
 export function startInteractionSpan(userPrompt: string): Span {
   ensureCleanupInterval()
 
-  // Start Perfetto span regardless of OTel tracing state
-  const perfettoSpanId = isPerfettoTracingEnabled()
-    ? startInteractionPerfettoSpan(userPrompt)
-    : undefined
-
   if (!isAnyTracingEnabled()) {
-    // Still track Perfetto span even if OTel is disabled
-    if (perfettoSpanId) {
-      const dummySpan = trace.getActiveSpan() || getTracer().startSpan('dummy')
-      const spanId = getSpanId(dummySpan)
-      const spanContextObj: SpanContext = {
-        span: dummySpan,
-        startTime: Date.now(),
-        attributes: {},
-        perfettoSpanId,
-      }
-      activeSpans.set(spanId, new WeakRef(spanContextObj))
-      interactionContext.enterWith(spanContextObj)
-      return dummySpan
-    }
     return trace.getActiveSpan() || getTracer().startSpan('dummy')
   }
 
@@ -209,7 +178,6 @@ export function startInteractionSpan(userPrompt: string): Span {
     span,
     startTime: Date.now(),
     attributes,
-    perfettoSpanId,
   }
   activeSpans.set(spanId, new WeakRef(spanContextObj))
 
@@ -226,11 +194,6 @@ export function endInteractionSpan(): void {
 
   if (spanContext.ended) {
     return
-  }
-
-  // End Perfetto span
-  if (spanContext.perfettoSpanId) {
-    endInteractionPerfettoSpan(spanContext.perfettoSpanId)
   }
 
   if (!isAnyTracingEnabled()) {
@@ -260,30 +223,7 @@ export function startLLMRequestSpan(
   newContext?: LLMRequestNewContext,
   messagesForAPI?: APIMessage[],
 ): Span {
-  // Start Perfetto span regardless of OTel tracing state
-  const perfettoSpanId = isPerfettoTracingEnabled()
-    ? startLLMRequestPerfettoSpan({
-        model,
-        querySource: newContext?.querySource,
-        messageId: undefined, // Will be set in endLLMRequestSpan
-      })
-    : undefined
-
   if (!isAnyTracingEnabled()) {
-    // Still track Perfetto span even if OTel is disabled
-    if (perfettoSpanId) {
-      const dummySpan = trace.getActiveSpan() || getTracer().startSpan('dummy')
-      const spanId = getSpanId(dummySpan)
-      const spanContextObj: SpanContext = {
-        span: dummySpan,
-        startTime: Date.now(),
-        attributes: { model },
-        perfettoSpanId,
-      }
-      activeSpans.set(spanId, new WeakRef(spanContextObj))
-      strongSpans.set(spanId, spanContextObj)
-      return dummySpan
-    }
     return trace.getActiveSpan() || getTracer().startSpan('dummy')
   }
 
@@ -314,7 +254,6 @@ export function startLLMRequestSpan(
     span,
     startTime: Date.now(),
     attributes,
-    perfettoSpanId,
   }
   activeSpans.set(spanId, new WeakRef(spanContextObj))
   strongSpans.set(spanId, spanContextObj)
@@ -386,22 +325,6 @@ export function endLLMRequestSpan(
 
   const duration = Date.now() - llmSpanContext.startTime
 
-  // End Perfetto span with full metadata
-  if (llmSpanContext.perfettoSpanId) {
-    endLLMRequestPerfettoSpan(llmSpanContext.perfettoSpanId, {
-      ttftMs: metadata?.ttftMs,
-      ttltMs: duration, // Time to last token is the total duration
-      promptTokens: metadata?.inputTokens,
-      outputTokens: metadata?.outputTokens,
-      cacheReadTokens: metadata?.cacheReadTokens,
-      cacheCreationTokens: metadata?.cacheCreationTokens,
-      success: metadata?.success,
-      error: metadata?.error,
-      requestSetupMs: metadata?.requestSetupMs,
-      attemptStartTimes: metadata?.attemptStartTimes,
-    })
-  }
-
   if (!isAnyTracingEnabled()) {
     const spanId = getSpanId(llmSpanContext.span)
     activeSpans.delete(spanId)
@@ -451,26 +374,7 @@ export function startToolSpan(
   toolAttributes?: Record<string, string | number | boolean>,
   toolInput?: string,
 ): Span {
-  // Start Perfetto span regardless of OTel tracing state
-  const perfettoSpanId = isPerfettoTracingEnabled()
-    ? startToolPerfettoSpan(toolName, toolAttributes)
-    : undefined
-
   if (!isAnyTracingEnabled()) {
-    // Still track Perfetto span even if OTel is disabled
-    if (perfettoSpanId) {
-      const dummySpan = trace.getActiveSpan() || getTracer().startSpan('dummy')
-      const spanId = getSpanId(dummySpan)
-      const spanContextObj: SpanContext = {
-        span: dummySpan,
-        startTime: Date.now(),
-        attributes: { 'span.type': 'tool', tool_name: toolName },
-        perfettoSpanId,
-      }
-      activeSpans.set(spanId, new WeakRef(spanContextObj))
-      toolContext.enterWith(spanContextObj)
-      return dummySpan
-    }
     return trace.getActiveSpan() || getTracer().startSpan('dummy')
   }
 
@@ -497,7 +401,6 @@ export function startToolSpan(
     span,
     startTime: Date.now(),
     attributes,
-    perfettoSpanId,
   }
   activeSpans.set(spanId, new WeakRef(spanContextObj))
 
@@ -507,26 +410,7 @@ export function startToolSpan(
 }
 
 export function startToolBlockedOnUserSpan(): Span {
-  // Start Perfetto span regardless of OTel tracing state
-  const perfettoSpanId = isPerfettoTracingEnabled()
-    ? startUserInputPerfettoSpan('tool_permission')
-    : undefined
-
   if (!isAnyTracingEnabled()) {
-    // Still track Perfetto span even if OTel is disabled
-    if (perfettoSpanId) {
-      const dummySpan = trace.getActiveSpan() || getTracer().startSpan('dummy')
-      const spanId = getSpanId(dummySpan)
-      const spanContextObj: SpanContext = {
-        span: dummySpan,
-        startTime: Date.now(),
-        attributes: { 'span.type': 'tool.blocked_on_user' },
-        perfettoSpanId,
-      }
-      activeSpans.set(spanId, new WeakRef(spanContextObj))
-      strongSpans.set(spanId, spanContextObj)
-      return dummySpan
-    }
     return trace.getActiveSpan() || getTracer().startSpan('dummy')
   }
 
@@ -549,7 +433,6 @@ export function startToolBlockedOnUserSpan(): Span {
     span,
     startTime: Date.now(),
     attributes,
-    perfettoSpanId,
   }
   activeSpans.set(spanId, new WeakRef(spanContextObj))
   strongSpans.set(spanId, spanContextObj)
@@ -569,14 +452,6 @@ export function endToolBlockedOnUserSpan(
 
   if (!blockedSpanContext) {
     return
-  }
-
-  // End Perfetto span
-  if (blockedSpanContext.perfettoSpanId) {
-    endUserInputPerfettoSpan(blockedSpanContext.perfettoSpanId, {
-      decision,
-      source,
-    })
   }
 
   if (!isAnyTracingEnabled()) {
@@ -676,14 +551,6 @@ export function endToolSpan(toolResult?: string, resultTokens?: number): void {
 
   if (!toolSpanContext) {
     return
-  }
-
-  // End Perfetto span
-  if (toolSpanContext.perfettoSpanId) {
-    endToolPerfettoSpan(toolSpanContext.perfettoSpanId, {
-      success: true,
-      resultTokens,
-    })
   }
 
   if (!isAnyTracingEnabled()) {

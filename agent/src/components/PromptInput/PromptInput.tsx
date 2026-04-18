@@ -82,7 +82,7 @@ import { isInProcessTeammate } from '../../utils/teammateContext.js';
 import { writeToMailbox } from '../../utils/teammateMailbox.js';
 import type { TextHighlight } from '../../utils/textHighlighting.js';
 import type { Theme } from '../../utils/theme.js';
-import { findThinkingTriggerPositions, getRainbowColor, isUltrathinkEnabled } from '../../utils/thinking.js';
+import { getRainbowColor } from '../../utils/thinking.js';
 import { findTokenBudgetPositions } from '../../utils/tokenBudget.js';
 
 import { AutoModeOptInDialog } from '../AutoModeOptInDialog.js';
@@ -492,7 +492,6 @@ function PromptInput({
     isAssistantResponding: isLoading
   });
   const displayedValue = useMemo(() => isSearchingHistory && historyMatch ? getValueFromInput(typeof historyMatch === 'string' ? historyMatch : historyMatch.display) : input, [isSearchingHistory, historyMatch, input]);
-  const thinkTriggers = useMemo(() => findThinkingTriggerPositions(displayedValue), [displayedValue]);
   const btwTriggers = useMemo(() => findBtwTriggerPositions(displayedValue), [displayedValue]);
   const buddyTriggers: Array<{ start: number; end: number }> = [];
   const slashCommandTriggers = useMemo(() => {
@@ -654,21 +653,6 @@ function PromptInput({
       });
     }
 
-    // Rainbow highlighting for ultrathink keyword (per-character cycling colors)
-    if (isUltrathinkEnabled()) {
-      for (const trigger of thinkTriggers) {
-        for (let i = trigger.start; i < trigger.end; i++) {
-          highlights.push({
-            start: i,
-            end: i + 1,
-            color: getRainbowColor(i - trigger.start),
-            shimmerColor: getRainbowColor(i - trigger.start, true),
-            priority: 10
-          });
-        }
-      }
-    }
-
     // Rainbow for /buddy
     for (const trigger of buddyTriggers) {
       for (let i = trigger.start; i < trigger.end; i++) {
@@ -682,25 +666,12 @@ function PromptInput({
       }
     }
     return highlights;
-  }, [isSearchingHistory, historyQuery, historyMatch, historyFailedMatch, cursorOffset, btwTriggers, imageRefPositions, memberMentionHighlights, slashCommandTriggers, tokenBudgetTriggers, slackChannelTriggers, displayedValue, voiceInterimRange, thinkTriggers, buddyTriggers]);
+  }, [isSearchingHistory, historyQuery, historyMatch, historyFailedMatch, cursorOffset, btwTriggers, imageRefPositions, memberMentionHighlights, slashCommandTriggers, tokenBudgetTriggers, slackChannelTriggers, displayedValue, voiceInterimRange, buddyTriggers]);
   const {
     addNotification,
     removeNotification
   } = useNotifications();
 
-  // Show ultrathink notification
-  useEffect(() => {
-    if (thinkTriggers.length && isUltrathinkEnabled()) {
-      addNotification({
-        key: 'ultrathink-active',
-        text: 'Effort set to high for this turn',
-        priority: 'immediate',
-        timeoutMs: 5000
-      });
-    } else {
-      removeNotification('ultrathink-active');
-    }
-  }, [addNotification, removeNotification, thinkTriggers.length]);
   // Track input length for stash hint
   const prevInputLengthRef = useRef(input.length);
   const peakInputLengthRef = useRef(input.length);

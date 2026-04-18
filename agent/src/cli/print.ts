@@ -7,7 +7,6 @@ import {
   formatDescriptionWithSource,
   getCommandName,
 } from '../commands.js'
-import { createStreamlinedTransformer } from '../utils/streamlinedTransform.js'
 import { installStreamJsonStdoutGuard } from '../utils/streamJsonStdoutGuard.js'
 import type { ToolPermissionContext } from '../Tool.js'
 import type { ThinkingConfig } from '../utils/thinking.js'
@@ -731,13 +730,6 @@ export async function runHeadless(
   const needsFullArray = options.outputFormat === 'json' && options.verbose
   const messages: SDKMessage[] = []
   let lastMessage: SDKMessage | undefined
-  // Streamlined mode transforms messages when AXIOMATE_CODE_STREAMLINED_OUTPUT=true and using stream-json
-  const transformToStreamlined =
-    feature('STREAMLINED_OUTPUT') &&
-    isEnvTruthy(process.env.AXIOMATE_CODE_STREAMLINED_OUTPUT) &&
-    options.outputFormat === 'stream-json'
-      ? createStreamlinedTransformer()
-      : null
 
   headlessProfilerCheckpoint('before_runHeadlessStreaming')
   for await (const message of runHeadlessStreaming(
@@ -754,13 +746,7 @@ export async function runHeadless(
     options,
     turnInterruptionState,
   )) {
-    if (transformToStreamlined) {
-      // Streamlined mode: transform messages and stream immediately
-      const transformed = transformToStreamlined(message)
-      if (transformed) {
-        await structuredIO.write(transformed)
-      }
-    } else if (options.outputFormat === 'stream-json' && options.verbose) {
+    if (options.outputFormat === 'stream-json' && options.verbose) {
       await structuredIO.write(message)
     }
     // Should not be getting control messages or stream events in non-stream mode.

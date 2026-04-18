@@ -1,4 +1,3 @@
-import { isUltrathinkEnabled } from './thinking.js'
 import { getInitialSettings } from './settings/settings.js'
 import { getModelCapabilityOverride } from './model/modelSupportOverrides.js'
 import { isEnvTruthy } from './envUtils.js'
@@ -238,11 +237,6 @@ export function getDefaultEffortForModel(
   const configuredEffort = getConfiguredModelEffort(model)
   if (configuredEffort !== undefined) {
     return configuredEffort
-  }
-
-  // When ultrathink feature is on, default effort to medium (ultrathink bumps to high)
-  if (isUltrathinkEnabled() && modelSupportsEffort(model)) {
-    return 'medium'
   }
 
   // Fallback to undefined, which means we don't set an effort level. This

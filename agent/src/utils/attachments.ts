@@ -195,7 +195,6 @@ const BRIEF_TOOL_NAME: string | null =
     : null
 const sessionTranscriptModule = null
 /* eslint-enable @typescript-eslint/no-require-imports */
-import { hasUltrathinkKeyword, isUltrathinkEnabled } from './thinking.js'
 import {
   tokenCountFromLastAPIResponse,
   tokenCountWithEstimation,
@@ -674,10 +673,6 @@ export type Attachment = (
       newDate: string
     }
   | {
-      type: 'ultrathink_effort'
-      level: 'high'
-    }
-  | {
       type: 'deferred_tools_delta'
       addedNames: string[]
       addedLines: string[]
@@ -810,9 +805,6 @@ export async function getAttachments(
     maybe('queued_commands', () => getQueuedCommandAttachments(queuedCommands)),
     maybe('date_change', () =>
       Promise.resolve(getDateChangeAttachments(messages)),
-    ),
-    maybe('ultrathink_effort', () =>
-      Promise.resolve(getUltrathinkEffortAttachment(input)),
     ),
     maybe('deferred_tools_delta', () =>
       Promise.resolve(
@@ -1399,13 +1391,6 @@ export function getDateChangeAttachments(
   // message timestamp so a multi-day gap flushes each day correctly.
 
   return [{ type: 'date_change', newDate: currentDate }]
-}
-
-function getUltrathinkEffortAttachment(input: string | null): Attachment[] {
-  if (!isUltrathinkEnabled() || !input || !hasUltrathinkKeyword(input)) {
-    return []
-  }
-  return [{ type: 'ultrathink_effort', level: 'high' }]
 }
 
 // Deferred tools delta attachment — feature is disabled; always returns [].

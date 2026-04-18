@@ -48,7 +48,6 @@ import { jsonStringify } from '../slowOperations.js'
 import { profileCheckpoint } from '../startupProfiler.js'
 import { isBetaTracingEnabled } from './betaSessionTracing.js'
 import { AxiomateDiagLogger } from './logger.js'
-import { initializePerfettoTracing } from './perfettoTracing.js'
 import {
   endInteractionSpan,
   isEnhancedTelemetryEnabled,
@@ -388,10 +387,6 @@ export async function initializeTelemetry() {
   }
 
   diag.setLogger(new AxiomateDiagLogger(), DiagLogLevel.ERROR)
-
-  // Initialize Perfetto tracing (independent of OTEL)
-  // Enable via AXIOMATE_CODE_PERFETTO_TRACE=1 or AXIOMATE_CODE_PERFETTO_TRACE=<path>
-  initializePerfettoTracing()
 
   const readers = []
 

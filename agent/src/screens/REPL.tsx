@@ -202,7 +202,6 @@ import { useMemorySurvey } from '../components/FeedbackSurvey/useMemorySurvey.js
 import { usePostCompactSurvey } from '../components/FeedbackSurvey/usePostCompactSurvey.js';
 import { FeedbackSurvey } from '../components/FeedbackSurvey/FeedbackSurvey.js';
 import { useInstallMessages } from '../hooks/notifs/useInstallMessages.js';
-import { useAwaySummary } from '../hooks/useAwaySummary.js';
 import { useOfficialMarketplaceNotification } from '../hooks/useOfficialMarketplaceNotification.js';
 import { getTipToShowOnSpinner, recordShownTip } from '../services/tips/tipScheduler.js';
 import type { Theme } from '../utils/theme.js';
@@ -1148,10 +1147,6 @@ export function REPL({
     jumpToNew,
     shiftDivider
   } = useUnseenDivider(messages.length);
-  if (feature('AWAY_SUMMARY')) {
-    // biome-ignore lint/correctness/useHookAtTopLevel: feature() is a compile-time constant
-    useAwaySummary(messages, setMessages, isLoading);
-  }
   const [cursor, setCursor] = useState<MessageActionsState | null>(null);
   const cursorNavRef = useRef<MessageActionsNav | null>(null);
   // Memoized so Messages' React.memo holds.
