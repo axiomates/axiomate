@@ -28,7 +28,6 @@ import { filterDeniedAgents, getDenyRuleForAgent } from '../../utils/permissions
 import { enqueueSdkEvent } from '../../utils/sdkEventQueue.js';
 import { writeAgentMetadata } from '../../utils/sessionStorage.js';
 import { sleep } from '../../utils/sleep.js';
-import { buildEffectiveSystemPrompt } from '../../utils/systemPrompt.js';
 import { asSystemPrompt } from '../../utils/systemPromptType.js';
 import { getTaskOutputPath } from '../../utils/task/diskOutput.js';
 import { getParentSessionId, isTeammate } from '../../utils/teammate.js';
@@ -44,7 +43,6 @@ import { setAgentColor } from './agentColorManager.js';
 import { agentToolResultSchema, classifyHandoffIfNeeded, emitTaskProgress, extractPartialResult, finalizeAgentTool, getLastToolUseName, runAsyncAgentLifecycle } from './agentToolUtils.js';
 import { GENERAL_PURPOSE_AGENT } from './built-in/generalPurposeAgent.js';
 import { AGENT_TOOL_NAME, LEGACY_AGENT_TOOL_NAME, ONE_SHOT_BUILTIN_AGENT_TYPES } from './constants.js';
-import { buildForkedMessages, buildWorktreeNotice, FORK_AGENT, isForkSubagentEnabled, isInForkChild } from './forkSubagent.js';
 import type { AgentDefinition } from './loadAgentsDir.js';
 import { filterAgentsByMcpRequirements, hasRequiredMcpServers, isBuiltInAgent } from './loadAgentsDir.js';
 import { getPrompt } from './prompt.js';
@@ -111,7 +109,7 @@ export const inputSchema = lazySchema(() => {
   // by forceAsync) or "schema hides a param that would've worked" (gate
   // flips off mid-session: everything still runs async via memoized
   // forceAsync). No Zod rejection, no crash — unlike required→optional.
-  return isBackgroundTasksDisabled || isForkSubagentEnabled() ? schema.omit({
+  return isBackgroundTasksDisabled ? schema.omit({
     run_in_background: true
   }) : schema;
 });
@@ -307,25 +305,9 @@ export const AgentTool = buildTool({
       };
     }
 
-    // Fork subagent experiment routing:
-    // - subagent_type set: use it (explicit wins)
-    // - subagent_type omitted, gate on: fork path (undefined)
-    // - subagent_type omitted, gate off: default general-purpose
-    const effectiveType = subagent_type ?? (isForkSubagentEnabled() ? undefined : GENERAL_PURPOSE_AGENT.agentType);
-    const isForkPath = effectiveType === undefined;
+    const effectiveType = subagent_type ?? GENERAL_PURPOSE_AGENT.agentType;
     let selectedAgent: AgentDefinition;
-    if (isForkPath) {
-      // Recursive fork guard: fork children keep the Agent tool in their
-      // pool for cache-identical tool defs, so reject fork attempts at call
-      // time. Primary check is querySource (compaction-resistant — set on
-      // context.options at spawn time, survives autocompact's message
-      // rewrite). Message-scan fallback catches any path where querySource
-      // wasn't threaded.
-      if (toolUseContext.options.querySource === `agent:builtin:${FORK_AGENT.agentType}` || isInForkChild(toolUseContext.messages)) {
-        throw new Error('Fork is not available inside a forked worker. Complete your task directly using your tools.');
-      }
-      selectedAgent = FORK_AGENT;
-    } else {
+    {
       // Filter agents to exclude those denied via Agent(AgentName) syntax
       const allAgents = toolUseContext.options.agentDefinitions.activeAgents;
       const {
@@ -407,42 +389,16 @@ export const AgentTool = buildTool({
     }
 
     // Resolve agent params for logging (these are already resolved in runAgent)
-    const resolvedAgentModel = getAgentModel(selectedAgent.model, toolUseContext.options.mainLoopModel, isForkPath ? undefined : model, permissionMode);
+    const resolvedAgentModel = getAgentModel(selectedAgent.model, toolUseContext.options.mainLoopModel, model, permissionMode);
 
     // Resolve effective isolation mode (explicit param overrides agent def)
     const effectiveIsolation = isolation ?? selectedAgent.isolation;
 
-    // System prompt + prompt messages: branch on fork path.
-    //
-    // Fork path: child inherits the PARENT's system prompt (not FORK_AGENT's)
-    // for cache-identical API request prefixes. Prompt messages are built via
-    // buildForkedMessages() which clones the parent's full assistant message
-    // (all tool_use blocks) + placeholder tool_results + per-child directive.
-    //
-    // Normal path: build the selected agent's own system prompt with env
-    // details, and use a simple user message for the prompt.
+    // Build the selected agent's own system prompt with env details, and use
+    // a simple user message for the prompt.
     let enhancedSystemPrompt: string[] | undefined;
-    let forkParentSystemPrompt: ReturnType<typeof buildEffectiveSystemPrompt> | undefined;
     let promptMessages: MessageType[];
-    if (isForkPath) {
-      if (toolUseContext.renderedSystemPrompt) {
-        forkParentSystemPrompt = toolUseContext.renderedSystemPrompt;
-      } else {
-        // Fallback: recompute. May diverge from parent's cached bytes if
-        // config state changed between parent turn-start and fork spawn.
-        const mainThreadAgentDefinition = appState.agent ? appState.agentDefinitions.activeAgents.find(a => a.agentType === appState.agent) : undefined;
-        const additionalWorkingDirectories = Array.from(appState.toolPermissionContext.additionalWorkingDirectories.keys());
-        const defaultSystemPrompt = await getSystemPrompt(toolUseContext.options.tools, toolUseContext.options.mainLoopModel, additionalWorkingDirectories, toolUseContext.options.mcpClients);
-        forkParentSystemPrompt = buildEffectiveSystemPrompt({
-          mainThreadAgentDefinition,
-          toolUseContext,
-          customSystemPrompt: toolUseContext.options.customSystemPrompt,
-          defaultSystemPrompt,
-          appendSystemPrompt: toolUseContext.options.appendSystemPrompt
-        });
-      }
-      promptMessages = buildForkedMessages(prompt, assistantMessage);
-    } else {
+    {
       try {
         const additionalWorkingDirectories = Array.from(appState.toolPermissionContext.additionalWorkingDirectories.keys());
 
@@ -477,19 +433,7 @@ export const AgentTool = buildTool({
     // dependency issues during test module loading.
     const isCoordinator = feature('COORDINATOR_MODE') ? isEnvTruthy(process.env.AXIOMATE_CODE_COORDINATOR_MODE) : false;
 
-    // Fork subagent experiment: force ALL spawns async for a unified
-    // <task-notification> interaction model (not just fork spawns — all of them).
-    const forceAsync = isForkSubagentEnabled();
-
-    // Assistant mode: force all agents async. Synchronous subagents hold the
-    // main loop's turn open until they complete — the daemon's inputQueue
-    // backs up, and the first overdue cron catch-up on spawn becomes N
-    // serial subagent turns blocking all user input. Same gate as
-    // executeForkedSlashCommand's fire-and-forget path; the
-    // <task-notification> re-entry there is handled by the else branch
-    // below (registerAsyncAgentTask + notifyOnCompletion).
-    const assistantForceAsync = false;
-    const shouldRunAsync = (run_in_background === true || selectedAgent.background === true || isCoordinator || forceAsync || assistantForceAsync) && !isBackgroundTasksDisabled;
+    const shouldRunAsync = (run_in_background === true || selectedAgent.background === true || isCoordinator) && !isBackgroundTasksDisabled;
     // Assemble the worker's tool pool independently of the parent's.
     // Workers always get their tools from assembleToolPool with their own
     // permission mode, so they aren't affected by the parent's tool
@@ -517,14 +461,6 @@ export const AgentTool = buildTool({
       worktreeInfo = await createAgentWorktree(slug);
     }
 
-    // Fork + worktree: inject a notice telling the child to translate paths
-    // and re-read potentially stale files. Appended after the fork directive
-    // so it appears as the most recent guidance the child sees.
-    if (isForkPath && worktreeInfo) {
-      promptMessages.push(createUserMessage({
-        content: buildWorktreeNotice(getCwd(), worktreeInfo.worktreePath)
-      }));
-    }
     const runAgentParams: Parameters<typeof runAgent>[0] = {
       agentDefinition: selectedAgent,
       promptMessages,
@@ -532,30 +468,15 @@ export const AgentTool = buildTool({
       canUseTool,
       isAsync: shouldRunAsync,
       querySource: toolUseContext.options.querySource ?? getQuerySourceForAgent(selectedAgent.agentType, isBuiltInAgent(selectedAgent)),
-      model: isForkPath ? undefined : model,
-      // Fork path: pass parent's system prompt AND parent's exact tool
-      // array (cache-identical prefix). workerTools is rebuilt under
-      // permissionMode 'bubble' which differs from the parent's mode, so
-      // its tool-def serialization diverges and breaks cache at the first
-      // differing tool. useExactTools also inherits the parent's
-      // thinkingConfig and isNonInteractiveSession (see runAgent.ts).
-      //
-      // Normal path: when a cwd override is in effect (worktree isolation
-      // or explicit cwd), skip the pre-built system prompt so runAgent's
+      model,
+      // When a cwd override is in effect (worktree isolation or explicit
+      // cwd), skip the pre-built system prompt so runAgent's
       // buildAgentSystemPrompt() runs inside wrapWithCwd where getCwd()
       // returns the override path.
-      override: isForkPath ? {
-        systemPrompt: forkParentSystemPrompt
-      } : enhancedSystemPrompt && !worktreeInfo && !cwd ? {
+      override: enhancedSystemPrompt && !worktreeInfo && !cwd ? {
         systemPrompt: asSystemPrompt(enhancedSystemPrompt)
       } : undefined,
-      availableTools: isForkPath ? toolUseContext.options.tools : workerTools,
-      // Pass parent conversation when the fork-subagent path needs full
-      // context. useExactTools inherits thinkingConfig (runAgent.ts:624).
-      forkContextMessages: isForkPath ? toolUseContext.messages : undefined,
-      ...(isForkPath && {
-        useExactTools: true
-      }),
+      availableTools: workerTools,
       worktreePath: worktreeInfo?.worktreePath,
       description
     };
@@ -672,7 +593,7 @@ export const AgentTool = buildTool({
         toolUseContext,
         rootSetAppState,
         agentIdForCleanup: asyncAgentId,
-        enableSummarization: isCoordinator || isForkSubagentEnabled() || getSdkAgentProgressSummariesEnabled(),
+        enableSummarization: isCoordinator || getSdkAgentProgressSummariesEnabled(),
         getWorktreeResult: cleanupWorktreeIfNeeded
       })));
       const canReadOutputFile = toolUseContext.options.tools.some(t => toolMatchesName(t, FILE_READ_TOOL_NAME) || toolMatchesName(t, BASH_TOOL_NAME));

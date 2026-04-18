@@ -7,7 +7,6 @@ import { FILE_WRITE_TOOL_NAME } from '../FileWriteTool/prompt.js'
 import { GLOB_TOOL_NAME } from '../GlobTool/prompt.js'
 import { SEND_MESSAGE_TOOL_NAME } from '../SendMessageTool/constants.js'
 import { AGENT_TOOL_NAME } from './constants.js'
-import { isForkSubagentEnabled } from './forkSubagent.js'
 import type { AgentDefinition } from './loadAgentsDir.js'
 
 function getToolsDescription(agent: AgentDefinition): string {
@@ -71,9 +70,8 @@ export async function getPrompt(
     ? agentDefinitions.filter(a => allowedAgentTypes.includes(a.agentType))
     : agentDefinitions
 
-  // Fork subagent feature: when enabled, insert the "When to fork" section
-  // (fork semantics, directive-style prompts) and swap in fork-aware examples.
-  const forkEnabled = isForkSubagentEnabled()
+  // Fork subagent feature is disabled.
+  const forkEnabled = false
 
   const whenToForkSection = forkEnabled
     ? `

@@ -18,7 +18,6 @@ import {
   getParentSessionId as getParentSessionIdFromState,
 } from '../../bootstrap/state.js'
 import { isEnvTruthy } from '../../utils/envUtils.js'
-import { isOfficialMcpUrl } from '../mcp/officialRegistry.js'
 import { getRepoRemoteHash } from '../../utils/git.js'
 import {
   getWslVersion,
@@ -99,13 +98,10 @@ export function isToolDetailsLoggingEnabled(): boolean {
  * Custom/user-configured MCPs stay sanitized (toolName='mcp_tool').
  */
 export function isAnalyticsToolDetailsLoggingEnabled(
-  mcpServerType: string | undefined,
-  mcpServerBaseUrl: string | undefined,
+  _mcpServerType: string | undefined,
+  _mcpServerBaseUrl: string | undefined,
 ): boolean {
   if (process.env.AXIOMATE_CODE_ENTRYPOINT === 'local-agent') {
-    return true
-  }
-  if (mcpServerBaseUrl && isOfficialMcpUrl(mcpServerBaseUrl)) {
     return true
   }
   return false

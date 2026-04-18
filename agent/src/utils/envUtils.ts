@@ -98,13 +98,6 @@ export function shouldMaintainProjectWorkingDir(): boolean {
 }
 
 /**
- * Check if running on Homespace (ant-internal cloud environment)
- */
-export function isRunningOnHomespace(): boolean {
-  return false
-}
-
-/**
  * Conservative check for whether Axiomate is running inside a protected
  * (privileged or ASL3+) COO namespace or cluster.
  *

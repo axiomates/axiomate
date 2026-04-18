@@ -117,17 +117,6 @@ export type ActiveSpeculationState = Extract<
   { status: 'active' }
 >
 
-function logSpeculation(
-  id: string,
-  outcome: 'accepted' | 'aborted' | 'error',
-  startTime: number,
-  suggestionLength: number,
-  messages: Message[],
-  boundary: CompletionBoundary | null,
-  extras?: Record<string, string | number | boolean | undefined>,
-): void {
-}
-
 function countToolsInMessages(messages: Message[]): number {
   const blocks = messages
     .filter(isUserMessageWithArrayContent)
@@ -637,20 +626,6 @@ export async function startSpeculation(
     // eslint-disable-next-line no-restricted-syntax -- custom fallback message, not toError(e)
     logError(error instanceof Error ? error : new Error('Speculation failed'))
 
-    logSpeculation(
-      id,
-      'error',
-      startTime,
-      suggestionText.length,
-      messagesRef.current,
-      null,
-      {
-        error_type: error instanceof Error ? error.name : 'Unknown',
-        error_message: errorMessage(error).slice(0, 200),
-        is_pipelined: isPipelined,
-      },
-    )
-
     resetSpeculationState(setAppState)
   }
 }
@@ -708,20 +683,6 @@ export async function acceptSpeculation(
       : `[Speculation] Accept ${id}: already complete`,
   )
 
-  logSpeculation(
-    id,
-    'accepted',
-    startTime,
-    suggestionLength,
-    messages,
-    boundary,
-    {
-      message_count: messages.length,
-      time_saved_ms: timeSavedMs,
-      is_pipelined: isPipelined,
-    },
-  )
-
   if (timeSavedMs > 0) {
     const entry: SpeculationAcceptMessage = {
       type: 'speculation-accept',
@@ -755,16 +716,6 @@ export function abortSpeculation(setAppState: SetAppState): void {
     } = prev.speculation
 
     logForDebugging(`[Speculation] Aborting ${id}`)
-
-    logSpeculation(
-      id,
-      'aborted',
-      startTime,
-      suggestionLength,
-      messagesRef.current,
-      boundary,
-      { abort_reason: 'user_typed', is_pipelined: isPipelined },
-    )
 
     abort()
     safeRemoveOverlay(getOverlayPath(id))
@@ -906,19 +857,6 @@ export async function handleSpeculationAccept(
         : new Error('handleSpeculationAccept failed'),
     )
     /* eslint-enable no-restricted-syntax */
-    logSpeculation(
-      speculationState.id,
-      'error',
-      speculationState.startTime,
-      speculationState.suggestionLength,
-      speculationState.messagesRef.current,
-      speculationState.boundary,
-      {
-        error_type: error instanceof Error ? error.name : 'Unknown',
-        error_message: errorMessage(error).slice(0, 200),
-        is_pipelined: speculationState.isPipelined,
-      },
-    )
     safeRemoveOverlay(getOverlayPath(speculationState.id))
     resetSpeculationState(setAppState)
     // Query required so user's message is processed normally (without speculated work)

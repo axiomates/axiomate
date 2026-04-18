@@ -225,7 +225,6 @@ import { usePluginInstallationStatus } from '../hooks/notifs/usePluginInstallati
 import { usePluginAutoupdateNotification } from '../hooks/notifs/usePluginAutoupdateNotification.js';
 import { performStartupChecks } from '../utils/plugins/performStartupChecks.js';
 import { UserTextMessage } from '../components/messages/UserTextMessage.js';
-import { useDeprecationWarningNotification } from '../hooks/notifs/useDeprecationWarningNotification.js';
 import { useNpmDeprecationNotification } from '../hooks/notifs/useNpmDeprecationNotification.js';
 import { useIDEStatusIndicator } from '../hooks/notifs/useIDEStatusIndicator.js';
 import { useTeammateLifecycleNotification } from '../hooks/notifs/useTeammateShutdownNotification.js';
@@ -695,7 +694,6 @@ export function REPL({
   usePluginInstallationStatus();
   usePluginAutoupdateNotification();
   useSettingsErrors();
-  useDeprecationWarningNotification(mainLoopModel);
   useNpmDeprecationNotification();
   useAntOrgWarningNotification();
   useInstallMessages();

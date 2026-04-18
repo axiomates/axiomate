@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useDynamicConfig } from '../../hooks/useDynamicConfig.js';
 import { isFeedbackSurveyDisabled } from '../../services/analytics/config.js';
-import { isPolicyAllowed } from '../../services/policyLimits/index.js';
 import type { Message } from '../../types/message.js';
 import { getGlobalConfig, saveGlobalConfig } from '../../utils/config.js';
 import { isEnvTruthy } from '../../utils/envUtils.js';
@@ -140,11 +139,6 @@ export function useFeedbackSurvey(messages: Message[], isLoading: boolean, submi
       return false;
     }
     if (isFeedbackSurveyDisabled()) {
-      return false;
-    }
-
-    // Check if product feedback is allowed by org policy
-    if (!isPolicyAllowed('allow_product_feedback')) {
       return false;
     }
 

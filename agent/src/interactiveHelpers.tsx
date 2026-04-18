@@ -17,7 +17,6 @@ import { onChangeAppState } from './state/onChangeAppState.js';
 import { getExternalAxiomateMdIncludes, getMemoryFiles, shouldShowAxiomateMdExternalIncludesWarning } from './utils/axiomatemd.js';
 import { checkHasTrustDialogAccepted, getGlobalConfig, saveGlobalConfig } from './utils/config.js';
 import { updateDeepLinkTerminalPreference } from './utils/deepLink/terminalPreference.js';
-import { isEnvTruthy, isRunningOnHomespace } from './utils/envUtils.js';
 import { type FpsMetrics, FpsTracker } from './utils/fpsTracker.js';
 import { updateGithubRepoPathMapping } from './utils/githubRepoPathMapping.js';
 import { applyConfigEnvironmentVariables } from './utils/managedEnv.js';

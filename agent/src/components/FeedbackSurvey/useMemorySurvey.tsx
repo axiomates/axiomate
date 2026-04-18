@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { isFeedbackSurveyDisabled } from '../../services/analytics/config.js';
 import { isAutoMemoryEnabled } from '../../memdir/paths.js';
-import { isPolicyAllowed } from '../../services/policyLimits/index.js';
 import { FILE_READ_TOOL_NAME } from '../../tools/FileReadTool/prompt.js';
 import type { Message } from '../../types/message.js';
 import { isEnvTruthy } from '../../utils/envUtils.js';
@@ -98,9 +97,6 @@ export function useMemorySurvey(messages: Message[], isLoading: boolean, hasActi
       return;
     }
     if (isFeedbackSurveyDisabled()) {
-      return;
-    }
-    if (!isPolicyAllowed('allow_product_feedback')) {
       return;
     }
     if (isEnvTruthy(process.env.AXIOMATE_CODE_DISABLE_FEEDBACK_SURVEY)) {

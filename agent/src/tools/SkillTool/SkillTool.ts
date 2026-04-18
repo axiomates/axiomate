@@ -54,7 +54,6 @@ import { parseFrontmatter } from '../../utils/frontmatterParser.js'
 import { lazySchema } from '../../utils/lazySchema.js'
 import { createUserMessage, normalizeMessages } from '../../utils/messages.js'
 import type { ModelAlias } from '../../utils/model/aliases.js'
-import { resolveSkillModelOverride } from '../../utils/model/model.js'
 import { recordSkillUsage } from '../../utils/suggestions/skillUsageTracking.js'
 import { createAgentId } from '../../utils/uuid.js'
 import { runAgent } from '../AgentTool/runAgent.js'
@@ -620,17 +619,12 @@ export const SkillTool: Tool<InputSchema, Output, Progress> = buildTool({
           }
         }
 
-        // Carry [1m] suffix over so a skill's model override keeps the
-        // session's effective extended-context window.
         if (model) {
           modifiedContext = {
             ...modifiedContext,
             options: {
               ...modifiedContext.options,
-              mainLoopModel: resolveSkillModelOverride(
-                model,
-                ctx.options.mainLoopModel,
-              ),
+              mainLoopModel: model,
             },
           }
         }

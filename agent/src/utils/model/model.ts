@@ -9,8 +9,7 @@ import {
 import { getSettings_DEPRECATED } from '../settings/settings.js'
 import type { PermissionMode } from '../permissions/PermissionMode.js'
 import { isModelAllowed } from './modelAllowlist.js'
-import { type ModelAlias, isModelAlias } from './aliases.js'
-import { capitalize } from '../stringUtils.js'
+import { type ModelAlias } from './aliases.js'
 
 export type ModelShortName = string
 export type ModelName = string
@@ -132,9 +131,6 @@ export function renderDefaultModelSetting(
 }
 
 export function renderModelSetting(setting: ModelName | ModelAlias): string {
-  if (isModelAlias(setting)) {
-    return capitalize(setting)
-  }
   return renderModelName(setting)
 }
 
@@ -172,17 +168,6 @@ export function parseUserSpecifiedModel(
     return modelInputTrimmed.replace(/\[1m\]$/i, '').trim() + '[1m]'
   }
   return modelInputTrimmed
-}
-
-export function resolveSkillModelOverride(
-  skillModel: string,
-  _currentModel: string,
-): string {
-  return skillModel
-}
-
-export function isLegacyModelRemapEnabled(): boolean {
-  return false
 }
 
 export function modelDisplayString(model: ModelSetting): string {

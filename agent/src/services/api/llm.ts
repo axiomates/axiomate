@@ -69,10 +69,6 @@ import {
   type SystemPrompt,
 } from '../../utils/systemPromptType.js'
 import { tokenCountFromLastAPIResponse } from '../../utils/tokens.js'
-// apiLimits stubs inlined
-const currentLimits = { status: 'allowed' as const, isUsingOverage: false }
-function extractQuotaStatusFromError(_error: unknown): void {}
-function extractQuotaStatusFromHeaders(_headers: unknown): void {}
 import { getAPIContextManagement } from '../compact/apiMicrocompact.js'
 
 /* eslint-disable @typescript-eslint/no-require-imports */
@@ -111,7 +107,6 @@ import {
 } from '../../utils/thinking.js'
 import {
   extractDiscoveredToolNames,
-  isDeferredToolsDeltaEnabled,
   isToolSearchEnabled,
 } from '../../utils/toolSearch.js'
 import { API_MAX_MEDIA_PER_REQUEST } from '../../constants/apiLimits.js'
@@ -786,10 +781,7 @@ async function* queryModel(
 
   // Instrumentation: Track message count after normalization
 
-  // When the delta attachment is enabled, deferred tools are announced
-  // via persisted deferred_tools_delta attachments instead of this
-  // ephemeral prepend (which busts cache whenever the pool changes).
-  if (useToolSearch && !isDeferredToolsDeltaEnabled()) {
+  if (useToolSearch) {
     const deferredToolList = tools
       .filter(t => deferredToolNames.has(t.name))
       .map(formatDeferredToolLine)
@@ -1404,7 +1396,6 @@ async function* queryModel(
       // Process response headers for rate limit tracking and gateway detection
       const resp = streamResponse
       if (resp) {
-        extractQuotaStatusFromHeaders(resp.headers)
         // Track rate limit state from provider headers (OpenAI x-ratelimit-* or Anthropic anthropic-ratelimit-*)
         const rlInfo = parseRateLimitHeaders(resp.headers, 'axiomate')
         if (rlInfo) updateRateLimitInfo(rlInfo)
@@ -1634,7 +1625,6 @@ async function* queryModel(
 
         // Wrap raw SDK error into neutral LLMAPIError at the provider boundary
         const wrappedError = provider.wrapError(error)
-        extractQuotaStatusFromError(wrappedError)
 
         const requestId =
           streamRequestId || wrappedError.request_id
@@ -1684,7 +1674,6 @@ async function* queryModel(
 
       // Wrap raw SDK error into neutral LLMAPIError at the provider boundary
       const wrappedError = provider.wrapError(error)
-      extractQuotaStatusFromError(wrappedError)
 
       const requestId =
         streamRequestId || wrappedError.request_id

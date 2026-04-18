@@ -22,7 +22,6 @@ import { logError } from '../../../utils/log.js';
 import { enqueuePendingNotification } from '../../../utils/messageQueueManager.js';
 import { createUserMessage } from '../../../utils/messages.js';
 import { getMainLoopModel, getRuntimeMainLoopModel } from '../../../utils/model/model.js';
-import { createPromptRuleContent, isClassifierPermissionsEnabled, PROMPT_PREFIX } from '../../../utils/permissions/bashClassifier.js';
 import { type PermissionMode, toExternalPermissionMode } from '../../../utils/permissions/PermissionMode.js';
 import type { PermissionUpdate } from '../../../utils/permissions/PermissionUpdateSchema.js';
 import { isAutoModeGateEnabled, restoreDangerousPermissions, stripDangerousPermissionsForAutoMode } from '../../../utils/permissions/permissionSetup.js';
@@ -58,17 +57,6 @@ export function buildPermissionUpdates(mode: PermissionMode, allowedPrompts?: Al
     destination: 'session'
   }];
 
-  if (isClassifierPermissionsEnabled() && allowedPrompts && allowedPrompts.length > 0) {
-    updates.push({
-      type: 'addRules',
-      rules: allowedPrompts.map(p => ({
-        toolName: p.tool,
-        ruleContent: createPromptRuleContent(p.prompt)
-      })),
-      behavior: 'allow',
-      destination: 'session'
-    });
-  }
   return updates;
 }
 
@@ -533,12 +521,6 @@ export function ExitPlanModePermissionRequest({
           </Box>
           <Box flexDirection="column" paddingX={1}>
             <PermissionRuleExplanation permissionResult={toolUseConfirm.permissionResult} toolType="tool" />
-            {isClassifierPermissionsEnabled() && allowedPrompts && allowedPrompts.length > 0 && <Box flexDirection="column" marginBottom={1}>
-                  <Text bold>Requested permissions:</Text>
-                  {allowedPrompts.map((p, i) => <Text key={i} dimColor>
-                      {'  '}· {p.tool}({PROMPT_PREFIX} {p.prompt})
-                    </Text>)}
-                </Box>}
             {!useStickyFooter && <>
                 <Text dimColor>
                   Axiomate has written up a plan and is ready to execute. Would

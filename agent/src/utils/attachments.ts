@@ -154,8 +154,6 @@ import {
 } from '../bootstrap/state.js'
 import type { QuerySource } from '../constants/querySource.js'
 import {
-  getDeferredToolsDelta,
-  isDeferredToolsDeltaEnabled,
   isToolSearchEnabledOptimistic,
   isToolSearchToolAvailable,
   modelSupportsToolReference,
@@ -1410,27 +1408,14 @@ function getUltrathinkEffortAttachment(input: string | null): Attachment[] {
   return [{ type: 'ultrathink_effort', level: 'high' }]
 }
 
-// Exported for compact.ts — the gate must be identical at both call sites.
+// Deferred tools delta attachment — feature is disabled; always returns [].
 export function getDeferredToolsDeltaAttachment(
-  tools: Tools,
-  model: string,
-  messages: Message[] | undefined,
-  scanContext?: DeferredToolsDeltaScanContext,
+  _tools: Tools,
+  _model: string,
+  _messages: Message[] | undefined,
+  _scanContext?: DeferredToolsDeltaScanContext,
 ): Attachment[] {
-  if (!isDeferredToolsDeltaEnabled()) return []
-  // These three checks mirror the sync parts of isToolSearchEnabled —
-  // the attachment text says "available via ToolSearch", so ToolSearch
-  // has to actually be in the request. The async auto-threshold check
-  // is not replicated (would double-fire ax_tool_search_mode_decision);
-  // in tst-auto below-threshold the attachment can fire while ToolSearch
-  // is filtered out, but that's a narrow case and the tools announced
-  // are directly callable anyway.
-  if (!isToolSearchEnabledOptimistic()) return []
-  if (!modelSupportsToolReference(model)) return []
-  if (!isToolSearchToolAvailable(tools)) return []
-  const delta = getDeferredToolsDelta(tools, messages ?? [], scanContext)
-  if (!delta) return []
-  return [{ type: 'deferred_tools_delta', ...delta }]
+  return []
 }
 
 /**
@@ -3838,31 +3823,12 @@ export function getCompactionReminderAttachment(
 }
 
 /**
- * Context-efficiency nudge. Injected after every N tokens of growth without
- * a snip. Pacing is handled entirely by shouldNudgeForSnips — the 10k
- * interval resets on prior nudges, snip markers, snip boundaries, and
- * compact boundaries.
+ * Context-efficiency nudge. Snip feature is disabled — always returns [].
  */
 export function getContextEfficiencyAttachment(
-  messages: Message[],
+  _messages: Message[],
 ): Attachment[] {
-  if (!false) {
-    return []
-  }
-  // Gate must match SnipTool.isEnabled() — don't nudge toward a tool that
-  // isn't in the tool list. Lazy require keeps this file snip-string-free.
-  const { isSnipRuntimeEnabled, shouldNudgeForSnips } =
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    require('../services/compact/snipCompact.js') as typeof import('../services/compact/snipCompact.js')
-  if (!isSnipRuntimeEnabled()) {
-    return []
-  }
-
-  if (!shouldNudgeForSnips(messages)) {
-    return []
-  }
-
-  return [{ type: 'context_efficiency' }]
+  return []
 }
 
 

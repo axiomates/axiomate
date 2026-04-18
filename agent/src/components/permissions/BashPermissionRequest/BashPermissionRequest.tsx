@@ -18,7 +18,6 @@ import {
   createPromptRuleContent,
   generateGenericDescription,
   getBashPromptAllowDescriptions,
-  isClassifierPermissionsEnabled,
 } from '../../../utils/permissions/bashClassifier.js'
 import { extractRules } from '../../../utils/permissions/PermissionUpdate.js'
 import type { PermissionUpdate } from '../../../utils/permissions/PermissionUpdateSchema.js'
@@ -173,21 +172,7 @@ function BashPermissionRequestInner({
     setInitialClassifierDescriptionEmpty,
   ] = useState(!description?.trim())
 
-  // Asynchronously generate a generic description for the classifier
-  useEffect(() => {
-    if (!isClassifierPermissionsEnabled()) return
-
-    const abortController = new AbortController()
-    generateGenericDescription(command, description, abortController.signal)
-      .then(generic => {
-        if (generic && !abortController.signal.aborted) {
-          setClassifierDescription(generic)
-          setInitialClassifierDescriptionEmpty(false)
-        }
-      })
-      .catch(() => {}) // Keep original on error
-    return () => abortController.abort()
-  }, [command, description])
+  // Classifier permissions are disabled — no generic description to generate.
 
   // GH#11380: For compound commands (cd src && git status && npm test), the
   // backend already computed correct per-subcommand suggestions via tree-sitter

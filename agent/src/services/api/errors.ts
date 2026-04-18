@@ -30,7 +30,6 @@ import { ImageSizeError } from '../../utils/imageValidation.js'
 import {
   logEvent,
 } from '../analytics/index.js'
-import { shouldProcessRateLimits } from '../rateLimitMocking.js' // Used for /mock-limits command
 import { extractConnectionErrorDetails, formatAPIError } from './errorUtils.js'
 
 export const API_ERROR_MESSAGE_PREFIX = 'API Error'
@@ -423,33 +422,6 @@ export function getAssistantMessageFromError(
     })
   }
 
-  if (
-    error instanceof APIError &&
-    error.status === 429 &&
-    shouldProcessRateLimits(false)
-  ) {
-    // Surface what the API actually said instead of a generic "Rate limit
-    // reached" — entitlement rejections (e.g. 1M context without Extra Usage)
-    // and infra capacity 429s land here.
-    if (error.message.includes('Extra usage is required for long context')) {
-      const hint = getIsNonInteractiveSession()
-        ? 'enable extra usage at remote service/settings/usage, or use --model to switch to standard context'
-        : 'run /extra-usage to enable, or /model to switch to standard context'
-      return createAssistantAPIErrorMessage({
-        content: `${API_ERROR_MESSAGE_PREFIX}: Extra usage is required for 1M context · ${hint}`,
-        error: 'rate_limit',
-      })
-    }
-    // SDK's APIError.makeMessage prepends "429 " and JSON-stringifies the body
-    // when there's no top-level .message — extract the inner error.message.
-    const stripped = error.message.replace(/^429\s+/, '')
-    const innerMessage = stripped.match(/"message"\s*:\s*"([^"]*)"/)?.[1]
-    const detail = innerMessage || stripped
-    return createAssistantAPIErrorMessage({
-      content: `${API_ERROR_MESSAGE_PREFIX}: Request rejected (429) · ${detail || 'this may be a temporary capacity issue — check your API provider status page'}`,
-      error: 'rate_limit',
-    })
-  }
 
   // Handle prompt too long errors (Vertex returns 413, direct API returns 400)
   // Use case-insensitive check since Vertex returns "Prompt is too long" (capitalized)

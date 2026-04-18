@@ -1,4 +1,3 @@
-import { MODEL_ALIASES } from './aliases.js'
 import { isModelAllowed } from './modelAllowlist.js'
 import { sideQuery } from '../../services/api/capabilities/sideQuery.js'
 import { getProviderForModel } from '../../services/api/providerRegistry.js'
@@ -26,12 +25,6 @@ export async function validateModel(
       valid: false,
       error: `Model '${normalizedModel}' is not in the list of available models`,
     }
-  }
-
-  // Check if it's a known alias (these are always valid)
-  const lowerModel = normalizedModel.toLowerCase()
-  if ((MODEL_ALIASES as readonly string[]).includes(lowerModel)) {
-    return { valid: true }
   }
 
   // Check cache first

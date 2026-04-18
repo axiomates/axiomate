@@ -9,7 +9,6 @@ import {
 import { useAppState, useSetAppState } from '../../state/AppState.js'
 import type { LocalJSXCommandCall } from '../../types/command.js'
 import type { EffortLevel } from '../../utils/effort.js'
-import { MODEL_ALIASES } from '../../utils/model/aliases.js'
 import {
   getDefaultMainLoopModelSetting,
   renderDefaultModelSetting,
@@ -94,12 +93,6 @@ function SetModelAndClose({
         return
       }
 
-      // Skip validation for known aliases - they're predefined and should work
-      if (isKnownAlias(model)) {
-        setModel(model)
-        return
-      }
-
       // Validate and set custom model
       try {
         // Don't use parseUserSpecifiedModel for non-aliases since it lowercases the input
@@ -135,12 +128,6 @@ function SetModelAndClose({
   }, [model, onDone, setAppState])
 
   return null
-}
-
-function isKnownAlias(model: string): boolean {
-  return (MODEL_ALIASES as readonly string[]).includes(
-    model.toLowerCase().trim(),
-  )
 }
 
 function ShowModelAndClose({

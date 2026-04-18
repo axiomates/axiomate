@@ -8,17 +8,12 @@
 
 import memoize from 'lodash-es/memoize.js'
 import {
-  logEvent,
-} from '../services/analytics/index.js'
-import type { Tool } from '../Tool.js'
-import {
   type ToolPermissionContext,
   type Tools,
   toolMatchesName,
 } from '../Tool.js'
 import type { AgentDefinition } from '../tools/AgentTool/loadAgentsDir.js'
 import {
-  formatDeferredToolLine,
   isDeferredTool,
   TOOL_SEARCH_TOOL_NAME,
 } from '../tools/ToolSearchTool/prompt.js'
@@ -27,7 +22,6 @@ import {
   countToolDefinitionTokens,
   TOOL_TOKEN_COUNT_OVERHEAD,
 } from './analyzeContext.js'
-import { count } from './array.js'
 import { getMergedBetas } from './betas.js'
 import { getGlobalConfig } from './config.js'
 import { getContextWindowForModel } from './context.js'
@@ -358,17 +352,6 @@ export async function isToolSearchEnabled(
   agents: AgentDefinition[],
   source?: string,
 ): Promise<boolean> {
-  const mcpToolCount = count(tools, t => t.isMcp)
-
-  // Helper to log the mode decision event
-  function logModeDecision(
-    enabled: boolean,
-    mode: ToolSearchMode,
-    reason: string,
-    extraProps?: Record<string, number>,
-  ): void {
-  }
-
   // Check if model supports tool_reference (Anthropic-specific API feature).
   // Config-driven models bypass this check — they use application-layer tool
   // filtering (don't send deferred tool schemas) instead of API-level defer_loading.
@@ -378,7 +361,6 @@ export async function isToolSearchEnabled(
       `Tool search disabled for model '${model}': model does not support tool_reference blocks. ` +
         `This feature requires a model that supports tool_reference blocks.`,
     )
-    logModeDecision(false, 'standard', 'model_unsupported')
     return false
   }
 
@@ -387,7 +369,6 @@ export async function isToolSearchEnabled(
     logForDebugging(
       `Tool search disabled: ToolSearchTool is not available (may have been disallowed via disallowedTools).`,
     )
-    logModeDecision(false, 'standard', 'mcp_search_unavailable')
     return false
   }
 
@@ -395,11 +376,10 @@ export async function isToolSearchEnabled(
 
   switch (mode) {
     case 'tst':
-      logModeDecision(true, mode, 'tst_enabled')
       return true
 
     case 'tst-auto': {
-      const { enabled, debugDescription, metrics } = await checkAutoThreshold(
+      const { enabled, debugDescription } = await checkAutoThreshold(
         tools,
         getToolPermissionContext,
         agents,
@@ -411,7 +391,6 @@ export async function isToolSearchEnabled(
           `Auto tool search enabled: ${debugDescription}` +
             (source ? ` [source: ${source}]` : ''),
         )
-        logModeDecision(true, mode, 'auto_above_threshold', metrics)
         return true
       }
 
@@ -419,12 +398,10 @@ export async function isToolSearchEnabled(
         `Auto tool search disabled: ${debugDescription}` +
           (source ? ` [source: ${source}]` : ''),
       )
-      logModeDecision(false, mode, 'auto_below_threshold', metrics)
       return false
     }
 
     case 'standard':
-      logModeDecision(false, mode, 'standard_mode')
       return false
   }
 }
@@ -576,72 +553,6 @@ export type DeferredToolsDeltaScanContext = {
     | 'compact_partial'
     | 'reactive_compact'
   querySource?: string
-}
-
-/**
- * True → announce deferred tools via persisted delta attachments.
- * False → llm.ts keeps its per-call <available-deferred-tools>
- * header prepend (the attachment does not fire).
- */
-export function isDeferredToolsDeltaEnabled(): boolean {
-  return false
-}
-
-/**
- * Diff the current deferred-tool pool against what's already been
- * announced in this conversation (reconstructed by scanning for prior
- * deferred_tools_delta attachments). Returns null if nothing changed.
- *
- * A name that was announced but has since stopped being deferred — yet
- * is still in the base pool — is NOT reported as removed. It's now
- * loaded directly, so telling the model "no longer available" would be
- * wrong.
- */
-export function getDeferredToolsDelta(
-  tools: Tools,
-  messages: Message[],
-  scanContext?: DeferredToolsDeltaScanContext,
-): DeferredToolsDelta | null {
-  const announced = new Set<string>()
-  let attachmentCount = 0
-  let dtdCount = 0
-  const attachmentTypesSeen = new Set<string>()
-  for (const msg of messages) {
-    if (msg.type !== 'attachment') continue
-    attachmentCount++
-    attachmentTypesSeen.add(msg.attachment.type)
-    if (msg.attachment.type !== 'deferred_tools_delta') continue
-    dtdCount++
-    for (const n of msg.attachment.addedNames) announced.add(n)
-    for (const n of msg.attachment.removedNames) announced.delete(n)
-  }
-
-  const deferred: Tool[] = tools.filter(isDeferredTool)
-  const deferredNames = new Set(deferred.map(t => t.name))
-  const poolNames = new Set(tools.map(t => t.name))
-
-  const added = deferred.filter(t => !announced.has(t.name))
-  const removed: string[] = []
-  for (const n of announced) {
-    if (deferredNames.has(n)) continue
-    if (!poolNames.has(n)) removed.push(n)
-    // else: undeferred — silent
-  }
-
-  if (added.length === 0 && removed.length === 0) return null
-
-  // Diagnostic for the scan-finds-nothing bug. Round-1 fields
-  // (messagesLength/attachmentCount/dtdCount from #23167) showed 45.6% of
-  // events have attachments-but-no-DTD, but those numbers are confounded:
-  // subagent first-fires and compact-path scans have EXPECTED prior=0 and
-  // dominate the stat. callSite/querySource/attachmentTypesSeen split the
-  // buckets so the real main-thread cross-turn failure is isolable in BQ.
-
-  return {
-    addedNames: added.map(t => t.name).sort(),
-    addedLines: added.map(formatDeferredToolLine).sort(),
-    removedNames: removed.sort(),
-  }
 }
 
 /**

@@ -29,7 +29,6 @@ import { getParentSessionId } from '../../utils/teammate.js'
 import { reconstructForSubagentResume } from '../../utils/toolResultStorage.js'
 import { runAsyncAgentLifecycle } from './agentToolUtils.js'
 import { GENERAL_PURPOSE_AGENT } from './built-in/generalPurposeAgent.js'
-import { FORK_AGENT, isForkSubagentEnabled } from './forkSubagent.js'
 import type { AgentDefinition } from './loadAgentsDir.js'
 import { isBuiltInAgent } from './loadAgentsDir.js'
 import { runAgent } from './runAgent.js'
@@ -98,11 +97,8 @@ export async function resumeAgentBackground({
 
   // Skip filterDeniedAgents re-gating — original spawn already passed permission checks
   let selectedAgent: AgentDefinition
-  let isResumedFork = false
-  if (meta?.agentType === FORK_AGENT.agentType) {
-    selectedAgent = FORK_AGENT
-    isResumedFork = true
-  } else if (meta?.agentType) {
+  const isResumedFork = false
+  if (meta?.agentType) {
     const found = toolUseContext.options.agentDefinitions.activeAgents.find(
       a => a.agentType === meta.agentType,
     )
@@ -187,7 +183,6 @@ export async function resumeAgentBackground({
     // Transcript already contains the parent context slice from the
     // original fork. Re-supplying it would cause duplicate tool_use IDs.
     forkContextMessages: undefined,
-    ...(isResumedFork && { useExactTools: true }),
     // Re-persist so metadata survives runAgent's writeAgentMetadata overwrite
     worktreePath: resumedWorktreePath,
     description: meta?.description,
@@ -249,7 +244,6 @@ export async function resumeAgentBackground({
         agentIdForCleanup: agentId,
         enableSummarization:
           isCoordinatorMode() ||
-          isForkSubagentEnabled() ||
           getSdkAgentProgressSummariesEnabled(),
         getWorktreeResult: async () =>
           resumedWorktreePath ? { worktreePath: resumedWorktreePath } : {},

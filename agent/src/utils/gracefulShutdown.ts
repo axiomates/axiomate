@@ -29,7 +29,6 @@ import {
   supportsTabStatus,
   wrapForMultiplexer,
 } from '../ink/termio/osc.js'
-import { shutdown1PEventLogging } from '../services/analytics/firstPartyEventLogger.js'
 import {
   logEvent,
 } from '../services/analytics/index.js'
@@ -480,18 +479,6 @@ export async function gracefulShutdown(
   // Fires before analytics flush so the event makes it to the pipeline.
   const lastRequestId = getLastMainRequestId()
   if (lastRequestId) {
-  }
-
-  // Flush analytics — capped at 500ms. Previously unbounded: the 1P exporter
-  // awaits all pending axios POSTs (10s each), eating the full failsafe budget.
-  // Lost analytics on slow networks are acceptable; a hanging exit is not.
-  try {
-    await Promise.race([
-      Promise.all([shutdown1PEventLogging()]),
-      sleep(500),
-    ])
-  } catch {
-    // Ignore analytics shutdown errors
   }
 
   if (options?.finalMessage) {

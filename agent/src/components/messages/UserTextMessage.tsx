@@ -137,10 +137,7 @@ export function UserTextMessage({
     return <UserResourceUpdateMessage addMargin={addMargin} param={param} />
   }
 
-  // Fork child's first message: collapse the rules/format boilerplate, show
-  // only the directive. FORK_BOILERPLATE_TAG is inlined so the import doesn't
-  // ship in external builds where false is false.
-  // User prompts>
+  // User prompts
   return (
     <UserPromptMessage
       addMargin={addMargin}

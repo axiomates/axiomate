@@ -42,7 +42,6 @@ import {
 import { isEnvTruthy } from '../utils/envUtils.js'
 import { isReplModeEnabled } from '../tools/REPLTool/constants.js'
 import { feature } from 'bun:bundle'
-import { isForkSubagentEnabled } from '../tools/AgentTool/forkSubagent.js'
 import {
   systemPromptSection,
   DANGEROUS_uncachedSystemPromptSection,
@@ -246,9 +245,7 @@ function getUsingYourToolsSection(enabledTools: Set<string>): string {
 }
 
 function getAgentToolSection(): string {
-  return isForkSubagentEnabled()
-    ? `Calling ${AGENT_TOOL_NAME} without a subagent_type creates a fork, which runs in the background and keeps its tool output out of your context \u2014 so you can keep chatting with the user while it works. Reach for it when research or multi-step implementation work would otherwise fill your context with raw output you won't need again. **If you ARE the fork** \u2014 execute directly; do not re-delegate.`
-    : `Use the ${AGENT_TOOL_NAME} tool with specialized agents when the task at hand matches the agent's description. Subagents are valuable for parallelizing independent queries or for protecting the main context window from excessive results, but they should not be used excessively when not needed. Importantly, avoid duplicating work that subagents are already doing - if you delegate research to a subagent, do not also perform the same searches yourself.`
+  return `Use the ${AGENT_TOOL_NAME} tool with specialized agents when the task at hand matches the agent's description. Subagents are valuable for parallelizing independent queries or for protecting the main context window from excessive results, but they should not be used excessively when not needed. Importantly, avoid duplicating work that subagents are already doing - if you delegate research to a subagent, do not also perform the same searches yourself.`
 }
 
 /**
@@ -294,12 +291,9 @@ function getSessionSpecificGuidanceSection(
     getIsNonInteractiveSession()
       ? null
       : `If you need the user to run a shell command themselves (e.g., an interactive login like \`gcloud auth login\`), suggest they type \`! <command>\` in the prompt — the \`!\` prefix runs the command in this session so its output lands directly in the conversation.`,
-    // isForkSubagentEnabled() reads getIsNonInteractiveSession() — must be
-    // post-boundary or it fragments the static prefix on session type.
     hasAgentTool ? getAgentToolSection() : null,
     ...(hasAgentTool &&
-    areExplorePlanAgentsEnabled() &&
-    !isForkSubagentEnabled()
+    areExplorePlanAgentsEnabled()
       ? [
           `For simple, directed codebase searches (e.g. for a specific file/class/function) use ${searchTools} directly.`,
           `For broader codebase exploration and deep research, use the ${AGENT_TOOL_NAME} tool with subagent_type=${EXPLORE_AGENT.agentType}. This is slower than using ${searchTools} directly, so use this only when a simple, directed search proves to be insufficient or when your task will clearly require more than ${EXPLORE_AGENT_MIN_QUERIES} queries.`,

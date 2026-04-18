@@ -20,10 +20,6 @@ export function createPromptRuleContent(description: string): string {
   return `${PROMPT_PREFIX} ${description.trim()}`
 }
 
-export function isClassifierPermissionsEnabled(): boolean {
-  return false
-}
-
 export function getBashPromptDenyDescriptions(_context: unknown): string[] {
   return []
 }

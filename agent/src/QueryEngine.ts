@@ -117,13 +117,6 @@ const getCoordinatorUserContext: (
   : () => ({})
 /* eslint-enable @typescript-eslint/no-require-imports */
 
-// Dead code elimination: conditional import for snip compaction
-/* eslint-disable @typescript-eslint/no-require-imports */
-const snipModule = false
-  ? (require('./services/compact/snipCompact.js') as typeof import('./services/compact/snipCompact.js'))
-  : null
-const snipProjection = null
-/* eslint-enable @typescript-eslint/no-require-imports */
 
 export type QueryEngineConfig = {
   cwd: string
@@ -1239,15 +1232,6 @@ export async function* ask({
     setSDKStatus,
     abortController,
     orphanedPermission,
-    ...(false
-      ? {
-          snipReplay: (yielded: Message, store: Message[]) => {
-            if (!snipProjection!.isSnipBoundaryMessage(yielded))
-              return undefined
-            return snipModule!.snipCompactIfNeeded(store, { force: true })
-          },
-        }
-      : {}),
   })
 
   try {

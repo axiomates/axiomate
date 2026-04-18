@@ -61,10 +61,6 @@ vi.mock('../../apiLimits.js', () => ({
   getRateLimitErrorMessage: vi.fn().mockReturnValue(null),
 }))
 
-vi.mock('../../rateLimitMocking.js', () => ({
-  shouldProcessRateLimits: vi.fn().mockReturnValue(false),
-}))
-
 vi.mock('../errorUtils.js', () => ({
   extractConnectionErrorDetails: vi.fn().mockReturnValue(null),
   formatAPIError: vi.fn((e: { message?: string }) => e?.message ?? 'unknown'),

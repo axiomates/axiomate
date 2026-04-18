@@ -91,13 +91,6 @@ function isGateOpen(): boolean {
   return isAutoDreamEnabled()
 }
 
-// Ant-build-only test override. Bypasses enabled/time/session gates but NOT
-// the lock (so repeated turns don't pile up dreams) or the memory-dir
-// precondition. Still scans sessions so the prompt's session-hint is populated.
-function isForced(): boolean {
-  return false
-}
-
 type AppendSystemMessageFn = NonNullable<ToolUseContext['appendSystemMessage']>
 
 let runner:
@@ -116,8 +109,7 @@ export function initAutoDream(): void {
 
   runner = async function runAutoDream(context, appendSystemMessage) {
     const cfg = getConfig()
-    const force = isForced()
-    if (!force && !isGateOpen()) return
+    if (!isGateOpen()) return
 
     // --- Time gate ---
     let lastAt: number
@@ -130,11 +122,11 @@ export function initAutoDream(): void {
       return
     }
     const hoursSince = (Date.now() - lastAt) / 3_600_000
-    if (!force && hoursSince < cfg.minHours) return
+    if (hoursSince < cfg.minHours) return
 
     // --- Scan throttle ---
     const sinceScanMs = Date.now() - lastSessionScanAt
-    if (!force && sinceScanMs < SESSION_SCAN_INTERVAL_MS) {
+    if (sinceScanMs < SESSION_SCAN_INTERVAL_MS) {
       logForDebugging(
         `[autoDream] scan throttle — time-gate passed but last scan was ${Math.round(sinceScanMs / 1000)}s ago`,
       )
@@ -155,7 +147,7 @@ export function initAutoDream(): void {
     // Exclude the current session (its mtime is always recent).
     const currentSession = getSessionId()
     sessionIds = sessionIds.filter(id => id !== currentSession)
-    if (!force && sessionIds.length < cfg.minSessions) {
+    if (sessionIds.length < cfg.minSessions) {
       logForDebugging(
         `[autoDream] skip — ${sessionIds.length} sessions since last consolidation, need ${cfg.minSessions}`,
       )
@@ -163,23 +155,16 @@ export function initAutoDream(): void {
     }
 
     // --- Lock ---
-    // Under force, skip acquire entirely — use the existing mtime so
-    // kill's rollback is a no-op (rewinds to where it already is).
-    // The lock file stays untouched; next non-force turn sees it as-is.
     let priorMtime: number | null
-    if (force) {
-      priorMtime = lastAt
-    } else {
-      try {
-        priorMtime = await tryAcquireConsolidationLock()
-      } catch (e: unknown) {
-        logForDebugging(
-          `[autoDream] lock acquire failed: ${(e as Error).message}`,
-        )
-        return
-      }
-      if (priorMtime === null) return
+    try {
+      priorMtime = await tryAcquireConsolidationLock()
+    } catch (e: unknown) {
+      logForDebugging(
+        `[autoDream] lock acquire failed: ${(e as Error).message}`,
+      )
+      return
     }
+    if (priorMtime === null) return
 
     logForDebugging(
       `[autoDream] firing — ${hoursSince.toFixed(1)}h since last, ${sessionIds.length} sessions to review`,

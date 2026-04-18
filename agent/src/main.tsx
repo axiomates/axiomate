@@ -24,9 +24,7 @@ import { addToHistory } from './history.js';
 import type { Root } from './ink.js';
 import { launchRepl } from './replLauncher.js';
 import { type DownloadResult, downloadSessionFiles, type FilesApiConfig, parseFileSpecs } from './services/api/filesApi.js';
-import { prefetchOfficialMcpUrls } from './services/mcp/officialRegistry.js';
 import type { McpSdkServerConfig, McpServerConfig, ScopedMcpServerConfig } from './services/mcp/types.js';
-import { isPolicyAllowed, loadPolicyLimits, refreshPolicyLimits, waitForPolicyLimitsToLoad } from './services/policyLimits/index.js';
 import type { ToolInputJSONSchema } from './Tool.js';
 import { createSyntheticOutputTool, isSyntheticOutputToolEnabled } from './tools/SyntheticOutputTool/SyntheticOutputTool.js';
 import { getTools } from './tools.js';
@@ -61,7 +59,6 @@ const coordinatorModeModule = feature('COORDINATOR_MODE') ? require('./coordinat
 /* eslint-enable @typescript-eslint/no-require-imports */
 import { relative, resolve } from 'path';
 import { isAnalyticsDisabled } from './services/analytics/config.js';
-import { initializeAnalyticsGates } from './services/analytics/sink.js';
 import { getInitialMainLoopModel, getIsNonInteractiveSession, getOriginalCwd, getSdkBetas, getUserMsgOptIn, setAdditionalDirectoriesForAxiomateMd, setAllowedSettingSources, setClientType, setCwdState, setFlagSettingsPath, setInitialMainLoopModel, setInlinePlugins, setIsInteractive, setIsRemoteMode, setMainLoopModelOverride, setMainThreadAgentType, setOriginalCwd, setQuestionPreviewFormat, setSdkBetas, setSessionBypassPermissionsMode, setSessionPersistenceDisabled, setSessionSource, setTeleportedSessionInfo, setUserMsgOptIn, switchSession } from './bootstrap/state.js';
 import { filterCommandsForRemoteMode, getCommands } from './commands.js';
 import type { StatsStore } from './context/stats.js';
@@ -88,7 +85,6 @@ import { findGitRoot, getBranch, getIsGit, getWorktreeCount } from './utils/git.
 import { getGhAuthStatus } from './utils/github/ghAuthStatus.js';
 import { safeParseJSON } from './utils/json.js';
 import { logError } from './utils/log.js';
-import { getModelDeprecationWarning } from './utils/model/deprecation.js';
 import { getDefaultMainLoopModel, getUserSpecifiedModelSetting, normalizeModelStringForAPI, parseUserSpecifiedModel } from './utils/model/model.js';
 import { PERMISSION_MODES } from './utils/permissions/PermissionMode.js';
 import { getAutoModeEnabledStateIfCached, initializeToolPermissionContext, initialPermissionModeFromCLI, isDefaultPermissionModeAuto, parseToolListFromCLI, removeDangerousPermissions, stripDangerousPermissionsForAutoMode, verifyAutoModeGateAccess } from './utils/permissions/permissionSetup.js';
@@ -322,10 +318,6 @@ export function startDeferredPrefetches(): void {
   prefetchSystemContextIfSafe();
   void getRelevantTips();
   void countFilesRoundedRg(getCwd(), AbortSignal.timeout(3000), []);
-
-  // Analytics and feature flag initialization
-  void initializeAnalyticsGates();
-  void prefetchOfficialMcpUrls();
 
   // File change detectors deferred from init() to unblock first render
   void settingsChangeDetector.initialize();
@@ -629,9 +621,6 @@ async function run(): Promise<CommanderCommand> {
     runMigrations();
     profileCheckpoint('preAction_after_migrations');
 
-    // Load policy limits (non-blocking). Must happen after init() to ensure
-    // config reading is allowed.
-    void loadPolicyLimits();
     profileCheckpoint('preAction_after_remote_settings');
 
     // Load settings sync (non-blocking, fail-open)
@@ -1563,9 +1552,6 @@ async function run(): Promise<CommanderCommand> {
         prompt = '';
       }
       if (onboardingShown) {
-        // Refresh auth-dependent services now that the user has logged in during onboarding.
-        // Keep in sync with the post-login logic in src/commands/login.tsx
-        void refreshPolicyLimits();
         // Clear user data cache after login
         resetUserCache();
       }
@@ -1979,9 +1965,6 @@ async function run(): Promise<CommanderCommand> {
 
     // Log model config at startup
 
-    // Get deprecation warning for the initial model (resolvedInitialModel computed earlier for hooks parallelization)
-    const deprecationWarning = getModelDeprecationWarning(resolvedInitialModel);
-
     // Build initial notification queue
     const initialNotifications: Array<{
       key: string;
@@ -1993,14 +1976,6 @@ async function run(): Promise<CommanderCommand> {
       initialNotifications.push({
         key: 'permission-mode-notification',
         text: permissionModeNotification,
-        priority: 'high'
-      });
-    }
-    if (deprecationWarning) {
-      initialNotifications.push({
-        key: 'model-deprecation-warning',
-        text: deprecationWarning,
-        color: 'warning',
         priority: 'high'
       });
     }
@@ -2266,12 +2241,6 @@ async function run(): Promise<CommanderCommand> {
 
       // --remote and --teleport both create/resume web sessions.
       // Remote Control (--rc) is a separate feature gated in initReplBridge.ts.
-      if (remote !== null || teleport) {
-        await waitForPolicyLimitsToLoad();
-        if (!isPolicyAllowed('allow_remote_sessions')) {
-          return await exitWithError(root, "Error: Remote sessions are disabled by your organization's policy.", () => gracefulShutdown(1));
-        }
-      }
       if (remote !== null) {
         // Create remote session (optionally with initial prompt)
         const hasInitialPrompt = remote.length > 0;

@@ -54,12 +54,8 @@ import {
   getAttachmentMessages,
   startRelevantMemoryPrefetch,
 } from './utils/attachments.js'
-/* eslint-disable @typescript-eslint/no-require-imports */
-const skillPrefetch = false
-  ? (require('./services/skillSearch/prefetch.js') as typeof import('./services/skillSearch/prefetch.js'))
-  : null
+const skillPrefetch = null
 const jobClassifier = null
-/* eslint-enable @typescript-eslint/no-require-imports */
 import {
   remove as removeFromQueue,
   getCommandsByMaxPriority,
@@ -102,12 +98,7 @@ import {
 import { createBudgetTracker, checkTokenBudget } from './query/tokenBudget.js'
 import { count } from './utils/array.js'
 
-/* eslint-disable @typescript-eslint/no-require-imports */
-const snipModule = false
-  ? (require('./services/compact/snipCompact.js') as typeof import('./services/compact/snipCompact.js'))
-  : null
 const taskSummaryModule = null
-/* eslint-enable @typescript-eslint/no-require-imports */
 
 function* yieldMissingToolResultBlocks(
   assistantMessages: AssistantMessage[],

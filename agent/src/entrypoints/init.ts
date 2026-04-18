@@ -7,10 +7,6 @@ import { getIsNonInteractiveSession } from '../bootstrap/state.js'
 import type { AttributedCounter } from '../bootstrap/state.js'
 import { getSessionCounter, setMeter } from '../bootstrap/state.js'
 import { shutdownLspServerManager } from '../services/lsp/manager.js'
-import {
-  initializePolicyLimitsLoadingPromise,
-  isPolicyLimitsEligible,
-} from '../services/policyLimits/index.js'
 import { applyExtraCACertsFromConfig } from '../utils/caCertsConfig.js'
 import { registerCleanup } from '../utils/cleanupRegistry.js'
 import { enableConfigs } from '../utils/config.js'
@@ -37,8 +33,6 @@ import {
 import { configureGlobalAgents } from '../utils/proxy.js'
 import { getTelemetryAttributes } from '../utils/telemetryAttributes.js'
 import { setShellIfWindows } from '../utils/windowsPaths.js'
-
-// initialize1PEventLogging is dynamically imported to defer OpenTelemetry sdk-logs/resources
 
 // Track if telemetry has been initialized to prevent double initialization
 let telemetryInitialized = false
@@ -76,12 +70,6 @@ export const init = memoize(async (): Promise<void> => {
     setupGracefulShutdown()
     profileCheckpoint('init_after_graceful_shutdown')
 
-    // Initialize analytics event logging (deferred to avoid loading OpenTelemetry at startup)
-    void import('../services/analytics/firstPartyEventLogger.js').then(fp => {
-      fp.initialize1PEventLogging()
-    })
-    profileCheckpoint('init_after_1p_event_logging')
-
     // Populate OAuth account info if it is not already cached in config. This is needed since the
     // OAuth account info may not be populated when logging in through the VSCode extension.
     void Promise.resolve()
@@ -94,9 +82,6 @@ export const init = memoize(async (): Promise<void> => {
     // Detect GitHub repository asynchronously (populates cache for gitDiff PR linking)
     void detectCurrentRepository()
 
-    if (isPolicyLimitsEligible()) {
-      initializePolicyLimitsLoadingPromise()
-    }
     profileCheckpoint('init_after_remote_settings_check')
 
     // Configure global mTLS settings
