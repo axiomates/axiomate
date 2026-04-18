@@ -1,7 +1,5 @@
 import type { UUID } from 'crypto'
 import { getSessionId } from '../../bootstrap/state.js'
-const getBridgeBaseUrlOverride = (): string | undefined => undefined
-const getBridgeTokenOverride = (): string | undefined => undefined
 import type { ToolUseContext } from '../../Tool.js'
 import type {
   LocalJSXCommandContext,
@@ -53,14 +51,6 @@ export async function call(
 
   // Always save the custom title (session name)
   await saveCustomTitle(sessionId, newName, fullPath)
-
-  // v2 env-less bridge stores cse_* in replBridgeSessionId —
-  // updateBridgeSessionTitle retags internally for the compat endpoint.
-  const appState = context.getAppState()
-  const bridgeSessionId = appState.replBridgeSessionId
-  if (bridgeSessionId) {
-    const tokenOverride = getBridgeTokenOverride()
-  }
 
   // Also persist as the session's agent name for prompt-bar display
   await saveAgentName(sessionId, newName, fullPath)

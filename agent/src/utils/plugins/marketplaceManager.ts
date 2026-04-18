@@ -24,7 +24,6 @@ import isEqual from 'lodash-es/isEqual.js'
 import memoize from 'lodash-es/memoize.js'
 import { basename, dirname, isAbsolute, join, resolve, sep } from 'path'
 import { logForDebugging } from '../debug.js'
-import { isEnvTruthy } from '../envUtils.js'
 import {
   ConfigParseError,
   errorMessage,
@@ -2409,17 +2408,7 @@ export async function refreshMarketplace(
         const sshUrl = `git@github.com:${source.repo}.git`
         const httpsUrl = `https://github.com/${source.repo}.git`
 
-        if (isEnvTruthy(process.env.AXIOMATE_CODE_REMOTE)) {
-          // CCR: always HTTPS (no SSH keys available)
-          await cacheMarketplaceFromGit(
-            httpsUrl,
-            installLocation,
-            source.ref,
-            source.sparsePaths,
-            onProgress,
-            options,
-          )
-        } else {
+        {
           const sshConfigured = await isGitHubSshLikelyConfigured()
           const primaryUrl = sshConfigured ? sshUrl : httpsUrl
           const fallbackUrl = sshConfigured ? httpsUrl : sshUrl

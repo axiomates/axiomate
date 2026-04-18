@@ -7,8 +7,6 @@ import {
   consumePostCompaction,
   getIsNonInteractiveSession,
   getLastApiCompletionTimestamp,
-  getTeleportedSessionInfo,
-  markFirstTeleportMessageLogged,
   setLastApiCompletionTimestamp,
 } from '../../bootstrap/state.js'
 import type { QueryChainTracking } from '../../Tool.js'
@@ -250,11 +248,6 @@ export function logAPIError({
     attempt,
   })
 
-  // Log first error for teleported sessions (reliability tracking)
-  const teleportInfo = getTeleportedSessionInfo()
-  if (teleportInfo?.isTeleported && !teleportInfo.hasLoggedFirstMessage) {
-    markFirstTeleportMessageLogged()
-  }
 }
 
 function logAPISuccess({
@@ -504,9 +497,4 @@ export function logAPISuccessAndDuration({
     attemptStartTimes,
   })
 
-  // Log first successful message for teleported sessions (reliability tracking)
-  const teleportInfo = getTeleportedSessionInfo()
-  if (teleportInfo?.isTeleported && !teleportInfo.hasLoggedFirstMessage) {
-    markFirstTeleportMessageLogged()
-  }
 }

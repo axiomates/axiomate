@@ -23,7 +23,6 @@ import {
   API_PDF_MAX_PAGES,
   PDF_TARGET_RAW_SIZE,
 } from '../../constants/apiLimits.js'
-import { isEnvTruthy } from '../../utils/envUtils.js'
 import { formatFileSize } from '../../utils/format.js'
 import { ImageResizeError } from '../../utils/imageResizer.js'
 import { ImageSizeError } from '../../utils/imageValidation.js'
@@ -131,8 +130,6 @@ export function isMediaSizeErrorMessage(msg: AssistantMessage): boolean {
 }
 export const CREDIT_BALANCE_TOO_LOW_ERROR_MESSAGE = 'Credit balance is too low'
 export const INVALID_API_KEY_ERROR_MESSAGE = 'Invalid API key · Check models config in ~/.axiomate.json'
-export const CCR_AUTH_ERROR_MESSAGE =
-  'Authentication error · This may be a temporary network issue, please try again'
 export const REPEATED_529_ERROR_MESSAGE = 'Repeated 529 Overloaded errors'
 export const CUSTOM_OFF_SWITCH_MESSAGE =
   'The selected model is experiencing high load, please use /model to switch models'
@@ -164,15 +161,6 @@ export function getRequestTooLargeErrorMessage(): string {
     ? `Request too large (${limits}). Try with a smaller file.`
     : `Request too large (${limits}). Double press esc to go back and try with a smaller file.`
 }
-/**
- * Check if we're in CCR (Axiomate Remote) mode.
- * In CCR mode, auth is handled via JWTs provided by the infrastructure.
- * Transient auth errors should suggest retrying.
- */
-function isCCRMode(): boolean {
-  return isEnvTruthy(process.env.AXIOMATE_CODE_REMOTE)
-}
-
 // Temp helper to log tool_use/tool_result mismatch errors
 function logToolUseToolResultMismatch(
   toolUseId: string,
@@ -560,14 +548,6 @@ export function getAssistantMessageFromError(
     error instanceof Error &&
     error.message.toLowerCase().includes('x-api-key')
   ) {
-    // In CCR mode, auth is via JWTs - this is likely a transient network issue
-    if (isCCRMode()) {
-      return createAssistantAPIErrorMessage({
-        error: 'authentication_failed',
-        content: CCR_AUTH_ERROR_MESSAGE,
-      })
-    }
-
     return createAssistantAPIErrorMessage({
       error: 'authentication_failed',
       content: INVALID_API_KEY_ERROR_MESSAGE,
@@ -579,14 +559,6 @@ export function getAssistantMessageFromError(
     error instanceof APIError &&
     (error.status === 401 || error.status === 403)
   ) {
-    // In CCR mode, auth is via JWTs - this is likely a transient network issue
-    if (isCCRMode()) {
-      return createAssistantAPIErrorMessage({
-        error: 'authentication_failed',
-        content: CCR_AUTH_ERROR_MESSAGE,
-      })
-    }
-
     return createAssistantAPIErrorMessage({
       error: 'authentication_failed',
       content: `${INVALID_API_KEY_ERROR_MESSAGE} · ${error.message}`,

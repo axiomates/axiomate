@@ -23,10 +23,7 @@ import {
 import { logFileOperation } from '../../utils/fileOperationAnalytics.js'
 import { readFileSyncWithMetadata } from '../../utils/fileRead.js'
 import { getFsImplementation } from '../../utils/fsOperations.js'
-import {
-  fetchSingleFileGitDiff,
-  type ToolUseDiff,
-} from '../../utils/gitDiff.js'
+import type { ToolUseDiff } from '../../utils/gitDiff.js'
 import { lazySchema } from '../../utils/lazySchema.js'
 import { logError } from '../../utils/log.js'
 import { expandPath } from '../../utils/path.js'
@@ -324,15 +321,7 @@ export const FileWriteTool = buildTool({
     if (fullFilePath.endsWith(`${sep}AXIOMATE.md`)) {
     }
 
-    let gitDiff: ToolUseDiff | undefined
-    if (
-      isEnvTruthy(process.env.AXIOMATE_CODE_REMOTE) &&
-      false
-    ) {
-      const startTime = Date.now()
-      const diff = await fetchSingleFileGitDiff(fullFilePath)
-      if (diff) gitDiff = diff
-    }
+    const gitDiff: ToolUseDiff | undefined = undefined
 
     if (oldContent) {
       const patch = getPatchForDisplay({

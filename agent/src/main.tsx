@@ -16,7 +16,6 @@ import { readFileSync } from 'fs';
 import mapValues from 'lodash-es/mapValues.js';
 import uniqBy from 'lodash-es/uniqBy.js';
 import React from 'react';
-import { getRemoteSessionUrl } from './constants/product.js';
 import { getSystemContext, getUserContext } from './context.js';
 import { init, initializeTelemetryAfterTrust } from './entrypoints/init.js';
 import { addToHistory } from './history.js';
@@ -31,7 +30,7 @@ import { isAgentSwarmsEnabled } from './utils/agentSwarmsEnabled.js';
 import { count, uniq } from './utils/array.js';
 // Side-effect import: asciicast module registers terminal recording hooks
 import './utils/asciicast.js';
-import { checkHasTrustDialogAccepted, getGlobalConfig, getRemoteControlAtStartup, isAutoUpdaterDisabled, saveGlobalConfig } from './utils/config.js';
+import { checkHasTrustDialogAccepted, getGlobalConfig, isAutoUpdaterDisabled, saveGlobalConfig } from './utils/config.js';
 import { seedEarlyInput, stopCapturingEarlyInput } from './utils/earlyInput.js';
 import { getInitialEffortSetting, parseEffortValue } from './utils/effort.js';
 import { applyConfigEnvironmentVariables } from './utils/managedEnv.js';
@@ -57,10 +56,10 @@ const coordinatorModeModule = require('./coordinator/coordinatorMode.js') as typ
 /* eslint-enable @typescript-eslint/no-require-imports */
 import { relative, resolve } from 'path';
 import { isAnalyticsDisabled } from './services/analytics/config.js';
-import { getInitialMainLoopModel, getIsNonInteractiveSession, getOriginalCwd, getSdkBetas, getUserMsgOptIn, setAdditionalDirectoriesForAxiomateMd, setAllowedSettingSources, setClientType, setCwdState, setFlagSettingsPath, setInitialMainLoopModel, setInlinePlugins, setIsInteractive, setIsRemoteMode, setMainLoopModelOverride, setMainThreadAgentType, setOriginalCwd, setQuestionPreviewFormat, setSdkBetas, setSessionBypassPermissionsMode, setSessionPersistenceDisabled, setSessionSource, setTeleportedSessionInfo, setUserMsgOptIn, switchSession } from './bootstrap/state.js';
-import { filterCommandsForRemoteMode, getCommands } from './commands.js';
+import { getInitialMainLoopModel, getIsNonInteractiveSession, getOriginalCwd, getSdkBetas, getUserMsgOptIn, setAdditionalDirectoriesForAxiomateMd, setAllowedSettingSources, setClientType, setCwdState, setFlagSettingsPath, setInitialMainLoopModel, setInlinePlugins, setIsInteractive, setMainLoopModelOverride, setMainThreadAgentType, setQuestionPreviewFormat, setSdkBetas, setSessionBypassPermissionsMode, setSessionPersistenceDisabled, setUserMsgOptIn } from './bootstrap/state.js';
+import { getCommands } from './commands.js';
 import type { StatsStore } from './context/stats.js';
-import { launchInvalidSettingsDialog, launchResumeChooser, launchTeleportRepoMismatchDialog, launchTeleportResumeWrapper } from './dialogLaunchers.js';
+import { launchInvalidSettingsDialog, launchResumeChooser } from './dialogLaunchers.js';
 import { SHOW_CURSOR } from './ink/termio/dec.js';
 import { exitWithError, getRenderContext, renderAndRun, showSetupScreens } from './interactiveHelpers.js';
 import { initBuiltinPlugins } from './plugins/bundled/index.js';
@@ -79,7 +78,7 @@ import { hasNodeOption, isBareMode, isEnvTruthy, isInProtectedNamespace } from '
 import { refreshExampleCommands } from './utils/exampleCommands.js';
 import type { FpsMetrics } from './utils/fpsTracker.js';
 import { getWorktreePaths } from './utils/getWorktreePaths.js';
-import { findGitRoot, getBranch, getIsGit, getWorktreeCount } from './utils/git.js';
+import { findGitRoot, getIsGit, getWorktreeCount } from './utils/git.js';
 import { getGhAuthStatus } from './utils/github/ghAuthStatus.js';
 import { safeParseJSON } from './utils/json.js';
 import { logError } from './utils/log.js';
@@ -117,38 +116,25 @@ import { createEmptyAttributionState } from './utils/commitAttribution.js';
 import { countConcurrentSessions, registerSession, updateSessionName } from './utils/concurrentSessions.js';
 import { getCwd } from './utils/cwd.js';
 import { logForDebugging, setHasFormattedOutput } from './utils/debug.js';
-import { errorMessage, getErrnoCode, isENOENT, TeleportOperationError, toError } from './utils/errors.js';
+import { errorMessage, getErrnoCode, isENOENT, toError } from './utils/errors.js';
 import { getFsImplementation, safeResolvePath } from './utils/fsOperations.js';
 import { gracefulShutdown, gracefulShutdownSync } from './utils/gracefulShutdown.js';
 import { setAllHookEventsEnabled } from './utils/hooks/hookEvents.js';
 import { peekForStdinData, writeToStderr } from './utils/process.js';
-import { setCwd } from './utils/Shell.js';
 import { type ProcessedResume, processResumedConversation } from './utils/sessionRestore.js';
 import { parseSettingSourcesFlag } from './utils/settings/constants.js';
 import { plural } from './utils/stringUtils.js';
 
-// TeleportRepoMismatchDialog, TeleportResumeWrapper dynamically imported at call sites
-const createRemoteSessionConfig = (..._args: unknown[]) => { throw new Error('Remote sessions removed') }
 import { initializeLspServerManager } from './services/lsp/manager.js';
 import { shouldEnablePromptSuggestion } from './services/PromptSuggestion/promptSuggestion.js';
 import { type AppState, getDefaultAppState, IDLE_SPECULATION_STATE } from './state/AppStateStore.js';
 import { onChangeAppState } from './state/onChangeAppState.js';
 import { createStore } from './state/store.js';
-import { asSessionId } from './types/ids.js';
 import { filterAllowedSdkBetas } from './utils/betas.js';
 import { isInBundledMode, isRunningWithBun } from './utils/bundledMode.js';
 import { logForDiagnosticsNoPII } from './utils/diagLogs.js';
-import { filterExistingPaths, getKnownPathsForRepo } from './utils/githubRepoPathMapping.js';
 import { clearPluginCache, loadAllPluginsCacheOnly } from './utils/plugins/pluginLoader.js';
 import { SandboxManager } from './utils/sandbox/sandbox-adapter.js';
-type TeleportSessionData = { status: string; errorMessage?: string; sessionRepo?: string; branch?: string; log?: unknown[]; id?: string; title?: string }
-const fetchSession = async (..._args: unknown[]): Promise<TeleportSessionData> => { throw new Error('Teleport removed') }
-const prepareApiRequest = async (..._args: unknown[]): Promise<{ accessToken: string; orgUUID: string }> => { throw new Error('Teleport removed') }
-const checkOutTeleportedSessionBranch = async (..._args: unknown[]) => ({ branchError: null as string | null })
-const processMessagesForTeleportResume = (..._args: unknown[]): import('./types/message.js').Message[] => []
-const teleportToRemoteWithErrorHandling = async (..._args: unknown[]): Promise<{ id: string; title?: string }> => { throw new Error('Teleport removed') }
-const validateGitState = async () => {}
-const validateSessionRepository = async (..._args: unknown[]): Promise<{ status: string; sessionRepo?: string; errorMessage?: string }> => ({ status: 'ok' })
 import { shouldEnableThinkingByDefault, type ThinkingConfig } from './utils/thinking.js';
 import { initUser, resetUserCache } from './utils/user.js';
 import { getTmuxInstallInstructions, isTmuxAvailable, parsePRReference } from './utils/worktree.js';
@@ -471,8 +457,7 @@ export async function main() {
   const cliArgs = process.argv.slice(2);
   const hasPrintFlag = cliArgs.includes('-p') || cliArgs.includes('--print');
   const hasInitOnlyFlag = cliArgs.includes('--init-only');
-  const hasSdkUrl = cliArgs.some(arg => arg.startsWith('--sdk-url'));
-  const isNonInteractive = hasPrintFlag || hasInitOnlyFlag || hasSdkUrl || !process.stdout.isTTY;
+  const isNonInteractive = hasPrintFlag || hasInitOnlyFlag || !process.stdout.isTTY;
 
   // Stop capturing early input for non-interactive modes
   if (isNonInteractive) {
@@ -512,10 +497,6 @@ export async function main() {
     setQuestionPreviewFormat('markdown');
   }
 
-  // Tag sessions created via `axiomate remote-control` so the backend can identify them
-  if (process.env.AXIOMATE_CODE_ENVIRONMENT_KIND === 'bridge') {
-    setSessionSource('remote-control');
-  }
   profileCheckpoint('main_client_type_determined');
 
   // Parse and load settings flags early, before init()
@@ -800,61 +781,14 @@ async function run(): Promise<CommanderCommand> {
       }
     }
 
-    // Extract remote sdk options
-    const sdkUrl = (options as {
-      sdkUrl?: string;
-    }).sdkUrl ?? undefined;
-
     // Allow env var to enable partial messages (used by sandbox gateway for baku)
     const effectiveIncludePartialMessages = includePartialMessages || isEnvTruthy(process.env.AXIOMATE_CODE_INCLUDE_PARTIAL_MESSAGES);
 
-    // Enable all hook event types when explicitly requested via SDK option
-    // or when running in AXIOMATE_CODE_REMOTE mode (CCR needs them).
+    // Enable all hook event types when explicitly requested via SDK option.
     // Without this, only SessionStart and Setup events are emitted.
-    if (includeHookEvents || isEnvTruthy(process.env.AXIOMATE_CODE_REMOTE)) {
+    if (includeHookEvents) {
       setAllHookEventsEnabled(true);
     }
-
-    // Auto-set input/output formats, verbose mode, and print mode when SDK URL is provided
-    if (sdkUrl) {
-      // If SDK URL is provided, automatically use stream-json formats unless explicitly set
-      if (!inputFormat) {
-        inputFormat = 'stream-json';
-      }
-      if (!outputFormat) {
-        outputFormat = 'stream-json';
-      }
-      // Auto-enable verbose mode unless explicitly disabled or already set
-      if (options.verbose === undefined) {
-        verbose = true;
-      }
-      // Auto-enable print mode unless explicitly disabled
-      if (!options.print) {
-        print = true;
-      }
-    }
-
-    // Extract teleport option
-    const teleport = (options as {
-      teleport?: string | true;
-    }).teleport ?? null;
-
-    // Extract remote option (can be true if no description provided, or a string)
-    const remoteOption = (options as {
-      remote?: string | true;
-    }).remote;
-    const remote = remoteOption === true ? '' : remoteOption ?? null;
-
-    // Extract --remote-control / --rc flag (enable bridge in interactive session)
-    const remoteControlOption = (options as {
-      remoteControl?: string | true;
-    }).remoteControl ?? (options as {
-      rc?: string | true;
-    }).rc;
-    // Actual bridge check is deferred to after showSetupScreens() so that
-    // trust is established and config has auth headers.
-    let remoteControl = false;
-    const remoteControlName = typeof remoteControlOption === 'string' && remoteControlOption.length > 0 ? remoteControlOption : undefined;
 
     // Validate session ID if provided
     if (sessionId) {
@@ -866,21 +800,16 @@ async function run(): Promise<CommanderCommand> {
         process.exit(1);
       }
 
-      // When --sdk-url is provided (bridge/remote mode), the session ID is a
-      // server-assigned tagged ID (e.g. "session_local_01...") rather than a
-      // UUID. Skip UUID validation and local existence checks in that case.
-      if (!sdkUrl) {
-        const validatedSessionId = validateUuid(sessionId);
-        if (!validatedSessionId) {
-          process.stderr.write(chalk.red('Error: Invalid session ID. Must be a valid UUID.\n'));
-          process.exit(1);
-        }
+      const validatedSessionId = validateUuid(sessionId);
+      if (!validatedSessionId) {
+        process.stderr.write(chalk.red('Error: Invalid session ID. Must be a valid UUID.\n'));
+        process.exit(1);
+      }
 
-        // Check if session ID already exists
-        if (sessionIdExists(validatedSessionId)) {
-          process.stderr.write(chalk.red(`Error: Session ID ${validatedSessionId} is already in use.\n`));
-          process.exit(1);
-        }
+      // Check if session ID already exists
+      if (sessionIdExists(validatedSessionId)) {
+        process.stderr.write(chalk.red(`Error: Session ID ${validatedSessionId} is already in use.\n`));
+        process.exit(1);
       }
     }
 
@@ -1162,15 +1091,6 @@ async function run(): Promise<CommanderCommand> {
       // biome-ignore lint/suspicious/noConsole:: intentional console output
       console.error(`Error: --input-format=stream-json requires output-format=stream-json.`);
       process.exit(1);
-    }
-
-    // Validate sdkUrl is only used with appropriate formats (formats are auto-set above)
-    if (sdkUrl) {
-      if (inputFormat !== 'stream-json' || outputFormat !== 'stream-json') {
-        // biome-ignore lint/suspicious/noConsole:: intentional console output
-        console.error(`Error: --sdk-url requires both --input-format=stream-json and --output-format=stream-json.`);
-        process.exit(1);
-      }
     }
 
     // Validate replayUserMessages is only used with stream-json formats
@@ -1589,26 +1509,6 @@ async function run(): Promise<CommanderCommand> {
       }
     }
 
-    // Check quota status, passes eligibility, and bootstrap data
-    // after trust is established. These make API calls which could trigger
-    // apiKeyHelper execution.
-    // --bare / SIMPLE: skip — these are cache-warms for the REPL's
-    // first-turn responsiveness (quota, passes, bootstrap data).
-    const bgRefreshThrottleMs = 0;
-    const lastPrefetched = getGlobalConfig().startupPrefetchedAt ?? 0;
-    const skipStartupPrefetches = isBareMode() || bgRefreshThrottleMs > 0 && Date.now() - lastPrefetched < bgRefreshThrottleMs;
-    if (!skipStartupPrefetches) {
-      const lastPrefetchedInfo = lastPrefetched > 0 ? ` last ran ${Math.round((Date.now() - lastPrefetched) / 1000)}s ago` : '';
-      logForDebugging(`Starting background startup prefetches${lastPrefetchedInfo}`);
-      if (bgRefreshThrottleMs > 0) {
-        saveGlobalConfig(current => ({
-          ...current,
-          startupPrefetchedAt: Date.now()
-        }));
-      }
-    } else {
-      logForDebugging(`Skipping startup prefetches, last ran ${Math.round((Date.now() - lastPrefetched) / 1000)}s ago`);
-    }
     if (!isNonInteractiveSession) {
       void refreshExampleCommands(); // Pre-fetch example commands (runs git log, no API call)
     }
@@ -1812,12 +1712,12 @@ async function run(): Promise<CommanderCommand> {
       // Kick SessionStart hooks now so the subprocess spawn overlaps with
       // MCP connect + plugin init + print.ts import below. loadInitialMessages
       // joins this at print.ts:4397. Guarded same as loadInitialMessages —
-      // continue/resume/teleport paths don't fire startup hooks (or fire them
+      // continue/resume paths don't fire startup hooks (or fire them
       // conditionally inside the resume branch, where this promise is
       // undefined and the ?? fallback runs). Also skip when setupTrigger is
       // set — those paths run setup hooks first (print.ts:544), and session
       // start hooks must wait until setup completes.
-      const sessionStartHooksPromise = options.continue || options.resume || teleport || setupTrigger ? undefined : processSessionStartHooks('startup');
+      const sessionStartHooksPromise = options.continue || options.resume || setupTrigger ? undefined : processSessionStartHooks('startup');
       // Suppress transient unhandledRejection if this rejects before
       // loadInitialMessages awaits it. Downstream await still observes the
       // rejection — this just prevents the spurious global handler fire.
@@ -1931,8 +1831,6 @@ async function run(): Promise<CommanderCommand> {
         appendSystemPrompt,
         userSpecifiedModel: effectiveModel,
         fallbackModel: userSpecifiedFallbackModel,
-        teleport,
-        sdkUrl,
         replayUserMessages: effectiveReplayUserMessages,
         includePartialMessages: effectiveIncludePartialMessages,
         forkSession: options.forkSession || false,
@@ -1982,8 +1880,6 @@ async function run(): Promise<CommanderCommand> {
     // All startup opt-in paths (--tools, --brief, defaultView) have fired
     // above; initialIsBriefOnly just reads the resulting state.
     const initialIsBriefOnly = false;
-    const fullRemoteControl = remoteControl || getRemoteControlAtStartup();
-    const ccrMirrorEnabled = false;
     const initialState: AppState = {
       settings: getInitialSettings(),
       tasks: {},
@@ -2020,22 +1916,6 @@ async function run(): Promise<CommanderCommand> {
         needsRefresh: false
       },
       statusLineText: undefined,
-      remoteSessionUrl: undefined,
-      remoteConnectionStatus: 'connecting',
-      remoteBackgroundTaskCount: 0,
-      replBridgeEnabled: fullRemoteControl || ccrMirrorEnabled,
-      replBridgeExplicit: remoteControl,
-      replBridgeOutboundOnly: ccrMirrorEnabled,
-      replBridgeConnected: false,
-      replBridgeSessionActive: false,
-      replBridgeReconnecting: false,
-      replBridgeConnectUrl: undefined,
-      replBridgeSessionUrl: undefined,
-      replBridgeEnvironmentId: undefined,
-      replBridgeSessionId: undefined,
-      replBridgeError: undefined,
-      replBridgeInitialName: remoteControlName,
-      showRemoteCallout: false,
       notifications: {
         current: null,
         queue: initialNotifications
@@ -2044,7 +1924,6 @@ async function run(): Promise<CommanderCommand> {
         queue: []
       },
       todos: {},
-      remoteAgentTaskSuggestions: [],
       fileHistory: {
         snapshots: [],
         trackedFiles: new Set(),
@@ -2178,14 +2057,13 @@ async function run(): Promise<CommanderCommand> {
         logError(error);
         process.exit(1);
       }
-    } else if (options.resume || options.fromPr || teleport || remote !== null) {
+    } else if (options.resume || options.fromPr) {
 
       // Clear stale caches before resuming to ensure fresh file/skill discovery
       const {
         clearSessionCaches
       } = await import('./commands/clear/caches.js');
       clearSessionCaches();
-      let messages: MessageType[] | null = null;
       let processedResume: ProcessedResume | undefined = undefined;
       let maybeSessionId = validateUuid(options.resume);
       let searchTerm: string | undefined = undefined;
@@ -2223,155 +2101,6 @@ async function run(): Promise<CommanderCommand> {
         }
       }
 
-      // --remote and --teleport both create/resume web sessions.
-      // Remote Control (--rc) is a separate feature gated in initReplBridge.ts.
-      if (remote !== null) {
-        // Create remote session (optionally with initial prompt)
-        const hasInitialPrompt = remote.length > 0;
-
-        // Check if TUI mode is enabled - description is only optional in TUI mode
-        const isRemoteTuiEnabled = false;
-        if (!isRemoteTuiEnabled && !hasInitialPrompt) {
-          return await exitWithError(root, 'Error: --remote requires a description.\nUsage: axiomate --remote "your task description"', () => gracefulShutdown(1));
-        }
-
-        // Pass current branch so CCR clones the repo at the right revision
-        const currentBranch = await getBranch();
-        const createdSession = await teleportToRemoteWithErrorHandling(root, hasInitialPrompt ? remote : null, new AbortController().signal, currentBranch || undefined);
-        if (!createdSession) {
-          return await exitWithError(root, 'Error: Unable to create remote session', () => gracefulShutdown(1));
-        }
-
-        // Check if new remote TUI mode is enabled via feature gate
-        if (!isRemoteTuiEnabled) {
-          // Original behavior: print session info and exit
-          process.stdout.write(`Created remote session: ${createdSession.title}\n`);
-          process.stdout.write(`View: ${getRemoteSessionUrl(createdSession.id)}?m=0\n`);
-          process.stdout.write(`Resume with: axiomate --teleport ${createdSession.id}\n`);
-          await gracefulShutdown(0);
-          process.exit(0);
-        }
-
-        // New behavior: start local TUI with CCR engine
-        // Mark that we're in remote mode for command visibility
-        setIsRemoteMode(true);
-        switchSession(asSessionId(createdSession.id));
-
-        // Get OAuth credentials for remote session
-        let apiCreds: {
-          accessToken: string;
-          orgUUID: string;
-        };
-        try {
-          apiCreds = await prepareApiRequest();
-        } catch (error) {
-          logError(toError(error));
-          return await exitWithError(root, `Error: ${errorMessage(error) || 'Failed to authenticate'}`, () => gracefulShutdown(1));
-        }
-
-        // Create remote session config for the REPL
-        const getAccessTokenForRemote = (): string => apiCreds.accessToken;
-        const remoteSessionConfig = createRemoteSessionConfig(createdSession.id, getAccessTokenForRemote, apiCreds.orgUUID, hasInitialPrompt);
-
-        // Add remote session info as initial system message
-        const remoteSessionUrl = `${getRemoteSessionUrl(createdSession.id)}?m=0`;
-        const remoteInfoMessage = createSystemMessage(`/remote-control is active. Code in CLI or at ${remoteSessionUrl}`, 'info');
-
-        // Create initial user message from the prompt if provided (CCR echoes it back but we ignore that)
-        const initialUserMessage = hasInitialPrompt ? createUserMessage({
-          content: remote
-        }) : null;
-
-        // Set remote session URL in app state for footer indicator
-        const remoteInitialState = {
-          ...initialState,
-          remoteSessionUrl
-        };
-
-        // Pre-filter commands to only include remote-safe ones.
-        // CCR's init response may further refine the list (via handleRemoteInit in REPL).
-        const remoteCommands = filterCommandsForRemoteMode(commands);
-        await launchRepl(root, {
-          getFpsMetrics,
-          stats,
-          initialState: remoteInitialState
-        }, {
-          debug: debug || debugToStderr,
-          commands: remoteCommands,
-          initialTools: [],
-          initialMessages: initialUserMessage ? [remoteInfoMessage, initialUserMessage] : [remoteInfoMessage],
-          mcpClients: [],
-          autoConnectIdeFlag: ide,
-          mainThreadAgentDefinition,
-          disableSlashCommands,
-          remoteSessionConfig,
-          thinkingConfig
-        }, renderAndRun);
-        return;
-      } else if (teleport) {
-        if (teleport === true || teleport === '') {
-          // Interactive mode: show task selector and handle resume
-          logForDebugging('selectAndResumeTeleportTask: Starting teleport flow...');
-          const teleportResult = await launchTeleportResumeWrapper(root);
-          if (!teleportResult) {
-            // User cancelled or error occurred
-            await gracefulShutdown(0);
-            process.exit(0);
-          }
-          const {
-            branchError
-          } = await checkOutTeleportedSessionBranch(teleportResult.branch);
-          messages = processMessagesForTeleportResume(teleportResult.log, branchError);
-        } else if (typeof teleport === 'string') {
-          try {
-            // First, fetch session and validate repository before checking git state
-            const sessionData = await fetchSession(teleport);
-            const repoValidation = await validateSessionRepository(sessionData);
-
-            // Handle repo mismatch or not in repo cases
-            if (repoValidation.status === 'mismatch' || repoValidation.status === 'not_in_repo') {
-              const sessionRepo = repoValidation.sessionRepo;
-              if (sessionRepo) {
-                // Check for known paths
-                const knownPaths = getKnownPathsForRepo(sessionRepo);
-                const existingPaths = await filterExistingPaths(knownPaths);
-                if (existingPaths.length > 0) {
-                  // Show directory switch dialog
-                  const selectedPath = await launchTeleportRepoMismatchDialog(root, {
-                    targetRepo: sessionRepo,
-                    initialPaths: existingPaths
-                  });
-                  if (selectedPath) {
-                    // Change to the selected directory
-                    process.chdir(selectedPath);
-                    setCwd(selectedPath);
-                    setOriginalCwd(selectedPath);
-                  } else {
-                    // User cancelled
-                    await gracefulShutdown(0);
-                  }
-                } else {
-                  // No known paths - show original error
-                  throw new TeleportOperationError(`You must run axiomate --teleport ${teleport} from a checkout of ${sessionRepo}.`, chalk.red(`You must run axiomate --teleport ${teleport} from a checkout of ${chalk.bold(sessionRepo)}.\n`));
-                }
-              }
-            } else if (repoValidation.status === 'error') {
-              throw new TeleportOperationError(repoValidation.errorMessage || 'Failed to validate session', chalk.red(`Error: ${repoValidation.errorMessage || 'Failed to validate session'}\n`));
-            }
-            await validateGitState();
-
-            throw new Error('Teleport is no longer available');
-          } catch (error) {
-            if (error instanceof TeleportOperationError) {
-              process.stderr.write(error.formattedMessage + '\n');
-            } else {
-              logError(error);
-              process.stderr.write(chalk.red(`Error: ${errorMessage(error)}\n`));
-            }
-            await gracefulShutdown(1);
-          }
-        }
-      }
       // If not loaded as a file, try as session ID
       if (maybeSessionId) {
         // Resume specific session by ID
@@ -2412,16 +2141,8 @@ async function run(): Promise<CommanderCommand> {
         }
       }
 
-      // If we have a processed resume or teleport messages, render the REPL
-      const resumeData = processedResume ?? (Array.isArray(messages) ? {
-        messages,
-        fileHistorySnapshots: undefined,
-        agentName: undefined,
-        agentColor: undefined as AgentColorName | undefined,
-        restoredAgentDef: mainThreadAgentDefinition,
-        initialState,
-        contentReplacements: undefined
-      } : undefined);
+      // If we have a processed resume, render the REPL
+      const resumeData = processedResume;
       if (resumeData) {
         maybeActivateBrief(options);
         await launchRepl(root, {
@@ -2496,12 +2217,6 @@ async function run(): Promise<CommanderCommand> {
   program.addOption(new Option('--teammate-mode <mode>', 'How to spawn teammates: "tmux", "in-process", or "auto"').choices(['auto', 'tmux', 'in-process']).hideHelp());
   program.addOption(new Option('--agent-type <type>', 'Custom agent type for this teammate').hideHelp());
 
-  // Enable SDK URL for all builds but hide from help
-  program.addOption(new Option('--sdk-url <url>', 'Use remote WebSocket endpoint for SDK I/O streaming (only with -p and stream-json format)').hideHelp());
-
-  // Enable teleport/remote flags for all builds but keep them undocumented until GA
-  program.addOption(new Option('--teleport [session]', 'Resume a teleport session, optionally specify session ID').hideHelp());
-  program.addOption(new Option('--remote [description]', 'Create a remote session with the given description').hideHelp());
   profileCheckpoint('run_main_options_built');
 
   // -p/--print mode: skip subcommand registration. The 52 subcommands

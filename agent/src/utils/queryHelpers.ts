@@ -160,11 +160,7 @@ export function* normalizeMessage(message: Message): Generator<SDKMessage> {
         message.data.type === 'powershell_progress'
       ) {
         // Filter bash progress to send only one per minute
-        // Only emit for Axiomate Remote for now
-        if (
-          !isEnvTruthy(process.env.AXIOMATE_CODE_REMOTE) &&
-          !process.env.AXIOMATE_CODE_CONTAINER_ID
-        ) {
+        if (!process.env.AXIOMATE_CODE_CONTAINER_ID) {
           break
         }
 

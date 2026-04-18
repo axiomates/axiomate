@@ -1,11 +1,6 @@
 import { feature } from 'bun:bundle'
 import { stat } from 'fs/promises'
-import { getClientType } from '../bootstrap/state.js'
-import {
-  getRemoteSessionUrl,
-  isRemoteSessionLocal,
-  PRODUCT_URL,
-} from '../constants/product.js'
+import { PRODUCT_URL } from '../constants/product.js'
 import { TERMINAL_OUTPUT_TAGS } from '../constants/xml.js'
 import type { AppState } from '../state/AppState.js'
 import { FILE_EDIT_TOOL_NAME } from '../tools/FileEditTool/constants.js'
@@ -44,22 +39,8 @@ export type AttributionTexts = {
  * - Dynamic model name via getPublicModelName()
  * - Custom attribution settings (settings.attribution.commit/pr)
  * - Backward compatibility with deprecated includeCoAuthoredBy setting
- * - Remote mode: returns session URL for attribution
  */
 export function getAttributionTexts(): AttributionTexts {
-  if (getClientType() === 'remote') {
-    const remoteSessionId = process.env.AXIOMATE_CODE_REMOTE_SESSION_ID
-    if (remoteSessionId) {
-      const ingressUrl = process.env.SESSION_INGRESS_URL
-      // Skip for local dev - URLs won't persist
-      if (!isRemoteSessionLocal(remoteSessionId, ingressUrl)) {
-        const sessionUrl = getRemoteSessionUrl(remoteSessionId, ingressUrl)
-        return { commit: sessionUrl, pr: sessionUrl }
-      }
-    }
-    return { commit: '', pr: '' }
-  }
-
   const model = getMainLoopModel()
   const modelName = getPublicModelName(model)
   const defaultAttribution = `🤖 Generated with [Axiomate](${PRODUCT_URL})`
@@ -283,18 +264,6 @@ async function getTranscriptStats(): Promise<{
 export async function getEnhancedPRAttribution(
   getAppState: () => AppState,
 ): Promise<string> {
-  if (getClientType() === 'remote') {
-    const remoteSessionId = process.env.AXIOMATE_CODE_REMOTE_SESSION_ID
-    if (remoteSessionId) {
-      const ingressUrl = process.env.SESSION_INGRESS_URL
-      // Skip for local dev - URLs won't persist
-      if (!isRemoteSessionLocal(remoteSessionId, ingressUrl)) {
-        return getRemoteSessionUrl(remoteSessionId, ingressUrl)
-      }
-    }
-    return ''
-  }
-
   const settings = getInitialSettings()
 
   // If user has custom PR attribution, use that

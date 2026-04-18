@@ -1,5 +1,4 @@
 import { useEffect, useRef } from 'react'
-import { getIsRemoteMode } from '../../bootstrap/state.js'
 import {
   type Notification,
   useNotifications,
@@ -58,7 +57,6 @@ export function useTeammateLifecycleNotification(): void {
   const seenCompletedRef = useRef<Set<string>>(new Set())
 
   useEffect(() => {
-    if (getIsRemoteMode()) return
     for (const [id, task] of Object.entries(tasks)) {
       if (!isInProcessTeammateTask(task)) {
         continue

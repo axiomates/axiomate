@@ -6,7 +6,6 @@
 
 import { writeFile } from 'fs/promises'
 import memoize from 'lodash-es/memoize.js'
-import { getIsRemoteMode } from '../../bootstrap/state.js'
 import { getSystemPrompt } from '../../constants/prompts.js'
 import { getSystemContext, getUserContext } from '../../context.js'
 import type { CanUseToolFn } from '../../hooks/useCanUseTool.js'
@@ -329,7 +328,6 @@ const extractSessionMemory = sequential(async function (
  * The gate check and config loading happen lazily when the hook runs.
  */
 export function initSessionMemory(): void {
-  if (getIsRemoteMode()) return
   // Session memory is used for compaction, so respect auto-compact settings
   const autoCompactEnabled = isAutoCompactEnabled()
 

@@ -1,5 +1,4 @@
 import { useEffect, useRef } from 'react'
-import { getIsRemoteMode } from '../../bootstrap/state.js'
 import {
   type Notification,
   useNotifications,
@@ -25,7 +24,7 @@ export function useStartupNotification(
   computeRef.current = compute
 
   useEffect(() => {
-    if (getIsRemoteMode() || hasRunRef.current) return
+    if (hasRunRef.current) return
     hasRunRef.current = true
 
     void Promise.resolve()

@@ -1,6 +1,5 @@
 import * as React from 'react'
 import { useEffect, useMemo } from 'react'
-import { getIsRemoteMode } from '../../bootstrap/state.js'
 import { useNotifications } from '../../context/notifications.js'
 import { Text } from '../../ink.js'
 import { useAppState } from '../../state/AppState.js'
@@ -37,7 +36,6 @@ export function usePluginInstallationStatus(): void {
     }, [installationStatus])
 
   useEffect(() => {
-    if (getIsRemoteMode()) return
     if (!installationStatus) {
       logForDebugging('No installation status to monitor')
       return

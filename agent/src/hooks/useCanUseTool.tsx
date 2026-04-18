@@ -168,9 +168,6 @@ function useCanUseTool(
                     awaitAutomatedChecksBeforeDialog:
                       appState.toolPermissionContext
                         .awaitAutomatedChecksBeforeDialog,
-                    bridgeCallbacks: false
-                      ? appState.replBridgePermissionCallbacks
-                      : undefined,
                   },
                   resolve,
                 )

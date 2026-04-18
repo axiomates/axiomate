@@ -415,7 +415,6 @@ function BriefSpinner({
   const reducedMotion = settings.prefersReducedMotion ?? false
   const [randomVerb] = useState(() => sample(getSpinnerVerbs()) ?? 'Working')
   const verb = overrideMessage ?? randomVerb
-  const connStatus = useAppState(s => s.remoteConnectionStatus)
 
   // Track CLI activity so OS/IDE "busy" indicators fire in brief mode too
   useEffect(() => {
@@ -431,21 +430,12 @@ function BriefSpinner({
   // pausing isn't needed.
   const [, time] = useAnimationFrame(reducedMotion ? null : 120)
 
-  // Local tasks + remote tasks are mutually exclusive (viewer mode has an
-  // empty local AppState.tasks; local mode has remoteBackgroundTaskCount=0).
-  // Summing avoids a mode branch.
   const runningCount = useAppState(
-    s =>
-      count(Object.values(s.tasks), isBackgroundTask) +
-      s.remoteBackgroundTaskCount,
+    s => count(Object.values(s.tasks), isBackgroundTask),
   )
 
-  // Connection trouble overrides the verb — `axiomate assistant` is a pure viewer,
-  // nothing useful is happening while the WS is down.
-  const showConnWarning =
-    connStatus === 'reconnecting' || connStatus === 'disconnected'
-  const connText =
-    connStatus === 'reconnecting' ? 'Reconnecting' : 'Disconnected'
+  const showConnWarning = false
+  const connText = ''
 
   // Dots padded to a fixed 3 columns so the right-aligned count doesn't
   // jitter as the cycle advances.
@@ -496,19 +486,13 @@ function BriefSpinner({
 // working/idle/disconnected. See BriefSpinner's comment for the
 // Notifications overlay coupling.
 export function BriefIdleStatus(): React.ReactNode {
-  const connStatus = useAppState(s => s.remoteConnectionStatus)
   const runningCount = useAppState(
-    s =>
-      count(Object.values(s.tasks), isBackgroundTask) +
-      s.remoteBackgroundTaskCount,
+    s => count(Object.values(s.tasks), isBackgroundTask),
   )
   const { columns } = useTerminalSize()
 
-  const showConnWarning =
-    connStatus === 'reconnecting' || connStatus === 'disconnected'
-  const connText =
-    connStatus === 'reconnecting' ? 'Reconnecting…' : 'Disconnected'
-  const leftText = showConnWarning ? connText : ''
+  const showConnWarning = false
+  const leftText = ''
   const rightText = runningCount > 0 ? `${runningCount} in background` : ''
 
   if (!leftText && !rightText) return <Box height={2} />

@@ -7,7 +7,6 @@
 import { type ChildProcess, spawn, spawnSync } from 'child_process'
 import { readFile } from 'fs/promises'
 import { logForDebugging } from '../utils/debug.js'
-import { isEnvTruthy } from '../utils/envUtils.js'
 import { logError } from '../utils/log.js'
 import { getPlatform } from '../utils/platform.js'
 
@@ -257,15 +256,6 @@ export async function requestMicrophonePermission(): Promise<boolean> {
 }
 
 export async function checkRecordingAvailability(): Promise<RecordingAvailability> {
-  // Remote environments have no local microphone
-  if (isEnvTruthy(process.env.AXIOMATE_CODE_REMOTE)) {
-    return {
-      available: false,
-      reason:
-        'Voice mode requires microphone access, but no audio device is available in this environment.\n\nTo use voice mode, run Axiomate locally instead.',
-    }
-  }
-
   // Native audio module (cpal) handles everything on macOS, Linux, and Windows
   const napi = await loadAudioNapi()
   if (napi.isNativeAudioAvailable()) {

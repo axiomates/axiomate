@@ -1,6 +1,5 @@
 import * as React from 'react'
 import { useEffect, useState } from 'react'
-import { getIsRemoteMode } from '../../bootstrap/state.js'
 import { useNotifications } from '../../context/notifications.js'
 import { Text } from '../../ink.js'
 import { logForDebugging } from '../../utils/debug.js'
@@ -16,7 +15,6 @@ export function usePluginAutoupdateNotification(): void {
 
   // Register for autoupdate notifications
   useEffect(() => {
-    if (getIsRemoteMode()) return
     const unsubscribe = onPluginsAutoUpdated(plugins => {
       logForDebugging(
         `Plugin autoupdate notification: ${plugins.length} plugin(s) updated`,
@@ -29,7 +27,6 @@ export function usePluginAutoupdateNotification(): void {
 
   // Show notification when plugins are updated
   useEffect(() => {
-    if (getIsRemoteMode()) return
     if (updatedPlugins.length === 0) {
       return
     }

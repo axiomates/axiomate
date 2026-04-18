@@ -1,6 +1,6 @@
 import * as React from 'react'
 import { useInterval } from 'usehooks-ts'
-import { getIsRemoteMode, getIsScrollDraining } from '../../bootstrap/state.js'
+import { getIsScrollDraining } from '../../bootstrap/state.js'
 import { useNotifications } from '../../context/notifications.js'
 import { Text } from '../../ink.js'
 import {
@@ -99,7 +99,6 @@ export function useLspInitializationNotification(): void {
   )
 
   const poll = React.useCallback(() => {
-    if (getIsRemoteMode()) return
     // Skip during scroll drain — iterating all LSP servers + setAppState
     // competes for the event loop with scroll frames. Next interval picks up.
     if (getIsScrollDraining()) return
@@ -135,7 +134,7 @@ export function useLspInitializationNotification(): void {
 
   // Initial poll on mount
   React.useEffect(() => {
-    if (getIsRemoteMode() || !shouldPoll) return
+    if (!shouldPoll) return
     poll()
   }, [poll, shouldPoll])
 }

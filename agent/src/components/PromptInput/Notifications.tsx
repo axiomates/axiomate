@@ -17,7 +17,6 @@ import type { MCPServerConnection } from '../../services/mcp/types.js'
 import type { Message } from '../../types/message.js'
 import type { AutoUpdaterResult } from '../../utils/autoUpdater.js'
 import { getExternalEditor } from '../../utils/editor.js'
-import { isEnvTruthy } from '../../utils/envUtils.js'
 import { setEnvHookNotifier } from '../../utils/hooks/fileChangedWatcher.js'
 import { toIDEDisplayName } from '../../utils/ide.js'
 import { getMessagesAfterCompactBoundary } from '../../utils/messages.js'
@@ -242,9 +241,7 @@ function NotificationContent({
       {(apiKeyStatus === 'invalid' || apiKeyStatus === 'missing') && (
         <Box>
           <Text color="error" wrap="truncate">
-            {isEnvTruthy(process.env.AXIOMATE_CODE_REMOTE)
-              ? 'Authentication error · Try again'
-              : 'Invalid API key · Check models config in ~/.axiomate.json'}
+            Invalid API key · Check models config in ~/.axiomate.json
           </Text>
         </Box>
       )}

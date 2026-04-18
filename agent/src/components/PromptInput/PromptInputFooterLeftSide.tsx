@@ -2,9 +2,8 @@
 const coordinatorModule =
   require('../../coordinator/coordinatorMode.js') as typeof import('../../coordinator/coordinatorMode.js')
 /* eslint-enable @typescript-eslint/no-require-imports */
-import { Box, Text, Link } from '../../ink.js'
+import { Box, Text } from '../../ink.js'
 import * as React from 'react'
-import figures from 'figures'
 import {
   useEffect,
   useMemo,
@@ -30,8 +29,7 @@ import { shouldHideTasksFooter } from '../tasks/taskStatusUtils.js'
 import { isAgentSwarmsEnabled } from '../../utils/agentSwarmsEnabled.js'
 import { TeamStatus } from '../teams/TeamStatus.js'
 import { isInProcessEnabled } from '../../utils/swarm/backends/registry.js'
-import { useAppState, useAppStateStore } from '../../state/AppState.js'
-import { getIsRemoteMode } from '../../bootstrap/state.js'
+import { useAppState } from '../../state/AppState.js'
 import HistorySearchInput from './HistorySearchInput.js'
 import { usePrStatus } from '../../hooks/usePrStatus.js'
 import { KeyboardShortcutHint } from '../design-system/KeyboardShortcutHint.js'
@@ -168,10 +166,6 @@ function ModeIndicator({
   )
   const tasks = useAppState(s => s.tasks)
   const teamContext = useAppState(s => s.teamContext)
-  // Set once in initialState (main.tsx --remote mode) and never mutated — lazy
-  // init captures the immutable value without a subscription.
-  const store = useAppStateStore()
-  const [remoteSessionUrl] = useState(() => store.getState().remoteSessionUrl)
   const viewSelectionMode = useAppState(s => s.viewSelectionMode)
   const viewingAgentTaskId = useAppState(s => s.viewingAgentTaskId)
   const expandedView = useAppState(s => s.expandedView)
@@ -294,12 +288,10 @@ function ModeIndicator({
   const hasTeammatePills =
     hasInProcessTeammates || (!showSpinnerTree && isViewingTeammate)
 
-  // In remote mode (`axiomate assistant`, --teleport) the agent runs elsewhere;
-  // the local permission mode shown here doesn't reflect the agent's state.
   // Rendered before the tasks pill so a long pill label
   // doesn't push the mode indicator off-screen.
   const modePart =
-    currentMode && hasActiveMode && !getIsRemoteMode() ? (
+    currentMode && hasActiveMode ? (
       <Text color={getModeColor(currentMode)} key="mode">
         {permissionModeSymbol(currentMode)}{' '}
         {permissionModeTitle(currentMode).toLowerCase()} on
@@ -319,14 +311,6 @@ function ModeIndicator({
   // Build parts array - exclude BackgroundTaskStatus when we have teammate pills
   // (teammate pills get their own row)
   const parts = [
-    // Remote session indicator
-    ...(remoteSessionUrl
-      ? [
-          <Link url={remoteSessionUrl} key="remote">
-            <Text color="ide">{figures.circleDouble} remote</Text>
-          </Link>,
-        ]
-      : []),
     // BackgroundTaskStatus is NOT in parts — it renders as a Box sibling so
     // its click-target Box isn't nested inside the <Text wrap="truncate">
     // wrapper (reconciler throws on Box-in-Text).

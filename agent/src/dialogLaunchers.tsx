@@ -13,7 +13,6 @@ import { renderAndRun, showSetupDialog } from './interactiveHelpers.js';
 import { KeybindingSetup } from './keybindings/KeybindingProviderSetup.js';
 import type { AppState } from './state/AppStateStore.js';
 import type { AgentMemoryScope } from './tools/AgentTool/agentMemory.js';
-import type { TeleportRemoteResponse } from './utils/conversationRecovery.js';
 import type { FpsMetrics } from './utils/fpsTracker.js';
 import type { ValidationError } from './utils/settings/validation.js';
 
@@ -65,28 +64,6 @@ export async function launchAssistantSessionChooser(_root: Root, _props: {
  */
 export async function launchAssistantInstallWizard(_root: Root): Promise<string | null> {
   return null;
-}
-
-/**
- * Site ~4549: TeleportResumeWrapper (interactive teleport session picker).
- * Original callback wiring: onComplete={done}, onCancel={() => done(null)}, source="cliArg".
- */
-export async function launchTeleportResumeWrapper(_root: Root): Promise<TeleportRemoteResponse | null> {
-  return null;
-}
-
-/**
- * Site ~4597: TeleportRepoMismatchDialog (pick a local checkout of the target repo).
- * Original callback wiring: onSelectPath={done}, onCancel={() => done(null)}.
- */
-export async function launchTeleportRepoMismatchDialog(root: Root, props: {
-  targetRepo: string;
-  initialPaths: string[];
-}): Promise<string | null> {
-  const {
-    TeleportRepoMismatchDialog
-  } = await import('./components/TeleportRepoMismatchDialog.js');
-  return showSetupDialog<string | null>(root, done => <TeleportRepoMismatchDialog targetRepo={props.targetRepo} initialPaths={props.initialPaths} onSelectPath={done} onCancel={() => done(null)} />);
 }
 
 /**

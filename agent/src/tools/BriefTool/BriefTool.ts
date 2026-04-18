@@ -176,9 +176,7 @@ export const BriefTool = buildTool({
     if (!attachments || attachments.length === 0) {
       return { data: { message, sentAt } }
     }
-    const appState = context.getAppState()
     const resolved = await resolveAttachments(attachments, {
-      replBridgeEnabled: appState.replBridgeEnabled,
       signal: context.abortController.signal,
     })
     return {

@@ -62,7 +62,7 @@ export async function validateAttachmentPaths(
 
 export async function resolveAttachments(
   rawPaths: string[],
-  uploadCtx: { replBridgeEnabled: boolean; signal?: AbortSignal },
+  _uploadCtx?: { signal?: AbortSignal },
 ): Promise<ResolvedAttachment[]> {
   // Stat serially (local, fast) to keep ordering deterministic, then upload
   // in parallel (network, slow). Upload failures resolve undefined — the

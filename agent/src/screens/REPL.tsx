@@ -55,12 +55,7 @@ import { PromptDialog } from '../components/hooks/PromptDialog.js';
 import type { PromptRequest, PromptResponse } from '../types/hooks.js';
 import PromptInput from '../components/PromptInput/PromptInput.js';
 import { PromptInputQueuedCommands } from '../components/PromptInput/PromptInputQueuedCommands.js';
-const useRemoteSession = (..._args: unknown[]) => ({ isRemoteMode: false as const, cancelRequest: () => {}, sendMessage: (..._a: unknown[]) => {} })
-const useDirectConnect = (..._args: unknown[]) => ({ isRemoteMode: false as const, cancelRequest: () => {}, sendMessage: async (..._a: unknown[]) => {} })
-type DirectConnectConfig = Record<string, unknown>
-const useSSHSession = (..._args: unknown[]) => ({ isRemoteMode: false as const, cancelRequest: () => {}, sendMessage: async (..._a: unknown[]) => {} })
 const useAssistantHistory = (..._args: unknown[]) => ({ maybeLoadOlder: (_h: unknown) => {} })
-import type { SSHSession } from '../ssh/createSSHSession.js';
 import { SkillImprovementSurvey } from '../components/SkillImprovementSurvey.js';
 import { useSkillImprovementSurvey } from '../hooks/useSkillImprovementSurvey.js';
 import { useMoreRight } from '../moreright/useMoreRight.js';
@@ -223,9 +218,6 @@ import { useIDEStatusIndicator } from '../hooks/notifs/useIDEStatusIndicator.js'
 import { useTeammateLifecycleNotification } from '../hooks/notifs/useTeammateShutdownNotification.js';
 import type { HookProgress } from '../types/hooks.js';
 import { DevBar } from '../components/DevBar.js';
-type RemoteSessionConfig = { hasInitialPrompt?: boolean; [key: string]: unknown }
-import { REMOTE_SAFE_COMMANDS } from '../commands.js';
-type RemoteMessageContent = unknown
 import { FullscreenLayout, useUnseenDivider, computeUnseenDivider } from '../components/FullscreenLayout.js';
 import { isFullscreenEnvEnabled, maybeGetTmuxMouseHint, isMouseTrackingEnabled } from '../utils/fullscreen.js';
 import { AlternateScreen } from '../ink/components/AlternateScreen.js';
@@ -505,12 +497,6 @@ export type Props = {
   disableSlashCommands?: boolean;
   // Task list id: when set, enables tasks mode that watches a task list and auto-processes tasks.
   taskListId?: string;
-  // Remote session config for --remote mode (uses CCR as execution engine)
-  remoteSessionConfig?: RemoteSessionConfig;
-  // Direct connect config for `axiomate connect` mode (connects to an axiomate server)
-  directConnectConfig?: DirectConnectConfig;
-  // SSH session for `axiomate ssh` mode (local REPL, remote tools over ssh)
-  sshSession?: SSHSession;
   // Thinking configuration to use when thinking is enabled
   thinkingConfig: ThinkingConfig;
 };
@@ -537,12 +523,9 @@ export function REPL({
   mainThreadAgentDefinition: initialMainThreadAgentDefinition,
   disableSlashCommands = false,
   taskListId,
-  remoteSessionConfig,
-  directConnectConfig,
-  sshSession,
   thinkingConfig
 }: Props): React.ReactNode {
-  const isRemoteSession = !!remoteSessionConfig;
+  const isRemoteSession = false;
 
   // Env-var gates hoisted to mount-time — isEnvTruthy does toLowerCase+trim+
   // includes, and these were on the render path (hot during PageUp spam).
@@ -825,11 +808,10 @@ export function REPL({
   const isQueryActive = React.useSyncExternalStore(queryGuard.subscribe, queryGuard.getSnapshot);
 
   // Separate loading flag for operations outside the local query guard:
-  // remote sessions (useRemoteSession / useDirectConnect) and foregrounded
-  // background tasks (useSessionBackgrounding). These don't route through
-  // onQuery / queryGuard, so they need their own spinner-visibility state.
-  // Initialize true if remote mode with initial prompt (CCR processing it).
-  const [isExternalLoading, setIsExternalLoadingRaw] = React.useState(remoteSessionConfig?.hasInitialPrompt ?? false);
+  // foregrounded background tasks (useSessionBackgrounding). These don't
+  // route through onQuery / queryGuard, so they need their own
+  // spinner-visibility state.
+  const [isExternalLoading, setIsExternalLoadingRaw] = React.useState(false);
 
   // Derived: any loading source active. Read-only — no setter. Local query
   // loading is driven by queryGuard (reserve/tryStart/end/cancelReservation),
@@ -1249,50 +1231,16 @@ export function REPL({
     pastedContents: Record<number, PastedContent>;
   } | undefined>();
 
-  // Callback to filter commands based on CCR's available slash commands
-  const handleRemoteInit = useCallback((remoteSlashCommands: string[]) => {
-    const remoteCommandSet = new Set(remoteSlashCommands);
-    // Keep commands that CCR lists OR that are in the local-safe set
-    setLocalCommands(prev => prev.filter(cmd => remoteCommandSet.has(cmd.name) || REMOTE_SAFE_COMMANDS.has(cmd)));
-  }, [setLocalCommands]);
   const [inProgressToolUseIDs, setInProgressToolUseIDs] = useState<Set<string>>(new Set());
   const hasInterruptibleToolInProgressRef = useRef(false);
 
-  // Remote session hook - manages WebSocket connection and message handling for --remote mode
-  const remoteSession = useRemoteSession({
-    config: remoteSessionConfig,
-    setMessages,
-    setIsLoading: setIsExternalLoading,
-    onInit: handleRemoteInit,
-    setToolUseConfirmQueue,
-    tools: combinedInitialTools,
-    setStreamingToolUses,
-    setStreamMode,
-    setInProgressToolUseIDs
-  });
-
-  // Direct connect hook - manages WebSocket to an axiomate server for `axiomate connect` mode
-  const directConnect = useDirectConnect({
-    config: directConnectConfig,
-    setMessages,
-    setIsLoading: setIsExternalLoading,
-    setToolUseConfirmQueue,
-    tools: combinedInitialTools
-  });
-
-  // SSH session hook - manages ssh child process for `axiomate ssh` mode.
-  // Same callback shape as useDirectConnect; only the transport under the
-  // hood differs (ChildProcess stdin/stdout vs WebSocket).
-  const sshRemote = useSSHSession({
-    session: sshSession,
-    setMessages,
-    setIsLoading: setIsExternalLoading,
-    setToolUseConfirmQueue,
-    tools: combinedInitialTools
-  });
-
-  // Use whichever remote mode is active
-  const activeRemote = sshRemote.isRemoteMode ? sshRemote : directConnect.isRemoteMode ? directConnect : remoteSession;
+  // Remote / direct-connect / SSH transports were removed. The REPL always
+  // runs locally; this sentinel keeps the previous call sites compiling.
+  const activeRemote = {
+    isRemoteMode: false as const,
+    cancelRequest: () => {},
+    sendMessage: async (..._args: unknown[]) => {},
+  };
   const [pastedContents, setPastedContents] = useState<Record<number, PastedContent>>({});
   const [submitCount, setSubmitCount] = useState(0);
   // Ref instead of state to avoid triggering React re-renders on every
@@ -2991,86 +2939,6 @@ export function REPL({
       return;
     }
 
-    // Remote mode: send input via stream-json instead of local query.
-    // Permission requests from the remote are bridged into toolUseConfirmQueue
-    // and rendered using the standard PermissionRequest component.
-    //
-    // local-jsx slash commands (e.g. /agents, /config) render UI in THIS
-    // process — they have no remote equivalent. Let those fall through to
-    // handlePromptSubmit so they execute locally. Prompt commands and
-    // plain text go to the remote.
-    if (activeRemote.isRemoteMode && !(isSlashCommand && commands.find(c => {
-      const name = input.trim().slice(1).split(/\s/)[0];
-      return isCommandEnabled(c) && (c.name === name || c.aliases?.includes(name!) || getCommandName(c) === name);
-    })?.type === 'local-jsx')) {
-      // Build content blocks when there are pasted attachments (images)
-      const pastedValues = Object.values(pastedContents);
-      const imageContents = pastedValues.filter(c => c.type === 'image');
-      const imagePasteIds = imageContents.length > 0 ? imageContents.map(c => c.id) : undefined;
-      let messageContent: string | ContentBlockParam[] = input.trim();
-      let remoteContent: RemoteMessageContent = input.trim();
-      if (pastedValues.length > 0) {
-        const contentBlocks: ContentBlockParam[] = [];
-        const remoteBlocks: Array<{
-          type: string;
-          [key: string]: unknown;
-        }> = [];
-        const trimmedInput = input.trim();
-        if (trimmedInput) {
-          contentBlocks.push({
-            type: 'text',
-            text: trimmedInput
-          });
-          remoteBlocks.push({
-            type: 'text',
-            text: trimmedInput
-          });
-        }
-        for (const pasted of pastedValues) {
-          if (pasted.type === 'image') {
-            const source = {
-              type: 'base64' as const,
-              media_type: (pasted.mediaType ?? 'image/png') as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp',
-              data: pasted.content
-            };
-            contentBlocks.push({
-              type: 'image',
-              source
-            });
-            remoteBlocks.push({
-              type: 'image',
-              source
-            });
-          } else {
-            contentBlocks.push({
-              type: 'text',
-              text: pasted.content
-            });
-            remoteBlocks.push({
-              type: 'text',
-              text: pasted.content
-            });
-          }
-        }
-        messageContent = contentBlocks;
-        remoteContent = remoteBlocks;
-      }
-
-      // Create and add user message to UI
-      // Note: empty input already handled by early return above
-      const userMessage = createUserMessage({
-        content: messageContent,
-        imagePasteIds
-      });
-      setMessages(prev => [...prev, userMessage]);
-
-      // Send to remote session
-      await activeRemote.sendMessage(remoteContent, {
-        uuid: userMessage.uuid
-      });
-      return;
-    }
-
     // Ensure SessionStart hook context is available before the first API call.
     await awaitPendingHooks();
     await handlePromptSubmit({
@@ -3128,7 +2996,7 @@ export function REPL({
   // messages array in downstream closures (PromptInput, handleAutoRunIssue).
   // Heap analysis showed ~9 REPL scopes and ~15 messages array versions
   // accumulating after #20174/#20175, all traced to this dep.
-  mainLoopModel, pastedContents, ideSelection, setUserInputOnProcessing, setAbortController, addNotification, onQuery, stashedPrompt, setStashedPrompt, setAppState, onBeforeQuery, canUseTool, remoteSession, setMessages, awaitPendingHooks, repinScroll]);
+  mainLoopModel, pastedContents, ideSelection, setUserInputOnProcessing, setAbortController, addNotification, onQuery, stashedPrompt, setStashedPrompt, setAppState, onBeforeQuery, canUseTool, setMessages, awaitPendingHooks, repinScroll]);
 
   // Callback for when user submits input while viewing a teammate's transcript
   const onAgentSubmit = useCallback(async (input: string, task: InProcessTeammateTaskState | LocalAgentTaskState, helpers: PromptInputHelpers) => {

@@ -254,8 +254,8 @@ export const setupGracefulShutdown = memoize(() => {
     // In print mode, print.ts registers its own SIGINT handler that aborts
     // the in-flight query and calls gracefulShutdown(0); skip here to
     // avoid racing with it. Only check print mode — other non-interactive
-    // sessions (--sdk-url, --init-only, non-TTY) don't register their own
-    // SIGINT handler and need gracefulShutdown to run.
+    // sessions (--init-only, non-TTY) don't register their own SIGINT
+    // handler and need gracefulShutdown to run.
     if (process.argv.includes('-p') || process.argv.includes('--print')) {
       return
     }

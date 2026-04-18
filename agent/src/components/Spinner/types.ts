@@ -1,4 +1,4 @@
-// Stub: Spinner types — type-only imports from useCancelRequest, useRemoteSession, handlePromptSubmit.
+// Spinner type stubs — imported for type-only use by spinner callers.
 
 export type SpinnerMode =
   | 'thinking'
@@ -13,29 +13,6 @@ export type SpinnerMode =
   | 'streaming'
 
 export type RGBColor = { r: number; g: number; b: number }
-
-export type RemotePermissionResponse = {
-  behavior: 'allow' | 'deny'
-  toolName?: string
-}
-
-export interface RemoteSessionConfig {
-  sessionId: string
-  url: string
-}
-
-export class RemoteSessionManager {
-  config: RemoteSessionConfig
-  constructor(config: RemoteSessionConfig) {
-    this.config = config
-  }
-  connect(): void {
-    // no-op
-  }
-  disconnect(): void {
-    // no-op
-  }
-}
 
 export function useShimmerAnimation(): {
   color: RGBColor

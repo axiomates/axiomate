@@ -23,9 +23,8 @@ import {
  * Enabled by default. Priority chain (first defined wins):
  *   1. AXIOMATE_CODE_DISABLE_AUTO_MEMORY env var (1/true → OFF, 0/false → ON)
  *   2. AXIOMATE_CODE_SIMPLE (--bare) → OFF
- *   3. CCR without persistent storage → OFF (no AXIOMATE_CODE_REMOTE_MEMORY_DIR)
- *   4. autoMemoryEnabled in settings.json (supports project-level opt-out)
- *   5. Default: enabled
+ *   3. autoMemoryEnabled in settings.json (supports project-level opt-out)
+ *   4. Default: enabled
  */
 export function isAutoMemoryEnabled(): boolean {
   const envVal = process.env.AXIOMATE_CODE_DISABLE_AUTO_MEMORY
@@ -39,12 +38,6 @@ export function isAutoMemoryEnabled(): boolean {
   // system prompt via its SIMPLE early-return; this gate stops the other half
   // (extractMemories turn-end fork, autoDream, /remember, /dream, team sync).
   if (isEnvTruthy(process.env.AXIOMATE_CODE_SIMPLE)) {
-    return false
-  }
-  if (
-    isEnvTruthy(process.env.AXIOMATE_CODE_REMOTE) &&
-    !process.env.AXIOMATE_CODE_REMOTE_MEMORY_DIR
-  ) {
     return false
   }
   const settings = getInitialSettings()

@@ -411,10 +411,8 @@ export type EnvContext = {
   isRunningWithBun: boolean
   isCi: boolean
   isClaubbit: boolean
-  isAxiomateRemote: boolean
   isLocalAgentMode: boolean
   isConductor: boolean
-  remoteEnvironmentType?: string
   coworkerType?: string
   tags?: string
   isGithubAction: boolean
@@ -576,12 +574,8 @@ const buildEnvContext = memoize(async (): Promise<EnvContext> => {
     isRunningWithBun: env.isRunningWithBun(),
     isCi: isEnvTruthy(process.env.CI),
     isClaubbit: isEnvTruthy(process.env.CLAUBBIT),
-    isAxiomateRemote: isEnvTruthy(process.env.AXIOMATE_CODE_REMOTE),
     isLocalAgentMode: process.env.AXIOMATE_CODE_ENTRYPOINT === 'local-agent',
     isConductor: env.isConductor(),
-    ...(process.env.AXIOMATE_CODE_REMOTE_ENVIRONMENT_TYPE && {
-      remoteEnvironmentType: process.env.AXIOMATE_CODE_REMOTE_ENVIRONMENT_TYPE,
-    }),
     // Gated by feature flag to prevent leaking "coworkerType" string in external builds
     ...(false
       ? process.env.AXIOMATE_CODE_COWORKER_TYPE

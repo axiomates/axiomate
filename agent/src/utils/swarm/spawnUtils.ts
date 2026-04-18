@@ -89,13 +89,7 @@ const TEAMMATE_ENV_VARS = [
   'AXIOMATE_BASE_URL',
   // Config directory override
   'AXIOMATE_CONFIG_DIR',
-  // CCR marker — teammates need this for CCR-aware code paths. Auth finds
-  // its own way via the Axiomate remote token directory regardless;
-  // the FD env var wouldn't help (pipe FDs don't cross tmux).
-  'AXIOMATE_CODE_REMOTE',
-  // Auto-memory gate (memdir/paths.ts) checks REMOTE && !MEMORY_DIR to
-  // disable memory on ephemeral CCR filesystems. Forwarding REMOTE alone
-  // would flip teammates to memory-off when the parent has it on.
+  // Memory dir override used by memdir/paths.ts.
   'AXIOMATE_CODE_REMOTE_MEMORY_DIR',
   // Upstream proxy — the parent's MITM relay is reachable from teammates
   // (same container network). Forward the proxy vars so teammates route

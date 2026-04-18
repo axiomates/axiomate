@@ -44,7 +44,6 @@ import {
   type RequiresActionDetails,
   type SessionExternalMetadata,
 } from '../utils/sessionState.js'
-import { externalMetadataToAppState } from '../state/onChangeAppState.js'
 import { getInMemoryErrors, logError, logMCPDebug } from '../utils/log.js'
 import {
   writeToStdout,
@@ -107,7 +106,6 @@ import { cwd } from 'process'
 import { getCwd } from '../utils/cwd.js'
 import omit from 'lodash-es/omit.js'
 import reject from 'lodash-es/reject.js'
-import { getRemoteSessionUrl } from '../constants/product.js'
 import type { CanUseToolFn } from '../hooks/useCanUseTool.js'
 import { hasPermissionsToUseTool } from '../utils/permissions/permissions.js'
 import { safeParseJSON } from '../utils/json.js'
@@ -157,8 +155,6 @@ import {
 import { createSyntheticOutputTool } from '../tools/SyntheticOutputTool/SyntheticOutputTool.js'
 import { parseSessionIdentifier } from '../utils/sessionUrl.js'
 import {
-  hydrateRemoteSession,
-  hydrateFromCCRv2InternalEvents,
   resetSessionFilePointer,
   doesMessageExistInSession,
   findUnresolvedToolUse,
@@ -223,7 +219,6 @@ import {
   setMainThreadAgentType,
   switchSession,
   isSessionPersistenceDisabled,
-  getIsRemoteMode,
   getFlagSettingsInline,
   setFlagSettingsInline,
   getMainThreadAgentType,
@@ -404,8 +399,6 @@ export async function runHeadless(
     appendSystemPrompt: string | undefined
     userSpecifiedModel: string | undefined
     fallbackModel: string | undefined
-    teleport: string | true | null | undefined
-    sdkUrl: string | undefined
     replayUserMessages: boolean | undefined
     includePartialMessages: boolean | undefined
     forkSession: boolean | undefined
@@ -565,7 +558,6 @@ export async function runHeadless(
     agentSetting: resumedAgentSetting,
   } = await loadInitialMessages(setAppState, {
     continue: options.continue,
-    teleport: options.teleport,
     resume: options.resume,
     resumeSessionAt: options.resumeSessionAt,
     forkSession: options.forkSession,
@@ -650,13 +642,12 @@ export async function runHeadless(
     return
   }
 
-  // Check if we need input prompt - skip if we're resuming with a valid session ID/JSONL file or using SDK URL
+  // Check if we need input prompt - skip if we're resuming with a valid session ID/JSONL file
   const hasValidResumeSessionId =
     typeof options.resume === 'string' &&
     (Boolean(validateUuid(options.resume)) || options.resume.endsWith('.jsonl'))
-  const isUsingSdkUrl = Boolean(options.sdkUrl)
 
-  if (!inputPrompt && !hasValidResumeSessionId && !isUsingSdkUrl) {
+  if (!inputPrompt && !hasValidResumeSessionId) {
     process.stderr.write(
       `Error: Input must be provided either through stdin or as a prompt argument when using --print\n`,
     )
@@ -679,10 +670,7 @@ export async function runHeadless(
   )
   let filteredTools = [...tools, ...allowedMcpTools]
 
-  // When using SDK URL, always use stdio permission prompting to delegate to the SDK
-  const effectivePermissionPromptToolName = options.sdkUrl
-    ? 'stdio'
-    : options.permissionPromptToolName
+  const effectivePermissionPromptToolName = options.permissionPromptToolName
 
   // Callback for when a permission prompt is shown
   const onPermissionPrompt = (details: RequiresActionDetails) => {
@@ -1308,36 +1296,9 @@ function runHeadlessStreaming(
     return allTools
   }
 
-  // Bridge handle for remote-control (SDK control message).
-  // Mirrors the REPL's useReplBridge hook: the handle is created when
-  // `remote_control` is enabled and torn down when disabled.
-  let bridgeHandle: { bridgeSessionId: string; sessionIngressUrl: string; environmentId: string; teardown(): Promise<void>; sendControlRequest(r: unknown): void; sendControlCancelRequest(r: unknown): void; sendMessages(m: unknown[]): void; writeMessages(m: unknown[]): void; sendResult(r?: unknown): void } | null = null
-  // Cursor into mutableMessages — tracks how far we've forwarded.
-  // Same index-based diff as useReplBridge's lastWrittenIndexRef.
-  let bridgeLastForwardedIndex = 0
-
-  // Forward new messages from mutableMessages to the bridge.
-  // Called incrementally during each turn (so the remote service sees progress
-  // and stays alive during permission waits) and again after the turn.
-  //
-  // writeMessages has its own UUID-based dedup (initialMessageUUIDs,
-  // recentPostedUUIDs) — the index cursor here is a pre-filter to avoid
-  // O(n) re-scanning of already-sent messages on every call.
-  function forwardMessagesToBridge(): void {
-    if (!bridgeHandle) return
-    // Guard against mutableMessages shrinking (compaction truncates it).
-    const startIndex = Math.min(
-      bridgeLastForwardedIndex,
-      mutableMessages.length,
-    )
-    const newMessages = mutableMessages
-      .slice(startIndex)
-      .filter(m => m.type === 'user' || m.type === 'assistant')
-    bridgeLastForwardedIndex = mutableMessages.length
-    if (newMessages.length > 0) {
-      bridgeHandle.writeMessages(newMessages)
-    }
-  }
+  // Remote-control bridge was removed — these no-ops remain for call-site
+  // compatibility while the bridge control request subtype is stubbed.
+  function forwardMessagesToBridge(): void {}
 
   // Helper to apply MCP server changes - used by both mcp_set_servers control message
   // and background plugin installation.
@@ -1970,7 +1931,6 @@ function runHeadlessStreaming(
 
           // Forward messages to bridge after each turn
           forwardMessagesToBridge()
-          bridgeHandle?.sendResult()
 
           // Generate and emit prompt suggestion for SDK consumers
           if (
@@ -3373,37 +3333,10 @@ function runHeadlessStreaming(
             }
           })()
         } else if (message.request.subtype === 'remote_control') {
-          if (message.request.enabled) {
-            if (bridgeHandle) {
-              // Already connected
-              sendControlResponseSuccess(message, {
-                session_url: getRemoteSessionUrl(
-                  bridgeHandle.bridgeSessionId,
-                  bridgeHandle.sessionIngressUrl,
-                ),
-                connect_url: '',
-                environment_id: bridgeHandle.environmentId,
-              })
-            } else {
-              try {
-                sendControlResponseError(
-                  message,
-                  'Remote Control is no longer available (bridge modules removed)',
-                )
-              } catch (err) {
-                sendControlResponseError(message, errorMessage(err))
-              }
-            }
-          } else {
-            // Disable
-            if (bridgeHandle) {
-              structuredIO.setOnControlRequestSent(undefined)
-              structuredIO.setOnControlRequestResolved(undefined)
-              await bridgeHandle.teardown()
-              bridgeHandle = null
-            }
-            sendControlResponseSuccess(message)
-          }
+          sendControlResponseError(
+            message,
+            'Remote Control is not available in this build',
+          )
         } else {
           // Unknown control request subtype — send an error response so
           // the caller doesn't hang waiting for a reply that never comes.
@@ -3999,7 +3932,6 @@ async function loadInitialMessages(
   setAppState: (f: (prev: AppState) => AppState) => void,
   options: {
     continue: boolean | undefined
-    teleport: string | true | null | undefined
     resume: string | boolean | undefined
     resumeSessionAt: string | undefined
     forkSession: boolean | undefined
@@ -4085,12 +4017,6 @@ async function loadInitialMessages(
     }
   }
 
-  if (options.teleport) {
-    logError(new Error('Teleport is no longer supported'))
-    gracefulShutdownSync(1)
-    return { messages: [] }
-  }
-
   // Handle resume in print mode (accepts session ID or URL)
   if (options.resume) {
     try {
@@ -4108,32 +4034,6 @@ async function loadInitialMessages(
         emitLoadError(errorMessage, options.outputFormat)
         gracefulShutdownSync(1)
         return { messages: [] }
-      }
-
-      // Hydrate local transcript from remote before loading
-      if (isEnvTruthy(process.env.AXIOMATE_CODE_USE_CCR_V2)) {
-        // Await restore alongside hydration so SSE catchup lands on
-        // restored state, not a fresh default.
-        const [, metadata] = await Promise.all([
-          hydrateFromCCRv2InternalEvents(parsedSessionId.sessionId),
-          options.restoredWorkerState,
-        ])
-        if (metadata) {
-          setAppState(externalMetadataToAppState(metadata))
-          if (typeof metadata.model === 'string') {
-            setMainLoopModelOverride(metadata.model)
-          }
-        }
-      } else if (
-        parsedSessionId.isUrl &&
-        parsedSessionId.ingressUrl &&
-        isEnvTruthy(process.env.ENABLE_SESSION_PERSISTENCE)
-      ) {
-        // v1: fetch session logs from Session Ingress
-        await hydrateRemoteSession(
-          parsedSessionId.sessionId,
-          parsedSessionId.ingressUrl,
-        )
       }
 
       // Load the conversation with the specified session ID
@@ -4260,7 +4160,6 @@ async function loadInitialMessages(
 function getStructuredIO(
   inputPrompt: string | AsyncIterable<string>,
   options: {
-    sdkUrl: string | undefined
     replayUserMessages?: boolean
   },
 ): StructuredIO {

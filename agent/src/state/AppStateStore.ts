@@ -1,13 +1,5 @@
 import type { Notification } from '../context/notifications.js'
 import type { TodoList } from '../utils/todo/types.js'
-type BridgePermissionCallbacks = {
-  sendResponse(requestId: string, response: unknown): void
-  cancelRequest(requestId: string): void
-  sendPendingNotification(requestId: string, notification: unknown): void
-  sendRequest(...args: unknown[]): void
-  onResponse(requestId: string, cb: (response: { behavior: string; updatedPermissions?: any[]; updatedInput?: Record<string, unknown>; message?: string }) => void): () => void
-  [key: string]: unknown
-}
 import type { Command } from '../commands.js'
 import type { ElicitationRequestEvent } from '../services/mcp/elicitationHandler.js'
 import type {
@@ -118,45 +110,6 @@ export type AppState = DeepImmutable<{
   // Assistant mode fully enabled (settings + config gate + trust).
   // Single source of truth - computed once in main.tsx before option
   // mutation, consumers read this instead of re-calling isAssistantMode().
-  // Remote session URL for --remote mode (shown in footer indicator)
-  remoteSessionUrl: string | undefined
-  // Remote session WS state (`axiomate assistant` viewer). 'connected' means the
-  // live event stream is open; 'reconnecting' = transient WS drop, backoff
-  // in progress; 'disconnected' = permanent close or reconnects exhausted.
-  remoteConnectionStatus:
-    | 'connecting'
-    | 'connected'
-    | 'reconnecting'
-    | 'disconnected'
-  // `axiomate assistant`: count of background tasks (Agent calls, teammates,
-  // workflows) running inside the REMOTE daemon child. Event-sourced from
-  // system/task_started and system/task_notification on the WS. The local
-  // AppState.tasks is always empty in viewer mode — the tasks live in a
-  // different process.
-  remoteBackgroundTaskCount: number
-  // Always-on bridge: desired state (controlled by /config or footer toggle)
-  replBridgeEnabled: boolean
-  // Always-on bridge: true when activated via /remote-control command, false when config-driven
-  replBridgeExplicit: boolean
-  // Outbound-only mode: forward events to CCR but reject inbound prompts/control
-  replBridgeOutboundOnly: boolean
-  // Always-on bridge: env registered + session created (= "Ready")
-  replBridgeConnected: boolean
-  replBridgeSessionActive: boolean
-  // Always-on bridge: poll loop is in error backoff (= "Reconnecting")
-  replBridgeReconnecting: boolean
-  // Always-on bridge: connect URL for Ready state (?bridge=envId)
-  replBridgeConnectUrl: string | undefined
-  replBridgeSessionUrl: string | undefined
-  // Always-on bridge: IDs for debugging (shown in dialog when --verbose)
-  replBridgeEnvironmentId: string | undefined
-  replBridgeSessionId: string | undefined
-  // Always-on bridge: error message when connection fails (shown in BridgeDialog)
-  replBridgeError: string | undefined
-  // Always-on bridge: session name set via `/remote-control <name>` (used as session title)
-  replBridgeInitialName: string | undefined
-  // Always-on bridge: first-time remote dialog pending (set by /remote-control command)
-  showRemoteCallout: boolean
 }> & {
   // Unified task state - excluded from DeepImmutable because TaskState contains function types
   tasks: { [taskId: string]: TaskState }
@@ -216,7 +169,6 @@ export type AppState = DeepImmutable<{
   fileHistory: FileHistoryState
   attribution: AttributionState
   todos: { [agentId: string]: TodoList }
-  remoteAgentTaskSuggestions: { summary: string; task: string }[]
   notifications: {
     current: Notification | null
     queue: Notification[]
@@ -417,8 +369,6 @@ export type AppState = DeepImmutable<{
   activeOverlays: ReadonlySet<string>
   // Effort value
   effortValue?: EffortValue
-  // Always-on bridge: permission callbacks for bidirectional permission checks
-  replBridgePermissionCallbacks?: BridgePermissionCallbacks
 }
 
 export type AppStateStore = Store<AppState>
@@ -450,22 +400,6 @@ export function getDefaultAppState(): AppState {
     coordinatorTaskIndex: -1,
     viewSelectionMode: 'none',
     footerSelection: null,
-    remoteSessionUrl: undefined,
-    remoteConnectionStatus: 'connecting',
-    remoteBackgroundTaskCount: 0,
-    replBridgeEnabled: false,
-    replBridgeExplicit: false,
-    replBridgeOutboundOnly: false,
-    replBridgeConnected: false,
-    replBridgeSessionActive: false,
-    replBridgeReconnecting: false,
-    replBridgeConnectUrl: undefined,
-    replBridgeSessionUrl: undefined,
-    replBridgeEnvironmentId: undefined,
-    replBridgeSessionId: undefined,
-    replBridgeError: undefined,
-    replBridgeInitialName: undefined,
-    showRemoteCallout: false,
     toolPermissionContext: {
       ...getEmptyToolPermissionContext(),
       mode: initialMode,
@@ -497,7 +431,6 @@ export function getDefaultAppState(): AppState {
       needsRefresh: false,
     },
     todos: {},
-    remoteAgentTaskSuggestions: [],
     notifications: {
       current: null,
       queue: [],
