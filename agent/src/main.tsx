@@ -1365,10 +1365,22 @@ async function run(): Promise<CommanderCommand> {
     }
     setMainLoopModelOverride(effectiveModel);
 
-    // Compute resolved model for hooks (use user-specified model at launch)
+    // Compute resolved model for hooks (use user-specified model at launch).
+    // On first run (no currentModel yet) getDefaultMainLoopModel() throws;
+    // fall back to empty string so the onboarding wizard can still render
+    // and populate the config. Downstream consumers (session-start hooks)
+    // treat empty model as "unknown" and degrade gracefully.
     setInitialMainLoopModel(getUserSpecifiedModelSetting() || null);
     const initialMainLoopModel = getInitialMainLoopModel();
-    const resolvedInitialModel = parseUserSpecifiedModel(initialMainLoopModel ?? getDefaultMainLoopModel());
+    let resolvedInitialModel: string;
+    try {
+      resolvedInitialModel = parseUserSpecifiedModel(initialMainLoopModel ?? getDefaultMainLoopModel());
+    } catch (error) {
+      logForDebugging(
+        `resolvedInitialModel fallback to empty: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      resolvedInitialModel = '';
+    }
 
     // For tmux teammates with --agent-type, append the custom agent's prompt
     if (isAgentSwarmsEnabled() && storedTeammateOpts?.agentId && storedTeammateOpts?.agentName && storedTeammateOpts?.teamName && storedTeammateOpts?.agentType) {
