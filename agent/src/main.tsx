@@ -1162,33 +1162,23 @@ async function run(): Promise<CommanderCommand> {
       const configPath = (await import('./utils/env.js')).getGlobalConfigFile()
 
       if (!_hasModels) {
-        // First run: create config file with example model so user only needs to edit it
-        saveGlobalConfig(current => ({
-          ...current,
-          models: {
-            'your-model-id': {
-              model: 'your-model-id',
-              name: 'Display Name',
-              protocol: 'openai' as const,
-              baseUrl: 'https://your-api-provider.com/v1',
-              apiKey: 'sk-...',
-              contextWindow: 131072,
-              maxOutputTokens: 32768,
-            },
-          },
-          currentModel: 'your-model-id',
-        }))
-
-        console.log(chalk.bold('\nWelcome to Axiomate!\n'))
-        console.log(`Config file created: ${chalk.underline(configPath)}\n`)
-        console.log('Edit the model configuration in the file above, then run axiomate again.')
-        console.log(
-          `\nSupported protocols: ${chalk.cyan('"openai"')} (OpenRouter, SiliconFlow, vLLM, ollama) or ${chalk.cyan('"anthropic"')}`,
-        )
-        console.log(
-          `Docs: ${chalk.underline('https://github.com/axiomates/axiomate#configuration')}\n`,
-        )
-        process.exit(0)
+        // First run. Interactive sessions fall through to showSetupScreens()
+        // which runs the Onboarding wizard. Non-interactive sessions (print
+        // mode / SDK) can't show a wizard, so error out with guidance.
+        if (isNonInteractiveSession) {
+          console.error(chalk.bold.yellow('\n⚠  No models configured.\n'))
+          console.error(
+            `Run ${chalk.cyan('axiomate')} interactively to set up, or edit ${chalk.underline(configPath)} directly.\n`,
+          )
+          console.error(
+            `Supported protocols: ${chalk.cyan('"openai"')} (OpenRouter, SiliconFlow, vLLM, ollama) or ${chalk.cyan('"anthropic"')}`,
+          )
+          console.error(
+            `Docs: ${chalk.underline('https://github.com/axiomates/axiomate#configuration')}\n`,
+          )
+          process.exit(1)
+        }
+        // Interactive: fall through. showSetupScreens() runs the wizard.
       } else if (!_cfg.currentModel) {
         // Models are configured but no currentModel selected — auto-pick the
         // first model key, persist it, print a one-line notice, and continue.

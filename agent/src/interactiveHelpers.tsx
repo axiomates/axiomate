@@ -4,6 +4,7 @@ import React from 'react';
 import { gracefulShutdown, gracefulShutdownSync } from './utils/gracefulShutdown.js';
 import { setSessionTrustAccepted, setStatsStore } from './bootstrap/state.js';
 import type { Command } from './commands.js';
+import { shouldOfferTerminalSetup } from './commands/terminalSetup/terminalSetup.js';
 import { createStatsStore, type StatsStore } from './context/stats.js';
 import { getSystemContext } from './context.js';
 import { initializeTelemetryAfterTrust } from './entrypoints/init.js';
@@ -23,12 +24,6 @@ import { applyConfigEnvironmentVariables } from './utils/managedEnv.js';
 import type { PermissionMode } from './utils/permissions/PermissionMode.js';
 import { getBaseRenderOptions } from './utils/renderOptions.js';
 import { getSettingsWithAllErrors } from './utils/settings/allErrors.js';
-export function completeOnboarding(): void {
-  saveGlobalConfig(current => ({
-    ...current,
-    hasCompletedOnboarding: true,
-  }));
-}
 export function showDialog<T = void>(root: Root, renderer: (done: (result: T) => void) => React.ReactNode): Promise<T> {
   return new Promise<T>(resolve => {
     const done = (result: T): void => void resolve(result);
@@ -94,10 +89,17 @@ export async function renderAndRun(root: Root, element: React.ReactNode): Promis
   await root.waitUntilExit();
   await gracefulShutdown(0);
 }
-export async function showSetupScreens(_root: Root, _permissionMode: PermissionMode, _commands?: Command[]): Promise<boolean> {
-  // Axiomate: skip onboarding and trust dialogs — they render blank
-  // because theme/config infrastructure isn't fully ported yet.
-  return false;
+export async function showSetupScreens(root: Root, _permissionMode: PermissionMode, _commands?: Command[]): Promise<boolean> {
+  const config = getGlobalConfig();
+  const needsProviderSetup = Object.keys(config.models ?? {}).length === 0;
+  const needsTheme = !config.theme;
+  const needsTerminalSetup = shouldOfferTerminalSetup();
+  if (!needsProviderSetup && !needsTheme && !needsTerminalSetup) {
+    return false;
+  }
+  const { Onboarding } = await import('./components/Onboarding.js');
+  await showSetupDialog(root, done => <Onboarding onDone={() => done()} />);
+  return true;
 }
 export function getRenderContext(exitOnCtrlC: boolean): {
   renderOptions: RenderOptions;
