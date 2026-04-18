@@ -1,13 +1,13 @@
 import type { PermissionResult } from '../../utils/permissions/PermissionResult.js'
 import { z } from 'zod/v4'
 import { buildTool, type ToolDef } from '../../Tool.js'
+import { getGlobalConfig } from '../../utils/config.js'
 import { lazySchema } from '../../utils/lazySchema.js'
-import { getMainLoopModel } from '../../utils/model/model.js'
 import { jsonStringify } from '../../utils/slowOperations.js'
 import { getWebSearchPrompt, WEB_SEARCH_TOOL_NAME } from './prompt.js'
 import { getSearchProviderErrorMessage } from './searchProvider.js'
 import { searchWithProviderFallback } from './searchProviderExecutor.js'
-import { getSearchProvidersForModel, hasSearchProviderForModel } from './searchProviderRegistry.js'
+import { getSearchProvidersForModel } from './searchProviderRegistry.js'
 import {
   getToolUseSummary,
   renderToolResultMessage,
@@ -82,7 +82,13 @@ export const WebSearchTool = buildTool({
     return summary ? `Searching for ${summary}` : 'Searching the web'
   },
   isEnabled() {
-    return hasSearchProviderForModel(getMainLoopModel())
+    // Appear in the tool list whenever a model is configured. searchProviders
+    // is checked at call time (validateInput catches SearchProviderError and
+    // surfaces a user-facing "No search providers configured" message). If
+    // the user hand-edits ~/.axiomate.json mid-session to add a provider,
+    // the config freshness watcher (utils/config.ts startGlobalConfigFreshnessWatcher)
+    // picks it up within ~1s and the next call succeeds — no restart needed.
+    return !!getGlobalConfig().currentModel
   },
   get inputSchema(): InputSchema {
     return inputSchema()
