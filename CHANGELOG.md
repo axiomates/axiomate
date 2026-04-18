@@ -16,4 +16,4 @@
 ### Architecture
 - Zero SDK imports in the LLM orchestration layer
 - 237 unit tests covering provider abstraction, error handling, streaming pipeline
-- Compatible with Anthropic firstParty, Bedrock, Vertex, Foundry backends
+- Compatible with user-configured Anthropic and OpenAI protocol endpoints

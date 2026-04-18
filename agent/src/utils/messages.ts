@@ -352,7 +352,7 @@ export function createAssistantMessage({
             {
               type: 'text' as const,
               text: content === '' ? NO_CONTENT_MESSAGE : content,
-            } as ContentBlock, // NOTE: citations field is not supported in Bedrock API
+            } as ContentBlock,
           ]
         : content,
     usage,
@@ -376,7 +376,7 @@ export function createAssistantAPIErrorMessage({
       {
         type: 'text' as const,
         text: content === '' ? NO_CONTENT_MESSAGE : content,
-      } as ContentBlock, // NOTE: citations field is not supported in Bedrock API
+      } as ContentBlock,
     ],
     isApiErrorMessage: true,
     apiError,
@@ -2015,9 +2015,8 @@ export function normalizeMessagesForAPI(
           return
         }
         case 'user': {
-          // Merge consecutive user messages because Bedrock doesn't support
-          // multiple user messages in a row; 1P API does and merges them
-          // into a single user turn
+          // Merge consecutive user messages so providers that require a single
+          // user turn on the wire receive the same shape as our local state.
 
           // When tool search is NOT enabled, strip all tool_reference blocks from
           // tool_result content, as these are only valid with the tool search beta.

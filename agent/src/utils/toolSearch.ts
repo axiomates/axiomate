@@ -257,11 +257,8 @@ export function isToolSearchEnabledOptimistic(): boolean {
     return false
   }
 
-  // tool_reference is a beta content type that third-party API gateways
-  // (AXIOMATE_BASE_URL proxies) typically don't support. When the provider
-  // is 'firstParty' but the base URL points elsewhere, the proxy will reject
-  // tool_reference blocks with a 400. Vertex/Bedrock/Foundry are unaffected —
-  // they have their own endpoints and beta headers.
+  // tool_reference is a beta content type that API gateways commonly reject
+  // with a 400 unless they explicitly pass through the matching beta headers.
   // https://github.com/axiomates/axiomate/issues/30912
   //
   // HOWEVER: some proxies DO support tool_reference (LiteLLM passthrough,

@@ -58,7 +58,7 @@ export function isPromptTooLongMessage(msg: AssistantMessage): boolean {
  * Parse actual/limit token counts from a raw prompt-too-long API error
  * message like "prompt is too long: 137500 tokens > 135000 maximum".
  * The raw string may be wrapped in SDK prefixes or JSON envelopes, or
- * have different casing (Vertex), so this is intentionally lenient.
+ * have different casing across providers, so this is intentionally lenient.
  */
 export function parsePromptTooLongTokenCounts(rawMessage: string): {
   actualTokens: number | undefined
@@ -337,8 +337,8 @@ export function isValidAPIMessage(value: unknown): value is BetaMessage {
   )
 }
 
-/** Lower-level error that AWS can return. */
-type AmazonError = {
+/** Lower-level routing error envelope returned by some providers. */
+type RoutingEnvelopeError = {
   Output?: {
     __type?: string
   }
@@ -354,9 +354,9 @@ export function extractUnknownErrorFormat(value: unknown): string | undefined {
     return undefined
   }
 
-  // Amazon Bedrock routing errors
-  if ((value as AmazonError).Output?.__type) {
-    return (value as AmazonError).Output!.__type
+  // Provider routing errors
+  if ((value as RoutingEnvelopeError).Output?.__type) {
+    return (value as RoutingEnvelopeError).Output!.__type
   }
 
   return undefined
@@ -403,8 +403,7 @@ export function getAssistantMessageFromError(
   }
 
 
-  // Handle prompt too long errors (Vertex returns 413, direct API returns 400)
-  // Use case-insensitive check since Vertex returns "Prompt is too long" (capitalized)
+  // Handle prompt too long errors with provider-specific status/casing.
   if (
     error instanceof Error &&
     error.message.toLowerCase().includes('prompt is too long')

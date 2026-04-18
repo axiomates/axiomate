@@ -322,13 +322,7 @@ export async function setup(
       m.registerSessionFileAccessHooks(),
     ) // Register session file access analytics hooks
   }
-  initSinks() // Attach error log + analytics sinks and drain queued events
-
-  // Session-success-rate denominator. Emit immediately after the analytics
-  // sink is attached — before any parsing, fetching, or I/O that could throw.
-  // A P0 CHANGELOG crash threw at checkForReleaseNotes below; every
-  // event after this point was dead. This beacon is the earliest reliable
-  // "process started" signal for release health monitoring.
+  initSinks() // Attach the error log sink.
 
   profileCheckpoint('setup_after_prefetch')
 

@@ -43,6 +43,7 @@ import { getHasFormattedOutput, logForDebugging } from '../debug.js'
 import { isEnvTruthy } from '../envUtils.js'
 import { errorMessage } from '../errors.js'
 import { getMTLSConfig } from '../mtls.js'
+import { isTelemetryDisabled } from '../privacyLevel.js'
 import { getProxyUrl, shouldBypassProxy } from '../proxy.js'
 import { jsonStringify } from '../slowOperations.js'
 import { profileCheckpoint } from '../startupProfiler.js'
@@ -284,7 +285,10 @@ async function getOtlpTraceExporters() {
 }
 
 export function isTelemetryEnabled() {
-  return isEnvTruthy(process.env.AXIOMATE_CODE_ENABLE_TELEMETRY)
+  return (
+    !isTelemetryDisabled() &&
+    isEnvTruthy(process.env.AXIOMATE_CODE_ENABLE_TELEMETRY)
+  )
 }
 
 /**
@@ -442,7 +446,7 @@ export async function initializeTelemetry() {
 
   // Check if beta tracing is enabled - this is a separate code path
   // Available to all users who set ENABLE_BETA_TRACING_DETAILED=1 and BETA_TRACING_ENDPOINT
-  if (isBetaTracingEnabled()) {
+  if (!isTelemetryDisabled() && isBetaTracingEnabled()) {
     void initializeBetaTracing(resource).catch(e =>
       logForDebugging(`Beta tracing init failed: ${e}`, { level: 'error' }),
     )

@@ -953,7 +953,7 @@ async function* queryLoop(
         // multi-turn dance. This fires once per turn (guarded by the
         // override check), then falls through to multi-turn recovery if
         // 64k also hits the cap.
-        // 3P default: false (not validated on Bedrock/Vertex)
+        // Disabled until output-token caps are validated for configured endpoints.
         const capEnabled = false
         if (
           capEnabled &&

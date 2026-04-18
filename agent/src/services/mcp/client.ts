@@ -56,7 +56,6 @@ import { ReadMcpResourceTool } from '../../tools/ReadMcpResourceTool/ReadMcpReso
 import { createAbortController } from '../../utils/abortController.js'
 import { count } from '../../utils/array.js'
 import { registerCleanup } from '../../utils/cleanupRegistry.js'
-import { detectCodeIndexingFromMcpServerName } from '../../utils/codeIndexing.js'
 import { logForDebugging } from '../../utils/debug.js'
 import { isEnvDefinedFalsy, isEnvTruthy } from '../../utils/envUtils.js'
 import {
@@ -2848,11 +2847,6 @@ async function callMCPTool({
           : `${Math.floor(elapsed / 60000)}m ${Math.floor((elapsed % 60000) / 1000)}s`
 
     logMCPDebug(name, `Tool '${tool}' completed successfully in ${duration}`)
-
-    // Log code indexing tool usage
-    const codeIndexingTool = detectCodeIndexingFromMcpServerName(name)
-    if (codeIndexingTool) {
-    }
 
     const content = await processMCPResult(result, tool, name)
     return {

@@ -161,7 +161,7 @@ type JsonArray = JsonValue[]
 /**
  * Assemble the extra body parameters for the API request, based on the
  * AXIOMATE_CODE_EXTRA_BODY environment variable if present and on any beta
- * headers (primarily for Bedrock requests).
+ * headers.
  *
  * @param betaHeaders - An array of beta headers to include in the request.
  * @returns A JSON object representing the extra body parameters.
@@ -2030,7 +2030,7 @@ export function adjustParamsForNonStreaming<
 }
 
 function isMaxTokensCapEnabled(): boolean {
-  // 3P default: false (not validated on Bedrock/Vertex)
+  // Disabled until output-token caps are validated for configured endpoints.
   return false
 }
 

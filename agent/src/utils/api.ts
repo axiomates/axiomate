@@ -172,13 +172,13 @@ export async function toolToAPISchema(
   }
 
   // AXIOMATE_CODE_DISABLE_EXPERIMENTAL_BETAS is the kill switch for beta API
-  // shapes. Proxy gateways (AXIOMATE_BASE_URL → LiteLLM → Bedrock) reject
-  // fields like defer_loading with "Extra inputs are not permitted". The gates
-  // above each field are scattered and not all provider-aware, so this strips
-  // everything not in the base-tool allowlist at the one choke point all tool
-  // schemas pass through — including fields added in the future.
+  // shapes. Proxy gateways can reject fields like defer_loading with
+  // "Extra inputs are not permitted". The gates above each field are scattered
+  // and not all provider-aware, so this strips everything not in the base-tool
+  // allowlist at the one choke point all tool schemas pass through — including
+  // fields added in the future.
   // cache_control is allowlisted: the base {type: 'ephemeral'} shape is
-  // standard prompt caching (Bedrock/Vertex supported).
+  // standard prompt caching for compatible endpoints.
   // github.com/axiomates/axiomate/issues/20031
   if (isEnvTruthy(process.env.AXIOMATE_CODE_DISABLE_EXPERIMENTAL_BETAS)) {
     const allowed = new Set([

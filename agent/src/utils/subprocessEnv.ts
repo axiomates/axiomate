@@ -26,14 +26,6 @@ const GHA_SUBPROCESS_SCRUB = [
   'OTEL_EXPORTER_OTLP_METRICS_HEADERS',
   'OTEL_EXPORTER_OTLP_TRACES_HEADERS',
 
-  // Cloud provider creds — same pattern (lazy SDK reads)
-  'AWS_SECRET_ACCESS_KEY',
-  'AWS_SESSION_TOKEN',
-  'AWS_BEARER_TOKEN_BEDROCK',
-  'GOOGLE_APPLICATION_CREDENTIALS',
-  'AZURE_CLIENT_SECRET',
-  'AZURE_CLIENT_CERTIFICATE_PATH',
-
   // GitHub Actions OIDC — consumed by the action's JS before axiomate spawns;
   // leaking these allows minting an App installation token → repo takeover
   'ACTIONS_ID_TOKEN_REQUEST_TOKEN',
@@ -50,6 +42,27 @@ const GHA_SUBPROCESS_SCRUB = [
   'DEFAULT_WORKFLOW_TOKEN',
   'SSH_SIGNING_KEY',
 ] as const
+
+function isCloudCredentialEnvVar(key: string): boolean {
+  return (
+    key === 'AWS_ACCESS_KEY_ID' ||
+    key === 'AWS_SECRET_ACCESS_KEY' ||
+    key === 'AWS_SESSION_TOKEN' ||
+    (key.startsWith('AWS_') && key.includes('TOKEN')) ||
+    key === 'GOOGLE_APPLICATION_CREDENTIALS' ||
+    key === 'GOOGLE_CREDENTIALS' ||
+    key === 'AZURE_CLIENT_SECRET' ||
+    key === 'AZURE_CLIENT_CERTIFICATE_PATH'
+  )
+}
+
+function deleteEnvAndActionInput(
+  env: NodeJS.ProcessEnv,
+  key: string,
+): void {
+  delete env[key]
+  delete env[`INPUT_${key}`]
+}
 
 /**
  * Returns a copy of process.env with sensitive secrets stripped, for use when
@@ -89,10 +102,19 @@ export function subprocessEnv(): NodeJS.ProcessEnv {
   }
   const env = { ...process.env, ...proxyEnv }
   for (const k of GHA_SUBPROCESS_SCRUB) {
-    delete env[k]
     // GitHub Actions auto-creates INPUT_<NAME> for `with:` inputs, duplicating
     // secrets like INPUT_AXIOMATE_API_KEY. No-op for vars that aren't action inputs.
-    delete env[`INPUT_${k}`]
+    deleteEnvAndActionInput(env, k)
+  }
+  for (const key of Object.keys(env)) {
+    if (isCloudCredentialEnvVar(key)) {
+      deleteEnvAndActionInput(env, key)
+    } else if (
+      key.startsWith('INPUT_') &&
+      isCloudCredentialEnvVar(key.slice('INPUT_'.length))
+    ) {
+      delete env[key]
+    }
   }
   return env
 }

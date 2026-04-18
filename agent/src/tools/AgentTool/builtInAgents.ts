@@ -11,8 +11,8 @@ import type { AgentDefinition } from './loadAgentsDir.js'
 
 export function areExplorePlanAgentsEnabled(): boolean {
   if (feature('DEV')) {
-    // 3P default: true — Bedrock/Vertex keep agents enabled (matches pre-experiment
-    // external behavior). A/B test treatment sets false to measure impact of removal.
+    // Default enabled for configured endpoints. A/B test treatment sets false
+    // to measure impact of removal.
     return true
   }
   return false

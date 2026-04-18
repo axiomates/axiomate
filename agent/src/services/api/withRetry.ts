@@ -126,11 +126,8 @@ export async function* withRetry<C, T>(
     }
 
     try {
-      // Get a fresh client instance on first attempt or after authentication errors
-      // - 401 for first-party API authentication failures
-      // - 403 "OAuth token has been revoked" (another process refreshed the token)
-      // - Bedrock-specific auth errors (403 or CredentialsProviderError)
-      // - Vertex-specific auth errors (credential refresh failures, 401)
+      // Get a fresh client instance on first attempt or after authentication
+      // errors, stale OAuth tokens, or stale keep-alive sockets.
       // - ECONNRESET/EPIPE: stale keep-alive socket; disable pooling and reconnect
       const isStaleConnection = isStaleConnectionError(lastError)
       if (
@@ -373,7 +370,7 @@ function isOAuthTokenRevokedError(error: unknown): boolean {
 }
 
 function handleCloudAuthCacheClearing(_error: unknown): void {
-  // no-op — cloud auth (Bedrock/Vertex) not used in axiomate
+  // no-op — configured endpoints do not use provider-managed credential caches.
 }
 
 export function getDefaultMaxRetries(): number {
@@ -385,4 +382,3 @@ export function getDefaultMaxRetries(): number {
 function getMaxRetries(options: RetryOptions): number {
   return options.maxRetries ?? getDefaultMaxRetries()
 }
-

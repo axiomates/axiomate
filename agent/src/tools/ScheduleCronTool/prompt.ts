@@ -21,10 +21,10 @@ export const DEFAULT_MAX_AGE_DAYS =
  * chance to populate.
  *
  * The default is `true` — /loop is GA (announced in changelog). config
- * is disabled for Bedrock/Vertex/Foundry and when DISABLE_TELEMETRY /
+ * may be disabled when DISABLE_TELEMETRY /
  * AXIOMATE_CODE_DISABLE_NONESSENTIAL_TRAFFIC are set; a `false` default would
- * break /loop for those users (GH #31759). The GB gate now serves purely as
- * a fleet-wide kill switch — flipping it to `false` stops already-running
+ * break /loop for those users (GH #31759). The GB gate now serves purely as a
+ * fleet-wide kill switch — flipping it to `false` stops already-running
  * schedulers on their next isKilled poll tick, not just new ones.
  *
  * `AXIOMATE_CODE_DISABLE_CRON` is a local override that wins over GB.
@@ -40,8 +40,8 @@ export function isKairosCronEnabled(): boolean {
  * Kill switch for disk-persistent (durable) cron tasks. Narrower than
  * the call() site, leaving session-only cron (in-memory, GA) untouched.
  *
- * Defaults to `true` so Bedrock/Vertex/Foundry and DISABLE_TELEMETRY users get
- * durable cron. Does NOT consult AXIOMATE_CODE_DISABLE_CRON (that kills the whole
+ * Defaults to `true` so DISABLE_TELEMETRY users get durable cron. Does NOT
+ * consult AXIOMATE_CODE_DISABLE_CRON (that kills the whole
  */
 export function isDurableCronEnabled(): boolean {
   return true

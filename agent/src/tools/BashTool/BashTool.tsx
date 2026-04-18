@@ -14,7 +14,6 @@ import type { AssistantMessage } from '../../types/message.js';
 import { parseForSecurity } from '../../utils/bash/ast.js';
 import { splitCommand_DEPRECATED, splitCommandWithOperators } from '../../utils/bash/commands.js';
 import { extractAxiomateHints } from '../../utils/codeHints.js';
-import { detectCodeIndexingFromCommand } from '../../utils/codeIndexing.js';
 import { isEnvTruthy } from '../../utils/envUtils.js';
 import { isENOENT, ShellError } from '../../utils/errors.js';
 import { detectFileEncoding, detectLineEndings, getFileModificationTime, writeTextContent } from '../../utils/file.js';
@@ -713,12 +712,6 @@ export const BashTool = buildTool({
       } catch {
         // File may already be gone — stdout preview is sufficient
       }
-    }
-    const commandType = input.command.split(' ')[0];
-
-    // Log code indexing tool usage
-    const codeIndexingTool = detectCodeIndexingFromCommand(input.command);
-    if (codeIndexingTool) {
     }
     let strippedStdout = stripEmptyLines(stdout);
 

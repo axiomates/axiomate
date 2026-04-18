@@ -520,8 +520,7 @@ export const FileReadTool = buildTool({
     // Ant soak: 1,734 dedup hits in 2h, no Read error regression.
     // Killswitch pattern: GB can disable if the stub message confuses
     // the model externally.
-    // 3P default: killswitch off = dedup enabled. Client-side only — no
-    // server support needed, safe for Bedrock/Vertex/Foundry.
+    // Client-side only — no server support needed.
     const existingState = readFileState.get(fullFilePath)
     // Only dedup entries that came from a prior Read (offset is always set
     // by Read). Edit/Write store offset=undefined — their readFileState

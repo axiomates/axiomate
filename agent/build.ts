@@ -70,11 +70,6 @@ const result = await Bun.build({
     // react-reconciler is NOT external — we bundle react-reconciler-axiomate
     // which has useEffectEvent support (npm version doesn't)
     '@anthropic-ai/sdk',
-    '@anthropic-ai/bedrock-sdk',
-    '@anthropic-ai/vertex-sdk',
-    '@anthropic-ai/foundry-sdk',
-    '@aws-sdk/*',
-    '@azure/*',
     '@modelcontextprotocol/sdk',
     '@opentelemetry/*',
     'sharp',
@@ -83,7 +78,6 @@ const result = await Bun.build({
     'zod',
     'commander',
     '@commander-js/extra-typings',
-    'google-auth-library',
     'diff',
     'lodash-es',
     'chalk',

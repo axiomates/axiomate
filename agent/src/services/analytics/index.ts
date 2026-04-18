@@ -1,10 +1,13 @@
 /**
  * Analytics service - public API for event logging.
  *
- * The analytics backends (sink + 1P event logger) have been removed.
- * `logEvent` and `logEventAsync` are now no-ops kept for interface
- * compatibility with the ~96 call sites across the codebase.
+ * Axiomate does not ship a hosted analytics backend. Events are forwarded to
+ * the optional OpenTelemetry pipeline only when the user explicitly enables it
+ * with telemetry environment variables.
  */
+
+import { isEnvTruthy } from '../../utils/envUtils.js'
+import { isTelemetryDisabled } from '../../utils/privacyLevel.js'
 
 /**
  * Marker type for verifying analytics metadata doesn't contain sensitive data
@@ -41,24 +44,73 @@ export function stripProtoFields<V>(
   return result ?? metadata
 }
 
-// Internal type for logEvent metadata
-type LogEventMetadata = { [key: string]: boolean | number | undefined }
+// Internal type for logEvent metadata.
+type LogEventMetadata = {
+  [key: string]: boolean | number | string | undefined
+}
+
+function isAnalyticsPipelineEnabled(): boolean {
+  if (process.env.NODE_ENV === 'test' || isTelemetryDisabled()) {
+    return false
+  }
+
+  return (
+    isEnvTruthy(process.env.AXIOMATE_CODE_ENABLE_TELEMETRY) ||
+    (isEnvTruthy(process.env.ENABLE_BETA_TRACING_DETAILED) &&
+      Boolean(process.env.BETA_TRACING_ENDPOINT))
+  )
+}
+
+function toOtelMetadata(
+  metadata: LogEventMetadata,
+): { [key: string]: string | undefined } {
+  const stripped = stripProtoFields(metadata)
+  const result: { [key: string]: string | undefined } = {}
+
+  for (const [key, value] of Object.entries(stripped)) {
+    if (value !== undefined) {
+      result[key] = String(value)
+    }
+  }
+
+  return result
+}
+
+async function emitOtelEvent(
+  eventName: string,
+  metadata: LogEventMetadata,
+): Promise<void> {
+  if (!isAnalyticsPipelineEnabled()) {
+    return
+  }
+
+  try {
+    const { logOTelEvent } = await import('../../utils/telemetry/events.js')
+    await logOTelEvent(eventName, toOtelMetadata(metadata))
+  } catch {
+    // Analytics must never affect product behavior.
+  }
+}
 
 /**
- * Log an event to analytics backends — no-op stub.
+ * Log an event to the configured analytics pipeline.
  */
 export function logEvent(
-  _eventName: string,
-  _metadata: LogEventMetadata,
-): void {}
+  eventName: string,
+  metadata: LogEventMetadata,
+): void {
+  void emitOtelEvent(eventName, metadata)
+}
 
 /**
- * Log an event to analytics backends asynchronously — no-op stub.
+ * Log an event to the configured analytics pipeline asynchronously.
  */
 export async function logEventAsync(
-  _eventName: string,
-  _metadata: LogEventMetadata,
-): Promise<void> {}
+  eventName: string,
+  metadata: LogEventMetadata,
+): Promise<void> {
+  await emitOtelEvent(eventName, metadata)
+}
 
 /**
  * Reset analytics state for testing purposes only.
