@@ -174,7 +174,7 @@ const restoreRemoteAgentTasks = async (..._args: unknown[]) => {}
 import { useInboxPoller } from '../hooks/useInboxPoller.js';
 const SUGGEST_BG_PR_NOOP = (_p: string, _n: string): boolean => false;
 /* eslint-disable @typescript-eslint/no-require-imports */
-const useScheduledTasks = feature('AGENT_TRIGGERS') ? require('../hooks/useScheduledTasks.js').useScheduledTasks : null;
+const useScheduledTasks = feature('DEV') ? require('../hooks/useScheduledTasks.js').useScheduledTasks : null;
 /* eslint-enable @typescript-eslint/no-require-imports */
 import { isAgentSwarmsEnabled } from '../utils/agentSwarmsEnabled.js';
 import { useTaskListWatcher } from '../hooks/useTaskListWatcher.js';
@@ -556,7 +556,7 @@ export function REPL({
   const titleDisabled = useMemo(() => isEnvTruthy(process.env.AXIOMATE_CODE_DISABLE_TERMINAL_TITLE), []);
   const moreRightEnabled = false;
   const disableVirtualScroll = useMemo(() => isEnvTruthy(process.env.AXIOMATE_CODE_DISABLE_VIRTUAL_SCROLL), []);
-  const disableMessageActions = feature('MESSAGE_ACTIONS') ?
+  const disableMessageActions = feature('DEV') ?
   // biome-ignore lint/correctness/useHookAtTopLevel: feature() is a compile-time constant
   useMemo(() => isEnvTruthy(process.env.AXIOMATE_CODE_DISABLE_MESSAGE_ACTIONS), []) : false;
 
@@ -1948,7 +1948,7 @@ export function REPL({
 
     // Clear any active token budget so the backstop doesn't fire on
     // a stale budget if the query generator hasn't exited yet.
-    if (feature('TOKEN_BUDGET')) {
+    if (feature('DEV')) {
       snapshotOutputTokensForTurn(null);
     }
     if (focusedInputDialog === 'tool-permission') {
@@ -2577,7 +2577,7 @@ export function REPL({
       resetTimingRefs();
       setMessages(oldMessages => [...oldMessages, ...newMessages]);
       responseLengthRef.current = 0;
-      if (feature('TOKEN_BUDGET')) {
+      if (feature('DEV')) {
         const parsedBudget = input ? parseTokenBudget(input) : null;
         snapshotOutputTokensForTurn(parsedBudget ?? getCurrentTurnTokenBudget());
       }
@@ -2625,7 +2625,7 @@ export function REPL({
           limit: number;
           nudges: number;
         } | undefined;
-        if (feature('TOKEN_BUDGET')) {
+        if (feature('DEV')) {
           if (getCurrentTurnTokenBudget() !== null && getCurrentTurnTokenBudget()! > 0 && !abortController.signal.aborted) {
             budgetInfo = {
               tokens: getTurnOutputTokens(),
@@ -3025,7 +3025,7 @@ export function REPL({
 
       // Increment prompt count for attribution tracking and save snapshot
       // The snapshot persists promptCount so it survives compaction
-      if (feature('COMMIT_ATTRIBUTION')) {
+      if (feature('DEV')) {
         setAppState(prev => ({
           ...prev,
           attribution: incrementPromptCount(prev.attribution, snapshot => {
@@ -3623,7 +3623,7 @@ export function REPL({
   });
 
   // Scheduled tasks from .axiomate/scheduled_tasks.json (CronCreate/Delete/List)
-  if (feature('AGENT_TRIGGERS')) {
+  if (feature('DEV')) {
     // assistantMode is currently always false.
     // useScheduledTasks's effect (not here) since wrapping a hook call in a dynamic
     // condition would break rules-of-hooks.
@@ -4089,7 +4089,7 @@ export function REPL({
           stays suppressed while a modal is showing so scroll doesn't
           stamp divider/pill state. */}
       <ScrollKeybindingHandler scrollRef={scrollRef} isActive={isFullscreenEnvEnabled() && (centeredModal != null || !focusedInputDialog || focusedInputDialog === 'tool-permission')} onScroll={centeredModal || toolPermissionOverlay || viewedAgentTask ? undefined : composedOnScroll} />
-      {feature('MESSAGE_ACTIONS') && isFullscreenEnvEnabled() && !disableMessageActions ? <MessageActionsKeybindings handlers={messageActionHandlers} isActive={cursor !== null} /> : null}
+      {feature('DEV') && isFullscreenEnvEnabled() && !disableMessageActions ? <MessageActionsKeybindings handlers={messageActionHandlers} isActive={cursor !== null} /> : null}
       <CancelRequestHandler {...cancelRequestProps} />
       <MCPConnectionManager key={remountKey} dynamicMcpConfig={dynamicMcpConfig} isStrictMcpConfig={strictMcpConfig}>
         <FullscreenLayout scrollRef={scrollRef} overlay={toolPermissionOverlay} bottomFloat={undefined} modal={centeredModal} modalScrollRef={modalScrollRef} dividerYRef={dividerYRef} hidePill={!!viewedAgentTask} hideSticky={!!viewedTeammateTask} newMessageCount={unseenDivider?.count ?? 0} onPillClick={() => {
@@ -4340,7 +4340,7 @@ export function REPL({
                       {}
                       <PromptInput debug={debug} ideSelection={ideSelection} hasSuppressedDialogs={!!hasSuppressedDialogs} isLocalJSXCommandActive={isShowingLocalJSXCommand} getToolUseContext={getToolUseContext} toolPermissionContext={toolPermissionContext} setToolPermissionContext={setToolPermissionContext} apiKeyStatus={apiKeyStatus} commands={commands} agents={agentDefinitions.activeAgents} isLoading={isLoading} onExit={handleExit} verbose={verbose} messages={messages} onAutoUpdaterResult={setAutoUpdaterResult} autoUpdaterResult={autoUpdaterResult} input={inputValue} onInputChange={setInputValue} mode={inputMode} onModeChange={setInputMode} stashedPrompt={stashedPrompt} setStashedPrompt={setStashedPrompt} submitCount={submitCount} onShowMessageSelector={handleShowMessageSelector} onMessageActionsEnter={
             // Works during isLoading — edit cancels first; uuid selection survives appends.
-            feature('MESSAGE_ACTIONS') && isFullscreenEnvEnabled() && !disableMessageActions ? enterMessageActions : undefined} mcpClients={mcpClients} pastedContents={pastedContents} setPastedContents={setPastedContents} vimMode={vimMode} setVimMode={setVimMode} showBashesDialog={showBashesDialog} setShowBashesDialog={setShowBashesDialog} onSubmit={onSubmit} onAgentSubmit={onAgentSubmit} isSearchingHistory={isSearchingHistory} setIsSearchingHistory={setIsSearchingHistory} helpOpen={isHelpOpen} setHelpOpen={setIsHelpOpen} insertTextRef={insertTextRef} voiceInterimRange={voice.interimRange} />
+            feature('DEV') && isFullscreenEnvEnabled() && !disableMessageActions ? enterMessageActions : undefined} mcpClients={mcpClients} pastedContents={pastedContents} setPastedContents={setPastedContents} vimMode={vimMode} setVimMode={setVimMode} showBashesDialog={showBashesDialog} setShowBashesDialog={setShowBashesDialog} onSubmit={onSubmit} onAgentSubmit={onAgentSubmit} isSearchingHistory={isSearchingHistory} setIsSearchingHistory={setIsSearchingHistory} helpOpen={isHelpOpen} setHelpOpen={setIsHelpOpen} insertTextRef={insertTextRef} voiceInterimRange={voice.interimRange} />
                       <SessionBackgroundHint onBackgroundSession={handleBackgroundSession} isLoading={isLoading} />
                     </>}
                 {cursor &&

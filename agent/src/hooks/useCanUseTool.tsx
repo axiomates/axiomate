@@ -179,7 +179,7 @@ function useCanUseTool(
                   const coordinatorDecision = await handleCoordinatorPermission(
                     {
                       ctx,
-                      ...(feature('BASH_CLASSIFIER')
+                      ...(feature('DEV')
                         ? {
                             pendingClassifierCheck:
                               result.pendingClassifierCheck,
@@ -207,7 +207,7 @@ function useCanUseTool(
                 const swarmDecision = await handleSwarmWorkerPermission({
                   ctx,
                   description,
-                  ...(feature('BASH_CLASSIFIER')
+                  ...(feature('DEV')
                     ? {
                         pendingClassifierCheck: result.pendingClassifierCheck,
                       }
@@ -223,7 +223,7 @@ function useCanUseTool(
                 // Grace period: wait up to 2s for speculative classifier
                 // to resolve before showing the dialog (main agent only)
                 if (
-                  feature('BASH_CLASSIFIER') &&
+                  feature('DEV') &&
                   result.pendingClassifierCheck &&
                   tool.name === BASH_TOOL_NAME &&
                   !appState.toolPermissionContext
@@ -250,7 +250,7 @@ function useCanUseTool(
                       raceResult.type === 'result' &&
                       raceResult.result.matches &&
                       raceResult.result.confidence === 'high' &&
-                      feature('BASH_CLASSIFIER')
+                      feature('DEV')
                     ) {
                       // Classifier approved within grace period — skip dialog
                       void consumeSpeculativeClassifierCheck(

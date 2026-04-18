@@ -355,7 +355,7 @@ export function initExtractMemories(): void {
       ? teamMemPaths!.isTeamMemoryEnabled()
       : false
 
-    const skipIndex = feature('EXTRACT_MEMORIES') ? true : false
+    const skipIndex = feature('DEV') ? true : false
 
     const canUseTool = createAutoMemCanUseTool(memoryDir)
     const cacheSafeParams = createCacheSafeParams(context)
@@ -506,7 +506,7 @@ export function initExtractMemories(): void {
       return
     }
 
-    if (!feature('EXTRACT_MEMORIES')) {
+    if (!feature('DEV')) {
       return
     }
 

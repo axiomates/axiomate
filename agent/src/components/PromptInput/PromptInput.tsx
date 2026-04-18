@@ -503,7 +503,7 @@ function PromptInput({
       return hasCommand(commandName, commands);
     });
   }, [displayedValue, commands]);
-  const tokenBudgetTriggers = useMemo(() => feature('TOKEN_BUDGET') ? findTokenBudgetPositions(displayedValue) : [], [displayedValue]);
+  const tokenBudgetTriggers = useMemo(() => feature('DEV') ? findTokenBudgetPositions(displayedValue) : [], [displayedValue]);
   const knownChannelsVersion = useSyncExternalStore(subscribeKnownChannels, getKnownChannelsVersion);
   const slackChannelTriggers = useMemo(() => hasSlackMcpServer(store.getState().mcp.clients) ? findSlackChannelPositions(displayedValue) : [],
   // eslint-disable-next-line react-hooks/exhaustive-deps -- store is a stable ref
@@ -1593,9 +1593,9 @@ function PromptInput({
   // Quick Open / Global Search. Hook calls are unconditional (Rules of Hooks);
   // the handler body is feature()-gated so the setState calls and component
   // references get tree-shaken in external builds.
-  const quickSearchActive = feature('QUICK_SEARCH') ? !isModalOverlayActive : false;
+  const quickSearchActive = feature('DEV') ? !isModalOverlayActive : false;
   useKeybinding('app:quickOpen', () => {
-    if (feature('QUICK_SEARCH')) {
+    if (feature('DEV')) {
       setShowQuickOpen(true);
       setHelpOpen(false);
     }
@@ -1604,7 +1604,7 @@ function PromptInput({
     isActive: quickSearchActive
   });
   useKeybinding('app:globalSearch', () => {
-    if (feature('QUICK_SEARCH')) {
+    if (feature('DEV')) {
       setShowGlobalSearch(true);
       setHelpOpen(false);
     }
@@ -1613,13 +1613,13 @@ function PromptInput({
     isActive: quickSearchActive
   });
   useKeybinding('history:search', () => {
-    if (feature('HISTORY_PICKER')) {
+    if (feature('DEV')) {
       setShowHistoryPicker(true);
       setHelpOpen(false);
     }
   }, {
     context: 'Global',
-    isActive: feature('HISTORY_PICKER') ? !isModalOverlayActive : false
+    isActive: feature('DEV') ? !isModalOverlayActive : false
   });
 
   // Handle Ctrl+C to abort speculation when idle (not loading)
@@ -1955,7 +1955,7 @@ function PromptInput({
       setShowTeamsDialog(false);
     }} />;
   }
-  if (feature('QUICK_SEARCH')) {
+  if (feature('DEV')) {
     const insertWithSpacing = (text: string) => {
       const cursorChar = input[cursorOffset - 1] ?? ' ';
       insertTextAtCursor(/\s/.test(cursorChar) ? text : ` ${text}`);
@@ -1967,7 +1967,7 @@ function PromptInput({
       return <GlobalSearchDialog onDone={() => setShowGlobalSearch(false)} onInsert={insertWithSpacing} />;
     }
   }
-  if (feature('HISTORY_PICKER') && showHistoryPicker) {
+  if (feature('DEV') && showHistoryPicker) {
     return <HistorySearchDialog initialQuery={input} onSelect={entry => {
       const entryMode = getModeFromInput(entry.display);
       const value = getValueFromInput(entry.display);

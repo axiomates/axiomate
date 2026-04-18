@@ -43,7 +43,7 @@ const FOREGROUND_RETRY_SOURCES = new Set<QuerySource>([
   'verification_agent',
   'side_question',
   'auto_mode',
-  ...(feature('BASH_CLASSIFIER') ? (['bash_classifier'] as const) : []),
+  ...(feature('DEV') ? (['bash_classifier'] as const) : []),
 ])
 
 function isForegroundSource(querySource: QuerySource | undefined): boolean {

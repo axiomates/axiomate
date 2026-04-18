@@ -49,7 +49,7 @@ async function handleSwarmWorkerPermission(
   // For bash commands, try classifier auto-approval before forwarding to
   // the leader. Agents await the classifier result (rather than racing it
   // against user interaction like the main agent).
-  const classifierResult = feature('BASH_CLASSIFIER')
+  const classifierResult = feature('DEV')
     ? await ctx.tryClassifier?.(params.pendingClassifierCheck, updatedInput)
     : null
   if (classifierResult) {

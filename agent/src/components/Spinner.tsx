@@ -307,7 +307,7 @@ function SpinnerWithVerbInner({
         : spinnerTip
 
   let budgetText: string | null = null
-  if (feature('TOKEN_BUDGET')) {
+  if (feature('DEV')) {
     const budget = getCurrentTurnTokenBudget()
     if (budget !== null && budget > 0) {
       const tokens = getTurnOutputTokens()

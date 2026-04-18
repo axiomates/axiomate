@@ -10,7 +10,7 @@ import { VERIFICATION_AGENT } from './built-in/verificationAgent.js'
 import type { AgentDefinition } from './loadAgentsDir.js'
 
 export function areExplorePlanAgentsEnabled(): boolean {
-  if (feature('BUILTIN_EXPLORE_PLAN_AGENTS')) {
+  if (feature('DEV')) {
     // 3P default: true — Bedrock/Vertex keep agents enabled (matches pre-experiment
     // external behavior). A/B test treatment sets false to measure impact of removal.
     return true

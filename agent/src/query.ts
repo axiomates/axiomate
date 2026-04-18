@@ -262,7 +262,7 @@ async function* queryLoop(
     pendingToolUseSummary: undefined,
     transition: undefined,
   }
-  const budgetTracker = feature('TOKEN_BUDGET') ? createBudgetTracker() : null
+  const budgetTracker = feature('DEV') ? createBudgetTracker() : null
 
   // task_budget.remaining tracking across compaction boundaries. Undefined
   // until first compact fires — while context is uncompacted the server can
@@ -1061,7 +1061,7 @@ async function* queryLoop(
         continue
       }
 
-      if (feature('TOKEN_BUDGET')) {
+      if (feature('DEV')) {
         const decision = checkTokenBudget(
           budgetTracker!,
           toolUseContext.agentId,

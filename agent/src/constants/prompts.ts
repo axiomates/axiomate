@@ -55,9 +55,7 @@ import { isMcpInstructionsDeltaEnabled } from '../utils/mcpInstructionsDelta.js'
 /* eslint-disable @typescript-eslint/no-require-imports */
 const getCachedMCConfigForFRC = null
 
-const DISCOVER_SKILLS_TOOL_NAME: string | null = feature(
-  'EXPERIMENTAL_SKILL_SEARCH',
-)
+const DISCOVER_SKILLS_TOOL_NAME: string | null = feature('DEV')
   ? (
       require('../tools/DiscoverSkillsTool/prompt.js') as typeof import('../tools/DiscoverSkillsTool/prompt.js')
     ).DISCOVER_SKILLS_TOOL_NAME
@@ -401,7 +399,7 @@ export async function getSystemPrompt(
       'summarize_tool_results',
       () => SUMMARIZE_TOOL_RESULTS_SECTION,
     ),
-    ...(feature('TOKEN_BUDGET')
+    ...(feature('DEV')
       ? [
           // Cached unconditionally — the "When the user specifies..." phrasing
           // makes it a no-op with no budget active. Was DANGEROUS_uncached

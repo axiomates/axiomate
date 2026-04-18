@@ -30,7 +30,7 @@ export function initBundledSkills(): void {
   registerSimplifySkill()
   registerBatchSkill()
   registerStuckSkill()
-  if (feature('AGENT_TRIGGERS')) {
+  if (feature('DEV')) {
     /* eslint-disable @typescript-eslint/no-require-imports */
     const { registerLoopSkill } = require('./loop.js')
     /* eslint-enable @typescript-eslint/no-require-imports */

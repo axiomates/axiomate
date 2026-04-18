@@ -73,7 +73,7 @@ import { feature } from 'bun:bundle'
  * Uses cached gate value - returns immediately without blocking.
  */
 function isSessionMemoryGateEnabled(): boolean {
-  return feature('EXTRACT_MEMORIES') ? true : false
+  return feature('DEV') ? true : false
 }
 
 /**

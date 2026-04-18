@@ -76,7 +76,7 @@ export function ThemeProvider({
   // Positive feature() pattern so the watcher import is dead-code-eliminated
   // in external builds.
   useEffect(() => {
-    if (feature('AUTO_THEME')) {
+    if (feature('DEV')) {
       if (activeSetting !== 'auto' || !internal_querier) return
       let cleanup: (() => void) | undefined
       let cancelled = false

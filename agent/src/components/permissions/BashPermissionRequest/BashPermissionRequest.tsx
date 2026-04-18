@@ -251,7 +251,7 @@ function BashPermissionRequestInner({
   // sufficient — no latch/ref needed. The feature() ternary keeps the property
   // read out of external builds (forbidden-string check).
   const [classifierWasChecking] = useState(
-    feature('BASH_CLASSIFIER')
+    feature('DEV')
       ? !!toolUseConfirm.classifierCheckInProgress
       : false,
   )
@@ -263,7 +263,7 @@ function BashPermissionRequestInner({
   // prove side-effect freedom), so this useMemo still guards against any
   // re-render source (e.g. Inner state updates). Same pattern as PR#20730.
   const { destructiveWarning, sandboxingEnabled, isSandboxed } = useMemo(() => {
-    const destructiveWarning = feature('BASH_CLASSIFIER')
+    const destructiveWarning = feature('DEV')
       ? getDestructiveCommandWarning(command)
       : null
 
@@ -331,7 +331,7 @@ function BashPermissionRequestInner({
   }, [toolUseConfirm])
   useKeybinding('confirm:no', handleDismissCheckmark, {
     context: 'Confirmation',
-    isActive: feature('BASH_CLASSIFIER')
+    isActive: feature('DEV')
       ? !!toolUseConfirm.classifierAutoApproved
       : false,
   })
@@ -344,7 +344,7 @@ function BashPermissionRequestInner({
       'yes-prefix-edited': 2,
       no: 3,
     }
-    if (feature('BASH_CLASSIFIER')) {
+    if (feature('DEV')) {
       optionIndex = {
         yes: 1,
         'yes-apply-suggestions': 2,
@@ -383,7 +383,7 @@ function BashPermissionRequestInner({
       return
     }
 
-    if (feature('BASH_CLASSIFIER') && value === 'yes-classifier-reviewed') {
+    if (feature('DEV') && value === 'yes-classifier-reviewed') {
       const trimmedDescription = classifierDescription.trim()
       logUnaryPermissionEvent('tool_use_single', toolUseConfirm, 'accept')
       if (!trimmedDescription) {
@@ -444,7 +444,7 @@ function BashPermissionRequestInner({
     }
   }
 
-  const classifierSubtitle = feature('BASH_CLASSIFIER') ? (
+  const classifierSubtitle = feature('DEV') ? (
     toolUseConfirm.classifierAutoApproved ? (
       <Text>
         <Text color="success">{figures.tick} Auto-approved</Text>
@@ -512,7 +512,7 @@ function BashPermissionRequestInner({
                 <Text
                   color="warning"
                   dimColor={
-                    feature('BASH_CLASSIFIER')
+                    feature('DEV')
                       ? toolUseConfirm.classifierAutoApproved
                       : false
                   }
@@ -523,7 +523,7 @@ function BashPermissionRequestInner({
             )}
             <Text
               dimColor={
-                feature('BASH_CLASSIFIER')
+                feature('DEV')
                   ? toolUseConfirm.classifierAutoApproved
                   : false
               }
@@ -532,14 +532,14 @@ function BashPermissionRequestInner({
             </Text>
             <Select
               options={
-                feature('BASH_CLASSIFIER')
+                feature('DEV')
                   ? toolUseConfirm.classifierAutoApproved
                     ? options.map(o => ({ ...o, disabled: true }))
                     : options
                   : options
               }
               isDisabled={
-                feature('BASH_CLASSIFIER')
+                feature('DEV')
                   ? toolUseConfirm.classifierAutoApproved
                   : false
               }

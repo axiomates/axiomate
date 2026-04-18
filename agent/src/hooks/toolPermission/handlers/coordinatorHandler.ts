@@ -38,7 +38,7 @@ async function handleCoordinatorPermission(
     if (hookResult) return hookResult
 
     // 2. Try classifier (slow, inference -- bash only)
-    const classifierResult = feature('BASH_CLASSIFIER')
+    const classifierResult = feature('DEV')
       ? await ctx.tryClassifier?.(params.pendingClassifierCheck, updatedInput)
       : null
     if (classifierResult) {

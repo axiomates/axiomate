@@ -3685,7 +3685,7 @@ export async function loadTranscriptFile(
   const leafUuids = new Set<UUID>()
   let hasCycle = false
 
-  if (feature('EXTRACT_MEMORIES')) {
+  if (feature('DEV')) {
     // Build a set of UUIDs that have user/assistant children
     // (these are mid-conversation nodes, not dead ends)
     const hasUserAssistantChild = new Set<UUID>()

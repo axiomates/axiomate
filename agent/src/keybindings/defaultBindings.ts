@@ -46,7 +46,7 @@ export const DEFAULT_BINDINGS: KeybindingBlock[] = [
       'ctrl+r': 'history:search',
       // File navigation. cmd+ bindings only fire on kitty-protocol terminals;
       // ctrl+shift is the portable fallback.
-      ...(feature('QUICK_SEARCH')
+      ...(feature('DEV')
         ? {
             'ctrl+shift+f': 'app:globalSearch' as const,
             'cmd+shift+f': 'app:globalSearch' as const,
@@ -81,7 +81,7 @@ export const DEFAULT_BINDINGS: KeybindingBlock[] = [
       'ctrl+s': 'chat:stash',
       // Image paste shortcut (platform-specific key defined above)
       [IMAGE_PASTE_KEY]: 'chat:imagePaste',
-      ...(feature('MESSAGE_ACTIONS')
+      ...(feature('DEV')
         ? { 'shift+up': 'chat:messageActions' as const }
         : {}),
       // Voice activation (hold-to-talk). Registered so getShortcutDisplay
@@ -261,7 +261,7 @@ export const DEFAULT_BINDINGS: KeybindingBlock[] = [
     },
   },
   // PromptInput unmounts while cursor active — no key conflict.
-  ...(feature('MESSAGE_ACTIONS')
+  ...(feature('DEV')
     ? [
         {
           context: 'MessageActions' as const,

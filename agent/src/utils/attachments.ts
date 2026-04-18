@@ -2278,7 +2278,7 @@ export function startRelevantMemoryPrefetch(
 ): MemoryPrefetch | undefined {
   if (
     !isAutoMemoryEnabled() ||
-    !feature('EXTRACT_MEMORIES')
+    !feature('DEV')
   ) {
     return undefined
   }
@@ -3701,7 +3701,7 @@ function getTokenUsageAttachment(
 }
 
 function getOutputTokenUsageAttachment(): Attachment[] {
-  if (feature('TOKEN_BUDGET')) {
+  if (feature('DEV')) {
     const budget = getCurrentTurnTokenBudget()
     if (budget === null || budget <= 0) {
       return []

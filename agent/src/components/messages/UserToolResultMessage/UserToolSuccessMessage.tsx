@@ -82,7 +82,7 @@ export function UserToolSuccessMessage({
   return <Box flexDirection="column">
       <Box flexDirection="column" width={rendersAsAssistantText ? undefined : width}>
         {renderedMessage}
-        {feature('BASH_CLASSIFIER') ? classifierRule && <MessageResponse height={1}>
+        {feature('DEV') ? classifierRule && <MessageResponse height={1}>
                 <Text dimColor>
                   <Text color="success">{figures.tick}</Text>
                   {' Auto-approved \u00b7 matched '}

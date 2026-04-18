@@ -295,16 +295,16 @@ import { isExtractModeActive } from '../memdir/paths.js'
 const coordinatorModeModule = feature('COORDINATOR_MODE')
   ? (require('../coordinator/coordinatorMode.js') as typeof import('../coordinator/coordinatorMode.js'))
   : null
-const cronSchedulerModule = feature('AGENT_TRIGGERS')
+const cronSchedulerModule = feature('DEV')
   ? (require('../utils/cronScheduler.js') as typeof import('../utils/cronScheduler.js'))
   : null
-const cronJitterConfigModule = feature('AGENT_TRIGGERS')
+const cronJitterConfigModule = feature('DEV')
   ? (require('../utils/cronJitterConfig.js') as typeof import('../utils/cronJitterConfig.js'))
   : null
-const cronGate = feature('AGENT_TRIGGERS')
+const cronGate = feature('DEV')
   ? (require('../tools/ScheduleCronTool/prompt.js') as typeof import('../tools/ScheduleCronTool/prompt.js'))
   : null
-const extractMemoriesModule = feature('EXTRACT_MEMORIES')
+const extractMemoriesModule = feature('DEV')
   ? (require('../services/extractMemories/extractMemories.js') as typeof import('../services/extractMemories/extractMemories.js'))
   : null
 /* eslint-enable @typescript-eslint/no-require-imports */
@@ -691,7 +691,7 @@ export async function runHeadless(
 
   // Callback for when a permission prompt is shown
   const onPermissionPrompt = (details: RequiresActionDetails) => {
-    if (feature('COMMIT_ATTRIBUTION')) {
+    if (feature('DEV')) {
       setAppState(prev => ({
         ...prev,
         attribution: {
@@ -843,7 +843,7 @@ export async function runHeadless(
   // delays process exit so gracefulShutdownSync's 5s failsafe doesn't kill
   // the forked agent mid-flight. Gated by isExtractModeActive so the
   // ax_slate_thimble flag controls non-interactive extraction end-to-end.
-  if (feature('EXTRACT_MEMORIES') && isExtractModeActive()) {
+  if (feature('DEV') && isExtractModeActive()) {
     await extractMemoriesModule!.drainPendingExtraction()
   }
 
@@ -2399,7 +2399,7 @@ function runHeadlessStreaming(
   let cronScheduler: import('../utils/cronScheduler.js').CronScheduler | null =
     null
   if (
-    feature('AGENT_TRIGGERS') &&
+    feature('DEV') &&
     cronSchedulerModule &&
     cronGate?.isKairosCronEnabled()
   ) {
@@ -2516,7 +2516,7 @@ function runHeadlessStreaming(
 
       if (message.type === 'control_request') {
         if (message.request.subtype === 'interrupt') {
-          if (feature('COMMIT_ATTRIBUTION')) {
+          if (feature('DEV')) {
             setAppState(prev => ({
               ...prev,
               attribution: {
@@ -3514,7 +3514,7 @@ function runHeadlessStreaming(
       })
       // Increment prompt count for attribution tracking and save snapshot
       // The snapshot persists promptCount so it survives compaction
-      if (feature('COMMIT_ATTRIBUTION')) {
+      if (feature('DEV')) {
         setAppState(prev => ({
           ...prev,
           attribution: incrementPromptCount(prev.attribution, snapshot => {

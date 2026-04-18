@@ -362,7 +362,7 @@ export async function getEnhancedPRAttribution(
   // squash_merge_commit_message=PR_BODY (cli, apps), the PR body becomes the
   // squash commit body verbatim — trailer lines at the end become proper git
   // trailers on the squash commit.
-  if (feature('COMMIT_ATTRIBUTION') && isInternal && attributionData) {}
+  if (feature('DEV') && isInternal && attributionData) {}
 
   logForDebugging(`PR Attribution: returning summary: ${summary}`)
   return summary

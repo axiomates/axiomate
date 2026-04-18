@@ -165,7 +165,7 @@ function createPermissionContext(
       }
       return { behavior: 'ask', message, contentBlocks }
     },
-    ...(feature('BASH_CLASSIFIER')
+    ...(feature('DEV')
       ? {
           async tryClassifier(
             pendingClassifierCheck: PendingClassifierCheck | undefined,

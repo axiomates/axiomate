@@ -1119,7 +1119,7 @@ export function getLargeMemoryFiles(files: MemoryFileInfo[]): MemoryFileInfo[] {
 export function filterInjectedMemoryFiles(
   files: MemoryFileInfo[],
 ): MemoryFileInfo[] {
-  const skipMemoryIndex = feature('EXTRACT_MEMORIES') ? true : false
+  const skipMemoryIndex = feature('DEV') ? true : false
   if (!skipMemoryIndex) return files
   return files.filter(f => f.type !== 'AutoMem' && f.type !== 'TeamMem')
 }

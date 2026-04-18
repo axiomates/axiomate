@@ -312,7 +312,7 @@ export async function setup(
   // overhead. NOT an early-return: the ax_started beacon and
   // apiKeyHelper prefetch below must still run.
   if (!isBareMode()) {
-    if (feature('COMMIT_ATTRIBUTION')) {
+    if (feature('DEV')) {
       // Dynamic import to enable dead code elimination (module contains excluded strings).
       // Defer to next tick so the git subprocess spawn runs after first render
       // rather than during the setup() microtask window.

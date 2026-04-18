@@ -56,7 +56,7 @@ export function PowerShellPermissionRequest(props: PermissionRequestProps): Reac
     onReject,
     explainerVisible: explainerState.visible
   });
-  const destructiveWarning = feature('BASH_CLASSIFIER') ? getDestructiveCommandWarning(command) : null;
+  const destructiveWarning = feature('DEV') ? getDestructiveCommandWarning(command) : null;
   const [showPermissionDebug, setShowPermissionDebug] = useState(false);
 
   // Editable prefix — compute static prefix locally (no LLM call).

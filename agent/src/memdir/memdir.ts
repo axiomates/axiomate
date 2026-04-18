@@ -359,7 +359,7 @@ function buildAssistantDailyLogPrompt(skipIndex = false): string {
  * Build the "Searching past context" section if the feature gate is enabled.
  */
 export function buildSearchingPastContextSection(autoMemDir: string): string[] {
-  if (!feature('EXTRACT_MEMORIES')) {
+  if (!feature('DEV')) {
     return []
   }
   const projectDir = getProjectDir(getOriginalCwd())
@@ -405,7 +405,7 @@ export function buildSearchingPastContextSection(autoMemDir: string): string[] {
 export async function loadMemoryPrompt(): Promise<string | null> {
   const autoEnabled = isAutoMemoryEnabled()
 
-  const skipIndex = feature('EXTRACT_MEMORIES') ? true : false
+  const skipIndex = feature('DEV') ? true : false
 
   // DISABLED daily-log mode takes precedence over TEAMMEM: the append-only
   // log paradigm does not compose with team sync (which expects a shared

@@ -20,7 +20,7 @@ export function setClassifierApproval(
   toolUseID: string,
   matchedRule: string,
 ): void {
-  if (!feature('BASH_CLASSIFIER')) {
+  if (!feature('DEV')) {
     return
   }
   CLASSIFIER_APPROVALS.set(toolUseID, {
@@ -30,7 +30,7 @@ export function setClassifierApproval(
 }
 
 export function getClassifierApproval(toolUseID: string): string | undefined {
-  if (!feature('BASH_CLASSIFIER')) {
+  if (!feature('DEV')) {
     return undefined
   }
   const approval = CLASSIFIER_APPROVALS.get(toolUseID)
@@ -60,13 +60,13 @@ export function getYoloClassifierApproval(
 }
 
 export function setClassifierChecking(toolUseID: string): void {
-  if (!feature('BASH_CLASSIFIER') && !feature('TRANSCRIPT_CLASSIFIER')) return
+  if (!feature('DEV') && !feature('TRANSCRIPT_CLASSIFIER')) return
   CLASSIFIER_CHECKING.add(toolUseID)
   classifierChecking.emit()
 }
 
 export function clearClassifierChecking(toolUseID: string): void {
-  if (!feature('BASH_CLASSIFIER') && !feature('TRANSCRIPT_CLASSIFIER')) return
+  if (!feature('DEV') && !feature('TRANSCRIPT_CLASSIFIER')) return
   CLASSIFIER_CHECKING.delete(toolUseID)
   classifierChecking.emit()
 }

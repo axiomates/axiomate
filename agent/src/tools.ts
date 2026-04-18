@@ -18,7 +18,7 @@ const SleepTool =
    false
     ? require('./tools/SleepTool/SleepTool.js').SleepTool
     : null
-const cronTools = feature('AGENT_TRIGGERS')
+const cronTools = feature('DEV')
   ? [
       require('./tools/ScheduleCronTool/CronCreateTool.js').CronCreateTool,
       require('./tools/ScheduleCronTool/CronDeleteTool.js').CronDeleteTool,

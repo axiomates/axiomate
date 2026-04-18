@@ -38,7 +38,7 @@ import { getTaskListId, listTasks } from '../utils/tasks.js'
 import { getAgentName, getTeamName, isTeammate } from '../utils/teammate.js'
 
 /* eslint-disable @typescript-eslint/no-require-imports */
-const extractMemoriesModule = feature('EXTRACT_MEMORIES')
+const extractMemoriesModule = feature('DEV')
   ? (require('../services/extractMemories/extractMemories.js') as typeof import('../services/extractMemories/extractMemories.js'))
   : null
 const jobClassifierModule = null
@@ -111,7 +111,7 @@ export async function* handleStopHooks(
       void executePromptSuggestion(stopHookContext)
     }
     if (
-      feature('EXTRACT_MEMORIES') &&
+      feature('DEV') &&
       !toolUseContext.agentId &&
       isExtractModeActive()
     ) {

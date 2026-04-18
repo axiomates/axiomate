@@ -156,7 +156,7 @@ function createInProcessCanUseTool(
     // Agents await the classifier result (rather than racing it against user
     // interaction like the main agent).
     if (
-      feature('BASH_CLASSIFIER') &&
+      feature('DEV') &&
       tool.name === BASH_TOOL_NAME &&
       result.pendingClassifierCheck
     ) {

@@ -59,6 +59,6 @@ export function runPostCompactCleanup(querySource?: QuerySource): void {
   // skills, and dynamic additions are handled by skillChangeDetector /
   // cacheUtils resets. See compactConversation() for full rationale.
   clearBetaTracingState()
-  if (feature('COMMIT_ATTRIBUTION')) {}
+  if (feature('DEV')) {}
   clearSessionMessagesCache()
 }

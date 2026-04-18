@@ -71,7 +71,7 @@ function handleInteractivePermission(
   const displayInput = result.updatedInput ?? ctx.input
 
   function clearClassifierIndicator(): void {
-    if (feature('BASH_CLASSIFIER')) {
+    if (feature('DEV')) {
       ctx.updateQueueItem({ classifierCheckInProgress: false })
     }
   }
@@ -85,7 +85,7 @@ function handleInteractivePermission(
     toolUseID: ctx.toolUseID,
     permissionResult: result,
     permissionPromptStartTimeMs,
-    ...(feature('BASH_CLASSIFIER')
+    ...(feature('DEV')
       ? {
           classifierCheckInProgress:
             !!result.pendingClassifierCheck &&
@@ -303,7 +303,7 @@ function handleInteractivePermission(
 
   // Execute bash classifier check asynchronously (if applicable)
   if (
-    feature('BASH_CLASSIFIER') &&
+    feature('DEV') &&
     result.pendingClassifierCheck &&
     ctx.tool.name === BASH_TOOL_NAME &&
     !awaitAutomatedChecksBeforeDialog

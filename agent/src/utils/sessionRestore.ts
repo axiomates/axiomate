@@ -108,7 +108,7 @@ export function restoreSessionStateFromLog(
   }
 
   if (
-    feature('COMMIT_ATTRIBUTION') &&
+    feature('DEV') &&
     result.attributionSnapshots &&
     result.attributionSnapshots.length > 0
   ) {
@@ -147,7 +147,7 @@ export function computeRestoredAttributionState(
   result: ResumeResult,
 ): AttributionState | undefined {
   if (
-    feature('COMMIT_ATTRIBUTION') &&
+    feature('DEV') &&
     result.attributionSnapshots &&
     result.attributionSnapshots.length > 0
   ) {

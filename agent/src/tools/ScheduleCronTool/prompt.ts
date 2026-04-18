@@ -9,7 +9,7 @@ export const DEFAULT_MAX_AGE_DAYS =
 
 /**
  * Unified gate for the cron scheduling system. Combines the build-time
- * `feature('AGENT_TRIGGERS')` flag (dead code elimination) with the runtime
+ * `feature('DEV')` flag (dead code elimination) with the runtime
  *
  * AGENT_TRIGGERS is independently shippable from DISABLED — the cron module
  * graph (cronScheduler/cronTasks/cronTasksLock/cron.ts + the three tools +
@@ -30,7 +30,7 @@ export const DEFAULT_MAX_AGE_DAYS =
  * `AXIOMATE_CODE_DISABLE_CRON` is a local override that wins over GB.
  */
 export function isKairosCronEnabled(): boolean {
-  return feature('AGENT_TRIGGERS')
+  return feature('DEV')
     ? !isEnvTruthy(process.env.AXIOMATE_CODE_DISABLE_CRON) &&
         true
     : false

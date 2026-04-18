@@ -62,12 +62,12 @@ export function isAutoMemoryEnabled(): boolean {
  * skips that range (hasMemoryWritesSince in extractMemories.ts); when it
  * doesn't, the background agent catches anything missed.
  *
- * Callers must also gate on feature('EXTRACT_MEMORIES') — that check cannot
+ * Callers must also gate on feature('DEV') — that check cannot
  * live inside this helper because feature() only tree-shakes when used
  * directly in an `if` condition.
  */
 export function isExtractModeActive(): boolean {
-  if (!feature('EXTRACT_MEMORIES')) {
+  if (!feature('DEV')) {
     return false
   }
   return (

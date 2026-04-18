@@ -88,7 +88,7 @@ export function ThemePicker({
   )
 
   const themeOptions: { label: string; value: ThemeSetting }[] = [
-    ...(feature('AUTO_THEME')
+    ...(feature('DEV')
       ? [{ label: 'Auto (match terminal)', value: 'auto' as const }]
       : []),
     { label: 'Dark mode', value: 'dark' },
