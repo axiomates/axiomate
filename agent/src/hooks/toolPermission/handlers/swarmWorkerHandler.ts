@@ -1,6 +1,4 @@
-import { feature } from 'bun:bundle'
 import type { ContentBlockParam } from '../../../services/api/streamTypes.js'
-import type { PendingClassifierCheck } from '../../../types/permissions.js'
 import { isAgentSwarmsEnabled } from '../../../utils/agentSwarmsEnabled.js'
 import { toError } from '../../../utils/errors.js'
 import { logError } from '../../../utils/log.js'
@@ -18,7 +16,6 @@ import { createResolveOnce } from '../PermissionContext.js'
 type SwarmWorkerPermissionParams = {
   ctx: PermissionContext
   description: string
-  pendingClassifierCheck?: PendingClassifierCheck | undefined
   updatedInput: Record<string, unknown> | undefined
   suggestions: PermissionUpdate[] | undefined
 }
@@ -27,13 +24,11 @@ type SwarmWorkerPermissionParams = {
  * Handles the swarm worker permission flow.
  *
  * When running as a swarm worker:
- * 1. Tries classifier auto-approval for bash commands
- * 2. Forwards the permission request to the leader via mailbox
- * 3. Registers callbacks for when the leader responds
- * 4. Sets the pending indicator while waiting
+ * 1. Forwards the permission request to the leader via mailbox
+ * 2. Registers callbacks for when the leader responds
+ * 3. Sets the pending indicator while waiting
  *
- * Returns a PermissionDecision if the classifier auto-approves,
- * or a Promise that resolves when the leader responds.
+ * Returns a Promise that resolves when the leader responds.
  * Returns null if swarms are not enabled or this is not a swarm worker,
  * so the caller can fall through to interactive handling.
  */
@@ -44,17 +39,7 @@ async function handleSwarmWorkerPermission(
     return null
   }
 
-  const { ctx, description, updatedInput, suggestions } = params
-
-  // For bash commands, try classifier auto-approval before forwarding to
-  // the leader. Agents await the classifier result (rather than racing it
-  // against user interaction like the main agent).
-  const classifierResult = feature('DEV')
-    ? await ctx.tryClassifier?.(params.pendingClassifierCheck, updatedInput)
-    : null
-  if (classifierResult) {
-    return classifierResult
-  }
+  const { ctx, description, suggestions } = params
 
   // Forward permission request to the leader via mailbox
   try {

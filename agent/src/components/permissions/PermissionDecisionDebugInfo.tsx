@@ -1,4 +1,3 @@
-import { feature } from 'bun:bundle'
 import chalk from 'chalk'
 import figures from 'figures'
 import React, { useMemo } from 'react'
@@ -27,12 +26,6 @@ function decisionReasonDisplayString(
     type: Exclude<PermissionDecisionReason['type'], 'subcommandResults'>
   },
 ): string {
-  if (
-    feature('DEV') &&
-    decisionReason.type === 'classifier'
-  ) {
-    return `${chalk.bold(decisionReason.classifier)} classifier: ${decisionReason.reason}`
-  }
   switch (decisionReason.type) {
     case 'rule':
       return `${chalk.bold(permissionRuleValueToString(decisionReason.rule.ruleValue))} rule from ${getSettingSourceDisplayNameLowercase(decisionReason.rule.source)}`

@@ -616,8 +616,8 @@ export function checkPathSafetyForAutoEdit(
   path: string,
   precomputedPathsToCheck?: readonly string[],
 ):
-  | { safe: true; message?: string; classifierApprovable?: boolean }
-  | { safe: false; message: string; classifierApprovable: boolean } {
+  | { safe: true; message?: string }
+  | { safe: false; message: string } {
   // Get all paths to check (original + symlink resolved paths)
   const pathsToCheck =
     precomputedPathsToCheck ?? getPathsForPermissionCheck(path)
@@ -628,7 +628,6 @@ export function checkPathSafetyForAutoEdit(
       return {
         safe: false,
         message: `axiomate requested permissions to write to ${path}, which contains a suspicious Windows path pattern that requires manual approval.`,
-        classifierApprovable: false,
       }
     }
   }
@@ -639,7 +638,6 @@ export function checkPathSafetyForAutoEdit(
       return {
         safe: false,
         message: `axiomate requested permissions to write to ${path}, but you haven't granted it yet.`,
-        classifierApprovable: true,
       }
     }
   }
@@ -650,7 +648,6 @@ export function checkPathSafetyForAutoEdit(
       return {
         safe: false,
         message: `axiomate requested permissions to edit ${path} which is a sensitive file.`,
-        classifierApprovable: true,
       }
     }
   }
@@ -1327,7 +1324,6 @@ export function checkWritePermissionForTool<Input extends AnyObject>(
       decisionReason: {
         type: 'safetyCheck',
         reason: safetyCheck.message,
-        classifierApprovable: safetyCheck.classifierApprovable,
       },
     }
   }

@@ -14,7 +14,6 @@ import {
   type Tools,
 } from '../../Tool.js'
 import type { ProgressMessage } from '../../types/message.js'
-import { useIsClassifierChecking } from '../../utils/classifierApprovalsHook.js'
 import { logError } from '../../utils/log.js'
 import type { buildMessageLookups } from '../../utils/messages.js'
 import { MessageResponse } from '../MessageResponse.js'
@@ -58,7 +57,6 @@ export function AssistantToolUseMessage({
   const pendingWorkerRequest = useAppStateMaybeOutsideOfProvider(
     state => state.pendingWorkerRequest,
   )
-  const isClassifierChecking = useIsClassifierChecking(param.id)
 
   // Memoize on param identity (stable — from the persisted message object).
   // Zod safeParse allocates per call, and some tools' userFacingName()
@@ -186,11 +184,7 @@ export function AssistantToolUseMessage({
         </Box>
         {!isResolved &&
           !isQueued &&
-          (isClassifierChecking ? (
-            <MessageResponse height={1}>
-              <Text dimColor>Bash classifier checking\u2026</Text>
-            </MessageResponse>
-          ) : isWaitingForPermission ? (
+          (isWaitingForPermission ? (
             <MessageResponse height={1}>
               <Text dimColor>Waiting for permission…</Text>
             </MessageResponse>

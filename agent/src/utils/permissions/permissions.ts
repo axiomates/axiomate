@@ -101,9 +101,6 @@ export function createPermissionRequestMessage(
 ): string {
   // Handle different decision reason types
   if (decisionReason) {
-    if (decisionReason.type === 'classifier') {
-      return `Classifier '${decisionReason.classifier}' requires approval for this ${toolName} command: ${decisionReason.reason}`
-    }
     switch (decisionReason.type) {
       case 'hook': {
         const hookMessage = decisionReason.reason

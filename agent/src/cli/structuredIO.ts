@@ -1,4 +1,3 @@
-import { feature } from 'bun:bundle'
 import type {
   ElicitResult,
   JSONRPCMessage,
@@ -68,12 +67,6 @@ function serializeDecisionReason(
     return undefined
   }
 
-  if (
-    feature('DEV') &&
-    reason.type === 'classifier'
-  ) {
-    return reason.reason
-  }
   switch (reason.type) {
     case 'rule':
     case 'mode':

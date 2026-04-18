@@ -63,12 +63,6 @@ function decisionReasonToString(
   if (!decisionReason) {
     return 'No decision reason'
   }
-  if (
-    feature('DEV') &&
-    decisionReason.type === 'classifier'
-  ) {
-    return `Classifier: ${decisionReason.classifier}, Reason: ${decisionReason.reason}`
-  }
   switch (decisionReason.type) {
     case 'rule':
       return `Rule: ${permissionRuleValueToString(decisionReason.rule.ruleValue)}`

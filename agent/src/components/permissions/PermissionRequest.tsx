@@ -113,18 +113,9 @@ export type ToolUseConfirm<Input extends AnyObject = AnyObject> = {
   toolUseID: string
   permissionResult: PermissionDecision
   permissionPromptStartTimeMs: number
-  /**
-   * Called when user interacts with the permission dialog (e.g., arrow keys, tab, typing).
-   * This prevents async auto-approval mechanisms (like the bash classifier) from
-   * dismissing the dialog while the user is actively engaging with it.
-   */
-  classifierCheckInProgress?: boolean
-  classifierAutoApproved?: boolean
-  classifierMatchedRule?: string
   workerBadge?: WorkerBadgeProps
   onUserInteraction(): void
   onAbort(): void
-  onDismissCheckmark?(): void
   onAllow(
     updatedInput: z.infer<Input>,
     permissionUpdates: PermissionUpdate[],

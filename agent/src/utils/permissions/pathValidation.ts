@@ -189,7 +189,6 @@ export function isPathAllowed(
         decisionReason: {
           type: 'safetyCheck',
           reason: safetyCheck.message,
-          classifierApprovable: safetyCheck.classifierApprovable,
         },
       }
     }

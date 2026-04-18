@@ -1,4 +1,3 @@
-import { feature } from 'bun:bundle'
 import chalk from 'chalk'
 import React from 'react'
 import { Ansi, Box, Text } from '../../ink.js'
@@ -28,15 +27,6 @@ function stringsForDecisionReason(
 ): DecisionReasonStrings | null {
   if (!reason) {
     return null
-  }
-  if (
-    feature('DEV') &&
-    reason.type === 'classifier'
-  ) {
-    return {
-      reasonString: `Classifier ${chalk.bold(reason.classifier)} requires confirmation for this ${toolType}.\n${reason.reason}`,
-      configString: undefined,
-    }
   }
   switch (reason.type) {
     case 'rule':

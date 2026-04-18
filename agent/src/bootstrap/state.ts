@@ -44,10 +44,8 @@ type State = {
   totalToolDuration: number
   turnHookDurationMs: number
   turnToolDurationMs: number
-  turnClassifierDurationMs: number
   turnToolCount: number
   turnHookCount: number
-  turnClassifierCount: number
   startTime: number
   lastInteractionTime: number
   totalLinesAdded: number
@@ -250,10 +248,8 @@ function getInitialState(): State {
     totalToolDuration: 0,
     turnHookDurationMs: 0,
     turnToolDurationMs: 0,
-    turnClassifierDurationMs: 0,
     turnToolCount: 0,
     turnHookCount: 0,
-    turnClassifierCount: 0,
     startTime: Date.now(),
     lastInteractionTime: Date.now(),
     totalLinesAdded: 0,
@@ -570,24 +566,6 @@ export function resetTurnToolDuration(): void {
 
 export function getTurnToolCount(): number {
   return STATE.turnToolCount
-}
-
-export function getTurnClassifierDurationMs(): number {
-  return STATE.turnClassifierDurationMs
-}
-
-export function addToTurnClassifierDuration(duration: number): void {
-  STATE.turnClassifierDurationMs += duration
-  STATE.turnClassifierCount++
-}
-
-export function resetTurnClassifierDuration(): void {
-  STATE.turnClassifierDurationMs = 0
-  STATE.turnClassifierCount = 0
-}
-
-export function getTurnClassifierCount(): number {
-  return STATE.turnClassifierCount
 }
 
 export function getStatsStore(): {

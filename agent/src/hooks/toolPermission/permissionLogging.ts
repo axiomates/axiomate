@@ -1,6 +1,5 @@
 // Centralized analytics/telemetry logging for tool permission decisions.
 // All permission approve/reject events flow through logPermissionDecision(),
-import { feature } from 'bun:bundle'
 import { sanitizeToolNameForAnalytics } from '../../services/analytics/metadata.js'
 import { getCodeEditToolDecisionCounter } from '../../bootstrap/state.js'
 import type { Tool as ToolType, ToolUseContext } from '../../Tool.js'
@@ -63,12 +62,6 @@ async function buildCodeEditToolAttributes(
 function sourceToString(
   source: PermissionApprovalSource | PermissionRejectionSource,
 ): string {
-  if (
-    feature('DEV') &&
-    source.type === 'classifier'
-  ) {
-    return 'classifier'
-  }
   switch (source.type) {
     case 'hook':
       return 'hook'
@@ -106,12 +99,6 @@ function logApprovalEvent(
 ): void {
   if (source === 'config') {
     // Auto-approved by allowlist in settings -- no user wait time
-    return
-  }
-  if (
-    feature('DEV') &&
-    source.type === 'classifier'
-  ) {
     return
   }
   switch (source.type) {

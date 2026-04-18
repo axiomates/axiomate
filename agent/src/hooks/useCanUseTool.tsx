@@ -1,4 +1,3 @@
-import { feature } from 'bun:bundle'
 import { APIUserAbortError } from '@anthropic-ai/sdk'
 import * as React from 'react'
 import { useCallback } from 'react'
@@ -12,16 +11,7 @@ import type {
   Tool as ToolType,
   ToolUseContext,
 } from '../Tool.js'
-import {
-  consumeSpeculativeClassifierCheck,
-  peekSpeculativeClassifierCheck,
-} from '../tools/BashTool/bashPermissions.js'
-import { BASH_TOOL_NAME } from '../tools/BashTool/toolName.js'
 import type { AssistantMessage } from '../types/message.js'
-import {
-  clearClassifierChecking,
-  setClassifierApproval,
-} from '../utils/classifierApprovals.js'
 import { logForDebugging } from '../utils/debug.js'
 import { AbortError } from '../utils/errors.js'
 import { logError } from '../utils/log.js'
@@ -140,12 +130,6 @@ function useCanUseTool(
                   const coordinatorDecision = await handleCoordinatorPermission(
                     {
                       ctx,
-                      ...(feature('DEV')
-                        ? {
-                            pendingClassifierCheck:
-                              result.pendingClassifierCheck,
-                          }
-                        : {}),
                       updatedInput: result.updatedInput,
                       suggestions: result.suggestions,
                       permissionMode: appState.toolPermissionContext.mode,
@@ -155,24 +139,18 @@ function useCanUseTool(
                     resolve(coordinatorDecision)
                     return
                   }
-                  // null means neither automated check resolved -- fall through to dialog below.
-                  // Hooks already ran, classifier already consumed.
+                  // null means hooks didn't resolve -- fall through to dialog below.
                 }
 
                 // After awaiting automated checks, verify the request wasn't aborted
                 // while we were waiting. Without this check, a stale dialog could appear.
                 if (ctx.resolveIfAborted(resolve)) return
 
-                // For swarm workers, try classifier auto-approval then
-                // forward permission requests to the leader via mailbox.
+                // For swarm workers, forward permission requests to the
+                // leader via mailbox.
                 const swarmDecision = await handleSwarmWorkerPermission({
                   ctx,
                   description,
-                  ...(feature('DEV')
-                    ? {
-                        pendingClassifierCheck: result.pendingClassifierCheck,
-                      }
-                    : {}),
                   updatedInput: result.updatedInput,
                   suggestions: result.suggestions,
                 })
@@ -181,73 +159,7 @@ function useCanUseTool(
                   return
                 }
 
-                // Grace period: wait up to 2s for speculative classifier
-                // to resolve before showing the dialog (main agent only)
-                if (
-                  feature('DEV') &&
-                  result.pendingClassifierCheck &&
-                  tool.name === BASH_TOOL_NAME &&
-                  !appState.toolPermissionContext
-                    .awaitAutomatedChecksBeforeDialog
-                ) {
-                  const speculativePromise = peekSpeculativeClassifierCheck(
-                    (input as { command: string }).command,
-                  )
-                  if (speculativePromise) {
-                    const raceResult = await Promise.race([
-                      speculativePromise.then(r => ({
-                        type: 'result' as const,
-                        result: r,
-                      })),
-                      new Promise<{ type: 'timeout' }>(res =>
-                        // eslint-disable-next-line no-restricted-syntax -- resolves with a value, not void
-                        setTimeout(res, 2000, { type: 'timeout' as const }),
-                      ),
-                    ])
-
-                    if (ctx.resolveIfAborted(resolve)) return
-
-                    if (
-                      raceResult.type === 'result' &&
-                      raceResult.result.matches &&
-                      raceResult.result.confidence === 'high' &&
-                      feature('DEV')
-                    ) {
-                      // Classifier approved within grace period — skip dialog
-                      void consumeSpeculativeClassifierCheck(
-                        (input as { command: string }).command,
-                      )
-
-                      const matchedRule =
-                        raceResult.result.matchedDescription ?? undefined
-                      if (matchedRule) {
-                        setClassifierApproval(toolUseID, matchedRule)
-                      }
-
-                      ctx.logDecision({
-                        decision: 'accept',
-                        source: { type: 'classifier' },
-                      })
-                      resolve(
-                        ctx.buildAllow(
-                          result.updatedInput ??
-                            (input as Record<string, unknown>),
-                          {
-                            decisionReason: {
-                              type: 'classifier' as const,
-                              classifier: 'bash_allow' as const,
-                              reason: `Allowed by prompt rule: "${raceResult.result.matchedDescription}"`,
-                            },
-                          },
-                        ),
-                      )
-                      return
-                    }
-                    // Timeout or no match — fall through to show dialog
-                  }
-                }
-
-                // Show dialog and start hooks/classifier in background
+                // Show dialog and start hooks in background
                 handleInteractivePermission(
                   {
                     ctx,
@@ -281,9 +193,6 @@ function useCanUseTool(
               logError(error)
               resolve(ctx.cancelAndAbort(undefined, true))
             }
-          })
-          .finally(() => {
-            clearClassifierChecking(toolUseID)
           })
       })
     },

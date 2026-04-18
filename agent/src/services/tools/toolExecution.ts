@@ -36,7 +36,6 @@ import {
   type ToolUseContext,
 } from '../../Tool.js'
 import type { BashToolInput } from '../../tools/BashTool/BashTool.js'
-import { startSpeculativeClassifierCheck } from '../../tools/BashTool/bashPermissions.js'
 import { BASH_TOOL_NAME } from '../../tools/BashTool/toolName.js'
 import { FILE_EDIT_TOOL_NAME } from '../../tools/FileEditTool/constants.js'
 import { FILE_READ_TOOL_NAME } from '../../tools/FileReadTool/prompt.js'
@@ -235,7 +234,6 @@ function decisionReasonToOTelSource(
     case 'hook':
       return 'hook'
     case 'mode':
-    case 'classifier':
     case 'subcommandResults':
     case 'asyncAgent':
     case 'sandboxOverride':
@@ -624,26 +622,6 @@ async function checkPermissionsAndCallTool(
       },
     ]
   }
-  // Speculatively start the bash allow classifier check early so it runs in
-  // parallel with pre-tool hooks, deny/ask classifiers, and permission dialog
-  // setup. The UI indicator (setClassifierChecking) is NOT set here — it's
-  // set in interactiveHandler.ts only when the permission check returns `ask`
-  // with a pendingClassifierCheck. This avoids flashing "classifier running"
-  // for commands that auto-allow via prefix rules.
-  if (
-    tool.name === BASH_TOOL_NAME &&
-    parsedInput.data &&
-    'command' in parsedInput.data
-  ) {
-    const appState = toolUseContext.getAppState()
-    startSpeculativeClassifierCheck(
-      (parsedInput.data as BashToolInput).command,
-      appState.toolPermissionContext,
-      toolUseContext.abortController.signal,
-      toolUseContext.options.isNonInteractiveSession,
-    )
-  }
-
   const resultingMessages = []
 
   // Defense-in-depth: strip _simulatedSedEdit from model-provided Bash input.

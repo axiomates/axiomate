@@ -182,16 +182,6 @@ export type PermissionAllowDecision<
 }
 
 /**
- * Metadata for a pending classifier check that will run asynchronously.
- * Used to enable non-blocking allow classifier evaluation.
- */
-export type PendingClassifierCheck = {
-  command: string
-  cwd: string
-  descriptions: string[]
-}
-
-/**
  * Result when user should be prompted
  */
 export type PermissionAskDecision<
@@ -211,11 +201,6 @@ export type PermissionAskDecision<
    * transforms the command. Not set for simple newline compound commands.
    */
   isBashSecurityCheckForMisparsing?: boolean
-  /**
-   * If set, an allow classifier check should be run asynchronously.
-   * The classifier may auto-approve the permission before the user responds.
-   */
-  pendingClassifierCheck?: PendingClassifierCheck
   /**
    * Optional content blocks (e.g., images) to include alongside the rejection
    * message in the tool result. Used when users paste images as feedback.
@@ -256,11 +241,6 @@ export type PermissionResult<
       decisionReason?: PermissionDecision<Input>['decisionReason']
       suggestions?: PermissionUpdate[]
       blockedPath?: string
-      /**
-       * If set, an allow classifier check should be run asynchronously.
-       * The classifier may auto-approve the permission before the user responds.
-       */
-      pendingClassifierCheck?: PendingClassifierCheck
     }
 
 /**
@@ -299,40 +279,17 @@ export type PermissionDecisionReason =
       reason: 'excludedCommand' | 'dangerouslyDisableSandbox'
     }
   | {
-      type: 'classifier'
-      classifier: string
-      reason: string
-    }
-  | {
       type: 'workingDir'
       reason: string
     }
   | {
       type: 'safetyCheck'
       reason: string
-      // When true, auto mode lets the classifier evaluate this instead of
-      // forcing a prompt. True for sensitive-file paths (.axiomate/, .git/,
-      // shell configs) — the classifier can see context and decide. False
-      // for Windows path bypass attempts and cross-machine bridge messages.
-      classifierApprovable: boolean
     }
   | {
       type: 'other'
       reason: string
     }
-
-// ============================================================================
-// Bash Classifier Types
-// ============================================================================
-
-export type ClassifierResult = {
-  matches: boolean
-  matchedDescription?: string
-  confidence: 'high' | 'medium' | 'low'
-  reason: string
-}
-
-export type ClassifierBehavior = 'deny' | 'ask' | 'allow'
 
 // ============================================================================
 // Permission Explainer Types
