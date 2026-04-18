@@ -96,10 +96,7 @@ export async function hasImageInClipboard(): Promise<boolean> {
   if (process.platform !== 'darwin') {
     return false
   }
-  if (
-    feature('NATIVE_CLIPBOARD_IMAGE') &&
-    true
-  ) {
+  if (feature('DEV')) {
     // Native NSPasteboard check (~0.03ms warm). Fall through to osascript
     // when the module/export is missing. Catch a throw too: it would surface
     // as an unhandled rejection in useClipboardImageHint's setTimeout.
@@ -127,11 +124,7 @@ export async function getImageFromClipboard(): Promise<ImageWithDimensions | nul
   // path below. Throws if the native module is unavailable, in which case
   // the catch block falls through to osascript. A `null` return from the
   // native call is authoritative (clipboard has no image).
-  if (
-    feature('NATIVE_CLIPBOARD_IMAGE') &&
-    process.platform === 'darwin' &&
-    true
-  ) {
+  if (feature('DEV') && process.platform === 'darwin') {
     try {
       const { getNativeModule } = await import('image-processor-axiomate') as any
       const readClipboard = getNativeModule()?.readClipboardImage
