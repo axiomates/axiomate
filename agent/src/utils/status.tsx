@@ -187,46 +187,6 @@ export async function buildInstallationHealthDiagnostics(): Promise<Diagnostic[]
   }
   return items;
 }
-export function buildAccountProperties(): Property[] {
-  const accountInfo = undefined;
-  if (!accountInfo) {
-    return [];
-  }
-  const properties: Property[] = [];
-  if (accountInfo.subscription) {
-    properties.push({
-      label: 'Login method',
-      value: `${accountInfo.subscription} Account`
-    });
-  }
-  if (accountInfo.tokenSource) {
-    properties.push({
-      label: 'Auth token',
-      value: accountInfo.tokenSource
-    });
-  }
-  if (accountInfo.apiKeySource) {
-    properties.push({
-      label: 'API key',
-      value: accountInfo.apiKeySource
-    });
-  }
-
-  // Hide sensitive account info in demo mode
-  if (accountInfo.organization && !process.env.IS_DEMO) {
-    properties.push({
-      label: 'Organization',
-      value: accountInfo.organization
-    });
-  }
-  if (accountInfo.email && !process.env.IS_DEMO) {
-    properties.push({
-      label: 'Email',
-      value: accountInfo.email
-    });
-  }
-  return properties;
-}
 export function buildAPIProviderProperties(): Property[] {
   const properties: Property[] = [];
   const anthropicBaseUrl = process.env.AXIOMATE_BASE_URL;

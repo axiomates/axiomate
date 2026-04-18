@@ -151,7 +151,6 @@ import {
   type PromptVariant,
 } from '../services/PromptSuggestion/promptSuggestion.js'
 import { getLastCacheSafeParams } from '../utils/forkedAgent.js'
-import { getAPIProvider } from '../utils/model/providers.js'
 import type { HookCallbackMatcher } from '../types/hooks.js'
 import type { HookEvent } from '../entrypoints/agentSdkTypes.js'
 import {
@@ -3838,8 +3837,6 @@ async function handleInitializeRequest(
   const outputStyle = settings?.outputStyle || DEFAULT_OUTPUT_STYLE_NAME
   const availableOutputStyles = await getAllOutputStyles(getCwd())
 
-  // Get account information
-  const accountInfo = undefined
   if (request.hooks) {
     const hooks: Partial<Record<HookEvent, HookCallbackMatcher[]>> = {}
     for (const [event, matchers] of Object.entries(request.hooks)) {
@@ -3875,17 +3872,6 @@ async function handleInitializeRequest(
     output_style: outputStyle,
     available_output_styles: Object.keys(availableOutputStyles),
     models: modelInfos,
-    account: {
-      email: accountInfo?.email,
-      organization: accountInfo?.organization,
-      subscriptionType: accountInfo?.subscription,
-      tokenSource: accountInfo?.tokenSource,
-      apiKeySource: accountInfo?.apiKeySource,
-      // undefined returns undefined under 3P providers, so the
-      // other fields are all absent. apiProvider disambiguates "not logged
-      // in" (firstParty + tokenSource:none) from "3P, login not applicable".
-      apiProvider: getAPIProvider(),
-    },
     pid: process.pid,
   }
 

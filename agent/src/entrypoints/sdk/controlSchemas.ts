@@ -10,7 +10,6 @@
 import { z } from 'zod/v4'
 import { lazySchema } from '../../utils/lazySchema.js'
 import {
-  AccountInfoSchema,
   AgentDefinitionSchema,
   AgentInfoSchema,
   HookEventSchema,
@@ -81,7 +80,6 @@ export const SDKControlInitializeResponseSchema = lazySchema(() =>
       output_style: z.string(),
       available_output_styles: z.array(z.string()),
       models: z.array(ModelInfoSchema()),
-      account: AccountInfoSchema(),
       pid: z
         .number()
         .optional()

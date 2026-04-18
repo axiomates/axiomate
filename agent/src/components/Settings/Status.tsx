@@ -9,7 +9,6 @@ import { type AppState, useAppState } from '../../state/AppState.js'
 import { getCwd } from '../../utils/cwd.js'
 import { getCurrentSessionTitle } from '../../utils/sessionStorage.js'
 import {
-  buildAccountProperties,
   buildAPIProviderProperties,
   buildIDEProperties,
   buildInstallationDiagnostics,
@@ -40,7 +39,6 @@ function buildPrimarySection(): Property[] {
     { label: 'Session name', value: nameValue },
     { label: 'Session ID', value: sessionId },
     { label: 'cwd', value: getCwd() },
-    ...buildAccountProperties(),
     ...buildAPIProviderProperties(),
   ]
 }

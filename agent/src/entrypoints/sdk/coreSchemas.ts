@@ -1058,24 +1058,6 @@ export const ModelInfoSchema = lazySchema(() =>
     .describe('Information about an available model.'),
 )
 
-export const AccountInfoSchema = lazySchema(() =>
-  z
-    .object({
-      email: z.string().optional(),
-      organization: z.string().optional(),
-      subscriptionType: z.string().optional(),
-      tokenSource: z.string().optional(),
-      apiKeySource: z.string().optional(),
-      apiProvider: z
-        .enum(['firstParty', 'bedrock', 'vertex', 'foundry'])
-        .optional()
-        .describe(
-          'Active API backend. Anthropic OAuth login only applies when "firstParty"; for 3P providers the other fields are absent and auth is external (AWS creds, gcloud ADC, etc.).',
-        ),
-    })
-    .describe("Information about the logged in user's account."),
-)
-
 // ============================================================================
 // Agent Definition Types
 // ============================================================================
