@@ -7,12 +7,10 @@ import type { LocalAgentTaskState } from './LocalAgentTask/LocalAgentTask.js'
 import type { LocalShellTaskState } from './LocalShellTask/guards.js'
 type LocalWorkflowTaskState = any
 type MonitorMcpTaskState = any
-type RemoteAgentTaskState = { type: 'remote-agent'; id: string; status: string }
 
 export type TaskState =
   | LocalShellTaskState
   | LocalAgentTaskState
-  | RemoteAgentTaskState
   | InProcessTeammateTaskState
   | LocalWorkflowTaskState
   | MonitorMcpTaskState
@@ -22,7 +20,6 @@ export type TaskState =
 export type BackgroundTaskState =
   | LocalShellTaskState
   | LocalAgentTaskState
-  | RemoteAgentTaskState
   | InProcessTeammateTaskState
   | LocalWorkflowTaskState
   | MonitorMcpTaskState

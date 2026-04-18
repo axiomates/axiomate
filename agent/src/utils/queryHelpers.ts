@@ -283,7 +283,7 @@ export async function* handleOrphanedPermission(
   // Add the assistant message with tool_use to messages BEFORE executing
   // so the conversation history is complete (tool_use -> tool_result).
   //
-  // On CCR resume, mutableMessages is seeded from the transcript and may already
+  // On resume, mutableMessages is seeded from the transcript and may already
   // contain this tool_use. Pushing again would make normalizeMessagesForAPI merge
   // same-ID assistants (concatenating content) and produce a duplicate tool_use
   // ID, which the API rejects with "tool_use ids must be unique".

@@ -50,7 +50,6 @@ import type {
   SystemAPIErrorMessage,
   SystemApiMetricsMessage,
   SystemAwaySummaryMessage,
-  SystemBridgeStatusMessage,
   SystemCompactBoundaryMessage,
   SystemInformationalMessage,
   SystemLocalCommandMessage,
@@ -3620,22 +3619,6 @@ export function createPermissionRetryMessage(
     content: `Allowed ${commands.join(', ')}`,
     commands,
     level: 'info',
-    isMeta: false,
-    timestamp: new Date().toISOString(),
-    uuid: randomUUID(),
-  }
-}
-
-export function createBridgeStatusMessage(
-  url: string,
-  upgradeNudge?: string,
-): SystemBridgeStatusMessage {
-  return {
-    type: 'system',
-    subtype: 'bridge_status',
-    content: `/remote-control is active. Code in CLI or at ${url}`,
-    url,
-    upgradeNudge,
     isMeta: false,
     timestamp: new Date().toISOString(),
     uuid: randomUUID(),

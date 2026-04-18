@@ -1,8 +1,8 @@
 /**
- * Plugin installation for headless/CCR mode.
+ * Plugin installation for headless mode.
  *
  * This module provides plugin installation without AppState updates,
- * suitable for non-interactive environments like CCR.
+ * suitable for non-interactive environments.
  *
  * When AXIOMATE_CODE_PLUGIN_USE_ZIP_CACHE is enabled, plugins are stored as
  * ZIPs on a mounted volume. The storage layer (pluginLoader.ts) handles
@@ -32,7 +32,7 @@ import {
 import { syncMarketplacesToZipCache } from './zipCacheAdapters.js'
 
 /**
- * Install plugins for headless/CCR mode.
+ * Install plugins for headless mode.
  *
  * This is the headless equivalent of performBackgroundPluginInstallations(),
  * but without AppState updates (no UI to update in headless mode).

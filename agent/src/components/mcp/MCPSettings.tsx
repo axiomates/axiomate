@@ -11,7 +11,6 @@ import {
   filterToolsByServer,
 } from '../../services/mcp/utils.js'
 import { useAppState } from '../../state/AppState.js'
-import { getSessionIngressAuthToken } from '../../utils/sessionIngressAuth.js'
 import { MCPAgentServerMenu } from './MCPAgentServerMenu.js'
 import { MCPListPanel } from './MCPListPanel.js'
 const MCPRemoteServerMenu = (_props: Record<string, unknown>) => null
@@ -66,18 +65,12 @@ export function MCPSettings({ onComplete }: Props): React.ReactNode {
               client.config as McpSSEServerConfig | McpHTTPServerConfig,
             )
             const tokens = await authProvider.tokens()
-            // Server is authenticated if:
-            // 1. It has OAuth tokens, OR
-            // 2. It's connected via session auth (has session token and is connected), OR
-            // 3. It's connected and has tools (meaning it's working, regardless of auth method)
-            const hasSessionAuth =
-              getSessionIngressAuthToken() !== null &&
-              client.type === 'connected'
+            // Server is authenticated if it has OAuth tokens or is connected
+            // and exposing tools.
             const hasToolsAndConnected =
               client.type === 'connected' &&
               filterToolsByServer(mcp.tools, client.name).length > 0
-            isAuthenticated =
-              Boolean(tokens) || hasSessionAuth || hasToolsAndConnected
+            isAuthenticated = Boolean(tokens) || hasToolsAndConnected
           }
 
           const baseInfo = {

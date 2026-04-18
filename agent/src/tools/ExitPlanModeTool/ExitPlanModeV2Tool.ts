@@ -111,7 +111,7 @@ export const outputSchema = lazySchema(() =>
       .boolean()
       .optional()
       .describe(
-        'True when the user edited the plan (CCR web UI or Ctrl+G); determines whether the plan is echoed back in tool_result',
+        'True when the user edited the plan; determines whether the plan is echoed back in tool_result',
       ),
     awaitingLeaderApproval: z
       .boolean()
@@ -214,10 +214,11 @@ export const ExitPlanModeV2Tool: Tool<InputSchema, Output> = buildTool({
     const isAgent = !!context.agentId
 
     const filePath = getPlanFilePath(context.agentId)
-    // CCR web UI may send an edited plan via permissionResult.updatedInput.
-    // queryHelpers.ts full-replaces finalInput, so when CCR sends {} (no edit)
-    // input.plan is undefined -> disk fallback. The internal inputSchema omits
-    // `plan` (normally injected by normalizeToolInput), hence the narrowing.
+    // Some permission UIs may return an edited plan via
+    // permissionResult.updatedInput. queryHelpers.ts full-replaces finalInput,
+    // so when the response carries no edit, input.plan is undefined -> disk
+    // fallback. The internal inputSchema omits `plan` (normally injected by
+    // normalizeToolInput), hence the narrowing.
     const inputPlan =
       'plan' in input && typeof input.plan === 'string' ? input.plan : undefined
     const plan = inputPlan ?? getPlan(context.agentId)

@@ -36,15 +36,10 @@ export type SystemInitInputs = {
 
 /**
  * Build the `system/init` SDKMessage — the first message on the SDK stream
- * carrying session metadata (cwd, tools, model, commands, etc.) that remote
+ * carrying session metadata (cwd, tools, model, commands, etc.) that SDK
  * clients use to render pickers and gate UI.
  *
- * Called from two paths that must produce identical shapes:
- *   - QueryEngine (spawn-bridge / print-mode / SDK) — yielded as the first
- *     stream message per query turn
- *   - useReplBridge (REPL Remote Control) — sent via writeSdkMessages() on
- *     bridge connect, since REPL uses query() directly and never hits the
- *     QueryEngine SDKMessage layer
+ * QueryEngine yields this as the first stream message per query turn.
  */
 export function buildSystemInitMessage(inputs: SystemInitInputs): SDKMessage {
   const settings = getSettings_DEPRECATED()

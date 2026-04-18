@@ -1,4 +1,3 @@
-import { feature } from 'bun:bundle'
 import { z } from 'zod/v4'
 import type { Tool, ToolUseContext } from '../../Tool.js'
 import { buildTool, type ToolDef } from '../../Tool.js'
@@ -67,9 +66,7 @@ const inputSchema = lazySchema(() =>
     to: z
       .string()
       .describe(
-        false
-          ? 'Recipient: teammate name, "*" for broadcast, "uds:<socket-path>" for a local peer, or "bridge:<session-id>" for a Remote Control peer (use ListPeers to discover)'
-          : 'Recipient: teammate name, or "*" for broadcast to all teammates',
+        'Recipient: teammate name, or "*" for broadcast to all teammates',
       ),
     summary: z
       .string()
@@ -580,10 +577,7 @@ export const SendMessageTool: Tool<InputSchema, SendMessageToolOutput> =
         }
       }
       const addr = parseAddress(input.to)
-      if (
-        (addr.scheme === 'bridge' || addr.scheme === 'uds') &&
-        addr.target.trim().length === 0
-      ) {
+      if (addr.scheme === 'uds' && addr.target.trim().length === 0) {
         return {
           result: false,
           message: 'address target must not be empty',

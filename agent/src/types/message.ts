@@ -180,13 +180,6 @@ export type SystemAPIErrorMessage = SystemMessageBase & {
   maxRetries: number
 }
 
-export type SystemBridgeStatusMessage = SystemMessageBase & {
-  subtype: 'bridge_status'
-  content: string
-  url: string
-  upgradeNudge?: string
-}
-
 export type SystemMemorySavedMessage = SystemMessageBase & {
   subtype: 'memory_saved'
   writtenPaths: string[]
@@ -291,7 +284,6 @@ export type SystemFileSnapshotMessage = SystemMessageBase & {
 export type SystemMessage =
   | SystemInformationalMessage
   | SystemAPIErrorMessage
-  | SystemBridgeStatusMessage
   | SystemMemorySavedMessage
   | SystemThinkingMessage
   | SystemTurnDurationMessage

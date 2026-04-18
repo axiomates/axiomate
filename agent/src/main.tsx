@@ -469,10 +469,8 @@ export async function main() {
   // Initialize entrypoint based on mode - needs to be set before any event is logged
   initializeEntrypoint(isNonInteractive);
 
-  // Determine client type. The 'remote' / 'sdk-ts' / 'sdk-py' branches
-  // existed for upstream-only transports (CCR bridge, Claude Code SDK);
-  // those subsystems were deleted, but AXIOMATE_CODE_ENTRYPOINT remains
-  // as a generic telemetry tag embedders can set.
+  // Determine client type. AXIOMATE_CODE_ENTRYPOINT remains as a generic
+  // runtime tag embedders can set.
   const clientType = (() => {
     if (isEnvTruthy(process.env.GITHUB_ACTIONS)) return 'github-action';
     if (process.env.AXIOMATE_CODE_ENTRYPOINT === 'sdk-cli') return 'sdk-cli';
@@ -586,10 +584,8 @@ async function run(): Promise<CommanderCommand> {
     runMigrations();
     profileCheckpoint('preAction_after_migrations');
 
-    profileCheckpoint('preAction_after_remote_settings');
+    profileCheckpoint('preAction_after_settings');
 
-    // Load settings sync (non-blocking, fail-open)
-    // CLI: uploads local settings to remote (CCR download is handled by print.ts)
     profileCheckpoint('preAction_after_settings_sync');
   });
   program.name('axiomate').description(`Axiomate - starts an interactive session by default, use -p/--print for non-interactive output`).argument('[prompt]', 'Your prompt', String)
@@ -2403,11 +2399,6 @@ async function run(): Promise<CommanderCommand> {
     await agentsHandler();
     process.exit(0);
   });
-
-  // Remote Control command — connect local environment for remote sessions.
-  // The actual command is intercepted by the fast-path in cli.tsx before
-  // Commander.js runs, so this registration exists only for help output.
-  // Always hidden.
 
   // Doctor command - check installation health
   program.command('doctor').description('Check the health of your Axiomate auto-updater. Note: The workspace trust dialog is skipped and stdio servers from .mcp.json are spawned for health checks. Only use this command in directories you trust.').action(async () => {

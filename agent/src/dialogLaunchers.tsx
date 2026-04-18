@@ -47,16 +47,6 @@ export async function launchInvalidSettingsDialog(root: Root, props: {
 }
 
 /**
- * Site ~4229: AssistantSessionChooser (pick a bridge session to attach to).
- * Original callback wiring: onSelect={id => done(id)}, onCancel={() => done(null)}.
- */
-export async function launchAssistantSessionChooser(_root: Root, _props: {
-  sessions: Array<{ id: string; [key: string]: unknown }>;
-}): Promise<string | null> {
-  return null;
-}
-
-/**
  * `axiomate assistant` found zero sessions — show the same install wizard
  * as `/assistant` when daemon.json is empty. Resolves to the installed dir on
  * success, null on cancel. Rejects on install failure so the caller can

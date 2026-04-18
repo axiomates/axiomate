@@ -15,8 +15,8 @@
 const XML_TAG_BLOCK_PATTERN = /<([a-z][\w-]*)(?:\s[^>]*)?>[\s\S]*?<\/\1>\n?/g
 
 /**
- * Strip XML-like tag blocks from text for use in UI titles (/rewind, /resume,
- * bridge session titles). System-injected context — IDE metadata, hook output,
+ * Strip XML-like tag blocks from text for use in UI titles (/rewind, /resume).
+ * System-injected context — IDE metadata, hook output,
  * task notifications — arrives wrapped in tags and should never surface as a
  * title.
  *

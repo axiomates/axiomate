@@ -45,7 +45,6 @@ import type {
   SDKControlApplyFlagSettingsRequestSchema,
   SDKHookCallbackRequestSchema,
   SDKKeepAliveMessageSchema,
-  SDKUpdateEnvironmentVariablesMessageSchema,
   StdinMessageSchema,
   StdoutMessageSchema,
 } from './controlSchemas.js'
@@ -170,9 +169,6 @@ export type SDKControlCancelRequest = z.infer<
 export type SDKKeepAliveMessage = z.infer<
   ReturnType<typeof SDKKeepAliveMessageSchema>
 >
-export type SDKUpdateEnvironmentVariablesMessage = z.infer<
-  ReturnType<typeof SDKUpdateEnvironmentVariablesMessageSchema>
->
 
 // ============================================================================
 // Message unions
@@ -182,7 +178,7 @@ export type StdoutMessage = z.infer<ReturnType<typeof StdoutMessageSchema>>
 export type StdinMessage = z.infer<ReturnType<typeof StdinMessageSchema>>
 
 // ============================================================================
-// Streaming partial message type (referenced by ccrClient / sdkMessageAdapter)
+// Streaming partial message type (referenced by SDK message adapters)
 // ============================================================================
 
 /**

@@ -17,7 +17,6 @@ import { useTerminalSize } from '../../hooks/useTerminalSize.js'
 import type {
   SystemMessage,
   SystemStopHookSummaryMessage,
-  SystemBridgeStatusMessage,
   SystemTurnDurationMessage,
   SystemThinkingMessage,
   SystemMemorySavedMessage,
@@ -25,8 +24,6 @@ import type {
 import { SystemAPIErrorMessage } from './SystemAPIErrorMessage.js'
 import { formatDuration, formatNumber } from '../../utils/format.js'
 import { getGlobalConfig } from '../../utils/config.js'
-import Link from '../../ink/components/Link.js'
-import ThemedText from '../design-system/ThemedText.js'
 import { CtrlOToExpand } from '../CtrlOToExpand.js'
 import { useAppStateStore } from '../../state/AppState.js'
 import { isBackgroundTask, type TaskState } from '../../tasks/types.js'
@@ -97,10 +94,6 @@ export function SystemTextMessage({
   // api_metrics messages don't have .level / .content — bail early
   if (message.subtype === 'api_metrics') {
     return null
-  }
-
-  if (message.subtype === 'bridge_status') {
-    return <BridgeStatusMessage message={message} addMargin={addMargin} />
   }
 
   if (message.subtype === 'scheduled_task_fire') {
@@ -438,34 +431,6 @@ function ThinkingMessage({
         <Text dimColor>{TEARDROP_ASTERISK}</Text>
       </Box>
       <Text dimColor>{message.content}</Text>
-    </Box>
-  )
-}
-
-function BridgeStatusMessage({
-  message,
-  addMargin,
-}: {
-  message: SystemBridgeStatusMessage
-  addMargin: boolean
-}): React.ReactNode {
-  const bg = useSelectedMessageBg()
-  return (
-    <Box
-      flexDirection="row"
-      marginTop={addMargin ? 1 : 0}
-      backgroundColor={bg}
-      width={999}
-    >
-      <Box minWidth={2} />
-      <Box flexDirection="column">
-        <Text>
-          <ThemedText color="suggestion">/remote-control</ThemedText> is active.
-          Code in CLI or at
-        </Text>
-        <Link url={message.url}>{message.url}</Link>
-        {message.upgradeNudge && <Text dimColor>⎿ {message.upgradeNudge}</Text>}
-      </Box>
     </Box>
   )
 }

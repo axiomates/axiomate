@@ -122,7 +122,7 @@ type AgentToolInput = z.infer<ReturnType<typeof baseInputSchema>> & {
   name?: string;
   team_name?: string;
   mode?: z.infer<ReturnType<typeof permissionModeSchema>>;
-  isolation?: 'worktree' | 'remote';
+  isolation?: 'worktree';
   cwd?: string;
 };
 
@@ -164,20 +164,9 @@ type TeammateSpawnedOutput = {
   plan_mode_required?: boolean;
 };
 
-// Combined output type including both public and internal types
-// Note: TeammateSpawnedOutput type is fine - TypeScript types are erased at compile time
-// Private type for remote-launched results — excluded from exported schema
-// like TeammateSpawnedOutput for dead code elimination purposes. Exported
-// for UI.tsx to do proper discriminated-union narrowing instead of ad-hoc casts.
-export type RemoteLaunchedOutput = {
-  status: 'remote_launched';
-  taskId: string;
-  sessionUrl: string;
-  description: string;
-  prompt: string;
-  outputFile: string;
-};
-type InternalOutput = Output | TeammateSpawnedOutput | RemoteLaunchedOutput;
+// Combined output type including public and internal teammate-spawn results.
+// TeammateSpawnedOutput is type-only; TypeScript erases it at runtime.
+type InternalOutput = Output | TeammateSpawnedOutput;
 import type { AgentToolProgress, ShellProgress } from '../../types/tools.js';
 // AgentTool forwards both its own progress events and shell progress
 // events from the sub-agent so the SDK receives tool_progress updates during bash/powershell runs.
@@ -1087,17 +1076,6 @@ agent_id: ${spawnData.teammate_id}
 name: ${spawnData.name}
 team_name: ${spawnData.team_name}
 The agent is now running and will receive instructions via mailbox.`
-        }]
-      };
-    }
-    if ('status' in internalData && internalData.status === 'remote_launched') {
-      const r = internalData;
-      return {
-        tool_use_id: toolUseID,
-        type: 'tool_result',
-        content: [{
-          type: 'text',
-          text: `Remote agent launched in CCR.\ntaskId: ${r.taskId}\nsession_url: ${r.sessionUrl}\noutput_file: ${r.outputFile}\nThe agent is running remotely. You will be notified automatically when it completes.\nBriefly tell the user what you launched and end your response.`
         }]
       };
     }

@@ -182,10 +182,8 @@ export function computeNextCronRun(
 
 // --- cronToHuman ------------------------------------------------------------
 // Intentionally narrow: covers common patterns; falls through to the raw cron
-// string for anything else. The `utc` option exists for CCR remote triggers
-// (agents-platform.tsx), which run on servers and always use UTC cron strings
-// — that path translates UTC→local for display and needs midnight-crossing
-// logic for the weekday case. Local scheduled tasks (the default) need neither.
+// string for anything else. The `utc` option handles schedules stored in UTC
+// and translated to local time for display.
 
 const DAY_NAMES = [
   'Sunday',

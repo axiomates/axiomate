@@ -3,12 +3,6 @@ import { refreshActivePlugins } from '../../utils/plugins/refresh.js'
 import { plural } from '../../utils/stringUtils.js'
 
 export const call: LocalCommandCall = async (_args, context) => {
-  // CCR: re-pull user settings before the cache sweep so enabledPlugins /
-  // extraKnownMarketplaces pushed from the user's local CLI (settingsSync)
-  // take effect. Non-CCR headless (e.g. vscode SDK subprocess) shares disk
-  // with whoever writes settings — the file watcher delivers changes, no
-  // re-pull needed there.
-  //
   // Managed settings intentionally NOT re-fetched: it already polls hourly
   // (POLLING_INTERVAL_MS), and policy enforcement is eventually-consistent
   // by design (stale-cache fallback on fetch failure). Interactive

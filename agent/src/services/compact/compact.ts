@@ -406,7 +406,7 @@ export async function compactConversation(
 
     // 3P default: true — forked-agent path reuses main conversation's prompt cache.
     // Experiment (Jan 2026) confirmed: false path is 98% cache miss, costs ~0.76% of
-    // fleet cache_creation (~38B tok/day), concentrated in ephemeral envs (CCR/GHA/SDK)
+    // fleet cache_creation (~38B tok/day), concentrated in ephemeral envs (GHA/SDK)
     // with cold GB cache and 3P providers where GB is disabled. GB gate kept as kill-switch.
     const promptCacheSharingEnabled = true
 

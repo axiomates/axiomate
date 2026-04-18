@@ -160,7 +160,6 @@ import { recordAttributionSnapshot } from '../utils/sessionStorage.js';
 import { computeStandaloneAgentContext, restoreAgentFromSession, restoreSessionStateFromLog, restoreWorktreeForResume, exitRestoredWorktree } from '../utils/sessionRestore.js';
 import { updateSessionName, updateSessionActivity } from '../utils/concurrentSessions.js';
 import { isInProcessTeammateTask, type InProcessTeammateTaskState } from '../tasks/InProcessTeammateTask/types.js';
-const restoreRemoteAgentTasks = async (..._args: unknown[]) => {}
 import { useInboxPoller } from '../hooks/useInboxPoller.js';
 const SUGGEST_BG_PR_NOOP = (_p: string, _n: string): boolean => false;
 /* eslint-disable @typescript-eslint/no-require-imports */
@@ -810,8 +809,8 @@ export function REPL({
   const userInputBaselineRef = React.useRef(0);
   // True while the submitted prompt is being processed but its user message
   // hasn't reached setMessages yet. setMessages uses this to keep the
-  // baseline in sync when unrelated async messages (bridge status, hook
-  // results, scheduled tasks) land during that window.
+  // baseline in sync when unrelated async messages (hook results, scheduled
+  // tasks) land during that window.
   const userMessagePendingRef = React.useRef(false);
 
   // Wall-clock time tracking refs for accurate elapsed time calculation
@@ -840,9 +839,9 @@ export function REPL({
 
   // Wrapper for setIsExternalLoading that resets timing refs on transition
   // to true — SpinnerWithVerb reads these for elapsed time, so they must be
-  // reset for remote sessions / foregrounded tasks too (not just local
-  // queries, which reset them in onQuery). Without this, a remote-only
-  // session would show ~56 years elapsed (Date.now() - 0).
+  // reset for foregrounded tasks too (not just local queries, which reset
+  // them in onQuery). Without this, an externally-loading task would show
+  // ~56 years elapsed (Date.now() - 0).
   const setIsExternalLoading = React.useCallback((value: boolean) => {
     setIsExternalLoadingRaw(value);
     if (value) resetTimingRefs();
@@ -1066,8 +1065,8 @@ export function REPL({
       userInputBaselineRef.current = 0;
     } else if (next.length > prev.length && userMessagePendingRef.current) {
       // Grew while the submitted user message hasn't landed yet. If the
-      // added messages don't include it (bridge status, hook results,
-      // scheduled tasks landing async during processUserInputBase), bump
+      // added messages don't include it (hook results, scheduled tasks
+      // landing async during processUserInputBase), bump
       // baseline so the placeholder stays visible. Once the user message
       // lands, stop tracking — later additions (assistant stream) should
       // not re-show the placeholder.
@@ -1602,11 +1601,6 @@ export function REPL({
         exitRestoredWorktree();
         restoreWorktreeForResume(log.worktreeSession);
         adoptResumedSessionFile();
-        void restoreRemoteAgentTasks({
-          abortController: new AbortController(),
-          getAppState: () => store.getState(),
-          setAppState
-        });
       } else {
         // Fork: same re-persist as /clear (conversation.ts). The clear
         // above wiped currentSessionWorktree, forkLog doesn't carry it,
@@ -1695,11 +1689,6 @@ export function REPL({
   useEffect(() => {
     if (initialMessages && initialMessages.length > 0) {
       restoreReadFileState(initialMessages, getOriginalCwd());
-      void restoreRemoteAgentTasks({
-        abortController: new AbortController(),
-        getAppState: () => store.getState(),
-        setAppState
-      });
     }
     // Only run on mount - initialMessages shouldn't change during component lifetime
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1915,8 +1904,7 @@ export function REPL({
       });
     }
 
-    // Normal flow for non-workers: show local UI and optionally race
-    // against the REPL bridge (Remote Control) if connected.
+    // Normal flow for non-workers: show the local permission UI.
     return new Promise(resolveShouldAllowHost => {
       let resolved = false;
       function resolveOnce(allow: boolean): void {
@@ -1931,9 +1919,6 @@ export function REPL({
         resolvePromise: resolveOnce
       }]);
 
-      // When the REPL bridge is connected, also forward the sandbox
-      // permission request as a can_use_tool control_request so the
-      // remote user can approve it too.
     });
   }, [setAppState, store]);
 

@@ -12,7 +12,7 @@ import type { Message } from '../../types/message.js'
  *
  * Replaces the prior human-turn grouping (boundaries only at real user
  * prompts) with finer-grained API-round grouping, allowing reactive
- * compact to operate on single-prompt agentic sessions (SDK/CCR/eval
+ * compact to operate on single-prompt agentic sessions (SDK/eval
  * callers) where the entire workload is one human turn.
  *
  * Extracted to its own file to break the compact.ts ↔ compactMessages.ts

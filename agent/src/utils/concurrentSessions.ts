@@ -1,4 +1,3 @@
-import { feature } from 'bun:bundle'
 import { chmod, mkdir, readdir, readFile, unlink, writeFile } from 'fs/promises'
 import { join } from 'path'
 import {
@@ -79,16 +78,6 @@ export async function registerSession(): Promise<boolean> {
         startedAt: Date.now(),
         kind,
         entrypoint: process.env.AXIOMATE_CODE_ENTRYPOINT,
-        ...(false
-          ? { messagingSocketPath: process.env.AXIOMATE_CODE_MESSAGING_SOCKET }
-          : {}),
-        ...(false
-          ? {
-              name: process.env.AXIOMATE_CODE_SESSION_NAME,
-              logPath: process.env.AXIOMATE_CODE_SESSION_LOG,
-              agent: process.env.AXIOMATE_CODE_AGENT,
-            }
-          : {}),
       }),
     )
     // --resume / /resume mutates getSessionId() via switchSession. Without
@@ -129,18 +118,6 @@ export async function updateSessionName(
 ): Promise<void> {
   if (!name) return
   await updatePidFile({ name })
-}
-
-/**
- * Record this session's Remote Control session ID so peer enumeration can
- * dedup: a session reachable over both UDS and bridge should only appear
- * once (local wins). Cleared on bridge teardown so stale IDs don't
- * suppress a legitimately-remote session after reconnect.
- */
-export async function updateSessionBridgeId(
-  bridgeSessionId: string | null,
-): Promise<void> {
-  await updatePidFile({ bridgeSessionId })
 }
 
 /**

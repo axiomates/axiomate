@@ -91,7 +91,6 @@ export async function processUserInput({
   querySource,
   canUseTool,
   skipSlashCommands,
-  bridgeOrigin,
   isMeta,
   skipAttachments,
 }: {
@@ -114,15 +113,10 @@ export async function processUserInput({
   canUseTool?: CanUseToolFn
   /**
    * When true, input starting with `/` is treated as plain text.
-   * Used for remotely-received messages (bridge/CCR) that should not
-   * trigger local slash commands or skills.
+   * Used by machine-generated prompts that should not trigger local slash
+   * commands or skills.
    */
   skipSlashCommands?: boolean
-  /**
-   * When true, slash commands matching isBridgeSafeCommand() execute even
-   * though skipSlashCommands is set. See QueuedCommand.bridgeOrigin.
-   */
-  bridgeOrigin?: boolean
   /**
    * When true, the resulting UserMessage gets `isMeta: true` (user-hidden,
    * model-visible). Propagated from `QueuedCommand.isMeta` for queued
@@ -157,7 +151,6 @@ export async function processUserInput({
     canUseTool,
     appState.toolPermissionContext.mode,
     skipSlashCommands,
-    bridgeOrigin,
     isMeta,
     skipAttachments,
     preExpansionInput,
@@ -285,7 +278,6 @@ async function processUserInputBase(
   canUseTool?: CanUseToolFn,
   permissionMode?: PermissionMode,
   skipSlashCommands?: boolean,
-  bridgeOrigin?: boolean,
   isMeta?: boolean,
   skipAttachments?: boolean,
   preExpansionInput?: string,
@@ -300,8 +292,8 @@ async function processUserInputBase(
   // this is just `input`; for array input it's the processed blocks. We pass
   // this (not raw `input`) to processTextPrompt so resized/normalized image
   // blocks actually reach the API — otherwise the resize work above is
-  // discarded for the regular prompt path. Also normalizes bridge inputs
-  // where iOS may send `mediaType` instead of `media_type` (mobile-apps#5825).
+  // discarded for the regular prompt path. Also accepts `mediaType` as a
+  // compatibility alias for `media_type`.
   let normalizedInput: string | ContentBlockParam[] = input
 
   if (typeof input === 'string') {
@@ -448,7 +440,6 @@ async function processUserInputBase(
   }
 
   // Slash commands
-  // Skip for remote bridge messages — input from CCR clients is plain text
   if (
     inputString !== null &&
     !effectiveSkipSlash &&

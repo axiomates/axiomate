@@ -614,16 +614,7 @@ export const SDKKeepAliveMessageSchema = lazySchema(() =>
     .object({
       type: z.literal('keep_alive'),
     })
-    .describe('Keep-alive message to maintain WebSocket connection.'),
-)
-
-export const SDKUpdateEnvironmentVariablesMessageSchema = lazySchema(() =>
-  z
-    .object({
-      type: z.literal('update_environment_variables'),
-      variables: z.record(z.string(), z.string()),
-    })
-    .describe('Updates environment variables at runtime.'),
+    .describe('Keep-alive message to maintain a structured input stream.'),
 )
 
 // ============================================================================
@@ -649,6 +640,5 @@ export const StdinMessageSchema = lazySchema(() =>
     SDKControlRequestSchema(),
     SDKControlResponseSchema(),
     SDKKeepAliveMessageSchema(),
-    SDKUpdateEnvironmentVariablesMessageSchema(),
   ]),
 )

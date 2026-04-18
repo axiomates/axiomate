@@ -706,7 +706,7 @@ export async function runHeadless(
   // so we can pass `run` as the onEnqueue callback (see below).
 
   // Only `json` + `verbose` needs the full array (jsonStringify(messages) below).
-  // For stream-json (SDK/CCR) and default text output, only the last message is
+  // For stream-json SDK input and default text output, only the last message is
   // read for the exit code / final result. Avoid accumulating every message in
   // memory for the entire session.
   const needsFullArray = options.outputFormat === 'json' && options.verbose
@@ -1652,7 +1652,7 @@ function runHeadlessStreaming(
           // QueryEngine will emit a replay for command.uuid (the last uuid in
           // the batch) via its messagesToAck path. Emit replays here for the
           // rest so consumers that track per-uuid delivery (clank's
-          // asyncMessages footer, CCR) see an ack for every message they sent,
+          // asyncMessages footer) see an ack for every message they sent,
           // not just the one that survived the merge.
           if (options.replayUserMessages && batch.length > 1) {
             for (const c of batch) {
@@ -3186,7 +3186,7 @@ function runHeadlessStreaming(
           }
 
           // If the model changed, inject breadcrumbs so the model sees the
-          // mid-conversation switch, and notify metadata listeners (CCR).
+          // mid-conversation switch, and notify metadata listeners.
           const newModel = getMainLoopModel()
           if (newModel !== prevModel) {
             activeUserSpecifiedModel = newModel
@@ -3314,11 +3314,6 @@ function runHeadlessStreaming(
               sendControlResponseError(message, errorMessage(e))
             }
           })()
-        } else if (message.request.subtype === 'remote_control') {
-          sendControlResponseError(
-            message,
-            'Remote Control is not available in this build',
-          )
         } else {
           // Unknown control request subtype — send an error response so
           // the caller doesn't hang waiting for a reply that never comes.
@@ -3337,15 +3332,12 @@ function runHeadlessStreaming(
       } else if (message.type === 'keep_alive') {
         // Silently ignore keep-alive messages
         continue
-      } else if (message.type === 'update_environment_variables') {
-        // Handled in structuredIO.ts, but TypeScript needs the type guard
-        continue
       } else if (message.type === 'assistant' || message.type === 'system') {
-        // History replay from bridge: inject into mutableMessages as
+        // History replay from SDK input: inject into mutableMessages as
         // conversation context so the model sees prior turns.
         const internalMsgs = toInternalMessages([message])
         mutableMessages.push(...internalMsgs)
-        // Echo assistant messages back so CCR displays them
+        // Echo assistant messages when replay mode is enabled.
         if (message.type === 'assistant' && options.replayUserMessages) {
           output.enqueue(message)
         }

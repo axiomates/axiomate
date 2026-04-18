@@ -2300,7 +2300,7 @@ async function loadPluginFromMarketplaceEntry(
         )
         pluginPath = versionedPath
       } else {
-        // Seed cache probe (CCR pre-baked images, read-only). Seed content is
+        // Seed cache probe (pre-baked images, read-only). Seed content is
         // frozen at image build time — no freshness concern, 'whatever's there'
         // is what the image builder put there. Primary cache is NOT probed
         // here; ref-tracked sources fall through to clone (the re-clone IS
@@ -3117,7 +3117,7 @@ export const loadAllPlugins = memoize(async (): Promise<PluginLoadResult> => {
  * AXIOMATE_CODE_SYNC_PLUGIN_INSTALL=1 delegates to the full loader — that
  * mode explicitly opts into blocking install before first query, and
  * main.tsx's getAxiomateMcpConfigs()/getInitialSettings().agent run
- * BEFORE runHeadless() can warm this cache. First-run CCR/headless has
+ * BEFORE runHeadless() can warm this cache. First-run headless has
  * no installed_plugins.json, so cache-only would miss plugin MCP servers
  * and plugin settings (the agent key). The interactive startup win is
  * preserved since interactive mode doesn't set SYNC_PLUGIN_INSTALL.

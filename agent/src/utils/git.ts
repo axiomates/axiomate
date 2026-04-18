@@ -278,7 +278,6 @@ export const getRemoteUrl = async (): Promise<string | null> => {
  * - git@github.com:owner/repo.git -> github.com/owner/repo
  * - https://github.com/owner/repo.git -> github.com/owner/repo
  * - ssh://git@github.com/owner/repo -> github.com/owner/repo
- * - http://local_proxy@127.0.0.1:16583/git/owner/repo -> github.com/owner/repo
  */
 export function normalizeGitRemoteUrl(url: string): string | null {
   const trimmed = url.trim()
@@ -297,22 +296,6 @@ export function normalizeGitRemoteUrl(url: string): string | null {
   if (urlMatch && urlMatch[1] && urlMatch[2]) {
     const host = urlMatch[1]
     const path = urlMatch[2]
-
-    // CCR git proxy URLs use format:
-    //   Legacy:  http://...@127.0.0.1:PORT/git/owner/repo       (github.com assumed)
-    //   GHE:     http://...@127.0.0.1:PORT/git/ghe.host/owner/repo (host encoded in path)
-    // Strip the /git/ prefix. If the first segment contains a dot, it's a
-    // hostname (GitHub org names cannot contain dots). Otherwise assume github.com.
-    if (isLocalHost(host) && path.startsWith('git/')) {
-      const proxyPath = path.slice(4) // Remove "git/" prefix
-      const segments = proxyPath.split('/')
-      // 3+ segments where first contains a dot → host/owner/repo (GHE format)
-      if (segments.length >= 3 && segments[0]!.includes('.')) {
-        return proxyPath.toLowerCase()
-      }
-      // 2 segments → owner/repo (legacy format, assume github.com)
-      return `github.com/${proxyPath}`.toLowerCase()
-    }
 
     return `${host}/${path}`.toLowerCase()
   }
@@ -842,14 +825,6 @@ export async function preserveGitStateForIssue(): Promise<PreservedGitState | nu
     logError(err)
     return null
   }
-}
-
-function isLocalHost(host: string): boolean {
-  const hostWithoutPort = host.split(':')[0] ?? ''
-  return (
-    hostWithoutPort === 'localhost' ||
-    /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(hostWithoutPort)
-  )
 }
 
 /**

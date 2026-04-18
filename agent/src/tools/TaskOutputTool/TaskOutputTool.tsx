@@ -10,7 +10,6 @@ import type { Tool } from '../../Tool.js'
 import { buildTool, type ToolDef } from '../../Tool.js'
 import type { LocalAgentTaskState } from '../../tasks/LocalAgentTask/LocalAgentTask.js'
 import type { LocalShellTaskState } from '../../tasks/LocalShellTask/guards.js'
-type RemoteAgentTaskState = { type: 'remote-agent'; id: string; status: string; sessionId?: string; command?: string }
 import type { TaskState } from '../../tasks/types.js'
 import { AbortError } from '../../utils/errors.js'
 import { lazySchema } from '../../utils/lazySchema.js'
@@ -120,14 +119,6 @@ async function getTaskOutputData(task: TaskState): Promise<TaskOutput> {
     }
   }
 
-  if (task.type === 'remote_agent') {
-    const remoteTask = task as RemoteAgentTaskState
-    return {
-      ...baseOutput,
-      prompt: remoteTask.command,
-    }
-  }
-
   return baseOutput
 }
 
@@ -202,13 +193,13 @@ export const TaskOutputTool: Tool<InputSchema, TaskOutputToolOutput> =
     async prompt() {
       return `DEPRECATED: Prefer using the Read tool on the task's output file path instead. Background tasks return their output file path in the tool result, and you receive a <task-notification> with the same path when the task completes — Read that file directly.
 
-- Retrieves output from a running or completed task (background shell, agent, or remote session)
+- Retrieves output from a running or completed task (background shell or agent)
 - Takes a task_id parameter identifying the task
 - Returns the task output along with status information
 - Use block=true (default) to wait for task completion
 - Use block=false for non-blocking check of current status
 - Task IDs can be found using the /tasks command
-- Works with all task types: background shells, async agents, and remote sessions`
+- Works with background shells and async agents`
     },
 
     async validateInput({ task_id }, { getAppState }) {
@@ -517,27 +508,6 @@ function TaskOutputResultDisplay({
       <MessageResponse>
         <Text dimColor>Task not ready</Text>
       </MessageResponse>
-    )
-  }
-
-  // For remote agent tasks
-  if (task.task_type === 'remote_agent') {
-    return (
-      <Box flexDirection="column">
-        <Text>
-          &nbsp;&nbsp;{task.description} [{task.status}]
-        </Text>
-        {task.output && verbose && (
-          <Box paddingLeft={4} marginTop={1}>
-            <Text>{task.output}</Text>
-          </Box>
-        )}
-        {!verbose && task.output && (
-          <Text dimColor>
-            {'     '}({expandShortcut} to expand)
-          </Text>
-        )}
-      </Box>
     )
   }
 

@@ -159,36 +159,6 @@ function getServerUrl(config: McpServerConfig): string | null {
 }
 
 /**
- * via --mcp-config with URLs rewritten to route through the CCR/session-ingress
- * SHTTP proxy. The original vendor URL is preserved in the mcp_url query param
- * so the proxy knows where to forward. See api-go/ccr/internal/ccrshared/
- * mcp_url_rewriter.go and api-go/ccr/internal/mcpproxy/proxy.go.
- */
-const CCR_PROXY_PATH_MARKERS = [
-  '/v2/session_ingress/shttp/mcp/',
-  '/v2/ccr-sessions/',
-]
-
-/**
- * If the URL is a CCR proxy URL, extract the original vendor URL from the
- * mcp_url query parameter. Otherwise return the URL unchanged. This lets
- * signature-based dedup match a plugin's raw vendor URL against a connector's
- * rewritten proxy URL when both point at the same MCP server.
- */
-export function unwrapCcrProxyUrl(url: string): string {
-  if (!CCR_PROXY_PATH_MARKERS.some(m => url.includes(m))) {
-    return url
-  }
-  try {
-    const parsed = new URL(url)
-    const original = parsed.searchParams.get('mcp_url')
-    return original || url
-  } catch {
-    return url
-  }
-}
-
-/**
  * Compute a dedup signature for an MCP server config.
  * Two configs with the same signature are considered "the same server" for
  * plugin deduplication. Ignores env (plugins always inject AXIOMATE_PLUGIN_ROOT)
@@ -202,7 +172,7 @@ export function getMcpServerSignature(config: McpServerConfig): string | null {
   }
   const url = getServerUrl(config)
   if (url) {
-    return `url:${unwrapCcrProxyUrl(url)}`
+    return `url:${url}`
   }
   return null
 }

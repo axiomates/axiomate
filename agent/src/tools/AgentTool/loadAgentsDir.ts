@@ -119,7 +119,7 @@ export type BaseAgentDefinition = {
   background?: boolean // Always run as background task when spawned
   initialPrompt?: string // Prepended to the first user turn (slash commands work)
   memory?: AgentMemoryScope // Persistent memory scope
-  isolation?: 'worktree' | 'remote' // Run in an isolated git worktree, or remotely in CCR
+  isolation?: 'worktree' // Run in an isolated git worktree
   pendingSnapshotUpdate?: { snapshotTimestamp: string }
   /** Omit AXIOMATE.md hierarchy from the agent's userContext. Read-only agents
    * (Explore, Plan) don't need commit/PR/lint guidelines — the main agent has
@@ -587,9 +587,8 @@ export function parseAgentFromMarkdown(
       }
     }
 
-    type IsolationMode = 'worktree' | 'remote'
-    const VALID_ISOLATION_MODES: readonly IsolationMode[] =
-      ['worktree']
+    type IsolationMode = 'worktree'
+    const VALID_ISOLATION_MODES: readonly IsolationMode[] = ['worktree']
     const isolationRaw = frontmatter['isolation'] as string | undefined
     let isolation: IsolationMode | undefined
     if (isolationRaw !== undefined) {

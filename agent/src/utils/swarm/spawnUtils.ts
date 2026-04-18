@@ -89,10 +89,9 @@ const TEAMMATE_ENV_VARS = [
   'AXIOMATE_BASE_URL',
   // Config directory override
   'AXIOMATE_CONFIG_DIR',
-  // Upstream proxy — the parent's MITM relay is reachable from teammates
-  // (same container network). Forward the proxy vars so teammates route
-  // customer-configured upstream traffic through the relay for credential
-  // injection. Without these, teammates bypass the proxy entirely.
+  // Network proxy / custom CA settings. Tmux may not preserve these for
+  // teammate shells, but user-configured API endpoints and tools may need
+  // them to reach the same network as the parent process.
   'HTTPS_PROXY',
   'https_proxy',
   'HTTP_PROXY',

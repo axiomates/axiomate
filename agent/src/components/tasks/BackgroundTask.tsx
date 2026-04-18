@@ -5,8 +5,6 @@ import type { DeepImmutable } from '../../types/utils.js'
 import { truncate } from '../../utils/format.js'
 import { toInkColor } from '../../utils/ink.js'
 import { plural } from '../../utils/stringUtils.js'
-import { DIAMOND_FILLED, DIAMOND_OPEN } from '../../constants/figures.js'
-const RemoteSessionProgress = (_props: { session: unknown }) => null
 import { ShellProgress, TaskStatusText } from './ShellProgress.js'
 import { describeTeammateActivity } from './taskStatusUtils.js'
 
@@ -32,26 +30,6 @@ export function BackgroundTask({
           <ShellProgress shell={task} />
         </Text>
       )
-    case 'remote_agent': {
-      // Lite-review renders its own rainbow line (title + live counts),
-      // so we don't prefix the title — the rainbow already includes it.
-      if (task.isRemoteReview) {
-        return (
-          <Text>
-            <RemoteSessionProgress session={task} />
-          </Text>
-        )
-      }
-      const running = task.status === 'running' || task.status === 'pending'
-      return (
-        <Text>
-          <Text dimColor>{running ? DIAMOND_OPEN : DIAMOND_FILLED} </Text>
-          {truncate(task.title, activityLimit, true)}
-          <Text dimColor> · </Text>
-          <RemoteSessionProgress session={task} />
-        </Text>
-      )
-    }
     case 'local_agent':
       return (
         <Text>
