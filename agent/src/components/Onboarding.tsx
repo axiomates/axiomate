@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useState } from 'react'
 import {
   setupTerminal,
   shouldOfferTerminalSetup,
@@ -6,7 +6,6 @@ import {
 import { useExitOnCtrlCDWithKeybindings } from '../hooks/useExitOnCtrlCDWithKeybindings.js'
 import { Box, Link, Newline, Text, useTheme } from '../ink.js'
 import { useKeybindings } from '../keybindings/useKeybinding.js'
-import { getGlobalConfig } from '../utils/config.js'
 import { env } from '../utils/env.js'
 import { gracefulShutdown } from '../utils/gracefulShutdown.js'
 import type { ThemeSetting } from '../utils/theme.js'
@@ -100,13 +99,6 @@ export function Onboarding({ onDone }: Props): React.ReactNode {
     </Box>
   )
 
-  // Provider-setup step prepends iff the user has no models configured.
-  // Existing users never see this step.
-  const needsProviderSetup = useMemo(
-    () => Object.keys(getGlobalConfig().models ?? {}).length === 0,
-    [],
-  )
-
   const handleCancelSetup = useCallback(() => {
     // Esc from the first step (protocol picker) aborts onboarding entirely.
     // Print a short hint and exit cleanly.
@@ -115,9 +107,10 @@ export function Onboarding({ onDone }: Props): React.ReactNode {
     void gracefulShutdown(0)
   }, [])
 
-  const steps: OnboardingStep[] = []
-  if (needsProviderSetup) {
-    steps.push({
+  // Onboarding only runs on first run (gated upstream in showSetupScreens by
+  // "no models configured"), so every step here is first-run-only by construction.
+  const steps: OnboardingStep[] = [
+    {
       id: 'provider-setup',
       component: (
         <OnboardingProviderStep
@@ -125,10 +118,10 @@ export function Onboarding({ onDone }: Props): React.ReactNode {
           onCancel={handleCancelSetup}
         />
       ),
-    })
-  }
-  steps.push({ id: 'theme', component: themeStep })
-  steps.push({ id: 'security', component: securityStep })
+    },
+    { id: 'theme', component: themeStep },
+    { id: 'security', component: securityStep },
+  ]
 
   if (shouldOfferTerminalSetup()) {
     steps.push({

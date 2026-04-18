@@ -4,7 +4,6 @@ import React from 'react';
 import { gracefulShutdown, gracefulShutdownSync } from './utils/gracefulShutdown.js';
 import { setSessionTrustAccepted, setStatsStore } from './bootstrap/state.js';
 import type { Command } from './commands.js';
-import { shouldOfferTerminalSetup } from './commands/terminalSetup/terminalSetup.js';
 import { createStatsStore, type StatsStore } from './context/stats.js';
 import { getSystemContext } from './context.js';
 import { initializeTelemetryAfterTrust } from './entrypoints/init.js';
@@ -90,11 +89,10 @@ export async function renderAndRun(root: Root, element: React.ReactNode): Promis
   await gracefulShutdown(0);
 }
 export async function showSetupScreens(root: Root, _permissionMode: PermissionMode, _commands?: Command[]): Promise<boolean> {
-  const config = getGlobalConfig();
-  const needsProviderSetup = Object.keys(config.models ?? {}).length === 0;
-  const needsTheme = !config.theme;
-  const needsTerminalSetup = shouldOfferTerminalSetup();
-  if (!needsProviderSetup && !needsTheme && !needsTerminalSetup) {
+  // First-run signal: no models configured yet. Returning users skip the
+  // wizard entirely. /theme and /terminal-setup remain available as commands.
+  const isFirstRun = Object.keys(getGlobalConfig().models ?? {}).length === 0;
+  if (!isFirstRun) {
     return false;
   }
   const { Onboarding } = await import('./components/Onboarding.js');

@@ -1410,17 +1410,10 @@ function getConfig<A>(
       throw new ConfigParseError(errorMessage, file, createDefault())
     }
   } catch (error) {
-    // Handle file not found - check for backup and return default
+    // Handle file not found - silently fall through to the default config
+    // so the first-run wizard (showSetupScreens) can own the UX.
     const errCode = getErrnoCode(error)
     if (errCode === 'ENOENT') {
-      const backupPath = findMostRecentBackup(file)
-      if (backupPath) {
-        process.stderr.write(
-          `\nAxiomate configuration file not found at: ${file}\n` +
-            `A backup file exists at: ${backupPath}\n` +
-            `You can manually restore it by running: cp "${backupPath}" "${file}"\n\n`,
-        )
-      }
       return createDefault()
     }
 
