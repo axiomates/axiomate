@@ -278,7 +278,7 @@ export function getWebSocketProxyUrl(url: string): string | undefined {
  * Get fetch options for the API SDK with proxy and mTLS configuration
  * Returns fetch options with appropriate dispatcher for proxy and/or mTLS
  */
-export function getProxyFetchOptions(opts?: { forAnthropicAPI?: boolean }): {
+export function getProxyFetchOptions(): {
   tls?: TLSConfig
   dispatcher?: undici.Dispatcher
   proxy?: string

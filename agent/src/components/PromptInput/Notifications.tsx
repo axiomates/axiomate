@@ -63,7 +63,7 @@ export function Notifications({
   isNarrow = false,
 }: Props): ReactNode {
   // axiomate: each model carries its own apiKey in config.models,
-  // so the global Anthropic API key check is irrelevant when models are configured.
+  // so the global API key verification is irrelevant once any model is configured.
   const apiKeyStatus: VerificationStatus = getGlobalConfig().models ? 'valid' : rawApiKeyStatus
 
   const tokenUsage = useMemo(() => {

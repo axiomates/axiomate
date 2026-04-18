@@ -188,11 +188,11 @@ export async function buildInstallationHealthDiagnostics(): Promise<Diagnostic[]
 }
 export function buildAPIProviderProperties(): Property[] {
   const properties: Property[] = [];
-  const anthropicBaseUrl = process.env.AXIOMATE_BASE_URL;
-  if (anthropicBaseUrl) {
+  const apiBaseUrl = process.env.AXIOMATE_BASE_URL;
+  if (apiBaseUrl) {
     properties.push({
       label: 'API base URL',
-      value: anthropicBaseUrl
+      value: apiBaseUrl
     });
   }
   const proxyUrl = getProxyUrl();
