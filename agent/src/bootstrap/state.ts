@@ -62,7 +62,6 @@ type State = {
   // tool_results.
   strictToolResultPairing: boolean
   sdkAgentProgressSummariesEnabled: boolean
-  userMsgOptIn: boolean
   clientType: string
   sessionSource: string | undefined
   questionPreviewFormat: 'markdown' | 'html' | undefined
@@ -249,7 +248,6 @@ function getInitialState(): State {
     isInteractive: false,
     strictToolResultPairing: false,
     sdkAgentProgressSummariesEnabled: false,
-    userMsgOptIn: false,
     clientType: 'cli',
     sessionSource: undefined,
     questionPreviewFormat: undefined,
@@ -973,16 +971,6 @@ export function getStrictToolResultPairing(): boolean {
 
 export function setStrictToolResultPairing(value: boolean): void {
   STATE.strictToolResultPairing = value
-}
-
-// Field name 'userMsgOptIn' avoids excluded-string substrings ('BriefTool',
-// 'SendUserMessage' — case-insensitive). All callers are inside feature()
-export function getUserMsgOptIn(): boolean {
-  return STATE.userMsgOptIn
-}
-
-export function setUserMsgOptIn(value: boolean): void {
-  STATE.userMsgOptIn = value
 }
 
 export function getSessionSource(): string | undefined {

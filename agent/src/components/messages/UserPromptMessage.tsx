@@ -31,23 +31,6 @@ export function UserPromptMessage({
   isTranscriptMode,
   timestamp
 }: Props): React.ReactNode {
-  // REPL.tsx passes isBriefOnly={viewedTeammateTask ? false : isBriefOnly}
-  // but that prop isn't threaded this deep — replicate the override by
-  // reading viewingAgentTaskId directly. Computed here (not in the child)
-  // so the parent Box can drop its backgroundColor: in brief mode the
-  // child renders a label-style layout, and Box backgroundColor paints
-  // behind children unconditionally (they can't opt out).
-  //
-  // Hooks stay INSIDE feature() ternaries so external builds don't pay
-  // the per-scrollback-message store subscription (useSyncExternalStore
-  // bypasses React.memo). Runtime-gated like isBriefEnabled() but inlined
-  // to avoid pulling BriefTool.ts → prompt.ts tool-name strings into
-  // external builds.
-  const isBriefOnly = false;
-  const viewingAgentTaskId = null;
-  const briefEnvEnabled = false;
-  const useBriefLayout = false;
-
   // Truncate before the early return so the hook order is stable.
   const displayText = useMemo(() => {
     if (text.length <= MAX_DISPLAY_CHARS) return text;
@@ -61,7 +44,7 @@ export function UserPromptMessage({
     logError(new Error('No content found in user prompt message'));
     return null;
   }
-  return <Box flexDirection="column" marginTop={addMargin ? 1 : 0} backgroundColor={isSelected ? 'messageActionsBackground' : useBriefLayout ? undefined : 'userMessageBackground'} paddingRight={useBriefLayout ? 0 : 1}>
-      <HighlightedThinkingText text={displayText} useBriefLayout={useBriefLayout} timestamp={useBriefLayout ? timestamp : undefined} />
+  return <Box flexDirection="column" marginTop={addMargin ? 1 : 0} backgroundColor={isSelected ? 'messageActionsBackground' : 'userMessageBackground'} paddingRight={1}>
+      <HighlightedThinkingText text={displayText} />
     </Box>;
 }

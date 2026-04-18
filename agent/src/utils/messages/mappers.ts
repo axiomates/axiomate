@@ -136,8 +136,8 @@ export function toSDKMessages(messages: Message[]): SDKMessage[] {
             isSynthetic: message.isMeta || message.isVisibleInTranscriptOnly,
             // Structured tool output (not the string content sent to the
             // model — the full Output object). Rides the protobuf catchall
-            // so web viewers can read things like BriefTool's file_uuid
-            // without it polluting model context.
+            // so web viewers can read structured fields without them
+            // polluting model context.
             ...(message.toolUseResult !== undefined
               ? { tool_use_result: message.toolUseResult }
               : {}),

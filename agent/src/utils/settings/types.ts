@@ -709,16 +709,6 @@ export const SettingsSchema = lazySchema(() =>
         .boolean()
         .optional()
         .describe('Enable voice mode (hold-to-talk dictation)'),
-      ...(false
-        ? {
-            defaultView: z
-              .enum(['chat', 'transcript'])
-              .optional()
-              .describe(
-                'Default transcript view: chat (SendUserMessage checkpoints only) or transcript (full)',
-              ),
-          }
-        : {}),
       prefersReducedMotion: z
         .boolean()
         .optional()

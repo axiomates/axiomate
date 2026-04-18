@@ -285,12 +285,6 @@ function PromptInput({
   const viewSelectionMode = useAppState(s => s.viewSelectionMode);
   const showSpinnerTree = useAppState(s => s.expandedView) === 'teammates';
   const companionFooterVisible = false;
-  // Brief mode: BriefSpinner/BriefIdleStatus own the 2-row footprint above
-  // the input. Dropping marginTop here lets the spinner sit flush against
-  // the input bar. viewingAgentTaskId mirrors the gate on both (Spinner.tsx,
-  // REPL.tsx) — teammate view falls back to SpinnerWithVerbInner which has
-  // its own marginTop, so the gap stays even without ours.
-  const briefOwnsGap = false;
   const mainLoopModel_ = useAppState(s => s.mainLoopModel);
   const mainLoopModelForSession = useAppState(s => s.mainLoopModelForSession);
   const thinkingEnabled = useAppState(s => s.thinkingEnabled);
@@ -1667,7 +1661,7 @@ function PromptInput({
   // Show effort notification on startup and when effort changes.
   // Suppressed in brief/assistant mode — the value reflects the local
   // client's effort, not the connected agent's.
-  const effortNotificationText = briefOwnsGap ? undefined : getEffortNotificationText(effortValue, mainLoopModel);
+  const effortNotificationText = getEffortNotificationText(effortValue, mainLoopModel);
   useEffect(() => {
     if (!effortNotificationText) {
       removeNotification('effort-level');
@@ -1884,7 +1878,7 @@ function PromptInput({
       </Box>;
   }
   const textInputElement = isVimModeEnabled() ? <VimTextInput {...baseProps} initialMode={vimMode} onModeChange={setVimMode} /> : <TextInput {...baseProps} />;
-  return <Box flexDirection="column" marginTop={briefOwnsGap ? 0 : 1}>
+  return <Box flexDirection="column" marginTop={1}>
       {!isFullscreenEnvEnabled() && <PromptInputQueuedCommands />}
       {hasSuppressedDialogs && <Box marginTop={1} marginLeft={2}>
           <Text dimColor>Waiting for permission…</Text>
@@ -1920,19 +1914,15 @@ function PromptInput({
     // doesn't shift when a notification appears/disappears. Yoga
     // anchors absolute children at the parent's content-box origin;
     // marginTop=-1 pulls it into the marginTop=1 gap row above the
-    // prompt border. In brief mode there is no such gap (briefOwnsGap
-    // strips our marginTop) and BriefSpinner sits flush against the
-    // border — marginTop=-2 skips over the spinner content into
-    // BriefSpinner's own marginTop=1 blank row. height=1 +
-    // overflow=hidden clips multi-line notifications to a single row.
-    // flex-end anchors the bottom line so the visible row is always
-    // the most recent. Suppressed while the slash overlay or
-    // auto-mode opt-in dialog is up by height=0 (NOT unmount) — this
-    // Box renders later in tree order so it would paint over their
-    // bottom row. Keeping Notifications mounted prevents AutoUpdater's
-    // initial-check effect from re-firing on every slash-completion
-    // toggle (PR#22413).
-    <Box position="absolute" marginTop={briefOwnsGap ? -2 : -1} height={suggestions.length === 0 ? 1 : 0} width="100%" paddingLeft={2} paddingRight={1} flexDirection="column" justifyContent="flex-end" overflow="hidden">
+    // prompt border. height=1 + overflow=hidden clips multi-line
+    // notifications to a single row. flex-end anchors the bottom line
+    // so the visible row is always the most recent. Suppressed while
+    // the slash overlay or auto-mode opt-in dialog is up by height=0
+    // (NOT unmount) — this Box renders later in tree order so it would
+    // paint over their bottom row. Keeping Notifications mounted
+    // prevents AutoUpdater's initial-check effect from re-firing on
+    // every slash-completion toggle (PR#22413).
+    <Box position="absolute" marginTop={-1} height={suggestions.length === 0 ? 1 : 0} width="100%" paddingLeft={2} paddingRight={1} flexDirection="column" justifyContent="flex-end" overflow="hidden">
           <Notifications apiKeyStatus={apiKeyStatus} autoUpdaterResult={autoUpdaterResult} debug={debug} isAutoUpdating={isAutoUpdating} verbose={verbose} messages={messages} onAutoUpdaterResult={onAutoUpdaterResult} onChangeIsUpdating={setIsAutoUpdating} ideSelection={ideSelection} mcpClients={mcpClients} isInputWrapped={isInputWrapped} />
         </Box> : null}
     </Box>;

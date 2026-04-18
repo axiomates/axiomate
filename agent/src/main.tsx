@@ -54,7 +54,7 @@ const coordinatorModeModule = require('./coordinator/coordinatorMode.js') as typ
 /* eslint-enable @typescript-eslint/no-require-imports */
 import { relative, resolve } from 'path';
 import { isAnalyticsDisabled } from './services/analytics/config.js';
-import { getInitialMainLoopModel, getIsNonInteractiveSession, getOriginalCwd, getSdkBetas, getUserMsgOptIn, setAdditionalDirectoriesForAxiomateMd, setAllowedSettingSources, setClientType, setCwdState, setFlagSettingsPath, setInitialMainLoopModel, setInlinePlugins, setIsInteractive, setMainLoopModelOverride, setMainThreadAgentType, setQuestionPreviewFormat, setSdkBetas, setSessionBypassPermissionsMode, setSessionPersistenceDisabled, setUserMsgOptIn } from './bootstrap/state.js';
+import { getInitialMainLoopModel, getIsNonInteractiveSession, getOriginalCwd, getSdkBetas, setAdditionalDirectoriesForAxiomateMd, setAllowedSettingSources, setClientType, setCwdState, setFlagSettingsPath, setInitialMainLoopModel, setInlinePlugins, setIsInteractive, setMainLoopModelOverride, setMainThreadAgentType, setQuestionPreviewFormat, setSdkBetas, setSessionBypassPermissionsMode, setSessionPersistenceDisabled } from './bootstrap/state.js';
 import { getCommands } from './commands.js';
 import type { StatsStore } from './context/stats.js';
 import { launchInvalidSettingsDialog, launchResumeChooser } from './dialogLaunchers.js';
@@ -82,7 +82,7 @@ import { safeParseJSON } from './utils/json.js';
 import { logError } from './utils/log.js';
 import { getDefaultMainLoopModel, getUserSpecifiedModelSetting, normalizeModelStringForAPI, parseUserSpecifiedModel } from './utils/model/model.js';
 import { PERMISSION_MODES } from './utils/permissions/PermissionMode.js';
-import { initializeToolPermissionContext, initialPermissionModeFromCLI, parseToolListFromCLI } from './utils/permissions/permissionSetup.js';
+import { initializeToolPermissionContext, initialPermissionModeFromCLI } from './utils/permissions/permissionSetup.js';
 import { cleanupOrphanedPluginVersionsInBackground } from './utils/plugins/cacheUtils.js';
 import { initializeVersionedPlugins } from './utils/plugins/installedPluginsManager.js';
 import { getManagedPluginNames } from './utils/plugins/managedPlugins.js';
@@ -646,12 +646,6 @@ async function run(): Promise<CommanderCommand> {
     if (prompt && typeof prompt === 'string' && !/\s/.test(prompt) && prompt.length > 0) {
     }
 
-    // Assistant mode: when .axiomate/settings.json has assistant: true AND
-    // mode is left to the user — settings defaultMode or --permission-mode
-    // apply as normal. REPL-typed messages already default to 'next'
-    // priority (messageQueueManager.enqueue) so they drain mid-turn between
-    // tool calls. SendUserMessage (BriefTool) is enabled via the brief env
-    // var. SleepTool stays disabled.
     const {
       debug = false,
       debugToStderr = false,
@@ -984,28 +978,6 @@ async function run(): Promise<CommanderCommand> {
 
     // Store additional directories for AXIOMATE.md loading (controlled by env var)
     setAdditionalDirectoriesForAxiomateMd(addDir);
-
-    // SDK opt-in for SendUserMessage via --tools. All sessions require
-    // explicit opt-in; listing it in --tools signals intent. Runs BEFORE
-    // initializeToolPermissionContext so getToolsForDefaultPreset() sees
-    // the tool as enabled when computing the base-tools disallow filter.
-    // Conditional require avoids leaking the tool-name string into
-    // external builds.
-    if ((false) && baseTools.length > 0) {
-      /* eslint-disable @typescript-eslint/no-require-imports */
-      const {
-        BRIEF_TOOL_NAME,
-        LEGACY_BRIEF_TOOL_NAME
-      } = require('./tools/BriefTool/prompt.js') as typeof import('./tools/BriefTool/prompt.js');
-      const {
-        isBriefEntitled
-      } = require('./tools/BriefTool/BriefTool.js') as typeof import('./tools/BriefTool/BriefTool.js');
-      /* eslint-enable @typescript-eslint/no-require-imports */
-      const parsed = parseToolListFromCLI(baseTools);
-      if ((parsed.includes(BRIEF_TOOL_NAME) || parsed.includes(LEGACY_BRIEF_TOOL_NAME)) && isBriefEntitled()) {
-        setUserMsgOptIn(true);
-      }
-    }
 
     // This await replaces blocking existsSync/statSync calls that were already in
     // the startup path. Wall-clock time is unchanged; we just yield to the event
@@ -1402,25 +1374,6 @@ async function run(): Promise<CommanderCommand> {
         }
       } else {
         logForDebugging(`[teammate] Custom agent ${storedTeammateOpts.agentType} not found in available agents`);
-      }
-    }
-    maybeActivateBrief(options);
-    // defaultView: 'chat' is a persisted opt-in — check entitlement and set
-    // userMsgOptIn so the tool + prompt section activate. Interactive-only:
-    // defaultView is a display preference; SDK sessions have no display, and
-    // the assistant installer writes defaultView:'chat' to settings.local.json
-    // which would otherwise leak into --print sessions in the same directory.
-    // Runs right after maybeActivateBrief() so all startup opt-in paths fire
-    // BEFORE any isBriefEnabled() read below. A persisted 'chat' after a GB kill-switch falls
-    // through (entitlement fails).
-    if ((false) && !getIsNonInteractiveSession() && !getUserMsgOptIn() && getInitialSettings().defaultView === 'chat') {
-      /* eslint-disable @typescript-eslint/no-require-imports */
-      const {
-        isBriefEntitled
-      } = require('./tools/BriefTool/BriefTool.js') as typeof import('./tools/BriefTool/BriefTool.js');
-      /* eslint-enable @typescript-eslint/no-require-imports */
-      if (isBriefEntitled()) {
-        setUserMsgOptIn(true);
       }
     }
     // Ink root is only needed for interactive sessions — patchConsole in the
@@ -1849,9 +1802,6 @@ async function run(): Promise<CommanderCommand> {
       ...toolPermissionContext,
       mode: isAgentSwarmsEnabled() && getTeammateUtils().isPlanModeRequired() ? 'plan' as const : toolPermissionContext.mode
     };
-    // All startup opt-in paths (--tools, --brief, defaultView) have fired
-    // above; initialIsBriefOnly just reads the resulting state.
-    const initialIsBriefOnly = false;
     const initialState: AppState = {
       settings: getInitialSettings(),
       tasks: {},
@@ -1859,7 +1809,6 @@ async function run(): Promise<CommanderCommand> {
       verbose: verbose ?? getGlobalConfig().verbose ?? false,
       mainLoopModel: initialMainLoopModel,
       mainLoopModelForSession: null,
-      isBriefOnly: initialIsBriefOnly,
       expandedView: getGlobalConfig().showSpinnerTree ? 'teammates' : getGlobalConfig().showExpandedTodos ? 'tasks' : 'none',
       showTeammateMessagePreview: isAgentSwarmsEnabled() ? false : undefined,
       selectedIPAgentIndex: -1,
@@ -2008,7 +1957,6 @@ async function run(): Promise<CommanderCommand> {
         if (loaded.restoredAgentDef) {
           mainThreadAgentDefinition = loaded.restoredAgentDef;
         }
-        maybeActivateBrief(options);
         resumeSucceeded = true;
         await launchRepl(root, {
           getFpsMetrics,
@@ -2103,7 +2051,6 @@ async function run(): Promise<CommanderCommand> {
       // If we have a processed resume, render the REPL
       const resumeData = processedResume;
       if (resumeData) {
-        maybeActivateBrief(options);
         await launchRepl(root, {
           getFpsMetrics,
           stats,
@@ -2138,7 +2085,6 @@ async function run(): Promise<CommanderCommand> {
       // the first API call so the model always sees hook context.
       const pendingHookMessages = hooksPromise && hookMessages.length === 0 ? hooksPromise : undefined;
       profileCheckpoint('action_after_hooks');
-      maybeActivateBrief(options);
       // Persist the current mode for fresh sessions so future resumes know what mode was used
       saveMode(coordinatorModeModule.isCoordinatorMode() ? 'coordinator' : 'normal');
 
@@ -2492,9 +2438,6 @@ async function logTenguInit({
   } catch (error) {
     logError(error);
   }
-}
-function maybeActivateBrief(_options: unknown): void {
-  // brief feature not available in this build
 }
 function resetCursor() {
   const terminal = process.stderr.isTTY ? process.stderr : process.stdout.isTTY ? process.stdout : undefined;

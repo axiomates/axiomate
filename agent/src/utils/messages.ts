@@ -3045,9 +3045,7 @@ Read the team config to discover your teammates' names. Check the task list peri
 
       // Only hide from the transcript if the queued command was itself
       // system-generated. Human input drained mid-turn has no origin and no
-      // QueuedCommand.isMeta — it should stay visible. Previously this
-      // hardcoded isMeta:true, which hid user-typed messages in brief mode
-      // (filterForBriefTool) and in normal mode (shouldShowUserMessage).
+      // QueuedCommand.isMeta — it should stay visible.
       const metaProp =
         origin !== undefined || attachment.isMeta
           ? ({ isMeta: true } as const)

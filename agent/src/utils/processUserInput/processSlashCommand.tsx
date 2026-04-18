@@ -80,11 +80,8 @@ async function executeForkedSlashCommand(command: CommandBase & PromptCommand, a
   // agent turn) cycles blocking user input. With this, N subagents run in
   // parallel and results trickle into the queue as they finish.
   //
-  // depends on assistant-mode invariants: scheduled_tasks.json exists,
-  // the main agent knows to pipe results through SendUserMessage, and
-  // isMeta prompts are hidden. Outside assistant mode, context:fork commands
-  // are user-invoked skills (/commit etc.) that should run synchronously
-  // with the progress UI.
+  // Outside assistant mode, context:fork commands are user-invoked skills
+  // (/commit etc.) that should run synchronously with the progress UI.
 
   // Collect messages from the forked agent
   const agentMessages: Message[] = [];

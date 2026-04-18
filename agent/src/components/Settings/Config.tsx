@@ -77,7 +77,6 @@ import {
   getSettingsForSource,
   updateSettingsForSource,
 } from '../../utils/settings/settings.js'
-import { getUserMsgOptIn, setUserMsgOptIn } from '../../bootstrap/state.js'
 import { DEFAULT_OUTPUT_STYLE_NAME } from '../../constants/outputStyles.js'
 import { isEnvTruthy } from '../../utils/envUtils.js'
 import type {
@@ -183,11 +182,6 @@ export function Config({
   const verbose = useAppState(s => s.verbose)
   const thinkingEnabled = useAppState(s => s.thinkingEnabled)
   const promptSuggestionEnabled = useAppState(s => s.promptSuggestionEnabled)
-  // Chat/Transcript view picker is visible to entitled users (pass the GB
-  // gate) even if they haven't opted in this session — it IS the persistent
-  // opt-in. 'chat' written here is read at next startup by main.tsx which
-  // sets userMsgOptIn if still entitled.
-  const showDefaultViewPicker = false
   const setAppState = useSetAppState()
   const [changes, setChanges] = useState<{ [key: string]: unknown }>({})
   const initialThinkingEnabled = React.useRef(thinkingEnabled)
@@ -214,16 +208,9 @@ export function Config({
       verbose: s.verbose,
       thinkingEnabled: s.thinkingEnabled,
       promptSuggestionEnabled: s.promptSuggestionEnabled,
-      isBriefOnly: s.isBriefOnly,
       settings: s.settings,
     }
   })
-  // Bootstrap state snapshot — userMsgOptIn is outside AppState, so
-  // revertChanges needs to restore it separately. Without this, cycling
-  // defaultView to 'chat' then Escape leaves the tool active while the
-  // display filter reverts — the exact ambient-activation behavior this
-  // PR's entitlement/opt-in split is meant to prevent.
-  const [initialUserMsgOptIn] = useState(() => getUserMsgOptIn())
   // Set on first user-visible change; gates revertChanges() on Escape so
   // opening-then-closing doesn't trigger redundant disk writes.
   const isDirty = React.useRef(false)
@@ -550,42 +537,6 @@ export function Config({
       type: 'managedEnum' as const,
       onChange: () => {}, // handled by OutputStylePicker submenu
     },
-    ...(showDefaultViewPicker
-      ? [
-          {
-            id: 'defaultView',
-            label: 'What you see by default',
-            // 'default' means the setting is unset — currently resolves to
-            // transcript (main.tsx falls through when defaultView !== 'chat').
-            // String() narrows the conditional-schema-spread union to string.
-            value:
-              settingsData?.defaultView === undefined
-                ? 'default'
-                : String(settingsData.defaultView),
-            options: ['transcript', 'chat', 'default'],
-            type: 'enum' as const,
-            onChange(selected: string) {
-              const defaultView =
-                selected === 'default'
-                  ? undefined
-                  : (selected as 'chat' | 'transcript')
-              updateSettingsForSource('localSettings', { defaultView })
-              setSettingsData(prev => ({ ...prev, defaultView }))
-              const nextBrief = defaultView === 'chat'
-              setAppState(prev => {
-                if (prev.isBriefOnly === nextBrief) return prev
-                return { ...prev, isBriefOnly: nextBrief }
-              })
-              // Keep userMsgOptIn in sync so the tool list follows the view.
-              // Two-way now (same as /brief) — accepting a cache invalidation
-              // is better than leaving the tool on after switching away.
-              // Reverted on Escape via initialUserMsgOptIn snapshot.
-              setUserMsgOptIn(nextBrief)
-              setChanges(prev => ({ ...prev, 'Default view': selected }))
-            },
-          },
-        ]
-      : []),
     {
       id: 'language',
       label: 'Language',
@@ -960,7 +911,6 @@ export function Config({
     updateSettingsForSource('localSettings', {
       spinnerTipsEnabled: il?.spinnerTipsEnabled,
       prefersReducedMotion: il?.prefersReducedMotion,
-      defaultView: il?.defaultView,
       outputStyle: il?.outputStyle,
     })
     const iu = initialUserSettings
@@ -993,22 +943,14 @@ export function Config({
       verbose: ia.verbose,
       thinkingEnabled: ia.thinkingEnabled,
       promptSuggestionEnabled: ia.promptSuggestionEnabled,
-      isBriefOnly: ia.isBriefOnly,
       settings: ia.settings,
     }))
-    // Bootstrap state: restore userMsgOptIn. Only touched by the defaultView
-    // onChange above, so no feature() guard needed here (that path only
-    // exists when showDefaultViewPicker is true).
-    if (getUserMsgOptIn() !== initialUserMsgOptIn) {
-      setUserMsgOptIn(initialUserMsgOptIn)
-    }
   }, [
     themeSetting,
     setTheme,
     initialLocalSettings,
     initialUserSettings,
     initialAppState,
-    initialUserMsgOptIn,
     setAppState,
   ])
 

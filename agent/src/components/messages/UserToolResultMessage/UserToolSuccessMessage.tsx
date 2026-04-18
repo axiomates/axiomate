@@ -30,7 +30,6 @@ export function UserToolSuccessMessage({
   isTranscriptMode
 }: Props): React.ReactNode {
   const [theme] = useTheme();
-  const isBriefOnly = false;
 
   if (!message.toolUseResult || !tool) {
     return null;
@@ -51,7 +50,6 @@ export function UserToolSuccessMessage({
     tools,
     verbose,
     isTranscriptMode,
-    isBriefOnly,
     input: lookups.toolUseByToolUseID.get(toolUseID)?.input
   }) ?? null;
 

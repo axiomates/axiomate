@@ -210,7 +210,6 @@ function NotificationContent({
   const voiceState = useVoiceState(s => s.voiceState)
   const voiceEnabled = useVoiceEnabled()
   const voiceError = useVoiceState(s => s.voiceError)
-  const isBriefOnly = false
 
   // When voice is actively recording or processing, replace all
   // notifications with just the voice indicator.
@@ -259,9 +258,7 @@ function NotificationContent({
           </Text>
         </Box>
       )}
-      {!isBriefOnly && (
-        <TokenWarning tokenUsage={tokenUsage} model={mainLoopModel} />
-      )}
+      <TokenWarning tokenUsage={tokenUsage} model={mainLoopModel} />
       {shouldShowAutoUpdater && (
         <AutoUpdaterWrapper
           verbose={verbose}

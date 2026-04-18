@@ -83,8 +83,6 @@ export function GlobalKeybindingHandlers({
   }, [expandedView, setAppState]);
 
   // Toggle transcript mode (ctrl+o). Two-way prompt ↔ transcript.
-  // Brief view has its own dedicated toggle on ctrl+shift+b.
-  const isBriefOnly = false;
   const handleToggleTranscript = useCallback(() => {
     const isEnteringTranscript = screen !== 'transcript';
     setScreen(s_1 => s_1 === 'transcript' ? 'prompt' : 'transcript');
@@ -95,7 +93,7 @@ export function GlobalKeybindingHandlers({
     if (!isEnteringTranscript && onExitTranscript) {
       onExitTranscript();
     }
-  }, [screen, setScreen, isBriefOnly, showAllInTranscript, setShowAllInTranscript, messageCount, setAppState, onEnterTranscript, onExitTranscript]);
+  }, [screen, setScreen, showAllInTranscript, setShowAllInTranscript, messageCount, setAppState, onEnterTranscript, onExitTranscript]);
 
   // Toggle showing all messages in transcript mode (ctrl+e)
   const handleToggleShowAll = useCallback(() => {

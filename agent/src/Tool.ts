@@ -556,7 +556,6 @@ export type Tool<
       tools: Tools
       verbose: boolean
       isTranscriptMode?: boolean
-      isBriefOnly?: boolean
       /** Original tool_use input, when available. Useful for compact result
        * summaries that reference what was requested (e.g. "Sent to #foo"). */
       input?: unknown

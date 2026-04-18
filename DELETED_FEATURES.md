@@ -54,10 +54,10 @@ Features that served real user value and got removed only because they were tang
 
 ### A5. /brief command (brief-only output mode)
 
-- **What it did:** Toggles a mode where the model uses a dedicated `BriefTool` for all user-facing output; plain text outside the tool is hidden. Targeted at IDE/cowork UI embedders that want structured responses only.
-- **Why cut:** `isEnabled: () => false` hard gate on the command; entitlement check `isBriefEntitled()` gated on an Anthropic-internal GrowthBook config that no longer resolves. The `BriefTool` itself is still registered.
-- **Removed in:** Group 1 — [commands/brief.ts](agent/src/commands/brief.ts) (file deleted).
-- **Rebuild cost:** Very low. `BriefTool` and `isBriefOnly` app state are still live. Rebuild = re-add a `commands/brief.ts` with `isEnabled: () => true` and no entitlement check.
+- **What it did:** Toggles a mode where the model uses a dedicated `BriefTool` (`SendUserMessage`) for all user-facing output; plain text outside the tool is hidden. Targeted at IDE/cowork UI embedders that want structured responses only.
+- **Why cut:** Tied to Anthropic's KAIROS / assistant-mode subsystem behind a GrowthBook gate; doesn't fit axiomate's CLI multi-provider mission. The `commands/brief.ts` entry point was removed first; subsequent cleanup stripped the `BriefTool` itself, the `isBriefOnly` app state, the `defaultView` settings picker, and all `false ? ... : false` DCE stubs.
+- **Removed in:** Group 1 — [commands/brief.ts](agent/src/commands/brief.ts) (entry point); follow-up — `agent/src/tools/BriefTool/`, `isBriefOnly` state, Config defaultView picker, settings.types `defaultView`, and stub references in `conversationRecovery.ts`, `ToolSearchTool/prompt.ts`, `permissionRuleParser.ts`.
+- **Rebuild cost:** Low. `BriefTool` and `isBriefOnly` are gone — rebuild from scratch as a fresh `commands/brief.ts` + `BriefTool` registered in `agent/src/tools.ts`, plus a chat-style filter in `Messages.tsx`. Look at git history before the cleanup commit for the previous shape.
 - **Provider-neutral:** Yes.
 
 ### A6. /privacy-settings command

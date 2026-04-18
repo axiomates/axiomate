@@ -66,9 +66,6 @@ export type Theme = {
   memoryBackgroundColor: string
   rate_limit_fill: string
   rate_limit_empty: string
-  // Brief/assistant mode label colors
-  briefLabelYou: string
-  briefLabelAssistant: string
   // Rainbow colors for ultrathink keyword highlighting
   rainbow_red: string
   rainbow_orange: string
@@ -167,9 +164,6 @@ const lightTheme: Theme = {
   memoryBackgroundColor: 'rgb(230, 245, 250)',
   rate_limit_fill: 'rgb(87,105,247)', // Medium blue
   rate_limit_empty: 'rgb(39,47,111)', // Dark blue
-  // Brief/assistant mode
-  briefLabelYou: 'rgb(37,99,235)', // Blue
-  briefLabelAssistant: 'rgb(135,206,235)', // Axiomate sky blue
   rainbow_red: 'rgb(235,95,87)',
   rainbow_orange: 'rgb(245,139,87)',
   rainbow_yellow: 'rgb(250,195,95)',
@@ -247,8 +241,6 @@ const lightAnsiTheme: Theme = {
   memoryBackgroundColor: 'ansi:white',
   rate_limit_fill: 'ansi:yellow',
   rate_limit_empty: 'ansi:black',
-  briefLabelYou: 'ansi:blue',
-  briefLabelAssistant: 'ansi:cyanBright',
   rainbow_red: 'ansi:red',
   rainbow_orange: 'ansi:redBright',
   rainbow_yellow: 'ansi:yellow',
@@ -326,8 +318,6 @@ const darkAnsiTheme: Theme = {
   memoryBackgroundColor: 'ansi:blackBright',
   rate_limit_fill: 'ansi:yellow',
   rate_limit_empty: 'ansi:white',
-  briefLabelYou: 'ansi:blueBright',
-  briefLabelAssistant: 'ansi:cyanBright',
   rainbow_red: 'ansi:red',
   rainbow_orange: 'ansi:redBright',
   rainbow_yellow: 'ansi:yellow',
@@ -405,8 +395,6 @@ const lightDaltonizedTheme: Theme = {
   memoryBackgroundColor: 'rgb(230, 245, 250)',
   rate_limit_fill: 'rgb(51,102,255)', // Bright blue
   rate_limit_empty: 'rgb(23,46,114)', // Dark blue
-  briefLabelYou: 'rgb(37,99,235)', // Blue
-  briefLabelAssistant: 'rgb(135,206,235)', // Axiomate sky blue
   rainbow_red: 'rgb(235,95,87)',
   rainbow_orange: 'rgb(245,139,87)',
   rainbow_yellow: 'rgb(250,195,95)',
@@ -484,8 +472,6 @@ const darkTheme: Theme = {
   memoryBackgroundColor: 'rgb(55, 65, 70)',
   rate_limit_fill: 'rgb(177,185,249)', // Light blue-purple
   rate_limit_empty: 'rgb(80,83,112)', // Medium blue-purple
-  briefLabelYou: 'rgb(122,180,232)', // Light blue
-  briefLabelAssistant: 'rgb(135,206,235)', // Axiomate sky blue
   rainbow_red: 'rgb(235,95,87)',
   rainbow_orange: 'rgb(245,139,87)',
   rainbow_yellow: 'rgb(250,195,95)',
@@ -563,8 +549,6 @@ const darkDaltonizedTheme: Theme = {
   memoryBackgroundColor: 'rgb(55, 65, 70)',
   rate_limit_fill: 'rgb(153,204,255)', // Light blue
   rate_limit_empty: 'rgb(69,92,115)', // Dark blue
-  briefLabelYou: 'rgb(122,180,232)', // Light blue
-  briefLabelAssistant: 'rgb(135,206,235)', // Axiomate sky blue
   rainbow_red: 'rgb(235,95,87)',
   rainbow_orange: 'rgb(245,139,87)',
   rainbow_yellow: 'rgb(250,195,95)',
