@@ -1326,17 +1326,23 @@ async function run(): Promise<CommanderCommand> {
           `Docs: ${chalk.underline('https://github.com/axiomates/axiomate#configuration')}\n`,
         )
         process.exit(0)
+      } else if (!_cfg.currentModel) {
+        // Models are configured but no currentModel selected — auto-pick the
+        // first model key, persist it, print a one-line notice, and continue.
+        const _firstKey = _modelKeys[0]!
+        saveGlobalConfig(current => ({ ...current, currentModel: _firstKey }))
+        console.log(
+          chalk.dim(
+            `ℹ  No "currentModel" set; using ${chalk.cyan(`"${_firstKey}"`)} (first entry in models). Set "currentModel" in ${chalk.underline(configPath)} to choose a different one.`,
+          ),
+        )
       } else if (!_hasValidCurrent) {
-        // Models are configured, but currentModel is missing or points at a
-        // non-existent key. Don't auto-pick — surface the misconfig.
+        // currentModel is set but points at a key that isn't in models —
+        // typo/misconfig that requires a human edit. Don't auto-pick.
         console.log(chalk.bold.yellow('\n⚠  No active model selected.\n'))
-        if (!_cfg.currentModel) {
-          console.log('Your config has models defined, but no "currentModel" set.\n')
-        } else {
-          console.log(
-            `Your "currentModel" is ${chalk.cyan(`"${_cfg.currentModel}"`)} but that key does not exist in "models".\n`,
-          )
-        }
+        console.log(
+          `Your "currentModel" is ${chalk.cyan(`"${_cfg.currentModel}"`)} but that key does not exist in "models".\n`,
+        )
         console.log(`Config file: ${chalk.underline(configPath)}\n`)
         console.log('Edit the file and set:')
         console.log(chalk.cyan(`  "currentModel": "<one-of-the-keys-below>"\n`))
