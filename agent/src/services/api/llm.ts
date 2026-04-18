@@ -56,8 +56,6 @@ import {
   ensureToolResultPairing,
   normalizeContentFromAPI,
   normalizeMessagesForAPI,
-  stripCallerFieldFromAssistantMessage,
-  stripToolReferenceBlocksFromUserMessage,
 } from '../../utils/messages.js'
 import {
   getDefaultMainLoopModel,
@@ -130,7 +128,6 @@ import {
 import {
   logEvent,
 } from '../analytics/index.js'
-import { getInitializationStatus } from '../lsp/manager.js'
 import { isToolFromMcpServer } from '../mcp/utils.js'
 import { withStreamingVCR, withVCR } from '../vcr.js'
 import {
@@ -553,19 +550,6 @@ export async function* queryModelWithStreaming({
 }
 
 /**
- * Determines if an LSP tool should be deferred (tool appears with defer_loading: true)
- * because LSP initialization is not yet complete.
- */
-function shouldDeferLspTool(tool: Tool): boolean {
-  if (!('isLsp' in tool) || !tool.isLsp) {
-    return false
-  }
-  const status = getInitializationStatus()
-  // Defer when pending or not started
-  return status.status === 'pending' || status.status === 'not-started'
-}
-
-/**
  * Per-attempt timeout for non-streaming fallback requests, in milliseconds.
  * Reads API_TIMEOUT_MS when set so slow backends and the streaming path
  * share the same ceiling.
@@ -662,14 +646,14 @@ async function* queryModel(
     useToolSearch = false
   }
 
-  // Filter out ToolSearchTool if tool search is not enabled for this model
-  // ToolSearchTool returns tool_reference blocks which unsupported models can't handle
+  // Filter out ToolSearchTool if tool search is not enabled
   let filteredTools: Tools
 
   if (useToolSearch) {
-    // Dynamic tool loading: Only include deferred tools that have been discovered
-    // via tool_reference blocks in the message history. This eliminates the need
-    // to predeclare all deferred tools upfront and removes limits on tool quantity.
+    // Dynamic tool loading: only include deferred tools that ToolSearchTool
+    // has already surfaced in the message history. This removes the need to
+    // predeclare every deferred tool schema upfront, and with it the practical
+    // limit on tool quantity.
     const discoveredToolNames = extractDiscoveredToolNames(messages)
 
     filteredTools = tools.filter(tool => {
@@ -686,16 +670,10 @@ async function* queryModel(
     )
   }
 
-  // Config-driven models (OpenAI etc.) don't support API-level defer_loading,
-  // but still use application-layer filtering (don't send deferred tool schemas).
-  const isConfigModel = getGlobalConfig().models?.[options.model] != null
-  const willDefer = (t: Tool) =>
-    useToolSearch && !isConfigModel && (deferredToolNames.has(t.name) || shouldDeferLspTool(t))
-
   // Global cache scope is unused — axiomate always uses 'none'.
   const globalCacheStrategy: GlobalCacheStrategy = 'none'
 
-  // Build tool schemas, adding defer_loading for MCP tools when tool search is enabled
+  // Build tool schemas for the filtered tool list.
   // Note: We pass the full `tools` list (not filteredTools) to toolToAPISchema so that
   // ToolSearchTool's prompt can list ALL available MCP tools. The filtering only affects
   // which tools are actually sent to the API, not what the model sees in tool descriptions.
@@ -707,7 +685,6 @@ async function* queryModel(
         agents: options.agents,
         allowedAgentTypes: options.allowedAgentTypes,
         model: options.model,
-        deferLoading: willDefer(tool),
       }),
     ),
   )
@@ -729,35 +706,6 @@ async function* queryModel(
   queryCheckpoint('query_message_normalization_start')
   let messagesForAPI = normalizeMessagesForAPI(messages, filteredTools)
   queryCheckpoint('query_message_normalization_end')
-
-  // Model-specific post-processing: strip tool-search-specific fields if the
-  // selected model doesn't support tool search.
-  //
-  // Why is this needed in addition to normalizeMessagesForAPI?
-  // - normalizeMessagesForAPI uses isToolSearchEnabledNoModelCheck() because it's
-  //   called from ~20 places (analytics, feedback, sharing, etc.), many of which
-  //   don't have model context. Adding model to its signature would be a large refactor.
-  // - This post-processing uses the model-aware isToolSearchEnabled() check
-  // - This handles mid-conversation model switching where
-  //   stale tool-search fields from the previous model would cause 400 errors
-  //
-  // Note: For assistant messages, normalizeMessagesForAPI already normalized the
-  // tool inputs, so stripCallerFieldFromAssistantMessage only needs to remove the
-  // 'caller' field (not re-normalize inputs).
-  if (!useToolSearch) {
-    messagesForAPI = messagesForAPI.map(msg => {
-      switch (msg.type) {
-        case 'user':
-          // Strip tool_reference blocks from tool_result content
-          return stripToolReferenceBlocksFromUserMessage(msg)
-        case 'assistant':
-          // Strip 'caller' field from tool_use blocks
-          return stripCallerFieldFromAssistantMessage(msg)
-        default:
-          return msg
-      }
-    })
-  }
 
   // Repair tool_use/tool_result pairing mismatches that can occur when resuming
   // remote/teleport sessions. Inserts synthetic error tool_results for orphaned

@@ -136,8 +136,8 @@ export function toolChoiceToAnthropic(
  * Convert a NeutralToolSchema to the Anthropic SDK tool format.
  *
  * Handles the field name mapping (inputSchema → input_schema) and
- * optional provider-hint fields (strict, defer_loading, cache_control,
- * eager_input_streaming). Unknown fields are ignored.
+ * optional provider-hint fields (strict, cache_control, eager_input_streaming).
+ * Unknown fields are ignored.
  */
 /** Anthropic SDK tool format produced by neutralToolToSDK */
 export interface AnthropicToolSchema {
@@ -146,7 +146,6 @@ export interface AnthropicToolSchema {
   input_schema: { type: 'object'; [key: string]: unknown }
   strict?: boolean
   eager_input_streaming?: boolean
-  defer_loading?: boolean
   cache_control?: { type: 'ephemeral'; scope?: string; ttl?: string } | null
 }
 
@@ -157,7 +156,6 @@ export function neutralToolToSDK(t: NeutralToolSchema): AnthropicToolSchema {
     input_schema: { type: 'object' as const, ...t.inputSchema },
     ...(t.strict ? { strict: true } : {}),
     ...(t.eager_input_streaming ? { eager_input_streaming: true } : {}),
-    ...(t.defer_loading ? { defer_loading: true } : {}),
     ...(t.cache_control ? { cache_control: t.cache_control } : {}),
   }
 }

@@ -414,34 +414,30 @@ export const ToolSearchTool = buildTool({
   },
   userFacingName: () => '',
   /**
-   * Returns a tool_result with tool_reference blocks.
-   * This requires endpoints that support client-side tool_reference expansion.
+   * Returns a plain-text tool_result. Protocol-neutral: identical on
+   * Anthropic and OpenAI paths. The actual schema-bloat reduction happens
+   * at the application layer in llm.ts (filteredTools filters the next
+   * request's tool list by discovered names).
    */
   mapToolResultToToolResultBlockParam(
     content: Output,
     toolUseID: string,
   ): ToolResultBlockParam {
+    let text: string
     if (content.matches.length === 0) {
-      let text = 'No matching deferred tools found'
-      if (
-        content.pending_mcp_servers &&
-        content.pending_mcp_servers.length > 0
-      ) {
+      text = 'No matching deferred tools found'
+      if (content.pending_mcp_servers?.length) {
         text += `. Some MCP servers are still connecting: ${content.pending_mcp_servers.join(', ')}. Their tools will become available shortly — try searching again.`
       }
-      return {
-        type: 'tool_result',
-        tool_use_id: toolUseID,
-        content: text,
-      }
+    } else {
+      text =
+        `Matched ${content.matches.length} tool(s): ${content.matches.join(', ')}. ` +
+        `These tools are now available in this session; call them by name.`
     }
     return {
       type: 'tool_result',
       tool_use_id: toolUseID,
-      content: content.matches.map(name => ({
-        type: 'tool_reference' as const,
-        tool_name: name,
-      })),
-    } as unknown as ToolResultBlockParam
+      content: text,
+    }
   },
 } satisfies ToolDef<InputSchema, Output>)

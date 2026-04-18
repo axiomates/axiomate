@@ -427,8 +427,9 @@ export type Tool<
   isMcp?: boolean
   isLsp?: boolean
   /**
-   * When true, this tool is deferred (sent with defer_loading: true) and requires
-   * ToolSearch to be used before it can be called.
+   * When true, this tool is hidden from the initial tool list and requires
+   * ToolSearch to be used before it can be called. Application-layer filtering
+   * only — no wire-format hint is emitted.
    */
   readonly shouldDefer?: boolean
   /**

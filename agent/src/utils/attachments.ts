@@ -151,7 +151,6 @@ import type { QuerySource } from '../constants/querySource.js'
 import {
   isToolSearchEnabledOptimistic,
   isToolSearchToolAvailable,
-  modelSupportsToolReference,
   type DeferredToolsDeltaScanContext,
 } from './toolSearch.js'
 import {

@@ -341,13 +341,11 @@ export type ToolDefinition = {
  * Extended tool schema with provider-hint fields.
  * Returned by toolToAPISchema(). Provider adapters convert to SDK-specific types.
  *
- * Fields like strict, defer_loading, cache_control are provider hints —
- * providers that don't support them simply ignore them.
+ * Fields like strict, cache_control are provider hints — providers that don't
+ * support them simply ignore them.
  */
 export type NeutralToolSchema = ToolDefinition & {
   strict?: boolean
-  /** Anthropic: defer loading for tool search feature */
-  defer_loading?: boolean
   /** Anthropic: prompt caching control */
   cache_control?: { type: 'ephemeral'; scope?: string; ttl?: string } | null
   /** Anthropic: enable per-tool streaming of input JSON deltas */

@@ -11,7 +11,6 @@ import {
 } from '../utils/model/model.js'
 import type { MessageParam } from './api/streamTypes.js'
 import { jsonStringify } from '../utils/slowOperations.js'
-import { isToolReferenceBlock } from '../utils/toolSearch.js'
 import { getAPIMetadata } from './api/llm.js'
 import { withTokenCountVCR } from './vcr.js'
 import type { LLMProvider } from './api/provider.js'
@@ -42,72 +41,6 @@ function hasThinkingBlocks(
     }
   }
   return false
-}
-
-/**
- * Strip tool search-specific fields from messages before sending for token counting.
- * This removes 'caller' from tool_use blocks and 'tool_reference' from tool_result content.
- * These fields are only valid with the tool search beta and will cause errors otherwise.
- *
- * Note: We use 'as unknown as' casts because the SDK types don't include tool search beta fields,
- * but at runtime these fields may exist from API responses when tool search was enabled.
- */
-function stripToolSearchFieldsFromMessages(
-  messages: MessageParam[],
-): MessageParam[] {
-  return messages.map(message => {
-    if (!Array.isArray(message.content)) {
-      return message
-    }
-
-    const normalizedContent = message.content.map(block => {
-      // Strip 'caller' from tool_use blocks (assistant messages)
-      if (block.type === 'tool_use') {
-        // Destructure to exclude any extra fields like 'caller'
-        const toolUse =
-          block as import("./api/streamTypes.js").ToolUseBlockParam & {
-            caller?: unknown
-          }
-        return {
-          type: 'tool_use' as const,
-          id: toolUse.id,
-          name: toolUse.name,
-          input: toolUse.input,
-        }
-      }
-
-      // Strip tool_reference blocks from tool_result content (user messages)
-      if (block.type === 'tool_result') {
-        const toolResult =
-          block as import("./api/streamTypes.js").ToolResultBlockParam
-        if (Array.isArray(toolResult.content)) {
-          const filteredContent = (toolResult.content as unknown[]).filter(
-            c => !isToolReferenceBlock(c),
-          ) as typeof toolResult.content
-
-          if (filteredContent.length === 0) {
-            return {
-              ...toolResult,
-              content: [{ type: 'text' as const, text: '[tool references]' }],
-            }
-          }
-          if (filteredContent.length !== toolResult.content.length) {
-            return {
-              ...toolResult,
-              content: filteredContent,
-            }
-          }
-        }
-      }
-
-      return block
-    })
-
-    return {
-      ...message,
-      content: normalizedContent,
-    }
-  })
 }
 
 export async function countTokensWithAPI(
@@ -198,9 +131,9 @@ export async function countTokensViaFastModelFallback(
   const model = getFastModel()
   const { getProviderForModel } = await import('./api/providerRegistry.js')
   const provider = getProviderForModel(model)
-  const normalizedMessages = stripToolSearchFieldsFromMessages(messages as MessageParam[])
-  const messagesToSend = normalizedMessages.length > 0
-    ? normalizedMessages
+  const typedMessages = messages as MessageParam[]
+  const messagesToSend = typedMessages.length > 0
+    ? typedMessages
     : [{ role: 'user' as const, content: 'count' }]
 
   try {

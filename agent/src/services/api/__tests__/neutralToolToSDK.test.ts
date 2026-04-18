@@ -26,16 +26,6 @@ describe('neutralToolToSDK', () => {
     expect(result.strict).toBe(true)
   })
 
-  it('includes defer_loading: true when set', () => {
-    const tool: NeutralToolSchema = {
-      name: 'Search',
-      inputSchema: {},
-      defer_loading: true,
-    }
-    const result = neutralToolToSDK(tool)
-    expect(result.defer_loading).toBe(true)
-  })
-
   it('includes cache_control when set', () => {
     const tool: NeutralToolSchema = {
       name: 'Edit',
@@ -64,7 +54,6 @@ describe('neutralToolToSDK', () => {
     const result = neutralToolToSDK(tool)
     const keys = Object.keys(result)
     expect(keys).not.toContain('strict')
-    expect(keys).not.toContain('defer_loading')
     expect(keys).not.toContain('cache_control')
     expect(keys).not.toContain('eager_input_streaming')
   })

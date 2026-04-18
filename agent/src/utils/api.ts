@@ -27,8 +27,6 @@ import { TASK_OUTPUT_TOOL_NAME } from '../tools/TaskOutputTool/constants.js'
 import type { Message } from '../types/message.js'
 import { isAgentSwarmsEnabled } from './agentSwarmsEnabled.js'
 import { getCwd } from './cwd.js'
-import { logForDebugging } from './debug.js'
-import { isEnvTruthy } from './envUtils.js'
 import { createUserMessage } from './messages.js'
 import {
   getFileReadIgnorePatterns,
@@ -93,8 +91,6 @@ export async function toolToAPISchema(
     agents: AgentDefinition[]
     allowedAgentTypes?: string[]
     model?: string
-    /** When true, mark this tool with defer_loading for tool search */
-    deferLoading?: boolean
     cacheControl?: {
       type: 'ephemeral'
       scope?: 'global' | 'org'
@@ -151,8 +147,7 @@ export async function toolToAPISchema(
     cache.set(cacheKey, base)
   }
 
-  // Per-request overlay: defer_loading and cache_control vary by call
-  // (tool search defers different tools per turn; cache markers move).
+  // Per-request overlay: cache_control varies by call (cache markers move).
   // Explicit field copy avoids mutating the cached base.
   const schema: NeutralToolSchema = {
     name: base.name,
@@ -162,53 +157,11 @@ export async function toolToAPISchema(
     ...(base.eager_input_streaming && { eager_input_streaming: true }),
   }
 
-  // Add defer_loading if requested (for tool search feature)
-  if (options.deferLoading) {
-    schema.defer_loading = true
-  }
-
   if (options.cacheControl) {
     schema.cache_control = options.cacheControl
   }
 
-  // AXIOMATE_CODE_DISABLE_EXPERIMENTAL_BETAS is the kill switch for beta API
-  // shapes. Proxy gateways can reject fields like defer_loading with
-  // "Extra inputs are not permitted". The gates above each field are scattered
-  // and not all provider-aware, so this strips everything not in the base-tool
-  // allowlist at the one choke point all tool schemas pass through — including
-  // fields added in the future.
-  // cache_control is allowlisted: the base {type: 'ephemeral'} shape is
-  // standard prompt caching for compatible endpoints.
-  // github.com/axiomates/axiomate/issues/20031
-  if (isEnvTruthy(process.env.AXIOMATE_CODE_DISABLE_EXPERIMENTAL_BETAS)) {
-    const allowed = new Set([
-      'name',
-      'description',
-      'inputSchema',
-      'cache_control',
-    ])
-    const stripped = Object.keys(schema).filter(k => !allowed.has(k))
-    if (stripped.length > 0) {
-      logStripOnce(stripped)
-      return {
-        name: schema.name,
-        description: schema.description,
-        inputSchema: schema.inputSchema,
-        ...(schema.cache_control && { cache_control: schema.cache_control }),
-      }
-    }
-  }
-
   return schema
-}
-
-let loggedStrip = false
-function logStripOnce(stripped: string[]): void {
-  if (loggedStrip) return
-  loggedStrip = true
-  logForDebugging(
-    `[betas] Stripped from tool schemas: [${stripped.join(', ')}] (AXIOMATE_CODE_DISABLE_EXPERIMENTAL_BETAS=1)`,
-  )
 }
 
 /**
