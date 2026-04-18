@@ -455,6 +455,18 @@ axiomate/
   mcpb-axiomate/                  MCP bridge
 ```
 
+## Roadmap — Rebuild Candidates
+
+Axiomate was forked from Claude Code; during cleanup we removed a lot of Anthropic-service-coupled infrastructure. A handful of those removals were genuinely useful features tangled with private plumbing, not bad ideas. They're good candidates for a clean provider-neutral rebuild. See [DELETED_FEATURES.md](DELETED_FEATURES.md) for the full archive (including features decided against rebuilding).
+
+| Feature | Description | Rebuild cost | Priority |
+|---------|-------------|--------------|----------|
+| Onboarding / provider-setup wizard | First-run flow to pick provider, enter `baseURL` + `apiKey`, verify connection. `Onboarding.tsx` and `showSetupScreens` bypass stub still on disk | moderate | **highest** — user-facing |
+| `/privacy-settings` screen | UI wrapper for telemetry / memory opt-out env vars | low-moderate | low |
+| `/brief` command | Brief-only output mode using the existing `BriefTool`. Literally re-add a `commands/brief.ts` with `isEnabled: () => true` | very low | low |
+
+**Rebuild contract for all of the above:** must stay provider-neutral — no Anthropic-specific betas, no private endpoints, no OAuth. Reuse `classifyError()`, `getProviderForModel()`, `getFastModel()` / `getMidModel()`, and `provider.inference()` rather than assuming Anthropic wire shapes. See [DELETED_FEATURES.md](DELETED_FEATURES.md) Part C for patterns.
+
 ## Build
 
 ### Development
