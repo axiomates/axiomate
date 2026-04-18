@@ -186,10 +186,10 @@ const BARE_SHELL_PREFIXES = new Set([
 
 /**
  * UI-only fallback: extract the first word alone when getSimpleCommandPrefix
- * declines. In external builds TREE_SITTER_BASH is off, so the async
- * tree-sitter refinement in BashPermissionRequest never fires — without this,
- * pipes and compounds (`python3 file.py 2>&1 | tail -20`) dump into the
- * editable field verbatim.
+ * declines. In release builds the AST parser is gated behind feature('DEV'),
+ * so the async tree-sitter refinement in BashPermissionRequest never fires —
+ * without this, pipes and compounds (`python3 file.py 2>&1 | tail -20`) dump
+ * into the editable field verbatim.
  *
  * Deliberately not used by suggestionForExactCommand: a backend-suggested
  * `Bash(rm:*)` is too broad to auto-generate, but as an editable starting
@@ -1520,56 +1520,17 @@ export async function bashToolHasPermission(
   const injectionCheckDisabled = isEnvTruthy(
     process.env.AXIOMATE_CODE_DISABLE_COMMAND_INJECTION_CHECK,
   )
-  // config killswitch for shadow mode — when off, skip the native parse
-  // entirely. Computed once; feature() must stay inline in the ternary below.
-  const shadowEnabled = feature('TREE_SITTER_BASH_SHADOW')
-    ? true
-    : false
   // Parse once here; the resulting AST feeds both parseForSecurityFromAst
   // and bashToolCheckCommandOperatorPermissions.
-  let astRoot = injectionCheckDisabled
+  const astRoot = injectionCheckDisabled
     ? null
-    : feature('TREE_SITTER_BASH_SHADOW') && !shadowEnabled
-      ? null
-      : await parseCommandRaw(input.command)
-  let astResult: ParseForSecurityResult = astRoot
+    : await parseCommandRaw(input.command)
+  const astResult: ParseForSecurityResult = astRoot
     ? parseForSecurityFromAst(input.command, astRoot)
     : { kind: 'parse-unavailable' }
   let astSubcommands: string[] | null = null
   let astRedirects: Redirect[] | undefined
   let astCommands: SimpleCommand[] | undefined
-  let shadowLegacySubs: string[] | undefined
-
-  // Shadow-test tree-sitter: record its verdict, then force parse-unavailable
-  // so the legacy path stays authoritative. parseCommand stays gated on
-  // TREE_SITTER_BASH (not SHADOW) so legacy internals remain pure regex.
-  // One event per bash call captures both divergence AND unavailability
-  // reasons; module-load failures are separately covered by the
-  // session-scoped ax_tree_sitter_load event.
-  if (feature('TREE_SITTER_BASH_SHADOW')) {
-    const available = astResult.kind !== 'parse-unavailable'
-    let tooComplex = false
-    let semanticFail = false
-    let subsDiffer = false
-    if (available) {
-      tooComplex = astResult.kind === 'too-complex'
-      semanticFail =
-        astResult.kind === 'simple' && !checkSemantics(astResult.commands).ok
-      const tsSubs =
-        astResult.kind === 'simple'
-          ? astResult.commands.map(c => c.text)
-          : undefined
-      const legacySubs = splitCommand(input.command)
-      shadowLegacySubs = legacySubs
-      subsDiffer =
-        tsSubs !== undefined &&
-        (tsSubs.length !== legacySubs.length ||
-          tsSubs.some((s, i) => s !== legacySubs[i]))
-    }
-    // Always force legacy — shadow mode is observational only.
-    astResult = { kind: 'parse-unavailable' }
-    astRoot = null
-  }
 
   if (astResult.kind === 'too-complex') {
     // Parse succeeded but found structure we can't statically analyze
@@ -1636,8 +1597,8 @@ export async function bashToolHasPermission(
   }
 
   // Legacy shell-quote pre-check. Only reached on 'parse-unavailable'
-  // (tree-sitter not loaded OR TREE_SITTER_BASH feature gated off). Falls
-  // through to the full legacy path below.
+  // (AST parser not loaded OR feature('DEV') off). Falls through to the
+  // full legacy path below.
   if (astResult.kind === 'parse-unavailable') {
     logForDebugging(
       'bashToolHasPermission: tree-sitter unavailable, using legacy shell-quote path',
@@ -1860,8 +1821,7 @@ export async function bashToolHasPermission(
   const cwd = getCwd()
   const cwdMingw =
     getPlatform() === 'windows' ? windowsPathToPosixPath(cwd) : cwd
-  const rawSubcommands =
-    astSubcommands ?? shadowLegacySubs ?? splitCommand(input.command)
+  const rawSubcommands = astSubcommands ?? splitCommand(input.command)
   const { subcommands, astCommandsByIdx } = filterCdCwdSubcommands(
     rawSubcommands,
     astCommands,

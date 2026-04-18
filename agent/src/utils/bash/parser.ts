@@ -46,7 +46,7 @@ function logLoadOnce(success: boolean): void {
  * parseCommand/parseCommandRaw for the parser to be available. Idempotent.
  */
 export async function ensureInitialized(): Promise<void> {
-  if (feature('TREE_SITTER_BASH') || feature('TREE_SITTER_BASH_SHADOW')) {
+  if (feature('DEV')) {
     await ensureParserInitialized()
   }
 }
@@ -59,7 +59,7 @@ export async function parseCommand(
   // regex/shell-quote path. Guarding the whole body inside the positive
   // branch lets Bun DCE the NAPI import AND keeps telemetry honest — we
   // only fire ax_tree_sitter_load when a load was genuinely attempted.
-  if (feature('TREE_SITTER_BASH')) {
+  if (feature('DEV')) {
     await ensureParserInitialized()
     const mod = getParserModule()
     logLoadOnce(mod !== null)
@@ -102,7 +102,7 @@ export async function parseCommandRaw(
   command: string,
 ): Promise<Node | null | typeof PARSE_ABORTED> {
   if (!command || command.length > MAX_COMMAND_LENGTH) return null
-  if (feature('TREE_SITTER_BASH') || feature('TREE_SITTER_BASH_SHADOW')) {
+  if (feature('DEV')) {
     await ensureParserInitialized()
     const mod = getParserModule()
     logLoadOnce(mod !== null)

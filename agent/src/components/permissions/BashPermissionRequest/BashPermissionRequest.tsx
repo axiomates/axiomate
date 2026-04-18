@@ -193,8 +193,8 @@ function BashPermissionRequestInner({
 
   // Editable prefix — initialize synchronously with the best prefix we can
   // extract without tree-sitter, then refine via tree-sitter for compound
-  // commands. The sync path matters because TREE_SITTER_BASH is gated
-  // to [] and this initial value is what the user sees.
+  // commands. The sync path matters because the AST parser is gated behind
+  // feature('DEV') and this initial value is what the user sees.
   //
   // Lazy initializer: this runs regex + split on every render if left in
   // the render body; it's only needed for initial state.
