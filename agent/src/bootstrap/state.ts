@@ -165,8 +165,6 @@ type State = {
   sdkBetas: string[] | undefined
   // Main thread agent type (from --agent flag or settings)
   mainThreadAgentType: string | undefined
-  // Direct connect server URL (for display in header)
-  directConnectServerUrl: string | undefined
   // System prompt section cache state
   systemPromptSectionCache: Map<string, string | null>
   // Last date emitted to the model (for detecting midnight date changes)
@@ -319,7 +317,6 @@ function getInitialState(): State {
     registeredHooks: null,
     // Cache for plan slugs
     planSlugCache: new Map(),
-    // Track teleported session for reliability logging
     // Track invoked skills for preservation across compaction
     invokedSkills: new Map(),
     // Track slow operations for dev bar display
@@ -328,9 +325,6 @@ function getInitialState(): State {
     sdkBetas: undefined,
     // Main thread agent type
     mainThreadAgentType: undefined,
-    // Remote mode
-    // Direct connect server URL
-    directConnectServerUrl: undefined,
     // System prompt section cache state
     systemPromptSectionCache: new Map(),
     // Last date emitted to the model
@@ -462,14 +456,6 @@ export function getCwdState(): string {
 
 export function setCwdState(cwd: string): void {
   STATE.cwd = cwd.normalize('NFC')
-}
-
-export function getDirectConnectServerUrl(): string | undefined {
-  return STATE.directConnectServerUrl
-}
-
-export function setDirectConnectServerUrl(url: string): void {
-  STATE.directConnectServerUrl = url
 }
 
 export function addToTotalDurationState(

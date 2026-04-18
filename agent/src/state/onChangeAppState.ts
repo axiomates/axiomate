@@ -40,30 +40,22 @@ export function onChangeAppState({
   newState: AppState
   oldState: AppState
 }) {
-  // toolPermissionContext.mode — single choke point for CCR/SDK mode sync.
+  // toolPermissionContext.mode — single choke point for mode-change listeners.
   //
-  // Prior to this block, mode changes were relayed to CCR by only 2 of 8+
-  // mutation paths: a bespoke setAppState wrapper in print.ts (headless/SDK
-  // mode only) and a manual notify in the set_permission_mode handler.
-  // Every other path — Shift+Tab cycling, ExitPlanModePermissionRequest
-  // dialog options, the /plan slash command, rewind, the REPL bridge's
-  // onSetPermissionMode — mutated AppState without telling
-  // CCR, leaving external_metadata.permission_mode stale and the web UI out
-  // of sync with the CLI's actual mode.
-  //
-  // Hooking the diff here means ANY setAppState call that changes the mode
-  // notifies CCR (via notifySessionMetadataChanged → ccrClient.reportMetadata)
-  // and the SDK status stream (via notifyPermissionModeChanged → registered
-  // in print.ts). The scattered callsites above need zero changes.
+  // Every path that mutates toolPermissionContext.mode (Shift+Tab cycling,
+  // ExitPlanModePermissionRequest dialog options, /plan slash command,
+  // set_permission_mode control request, rewind, etc.) eventually calls
+  // setAppState, so hooking the diff here delivers one consistent signal
+  // to the registered listeners — no matter which callsite did the mutation.
   const prevMode = oldState.toolPermissionContext.mode
   const newMode = newState.toolPermissionContext.mode
   if (prevMode !== newMode) {
-    // CCR external_metadata must not receive internal-only mode names
-    // (bubble, ungated auto). Externalize first — and skip
-    // the CCR notify if the EXTERNAL mode didn't change (e.g.,
-    // default→bubble→default is noise from CCR's POV since both
-    // externalize to 'default'). The SDK channel (notifyPermissionModeChanged)
-    // passes raw mode; its listener in print.ts applies its own filter.
+    // Internal-only mode names (bubble, ungated auto) must be externalized
+    // before delivery to metadata consumers, and we skip the metadata notify
+    // if the EXTERNAL mode didn't change (e.g., default→bubble→default is
+    // noise — both externalize to 'default'). The permission-mode channel
+    // (notifyPermissionModeChanged) passes the raw mode; its listener
+    // applies its own filter.
     const prevExternal = toExternalPermissionMode(prevMode)
     const newExternal = toExternalPermissionMode(newMode)
     if (prevExternal !== newExternal) {

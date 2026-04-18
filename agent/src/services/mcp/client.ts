@@ -499,8 +499,10 @@ export const connectToServer = memoize(
     try {
       let transport
 
-      // If we have the session ingress JWT, we will connect via the session ingress rather than
-      // to remote MCP's directly.
+      // Session-wide Bearer token (AXIOMATE_CODE_SESSION_ACCESS_TOKEN) used
+      // as a fallback Authorization header when the MCP server has no
+      // stored OAuth credential. Embedders / orchestrators set this when
+      // their MCP fleet sits behind a shared auth proxy.
       const sessionIngressToken = getSessionIngressAuthToken()
 
       if (serverRef.type === 'sse') {
@@ -693,9 +695,10 @@ export const connectToServer = memoize(
 
         // Check if this server has stored OAuth tokens. If so, the SDK's
         // authProvider will set Authorization — don't override with the
-        // session ingress token (SDK merges requestInit AFTER authProvider).
-        // CCR proxy URLs (ccr_shttp_mcp) have no stored OAuth, so they still
-        // get the ingress token. See PR #24454 discussion.
+        // session Bearer token (SDK merges requestInit AFTER authProvider).
+        // Servers without OAuth still fall through to the session token,
+        // which lets embedders front-door unauthenticated MCP URLs through
+        // a shared auth proxy.
         const hasOAuthTokens = !!(await authProvider.tokens())
 
         // Use the auth provider with StreamableHTTPClientTransport

@@ -126,11 +126,6 @@ function migrateLegacyAttachmentTypes(message: Message): Message {
   return message
 }
 
-export type TeleportRemoteResponse = {
-  log: Message[]
-  branch?: string
-}
-
 export type TurnInterruptionState =
   | { kind: 'none' }
   | { kind: 'interrupted_prompt'; message: NormalizedUserMessage }
