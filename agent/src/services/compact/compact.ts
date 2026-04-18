@@ -67,10 +67,6 @@ import {
 } from '../../utils/messages.js'
 import { expandPath } from '../../utils/path.js'
 import { getPlan, getPlanFilePath } from '../../utils/plans.js'
-import {
-  isSessionActivityTrackingActive,
-  sendSessionActivitySignal,
-} from '../../utils/sessionActivity.js'
 import { processSessionStartHooks } from '../../utils/sessionStart.js'
 import {
   getTranscriptPath,
@@ -1000,26 +996,6 @@ async function streamCompactSummary({
   // Falls back to regular streaming path on failure.
   // 3P default: true — see comment at the other ax_compact_cache_prefix read above.
   const promptCacheSharingEnabled = true
-  // Send keep-alive signals during compaction to prevent remote session
-  // WebSocket idle timeouts from dropping bridge connections. Compaction
-  // API calls can take 5-10+ seconds, during which no other messages
-  // flow through the transport — without keep-alives, the server may
-  // close the WebSocket for inactivity.
-  // Two signals: (1) PUT /worker heartbeat via sessionActivity, and
-  // (2) re-emit 'compacting' status so the SDK event stream stays active
-  // and the server doesn't consider the session stale.
-  const activityInterval = isSessionActivityTrackingActive()
-    ? setInterval(
-        (statusSetter?: (status: 'compacting' | null) => void) => {
-          sendSessionActivitySignal()
-          statusSetter?.('compacting')
-        },
-        30_000,
-        context.setSDKStatus,
-      )
-    : undefined
-
-  try {
     if (promptCacheSharingEnabled) {
       try {
         // DO NOT set maxOutputTokens here. The fork piggybacks on the main thread's
@@ -1192,9 +1168,6 @@ async function streamCompactSummary({
 
     // This should never be reached due to the throw above, but TypeScript needs it
     throw new Error(ERROR_MESSAGE_INCOMPLETE_RESPONSE)
-  } finally {
-    clearInterval(activityInterval)
-  }
 }
 
 /**

@@ -1,13 +1,10 @@
 import { join, normalize, sep } from 'path'
-import { getProjectRoot } from '../../bootstrap/state.js'
 import {
   buildMemoryPrompt,
   ensureMemoryDirExists,
 } from '../../memdir/memdir.js'
 import { getMemoryBaseDir } from '../../memdir/paths.js'
 import { getCwd } from '../../utils/cwd.js'
-import { findCanonicalGitRoot } from '../../utils/git.js'
-import { sanitizePath } from '../../utils/path.js'
 
 // Persistent agent memory scope: 'user' (~/.axiomate/agent-memory/), 'project' (.axiomate/agent-memory/), or 'local' (.axiomate/agent-memory-local/)
 export type AgentMemoryScope = 'user' | 'project' | 'local'
@@ -22,24 +19,10 @@ function sanitizeAgentTypeForPath(agentType: string): string {
 }
 
 /**
- * Returns the local agent memory directory, which is project-specific and not checked into VCS.
- * When AXIOMATE_CODE_REMOTE_MEMORY_DIR is set, persists to the mount with project namespacing.
- * Otherwise, uses <cwd>/.axiomate/agent-memory-local/<agentType>/.
+ * Returns the local agent memory directory, which is project-specific and not
+ * checked into VCS. Uses <cwd>/.axiomate/agent-memory-local/<agentType>/.
  */
 function getLocalAgentMemoryDir(dirName: string): string {
-  if (process.env.AXIOMATE_CODE_REMOTE_MEMORY_DIR) {
-    return (
-      join(
-        process.env.AXIOMATE_CODE_REMOTE_MEMORY_DIR,
-        'projects',
-        sanitizePath(
-          findCanonicalGitRoot(getProjectRoot()) ?? getProjectRoot(),
-        ),
-        'agent-memory-local',
-        dirName,
-      ) + sep
-    )
-  }
   return join(getCwd(), '.axiomate', 'agent-memory-local', dirName) + sep
 }
 
@@ -82,17 +65,8 @@ export function isAgentMemoryPath(absolutePath: string): boolean {
     return true
   }
 
-  // Local scope: persisted to mount when AXIOMATE_CODE_REMOTE_MEMORY_DIR is set, otherwise cwd-based
-  if (process.env.AXIOMATE_CODE_REMOTE_MEMORY_DIR) {
-    if (
-      normalizedPath.includes(sep + 'agent-memory-local' + sep) &&
-      normalizedPath.startsWith(
-        join(process.env.AXIOMATE_CODE_REMOTE_MEMORY_DIR, 'projects') + sep,
-      )
-    ) {
-      return true
-    }
-  } else if (
+  // Local scope: always cwd-based.
+  if (
     normalizedPath.startsWith(
       join(getCwd(), '.axiomate', 'agent-memory-local') + sep,
     )

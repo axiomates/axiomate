@@ -89,8 +89,6 @@ const TEAMMATE_ENV_VARS = [
   'AXIOMATE_BASE_URL',
   // Config directory override
   'AXIOMATE_CONFIG_DIR',
-  // Memory dir override used by memdir/paths.ts.
-  'AXIOMATE_CODE_REMOTE_MEMORY_DIR',
   // Upstream proxy — the parent's MITM relay is reachable from teammates
   // (same container network). Forward the proxy vars so teammates route
   // customer-configured upstream traffic through the relay for credential

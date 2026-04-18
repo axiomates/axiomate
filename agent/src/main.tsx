@@ -469,19 +469,14 @@ export async function main() {
   // Initialize entrypoint based on mode - needs to be set before any event is logged
   initializeEntrypoint(isNonInteractive);
 
-  // Determine client type
+  // Determine client type. The 'remote' / 'sdk-ts' / 'sdk-py' branches
+  // existed for upstream-only transports (CCR bridge, Claude Code SDK);
+  // those subsystems were deleted, but AXIOMATE_CODE_ENTRYPOINT remains
+  // as a generic telemetry tag embedders can set.
   const clientType = (() => {
     if (isEnvTruthy(process.env.GITHUB_ACTIONS)) return 'github-action';
-    if (process.env.AXIOMATE_CODE_ENTRYPOINT === 'sdk-ts') return 'sdk-typescript';
-    if (process.env.AXIOMATE_CODE_ENTRYPOINT === 'sdk-py') return 'sdk-python';
     if (process.env.AXIOMATE_CODE_ENTRYPOINT === 'sdk-cli') return 'sdk-cli';
     if (process.env.AXIOMATE_CODE_ENTRYPOINT === 'local-agent') return 'local-agent';
-
-    // Check if session-ingress token is provided (indicates remote session)
-    const hasSessionIngressToken = process.env.AXIOMATE_CODE_SESSION_ACCESS_TOKEN || process.env.AXIOMATE_CODE_WEBSOCKET_AUTH_FILE_DESCRIPTOR;
-    if (process.env.AXIOMATE_CODE_ENTRYPOINT === 'remote' || hasSessionIngressToken) {
-      return 'remote';
-    }
     return 'cli';
   })();
   setClientType(clientType);
@@ -489,9 +484,9 @@ export async function main() {
   if (previewFormat === 'markdown' || previewFormat === 'html') {
     setQuestionPreviewFormat(previewFormat);
   } else if (!clientType.startsWith('sdk-') &&
-  // local-agent and remote hosts pass previewFormat via toolConfig; when the
-  // feature is gated off they pass undefined — don't override with markdown.
-  clientType !== 'local-agent' && clientType !== 'remote') {
+  // local-agent hosts pass previewFormat via toolConfig; when the feature
+  // is gated off they pass undefined — don't override with markdown.
+  clientType !== 'local-agent') {
     setQuestionPreviewFormat('markdown');
   }
 

@@ -42,7 +42,6 @@ import {
   notifySessionMetadataChanged,
   setPermissionModeChangedListener,
   type RequiresActionDetails,
-  type SessionExternalMetadata,
 } from '../utils/sessionState.js'
 import { getInMemoryErrors, logError, logMCPDebug } from '../utils/log.js'
 import {
@@ -563,7 +562,6 @@ export async function runHeadless(
     forkSession: options.forkSession,
     outputFormat: options.outputFormat,
     sessionStartHooksPromise: options.sessionStartHooksPromise,
-    restoredWorkerState: structuredIO.restoredWorkerState,
   })
 
   // SessionStart hooks can emit initialUserMessage — the first user turn for
@@ -892,7 +890,6 @@ function runHeadlessStreaming(
       run_active: running,
       run_phase: runPhase,
       worker_status: getSessionState(),
-      internal_events_pending: structuredIO.internalEventsPending,
       bg_tasks: bg,
     })
   })
@@ -1295,10 +1292,6 @@ function runHeadlessStreaming(
     }
     return allTools
   }
-
-  // Remote-control bridge was removed — these no-ops remain for call-site
-  // compatibility while the bridge control request subtype is stubbed.
-  function forwardMessagesToBridge(): void {}
 
   // Helper to apply MCP server changes - used by both mcp_set_servers control message
   // and background plugin installation.
@@ -1888,11 +1881,6 @@ function runHeadlessStreaming(
                 })
               },
             })) {
-              // Forward messages to bridge incrementally (mid-turn) so
-              // the remote service sees progress and the connection stays alive
-              // while blocked on permission requests.
-              forwardMessagesToBridge()
-
               if (message.type === 'result') {
                 // Flush pending SDK events so they appear before result on the stream.
                 for (const event of drainSdkEvents()) {
@@ -1928,9 +1916,6 @@ function runHeadlessStreaming(
           for (const uuid of batchUuids) {
             notifyCommandLifecycle(uuid, 'completed')
           }
-
-          // Forward messages to bridge after each turn
-          forwardMessagesToBridge()
 
           // Generate and emit prompt suggestion for SDK consumers
           if (
@@ -2112,9 +2097,6 @@ function runHeadlessStreaming(
       gracefulShutdownSync(1)
       return
     } finally {
-      runPhase = 'finally_flush'
-      // Flush pending internal events before going idle
-      await structuredIO.flushInternalEvents()
       runPhase = 'finally_post_flush'
       if (!isShuttingDown()) {
         notifySessionStateChanged('idle')
@@ -3937,7 +3919,6 @@ async function loadInitialMessages(
     forkSession: boolean | undefined
     outputFormat: string | undefined
     sessionStartHooksPromise?: ReturnType<typeof processSessionStartHooks>
-    restoredWorkerState: Promise<SessionExternalMetadata | null>
   },
 ): Promise<LoadInitialMessagesResult> {
   const persistSession = !isSessionPersistenceDisabled()
@@ -4017,11 +3998,9 @@ async function loadInitialMessages(
     }
   }
 
-  // Handle resume in print mode (accepts session ID or URL)
+  // Handle resume in print mode (accepts UUID session ID or .jsonl path)
   if (options.resume) {
     try {
-
-      // In print mode - we require a valid session ID, JSONL file or URL
       const parsedSessionId = parseSessionIdentifier(
         typeof options.resume === 'string' ? options.resume : '',
       )
@@ -4042,29 +4021,13 @@ async function loadInitialMessages(
         parsedSessionId.jsonlFile || undefined,
       )
 
-      // hydrateFromCCRv2InternalEvents writes an empty transcript file for
-      // fresh sessions (writeFile(sessionFile, '') with zero events), so
-      // loadConversationForResume returns {messages: []} not null. Treat
-      // empty the same as null so SessionStart still fires.
       if (!result || result.messages.length === 0) {
-        // For URL-based or CCR v2 resume, start with empty session (it was hydrated but empty)
-        if (
-          parsedSessionId.isUrl ||
-          isEnvTruthy(process.env.AXIOMATE_CODE_USE_CCR_V2)
-        ) {
-          // Execute SessionStart hooks for startup since we're starting a new session
-          return {
-            messages: await (options.sessionStartHooksPromise ??
-              processSessionStartHooks('startup')),
-          }
-        } else {
-          emitLoadError(
-            `No conversation found with session ID: ${parsedSessionId.sessionId}`,
-            options.outputFormat,
-          )
-          gracefulShutdownSync(1)
-          return { messages: [] }
-        }
+        emitLoadError(
+          `No conversation found with session ID: ${parsedSessionId.sessionId}`,
+          options.outputFormat,
+        )
+        gracefulShutdownSync(1)
+        return { messages: [] }
       }
 
       // Handle resumeSessionAt feature

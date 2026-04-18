@@ -71,14 +71,9 @@ export function isExtractModeActive(): boolean {
 
 /**
  * Returns the base directory for persistent memory storage.
- * Resolution order:
- *   1. AXIOMATE_CODE_REMOTE_MEMORY_DIR env var (explicit override, set in CCR)
- *   2. ~/.axiomate (default config home)
+ * Always resolves to `~/.axiomate` (default config home).
  */
 export function getMemoryBaseDir(): string {
-  if (process.env.AXIOMATE_CODE_REMOTE_MEMORY_DIR) {
-    return process.env.AXIOMATE_CODE_REMOTE_MEMORY_DIR
-  }
   return getConfigHomeDir()
 }
 
