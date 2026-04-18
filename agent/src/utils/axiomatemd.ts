@@ -1051,7 +1051,7 @@ let nextEagerLoadReason: InstructionsLoadReason = 'session_start'
 // Whether the InstructionsLoaded hook should fire on the next cache miss.
 // true initially (for session_start), consumed after firing, re-enabled only
 // by resetGetMemoryFilesCache(). Callers that only need cache invalidation
-// for correctness (e.g. worktree enter/exit, settings sync, /memory dialog)
+// for correctness (e.g. worktree enter/exit, settings changes, /memory dialog)
 // should use clearMemoryFileCaches() instead to avoid spurious hook fires.
 let shouldFireHook = true
 
@@ -1068,7 +1068,7 @@ function consumeNextEagerLoadReason(): InstructionsLoadReason | undefined {
  * without firing the InstructionsLoaded hook.
  *
  * Use this for cache invalidation that is purely for correctness (e.g.
- * worktree enter/exit, settings sync, /memory dialog). For events that
+ * worktree enter/exit, settings changes, /memory dialog). For events that
  * represent instructions actually being reloaded into context (e.g.
  * compaction), use resetGetMemoryFilesCache() instead.
  */
