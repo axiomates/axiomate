@@ -16,7 +16,6 @@ vi.mock('../../../utils/model/model.js', () => ({
   normalizeModelStringForAPI: vi.fn((m: string) => m),
 }))
 vi.mock('../llm.js', () => ({
-  getAPIMetadata: vi.fn().mockReturnValue({}),
   getExtraBodyParams: vi.fn().mockReturnValue({}),
   adjustParamsForNonStreaming: vi.fn((p: any) => p),
   MAX_NON_STREAMING_TOKENS: 64000,
@@ -26,7 +25,7 @@ vi.mock('../../../utils/log.js', () => ({ logError: vi.fn() }))
 import { AnthropicProvider } from '../providers/anthropicProvider.js'
 import { withRetry } from '../withRetry.js'
 import { getModelBetas } from '../../../utils/betas.js'
-import { getAPIMetadata, getExtraBodyParams } from '../llm.js'
+import { getExtraBodyParams } from '../llm.js'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -83,16 +82,6 @@ describe('AnthropicProvider.verifyConnection', () => {
 
     await provider.verifyConnection({})
     expect(getModelBetas).toHaveBeenCalled()
-  })
-
-  it('calls getAPIMetadata', async () => {
-    const mockClient = createMockClient()
-    const provider = new AnthropicProvider({
-      getClient: vi.fn().mockResolvedValue(mockClient),
-    })
-
-    await provider.verifyConnection({})
-    expect(getAPIMetadata).toHaveBeenCalled()
   })
 
   it('calls getExtraBodyParams', async () => {

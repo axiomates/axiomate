@@ -134,7 +134,6 @@ import { logForDiagnosticsNoPII } from './utils/diagLogs.js';
 import { clearPluginCache, loadAllPluginsCacheOnly } from './utils/plugins/pluginLoader.js';
 import { SandboxManager } from './utils/sandbox/sandbox-adapter.js';
 import { shouldEnableThinkingByDefault, type ThinkingConfig } from './utils/thinking.js';
-import { initUser, resetUserCache } from './utils/user.js';
 import { getTmuxInstallInstructions, isTmuxAvailable, parsePRReference } from './utils/worktree.js';
 
 // eslint-disable-next-line custom-rules/no-top-level-side-effects
@@ -282,7 +281,7 @@ export function startDeferredPrefetches(): void {
   // measurements). Skip all of it when we're only measuring startup performance.
   if (isEnvTruthy(process.env.AXIOMATE_CODE_EXIT_AFTER_FIRST_RENDER) ||
   // --bare: skip ALL prefetches. These are cache-warms for the REPL's
-  // first-turn responsiveness (initUser, getUserContext, tips, countFiles,
+  // first-turn responsiveness (getUserContext, tips, countFiles,
   // modelCapabilities, change detectors). Scripted -p calls don't have a
   // "user is typing" window to hide this work in — it's pure overhead on
   // the critical path.
@@ -291,7 +290,6 @@ export function startDeferredPrefetches(): void {
   }
 
   // Process-spawning prefetches (consumed at first API call, user is still typing)
-  void initUser();
   void getUserContext();
   prefetchSystemContextIfSafe();
   void getRelevantTips();
@@ -1373,11 +1371,6 @@ async function run(): Promise<CommanderCommand> {
       const setupScreensStart = Date.now();
       const onboardingShown = await showSetupScreens(root, permissionMode, commands);
       logForDebugging(`[STARTUP] showSetupScreens() completed in ${Date.now() - setupScreensStart}ms`);
-
-      if (onboardingShown) {
-        // Clear user data cache after onboarding
-        resetUserCache();
-      }
 
     }
 

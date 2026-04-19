@@ -415,8 +415,6 @@ export type InferenceRequest = {
   thinking?: { type: 'enabled' | 'disabled' | 'adaptive'; budgetTokens?: number }
   stopSequences?: string[]
   signal?: AbortSignal
-  /** Provider-specific metadata (fingerprint, attribution, query source, etc.) */
-  metadata?: Record<string, unknown>
   /**
    * Provider-specific hints. Providers read hints they understand, ignore the rest.
    * Anthropic: { betas?: string[], cacheControl?: boolean, ... }

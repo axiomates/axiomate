@@ -43,7 +43,7 @@ import {
 import { logForDiagnosticsNoPII } from '../../../utils/diagLogs.js'
 import { getFastModel } from '../../../utils/model/model.js'
 import { getModelBetas } from '../../../utils/betas.js'
-import { getAPIMetadata, getExtraBodyParams } from '../llm.js'
+import { getExtraBodyParams } from '../llm.js'
 import { logError } from '../../../utils/log.js'
 import { getHeader } from '../headerUtils.js'
 
@@ -527,7 +527,6 @@ export class AnthropicProvider implements LLMProvider {
           messages: [{ role: 'user', content: 'test' }],
           temperature: 1,
           ...(betas.length > 0 && { betas }),
-          metadata: getAPIMetadata(),
           ...getExtraBodyParams(),
         })
         return true
@@ -610,7 +609,6 @@ export class AnthropicProvider implements LLMProvider {
       ...(request.stopSequences && { stop_sequences: request.stopSequences }),
       ...(thinking && { thinking }),
       ...(betas.length > 0 && { betas }),
-      ...(request.metadata && { metadata: request.metadata }),
     }
 
     let response: unknown

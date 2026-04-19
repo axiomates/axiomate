@@ -42,7 +42,7 @@ import {
 import {
   getMergedBetas,
 } from '../../utils/betas.js'
-import { getGlobalConfig, getOrCreateUserID } from '../../utils/config.js'
+import { getGlobalConfig } from '../../utils/config.js'
 import { getModelMaxOutputTokens } from '../../utils/context.js'
 import { resolveAppliedEffort } from '../../utils/effort.js'
 import { isEnvTruthy } from '../../utils/envUtils.js'
@@ -69,7 +69,6 @@ import { getAPIContextManagement } from '../compact/apiMicrocompact.js'
 import {
   getAfkModeHeaderLatched,
   getLastApiCompletionTimestamp,
-  getSessionId,
   getThinkingClearLatched,
   setAfkModeHeaderLatched,
   setLastMainRequestId,
@@ -263,30 +262,6 @@ function configureEffortParams(
   }
 }
 
-
-export function getAPIMetadata() {
-  let extra: JsonObject = {}
-  const extraStr = process.env.AXIOMATE_CODE_EXTRA_METADATA
-  if (extraStr) {
-    const parsed = safeParseJSON(extraStr, false)
-    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-      extra = parsed as JsonObject
-    } else {
-      logForDebugging(
-        `AXIOMATE_CODE_EXTRA_METADATA env var must be a JSON object, but was given ${extraStr}`,
-        { level: 'error' },
-      )
-    }
-  }
-
-  return {
-    user_id: jsonStringify({
-      ...extra,
-      device_id: getOrCreateUserID(),
-      session_id: getSessionId(),
-    }),
-  }
-}
 
 export async function verifyApiKey(
   apiKey: string,
@@ -912,7 +887,6 @@ async function* queryModel(
       ],
       tool_choice: toolChoiceToAnthropic(options.toolChoice),
       ...(useBetas && { betas: betasParams }),
-      metadata: getAPIMetadata(),
       max_tokens: maxOutputTokens,
       thinking,
       ...(temperature !== undefined && { temperature }),

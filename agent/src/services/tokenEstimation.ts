@@ -11,7 +11,6 @@ import {
 } from '../utils/model/model.js'
 import type { MessageParam } from './api/streamTypes.js'
 import { jsonStringify } from '../utils/slowOperations.js'
-import { getAPIMetadata } from './api/llm.js'
 import { withTokenCountVCR } from './vcr.js'
 import type { LLMProvider } from './api/provider.js'
 
@@ -147,7 +146,6 @@ export async function countTokensViaFastModelFallback(
       thinking: containsThinking
         ? { type: 'enabled', budgetTokens: TOKEN_COUNT_THINKING_BUDGET }
         : undefined,
-      metadata: getAPIMetadata() as Record<string, unknown>,
       providerHints: {
         maxRetries: 1,
         source: 'count_tokens',

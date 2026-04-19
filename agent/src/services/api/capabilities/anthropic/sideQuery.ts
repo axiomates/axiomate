@@ -10,7 +10,6 @@ import {
   setLastApiCompletionTimestamp,
 } from '../../../../bootstrap/state.js'
 import { getCLISyspromptPrefix } from '../../../../constants/system.js'
-import { getAPIMetadata } from '../../llm.js'
 import { getModelBetas } from '../../../../utils/betas.js'
 import type { LLMProvider } from '../../provider.js'
 import type {
@@ -82,7 +81,6 @@ export async function anthropicSideQuery(
     thinking: thinkingConfig,
     stopSequences,
     signal,
-    metadata: getAPIMetadata() as Record<string, unknown>,
     providerHints: {
       betas,
       maxRetries,

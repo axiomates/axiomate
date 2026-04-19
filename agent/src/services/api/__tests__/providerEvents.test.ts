@@ -16,7 +16,6 @@ vi.mock('../../../utils/model/model.js', () => ({
   normalizeModelStringForAPI: vi.fn((m: string) => m),
 }))
 vi.mock('../llm.js', () => ({
-  getAPIMetadata: vi.fn().mockReturnValue({}),
   getExtraBodyParams: vi.fn().mockReturnValue({}),
   adjustParamsForNonStreaming: vi.fn((p: any) => p),
   MAX_NON_STREAMING_TOKENS: 64000,
