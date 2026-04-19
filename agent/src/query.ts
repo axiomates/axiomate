@@ -65,7 +65,7 @@ import {
   finalContextTokensFromLastResponse,
   tokenCountWithEstimation,
 } from './utils/tokens.js'
-import { ESCALATED_MAX_TOKENS } from './utils/context.js'
+import { getModelMaxOutputTokens } from './utils/context.js'
 import { SLEEP_TOOL_NAME } from './tools/SleepTool/prompt.js'
 import { executePostSamplingHooks } from './utils/hooks/postSamplingHooks.js'
 import { executeStopFailureHooks } from './utils/hooks.js'
@@ -808,15 +808,20 @@ async function* queryLoop(
       // was withheld from the stream above; only surface it if recovery
       // exhausts.
       if (isWithheldMaxOutputTokens(lastMessage)) {
-        // Escalating retry: if we used the capped 8k default and hit the
-        // limit, retry the SAME request at 64k — no meta message, no
-        // multi-turn dance. This fires once per turn (guarded by the
-        // override check), then falls through to multi-turn recovery if
-        // 64k also hits the cap.
-        // Disabled until output-token caps are validated for configured endpoints.
-        const capEnabled = false
+        // Escalating retry: when the configured model has headroom
+        // (upperLimit > default), retry the SAME request at upperLimit —
+        // no meta message, no multi-turn dance. Fires once per turn
+        // (guarded by the override check), then falls through to
+        // multi-turn recovery if the escalated limit also hits the cap.
+        // upperLimit comes from the per-model config in ~/.axiomate.json
+        // (maxOutputTokens / contextWindow fields); users who configure
+        // maxOutputTokens explicitly get no headroom and skip this path.
+        const { default: defaultMax, upperLimit } = getModelMaxOutputTokens(
+          toolUseContext.options.mainLoopModel,
+        )
+        const canEscalate = upperLimit > defaultMax
         if (
-          capEnabled &&
+          canEscalate &&
           maxOutputTokensOverride === undefined &&
           !process.env.AXIOMATE_CODE_MAX_OUTPUT_TOKENS
         ) {
@@ -825,7 +830,7 @@ async function* queryLoop(
             toolUseContext,
             autoCompactTracking: tracking,
             maxOutputTokensRecoveryCount,
-            maxOutputTokensOverride: ESCALATED_MAX_TOKENS,
+            maxOutputTokensOverride: upperLimit,
             pendingToolUseSummary: undefined,
             stopHookActive: undefined,
             turnCount,
