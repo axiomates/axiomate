@@ -62,11 +62,10 @@ No new env vars, no settings — always on for all builds. These are migration r
 
 | # | Feature | Rationale |
 |---|---|---|
-| 4 | Memory `skipIndex` | Migration artifact. Production path (index in prompt) is the intended final design; DEV branch is an experiment. |
-| 7 | `/files` command | Read-only debug command; zero risk. |
-| 8 | Keybinding customization | Missing file falls back to defaults; no side effects. |
-
-**Estimated work:** ~10 LOC gate removal + comment cleanup.
+| 1 | Cron scheduling ✅ done | User decision: `/loop` is GA per changelog; default-on with `AXIOMATE_CODE_DISABLE_CRON=1` as kill switch. |
+| 4 | Memory `skipIndex` ✅ done | Migration artifact. Production path (index in prompt) is the intended final design; DEV branch is an experiment. |
+| 7 | `/files` command ✅ done | Read-only debug command; zero risk. |
+| 8 | Keybinding customization ✅ done | Missing file falls back to defaults; no side effects. |
 
 ### 🟡 Convert to runtime env opt-in (no settings / `/config`)
 
@@ -84,9 +83,10 @@ Follow the existing repo pattern: prompt suggestion / speculation / deep search 
 | # | Feature | Knob | Default |
 |---|---|---|---|
 | 5 | Bash AST parser ✅ done | `bashAstEnabled` + `AXIOMATE_CODE_ENABLE_BASH_AST` | off |
-| 1 | Cron scheduling | `cronSchedulingEnabled` + `AXIOMATE_CODE_ENABLE_CRON` | off |
 | 2 | Session memory | `sessionMemoryEnabled` + `AXIOMATE_CODE_ENABLE_SESSION_MEMORY` | off |
 | 3 | Extract memories | `extractMemoriesEnabled` + `AXIOMATE_CODE_ENABLE_EXTRACT_MEMORIES` | off |
+
+(Item 1 cron moved to 🟢 — user decision: default-on, not env+settings+/config.)
 
 **Estimated work:** ~40-60 LOC per item (schema field + env util + supportedSettings entry + gate replacement).
 

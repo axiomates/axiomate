@@ -1,4 +1,3 @@
-import { feature } from 'bun:bundle'
 import { DEFAULT_CRON_JITTER_CONFIG } from '../../utils/cronTasks.js'
 import { isEnvTruthy } from '../../utils/envUtils.js'
 
@@ -8,32 +7,14 @@ export const DEFAULT_MAX_AGE_DAYS =
   DEFAULT_CRON_JITTER_CONFIG.recurringMaxAgeMs / (24 * 60 * 60 * 1000)
 
 /**
- * Unified gate for the cron scheduling system. Combines the build-time
- * `feature('DEV')` flag (dead code elimination) with the runtime
- *
- * AGENT_TRIGGERS is independently shippable from DISABLED — the cron module
- * graph (cronScheduler/cronTasks/cronTasksLock/cron.ts + the three tools +
- * /loop skill) has zero imports into src/assistant/ and no false
- * when DISABLED is off the scheduler just gets assistantMode: false.
- *
- * Called from Tool.isEnabled() (lazy, post-init) and inside useEffect /
- * imperative setup, never at module scope — so the disk cache has had a
- * chance to populate.
- *
- * The default is `true` — /loop is GA (announced in changelog). config
- * may be disabled when DISABLE_TELEMETRY /
- * AXIOMATE_CODE_DISABLE_NONESSENTIAL_TRAFFIC are set; a `false` default would
- * break /loop for those users (GH #31759). The GB gate now serves purely as a
- * fleet-wide kill switch — flipping it to `false` stops already-running
- * schedulers on their next isKilled poll tick, not just new ones.
- *
- * `AXIOMATE_CODE_DISABLE_CRON` is a local override that wins over GB.
+ * Runtime gate for the cron scheduling system. Cron is default-on;
+ * `AXIOMATE_CODE_DISABLE_CRON=1` is the local kill switch. Called from
+ * Tool.isEnabled() (lazy, post-init) and inside useEffect / imperative
+ * setup, never at module scope — so the disk cache has had a chance to
+ * populate.
  */
 export function isKairosCronEnabled(): boolean {
-  return feature('DEV')
-    ? !isEnvTruthy(process.env.AXIOMATE_CODE_DISABLE_CRON) &&
-        true
-    : false
+  return !isEnvTruthy(process.env.AXIOMATE_CODE_DISABLE_CRON)
 }
 
 /**
