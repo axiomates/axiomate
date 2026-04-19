@@ -1,4 +1,5 @@
 import { feature } from 'bun:bundle'
+import { isGlobalSearchEnabled } from '../components/PromptInput/globalSearchEnabled.js'
 import { isMessageActionsEnabled } from '../screens/messageActionsEnabled.js'
 import { satisfies } from '../utils/semver.js'
 import { isRunningWithBun } from '../utils/bundledMode.js'
@@ -47,7 +48,7 @@ export const DEFAULT_BINDINGS: KeybindingBlock[] = [
       'ctrl+r': 'history:search',
       // File navigation. cmd+ bindings only fire on kitty-protocol terminals;
       // ctrl+shift is the portable fallback.
-      ...(feature('DEV')
+      ...(isGlobalSearchEnabled()
         ? {
             'ctrl+shift+f': 'app:globalSearch' as const,
             'cmd+shift+f': 'app:globalSearch' as const,

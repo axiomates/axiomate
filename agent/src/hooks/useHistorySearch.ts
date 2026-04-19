@@ -1,4 +1,4 @@
-import { feature } from 'bun:bundle'
+import { isGlobalSearchEnabled } from '../components/PromptInput/globalSearchEnabled.js'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   getModeFromInput,
@@ -237,7 +237,7 @@ export function useHistorySearch(
   // Gated off under HISTORY_PICKER — the modal dialog owns ctrl+r there.
   useKeybinding('history:search', handleStartSearch, {
     context: 'Global',
-    isActive: feature('DEV') ? false : !isSearching,
+    isActive: isGlobalSearchEnabled() ? false : !isSearching,
   })
 
   // History search context keybindings (only active when searching)

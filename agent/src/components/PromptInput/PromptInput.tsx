@@ -1,4 +1,5 @@
 import { feature } from 'bun:bundle';
+import { isGlobalSearchEnabled } from './globalSearchEnabled.js';
 import * as path from 'path';
 import * as React from 'react';
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
@@ -1401,12 +1402,14 @@ function PromptInput({
     isActive: helpOpen
   });
 
-  // Quick Open / Global Search. Hook calls are unconditional (Rules of Hooks);
-  // the handler body is feature()-gated so the setState calls and component
-  // references get tree-shaken in external builds.
-  const quickSearchActive = feature('DEV') ? !isModalOverlayActive : false;
+  // Quick Open / Global Search / modal history picker. Gated on
+  // AXIOMATE_CODE_ENABLE_GLOBAL_SEARCH (env only). Hook calls stay
+  // unconditional so Rules of Hooks aren't violated; the handler body
+  // and isActive short-circuit when the env flag isn't set.
+  const advancedSearchEnabled = isGlobalSearchEnabled();
+  const quickSearchActive = advancedSearchEnabled ? !isModalOverlayActive : false;
   useKeybinding('app:quickOpen', () => {
-    if (feature('DEV')) {
+    if (advancedSearchEnabled) {
       setShowQuickOpen(true);
       setHelpOpen(false);
     }
@@ -1415,7 +1418,7 @@ function PromptInput({
     isActive: quickSearchActive
   });
   useKeybinding('app:globalSearch', () => {
-    if (feature('DEV')) {
+    if (advancedSearchEnabled) {
       setShowGlobalSearch(true);
       setHelpOpen(false);
     }
@@ -1424,13 +1427,13 @@ function PromptInput({
     isActive: quickSearchActive
   });
   useKeybinding('history:search', () => {
-    if (feature('DEV')) {
+    if (advancedSearchEnabled) {
       setShowHistoryPicker(true);
       setHelpOpen(false);
     }
   }, {
     context: 'Global',
-    isActive: feature('DEV') ? !isModalOverlayActive : false
+    isActive: quickSearchActive
   });
 
   // Handle Ctrl+C to abort speculation when idle (not loading)
@@ -1752,7 +1755,7 @@ function PromptInput({
       setShowTeamsDialog(false);
     }} />;
   }
-  if (feature('DEV')) {
+  if (advancedSearchEnabled) {
     const insertWithSpacing = (text: string) => {
       const cursorChar = input[cursorOffset - 1] ?? ' ';
       insertTextAtCursor(/\s/.test(cursorChar) ? text : ` ${text}`);
@@ -1764,7 +1767,7 @@ function PromptInput({
       return <GlobalSearchDialog onDone={() => setShowGlobalSearch(false)} onInsert={insertWithSpacing} />;
     }
   }
-  if (feature('DEV') && showHistoryPicker) {
+  if (advancedSearchEnabled && showHistoryPicker) {
     return <HistorySearchDialog initialQuery={input} onSelect={entry => {
       const entryMode = getModeFromInput(entry.display);
       const value = getValueFromInput(entry.display);

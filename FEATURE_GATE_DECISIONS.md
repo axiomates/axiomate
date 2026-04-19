@@ -69,10 +69,11 @@ No new env vars, no settings — always on for all builds. These are migration r
 
 ### 🟡 Convert to runtime env opt-in (no settings / `/config`)
 
-Currently empty. After the bash AST revisit (user decided a `/config` toggle is warranted), this category has no committed members. Left as a category in case a future feature fits.
+| # | Feature | Env var | Default |
+|---|---|---|---|
+| 10 | Quick / Global search / modal history picker ✅ done | `AXIOMATE_CODE_ENABLE_GLOBAL_SEARCH` | off |
 
-**Decision needed** — could fit here:
-- Global code search (item 10) — UX not polished, but runtime opt-in lets power users try it
+Env-only (no /config) because the global-search dialog is known not-quite-stable (silent ripgrep error swallow, empty-result-vs-failure ambiguity, pending onKeyDown migration). Users opting in via env knowingly accept the rough edges. Ctrl+R falls back to the stable classic backward-search when unset.
 
 ### 🟠 Convert to env + settings + `/config` runtime toggle
 
@@ -85,6 +86,8 @@ Follow the existing repo pattern: prompt suggestion / speculation / deep search 
 | 5 | Bash AST parser ✅ done | `bashAstEnabled` + `AXIOMATE_CODE_ENABLE_BASH_AST` | off |
 | 2 | Session memory ✅ done | `sessionMemoryEnabled` + `AXIOMATE_CODE_ENABLE_SESSION_MEMORY` | off |
 | 3 | Extract memories ✅ done | `extractMemoriesEnabled` + `AXIOMATE_CODE_ENABLE_EXTRACT_MEMORIES` | off |
+| 6 | Built-in Explore / Plan / Verification agents ✅ done | `builtInAgentsEnabled` + `AXIOMATE_CODE_ENABLE_BUILT_IN_AGENTS` | off |
+| 9 | Message actions ✅ done | `messageActionsEnabled` + `AXIOMATE_CODE_ENABLE_MESSAGE_ACTIONS` | off |
 
 (Item 1 cron moved to 🟢 — user decision: default-on, not env+settings+/config.)
 
@@ -107,11 +110,7 @@ No work needed.
 
 ### 🟣 Needs product decision (cannot recommend unilaterally)
 
-| # | Feature | Tension |
-|---|---|---|
-| 6 | Built-in Explore / Plan / Verification agents | Verification agent forces model to spawn a verifier before finishing 3+ file changes — significant token cost to impose on every release user. Options: always on (expensive), runtime opt-in (adopted slowly), settings-gated (discoverable). |
-| 9 | Message actions | `shift+up` keybinding may surprise users unfamiliar with the mode. Always on (UX disruption accepted), settings-gated (discoverable but nobody finds it), or keep DEV (power-user only). |
-| 10 | Quick / Global search | `ctrl+r` history search is stable; global code search is not. Split them — enable ctrl+r unconditionally, leave global search DEV-gated or env-gated? |
+All resolved. Items 6 / 9 migrated to the 🟠 env+settings+/config pattern; item 10 migrated to the 🟡 env-only pattern. See their respective sections above.
 
 ### ⚪ Orphan: `awaySummaryEnabled` ✅ done
 
