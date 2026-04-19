@@ -113,9 +113,9 @@ No work needed.
 | 9 | Message actions | `shift+up` keybinding may surprise users unfamiliar with the mode. Always on (UX disruption accepted), settings-gated (discoverable but nobody finds it), or keep DEV (power-user only). |
 | 10 | Quick / Global search | `ctrl+r` history search is stable; global code search is not. Split them — enable ctrl+r unconditionally, leave global search DEV-gated or env-gated? |
 
-### ⚪ Orphan: `awaySummaryEnabled`
+### ⚪ Orphan: `awaySummaryEnabled` ✅ done
 
-Already env + settings. Only gap: add entry to `agent/src/tools/ConfigTool/supportedSettings.ts` so `/config` UI surfaces it. ~20 LOC. Completely orthogonal to the DEV-gate migrations above.
+env + settings + `/config` all in place. `AXIOMATE_CODE_ENABLE_AWAY_SUMMARY=1` or `/config awaySummaryEnabled true` to opt in. Default off.
 
 ---
 

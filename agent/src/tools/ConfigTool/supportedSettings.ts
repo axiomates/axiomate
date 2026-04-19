@@ -151,6 +151,12 @@ export const SUPPORTED_SETTINGS: Record<string, SettingConfig> = {
     description:
       'At end of every turn, forked agent distills facts into daily memory logs',
   },
+  awaySummaryEnabled: {
+    source: 'settings',
+    type: 'boolean',
+    description:
+      'Generate "while you were away" recap (fastModel) on focus regain > 5 min',
+  },
 }
 
 export function isSupported(key: string): boolean {
