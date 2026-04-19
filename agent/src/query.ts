@@ -144,6 +144,33 @@ function isWithheldMaxOutputTokens(
   return msg?.type === 'assistant' && msg.apiError === 'max_output_tokens'
 }
 
+/**
+ * Is this a context-overflow assistant-error message? Tagged by
+ * services/api/errors.ts wrapError when the API rejects the request for
+ * prompt-too-long or 413. Reactive-compact recovery (below) detects this
+ * and runs an auto-compact before giving up.
+ */
+function isContextOverflowError(
+  msg: Message | StreamEvent | undefined,
+): msg is AssistantMessage {
+  return msg?.type === 'assistant' && msg.apiError === 'context_overflow'
+}
+
+/**
+ * Reactive-compact recovery fires only for foreground user-facing turns.
+ * Background query sources (compact itself, session memory, classifiers,
+ * small side queries) would either recurse or have no useful history to
+ * compact — skip them so their context_overflow errors bubble normally.
+ */
+function isForegroundQuerySource(qs: QuerySource): boolean {
+  if (typeof qs !== 'string') return false
+  return (
+    qs === 'sdk' ||
+    qs.startsWith('repl_main_thread') ||
+    qs.startsWith('agent:')
+  )
+}
+
 export type QueryParams = {
   messages: Message[]
   systemPrompt: SystemPrompt
@@ -171,6 +198,10 @@ type State = {
   pendingToolUseSummary: Promise<ToolUseSummaryMessage | null> | undefined
   stopHookActive: boolean | undefined
   turnCount: number
+  // True when reactive compact has fired once for the current failed API call.
+  // Guards against compact → retry → still too big → compact → … death spirals.
+  // Reset on every non-reactive-compact continue (new attempt = fresh chance).
+  hasAttemptedReactiveCompact: boolean
   // Why the previous iteration continued. Undefined on first iteration.
   // Lets tests assert recovery paths fired without inspecting message contents.
   transition: Continue | undefined
@@ -244,6 +275,7 @@ async function* queryLoop(
     maxOutputTokensRecoveryCount: 0,
     turnCount: 1,
     pendingToolUseSummary: undefined,
+    hasAttemptedReactiveCompact: false,
     transition: undefined,
   }
   const budgetTracker = feature('DEV') ? createBudgetTracker() : null
@@ -834,6 +866,7 @@ async function* queryLoop(
             pendingToolUseSummary: undefined,
             stopHookActive: undefined,
             turnCount,
+            hasAttemptedReactiveCompact: false,
             transition: {
               reason: 'max_output_tokens_recovery',
               attempt: maxOutputTokensRecoveryCount + 1,
@@ -845,6 +878,68 @@ async function* queryLoop(
 
         // Recovery exhausted — surface the withheld error now.
         yield lastMessage
+      }
+
+      // Reactive compaction: when a context_overflow error surfaces (usually
+      // because a single big tool result pushed the conversation over the
+      // window), run auto-compact and retry once. One attempt per failed
+      // call — hasAttemptedReactiveCompact guards against compact→retry→
+      // still too big→compact death spirals.
+      if (
+        isContextOverflowError(lastMessage) &&
+        !state.hasAttemptedReactiveCompact &&
+        isForegroundQuerySource(querySource)
+      ) {
+        logForDebugging(
+          '[reactiveCompact] context_overflow detected; running compact + retry',
+        )
+        const { compactionResult } = await deps.autocompact(
+          messagesForQuery,
+          toolUseContext,
+          {
+            systemPrompt,
+            userContext,
+            systemContext,
+            toolUseContext,
+            forkContextMessages: messagesForQuery,
+          },
+          querySource,
+          tracking,
+          0,
+        )
+        if (!compactionResult) {
+          // Compact declined (threshold not met, env disable, circuit-breaker
+          // tripped, or compact itself failed). Surface the original error.
+          logForDebugging(
+            '[reactiveCompact] compact declined; surfacing original error',
+          )
+          yield lastMessage
+          return { reason: 'completed' }
+        }
+        const postCompactMessages = buildPostCompactMessages(compactionResult)
+        tracking = {
+          compacted: true,
+          turnId: deps.uuid(),
+          turnCounter: 0,
+          consecutiveFailures: 0,
+        }
+        const next: State = {
+          // Discard the failed assistantMessages — they're just the error
+          // message. The compact already consumed the pre-error conversation;
+          // retry starts clean with compacted history.
+          messages: postCompactMessages,
+          toolUseContext,
+          autoCompactTracking: tracking,
+          maxOutputTokensRecoveryCount: 0,
+          maxOutputTokensOverride: undefined,
+          pendingToolUseSummary: undefined,
+          stopHookActive: undefined,
+          turnCount,
+          hasAttemptedReactiveCompact: true,
+          transition: { reason: 'reactive_compact' },
+        }
+        state = next
+        continue
       }
 
       // Skip stop hooks when the last message is an API error (rate limit,
@@ -885,6 +980,7 @@ async function* queryLoop(
           pendingToolUseSummary: undefined,
           stopHookActive: true,
           turnCount,
+          hasAttemptedReactiveCompact: false,
           transition: { reason: 'stop_hook_blocking' },
         }
         state = next
@@ -920,6 +1016,7 @@ async function* queryLoop(
             pendingToolUseSummary: undefined,
             stopHookActive: undefined,
             turnCount,
+            hasAttemptedReactiveCompact: false,
             transition: { reason: 'token_budget_continuation' },
           }
           continue
@@ -1225,6 +1322,7 @@ async function* queryLoop(
       pendingToolUseSummary: nextPendingToolUseSummary,
       maxOutputTokensOverride: undefined,
       stopHookActive,
+      hasAttemptedReactiveCompact: false,
       transition: { reason: 'next_turn' },
     }
     state = next

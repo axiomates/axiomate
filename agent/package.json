@@ -1,6 +1,6 @@
 {
   "name": "axiomate",
-  "version": "0.3.1",
+  "version": "0.3.3",
   "description": "AI agent with multi-provider support (OpenAI / Anthropic / self-hosted)",
   "type": "module",
   "main": "./dist/cli.js",

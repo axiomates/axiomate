@@ -399,8 +399,11 @@ export function getAssistantMessageFromError(
     // Content stays generic (UI matches on exact string). The raw error with
     // token counts goes into errorDetails — reactive compact's retry loop
     // parses the gap from there via getPromptTooLongTokenGap.
+    // apiError: 'context_overflow' tags this as the reactive-compact trigger
+    // class (query.ts isContextOverflowError).
     return createAssistantAPIErrorMessage({
       content: PROMPT_TOO_LONG_ERROR_MESSAGE,
+      apiError: 'context_overflow',
       error: 'invalid_request',
       errorDetails: error.message,
     })
@@ -476,6 +479,7 @@ export function getAssistantMessageFromError(
   if (error instanceof APIError && error.status === 413) {
     return createAssistantAPIErrorMessage({
       content: getRequestTooLargeErrorMessage(),
+      apiError: 'context_overflow',
       error: 'invalid_request',
     })
   }
