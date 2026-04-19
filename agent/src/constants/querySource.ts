@@ -25,7 +25,6 @@ export type QuerySource =
   | 'prompt_suggestion'
   | 'yolo_classifier'
   | 'auto_mode'
-  | 'bash_classifier'
   | 'hook_agent'
   | 'hook_prompt'
   | 'verification_agent'

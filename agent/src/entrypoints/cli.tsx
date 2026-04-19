@@ -1,4 +1,3 @@
-import { feature } from 'bun:bundle';
 
 // Bugfix for corepack auto-pinning, which adds yarnpkg to peoples' package.jsons
 // eslint-disable-next-line custom-rules/no-top-level-side-effects
@@ -60,7 +59,7 @@ async function main(): Promise<void> {
 
   // Fast-path for --dump-system-prompt: output the rendered system prompt and exit.
   // Used by prompt sensitivity evals to extract the system prompt at a specific commit.
-  if (feature('DEV') && args[0] === '--dump-system-prompt') {
+  if (args[0] === '--dump-system-prompt') {
     profileCheckpoint('cli_dump_system_prompt_path');
     const {
       enableConfigs

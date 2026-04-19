@@ -1,4 +1,3 @@
-import { feature } from 'bun:bundle'
 import type { QuerySource } from '../../constants/querySource.js'
 import type { SystemAPIErrorMessage } from '../../types/message.js'
 import { logForDebugging } from '../../utils/debug.js'
@@ -43,7 +42,6 @@ const FOREGROUND_RETRY_SOURCES = new Set<QuerySource>([
   'verification_agent',
   'side_question',
   'auto_mode',
-  ...(feature('DEV') ? (['bash_classifier'] as const) : []),
 ])
 
 function isForegroundSource(querySource: QuerySource | undefined): boolean {
