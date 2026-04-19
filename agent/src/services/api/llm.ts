@@ -43,10 +43,7 @@ import {
   getMergedBetas,
 } from '../../utils/betas.js'
 import { getGlobalConfig, getOrCreateUserID } from '../../utils/config.js'
-import {
-  CAPPED_DEFAULT_MAX_TOKENS,
-  getModelMaxOutputTokens,
-} from '../../utils/context.js'
+import { getModelMaxOutputTokens } from '../../utils/context.js'
 import { resolveAppliedEffort } from '../../utils/effort.js'
 import { isEnvTruthy } from '../../utils/envUtils.js'
 import { errorMessage } from '../../utils/errors.js'
@@ -1858,27 +1855,14 @@ export function adjustParamsForNonStreaming<
   }
 }
 
-function isMaxTokensCapEnabled(): boolean {
-  // Disabled until output-token caps are validated for configured endpoints.
-  return false
-}
-
 export function getMaxOutputTokensForModel(model: string): number {
-  const maxOutputTokens = getModelMaxOutputTokens(model)
-
-  // Slot-reservation cap: drop default to 8k for all models. Math.min keeps
-  // models whose configured maxOutputTokens is below the cap at their native
-  // value. Applied before the env-var override so
-  // AXIOMATE_CODE_MAX_OUTPUT_TOKENS still wins.
-  const defaultTokens = isMaxTokensCapEnabled()
-    ? Math.min(maxOutputTokens.default, CAPPED_DEFAULT_MAX_TOKENS)
-    : maxOutputTokens.default
-
+  const defaultTokens = getModelMaxOutputTokens(model)
+  // env var is an intentional escape hatch; no provider-specific upper bound.
   const result = validateBoundedIntEnvVar(
     'AXIOMATE_CODE_MAX_OUTPUT_TOKENS',
     process.env.AXIOMATE_CODE_MAX_OUTPUT_TOKENS,
     defaultTokens,
-    maxOutputTokens.upperLimit,
+    Number.MAX_SAFE_INTEGER,
   )
   return result.effective
 }

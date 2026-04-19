@@ -55,13 +55,40 @@ describe('onboardingProviderReducer', () => {
     expect(next.error).toBeUndefined()
   })
 
-  it('advances modelId → verifying', () => {
+  it('advances modelId → contextWindow', () => {
     const next = onboardingProviderReducer(
       { ...initialOnboardingProviderState, stage: 'modelId' },
       { type: 'submitModelId', value: 'gpt-4o' },
     )
-    expect(next.stage).toBe('verifying')
+    expect(next.stage).toBe('contextWindow')
     expect(next.modelId).toBe('gpt-4o')
+  })
+
+  it('parses contextWindow input and advances to verifying', () => {
+    const next = onboardingProviderReducer(
+      { ...initialOnboardingProviderState, stage: 'contextWindow' },
+      { type: 'submitContextWindow', value: '200000' },
+    )
+    expect(next.stage).toBe('verifying')
+    expect(next.contextWindow).toBe(200_000)
+  })
+
+  it('accepts empty contextWindow input and uses 32K default', () => {
+    const next = onboardingProviderReducer(
+      { ...initialOnboardingProviderState, stage: 'contextWindow' },
+      { type: 'submitContextWindow', value: '' },
+    )
+    expect(next.stage).toBe('verifying')
+    expect(next.contextWindow).toBe(32_000)
+  })
+
+  it('rejects non-numeric contextWindow and stays on stage with error', () => {
+    const next = onboardingProviderReducer(
+      { ...initialOnboardingProviderState, stage: 'contextWindow' },
+      { type: 'submitContextWindow', value: 'abc' },
+    )
+    expect(next.stage).toBe('contextWindow')
+    expect(next.error).toBeDefined()
   })
 
   it('routes verify failure to a dedicated verifyFailed stage with the error', () => {
@@ -110,7 +137,15 @@ describe('onboardingProviderReducer', () => {
     expect(next.stage).toBe('apiKey')
   })
 
-  it('back from verifyFailed returns to apiKey (same as retry, but covers Esc)', () => {
+  it('back from contextWindow returns to modelId', () => {
+    const next = onboardingProviderReducer(
+      { ...initialOnboardingProviderState, stage: 'contextWindow' },
+      { type: 'back' },
+    )
+    expect(next.stage).toBe('modelId')
+  })
+
+  it('back from verifyFailed returns to contextWindow (re-confirm the last input)', () => {
     const next = onboardingProviderReducer(
       {
         ...initialOnboardingProviderState,
@@ -119,7 +154,7 @@ describe('onboardingProviderReducer', () => {
       },
       { type: 'back' },
     )
-    expect(next.stage).toBe('apiKey')
+    expect(next.stage).toBe('contextWindow')
     expect(next.error).toBeUndefined()
   })
 
@@ -132,7 +167,7 @@ describe('onboardingProviderReducer', () => {
 })
 
 describe('full happy-path transition', () => {
-  it('protocol → baseUrl → apiKey → modelId → verifying carries all values', () => {
+  it('protocol → baseUrl → apiKey → modelId → contextWindow → verifying carries all values', () => {
     let state = initialOnboardingProviderState
     state = onboardingProviderReducer(state, {
       type: 'pickProtocol',
@@ -150,12 +185,17 @@ describe('full happy-path transition', () => {
       type: 'submitModelId',
       value: 'qwen/qwen3-235b',
     })
+    state = onboardingProviderReducer(state, {
+      type: 'submitContextWindow',
+      value: '128000',
+    })
     expect(state).toMatchObject({
       stage: 'verifying',
       protocol: 'openai',
       baseUrl: 'https://openrouter.ai/api/v1',
       apiKey: 'sk-or-v1-abc',
       modelId: 'qwen/qwen3-235b',
+      contextWindow: 128_000,
     })
   })
 })
@@ -168,6 +208,7 @@ describe('buildModelConfig', () => {
       baseUrl: 'https://openrouter.ai/api/v1',
       apiKey: 'sk-or-v1-abc',
       modelId: 'qwen/qwen3-235b',
+      contextWindow: 128_000,
     }
     expect(buildModelConfig(state)).toEqual({
       model: 'qwen/qwen3-235b',
@@ -175,6 +216,7 @@ describe('buildModelConfig', () => {
       protocol: 'openai',
       baseUrl: 'https://openrouter.ai/api/v1',
       apiKey: 'sk-or-v1-abc',
+      contextWindow: 128_000,
     })
   })
 })

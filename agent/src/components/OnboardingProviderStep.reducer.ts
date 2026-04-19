@@ -12,6 +12,7 @@ export type Stage =
   | 'baseUrl'
   | 'apiKey'
   | 'modelId'
+  | 'contextWindow'
   | 'verifying'
   | 'verifyFailed'
 
@@ -21,7 +22,8 @@ export type OnboardingProviderState = {
   baseUrl: string
   apiKey: string
   modelId: string
-  /** Present only when stage === 'verifyFailed' */
+  contextWindow: number
+  /** Present only when stage === 'verifyFailed' or contextWindow parse failed */
   error?: string
 }
 
@@ -30,6 +32,7 @@ export type OnboardingProviderAction =
   | { type: 'submitBaseUrl'; value: string }
   | { type: 'submitApiKey'; value: string }
   | { type: 'submitModelId'; value: string }
+  | { type: 'submitContextWindow'; value: string }
   | { type: 'verifyFail'; error: string }
   | { type: 'retryFromApiKey' }
   | { type: 'back' }
@@ -45,12 +48,32 @@ export const MODEL_ID_HINT: Record<Protocol, string> = {
   anthropic: 'e.g., Qwen/Qwen3.6-Plus',
 }
 
+export const CONTEXT_WINDOW_HINT =
+  "Model's context window in tokens (e.g., 200000 for 200K, 1000000 for 1M). Defaults to 32000 if empty."
+
+export const DEFAULT_CONTEXT_WINDOW_VALUE = 32_000
+const MIN_CONTEXT_WINDOW = 1024
+
 export const initialOnboardingProviderState: OnboardingProviderState = {
   stage: 'protocol',
   protocol: 'openai',
   baseUrl: '',
   apiKey: '',
   modelId: '',
+  contextWindow: DEFAULT_CONTEXT_WINDOW_VALUE,
+}
+
+/**
+ * Parse the user's context-window input. Empty string → default.
+ * Returns null if the value is non-numeric or below the sane floor.
+ */
+export function parseContextWindowInput(raw: string): number | null {
+  const trimmed = raw.trim()
+  if (trimmed === '') return DEFAULT_CONTEXT_WINDOW_VALUE
+  const parsed = Number(trimmed)
+  if (!Number.isFinite(parsed) || !Number.isInteger(parsed)) return null
+  if (parsed < MIN_CONTEXT_WINDOW) return null
+  return parsed
 }
 
 export function onboardingProviderReducer(
@@ -77,9 +100,25 @@ export function onboardingProviderReducer(
     case 'submitModelId':
       return {
         ...state,
-        stage: 'verifying',
+        stage: 'contextWindow',
         modelId: action.value.trim(),
+        error: undefined,
       }
+    case 'submitContextWindow': {
+      const parsed = parseContextWindowInput(action.value)
+      if (parsed === null) {
+        return {
+          ...state,
+          error: `Expected positive integer >= ${MIN_CONTEXT_WINDOW}`,
+        }
+      }
+      return {
+        ...state,
+        stage: 'verifying',
+        contextWindow: parsed,
+        error: undefined,
+      }
+    }
     case 'verifyFail':
       return { ...state, stage: 'verifyFailed', error: action.error }
     case 'retryFromApiKey':
@@ -99,9 +138,11 @@ function previousStage(stage: Stage): Stage {
       return 'baseUrl'
     case 'modelId':
       return 'apiKey'
+    case 'contextWindow':
+      return 'modelId'
     case 'verifying':
     case 'verifyFailed':
-      return 'apiKey'
+      return 'contextWindow'
   }
 }
 
@@ -113,5 +154,6 @@ export function buildModelConfig(state: OnboardingProviderState) {
     protocol: state.protocol,
     baseUrl: state.baseUrl,
     apiKey: state.apiKey,
+    contextWindow: state.contextWindow,
   }
 }

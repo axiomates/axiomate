@@ -8,7 +8,9 @@ import { Select } from './CustomSelect/select.js'
 import TextInput from './TextInput.js'
 import {
   buildModelConfig,
+  CONTEXT_WINDOW_HINT,
   DEFAULT_BASE_URLS,
+  DEFAULT_CONTEXT_WINDOW_VALUE,
   initialOnboardingProviderState,
   MODEL_ID_HINT,
   onboardingProviderReducer,
@@ -109,6 +111,15 @@ export function OnboardingProviderStep({
           protocol={state.protocol}
           initial={state.modelId}
           onSubmit={v => dispatch({ type: 'submitModelId', value: v })}
+          onBack={() => dispatch({ type: 'back' })}
+        />
+      )
+    case 'contextWindow':
+      return (
+        <ContextWindowStep
+          initial={state.contextWindow}
+          previousError={state.error}
+          onSubmit={v => dispatch({ type: 'submitContextWindow', value: v })}
           onBack={() => dispatch({ type: 'back' })}
         />
       )
@@ -295,6 +306,53 @@ function ModelIdStep({
       <Text bold>Model ID</Text>
       <Text dimColor>This is the string your provider expects in the `model` field.</Text>
       <Text dimColor>{MODEL_ID_HINT[protocol]}</Text>
+      <Box flexDirection="row" gap={1}>
+        <Text>&gt;</Text>
+        <TextInput
+          value={value}
+          onChange={setValue}
+          onSubmit={handleSubmit}
+          cursorOffset={cursor}
+          onChangeCursorOffset={setCursor}
+          focus
+          showCursor
+          columns={80}
+        />
+      </Box>
+      <Text dimColor>Enter to continue · Esc to go back</Text>
+      <EscToGoBack onBack={onBack} />
+    </Box>
+  )
+}
+
+function ContextWindowStep({
+  initial,
+  previousError,
+  onSubmit,
+  onBack,
+}: {
+  initial: number
+  previousError?: string
+  onSubmit: (v: string) => void
+  onBack: () => void
+}): React.ReactNode {
+  const seed =
+    initial && initial !== DEFAULT_CONTEXT_WINDOW_VALUE ? String(initial) : ''
+  const [value, setValue] = useState(seed)
+  const [cursor, setCursor] = useState(seed.length)
+
+  const handleSubmit = useCallback(
+    (v: string) => {
+      onSubmit(v)
+    },
+    [onSubmit],
+  )
+
+  return (
+    <Box flexDirection="column" paddingLeft={1} gap={1}>
+      <Text bold>Context window</Text>
+      <Text dimColor>{CONTEXT_WINDOW_HINT}</Text>
+      {previousError && <Text color="error">{previousError}</Text>}
       <Box flexDirection="row" gap={1}>
         <Text>&gt;</Text>
         <TextInput

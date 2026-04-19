@@ -100,7 +100,7 @@ export function getStoredSessionCosts(
         {
           ...usage,
           contextWindow: getContextWindowForModel(model, getSdkBetas()),
-          maxOutputTokens: getModelMaxOutputTokens(model).default,
+          maxOutputTokens: getModelMaxOutputTokens(model),
         },
       ]),
     )
@@ -268,7 +268,7 @@ function addToTotalModelUsage(
     usage.server_tool_use?.web_search_requests ?? 0
   modelUsage.costUSD += cost
   modelUsage.contextWindow = getContextWindowForModel(model, getSdkBetas())
-  modelUsage.maxOutputTokens = getModelMaxOutputTokens(model).default
+  modelUsage.maxOutputTokens = getModelMaxOutputTokens(model)
   return modelUsage
 }
 

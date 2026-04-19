@@ -151,8 +151,10 @@ export function Doctor({ onDone }: Props): React.ReactNode {
       },
       {
         name: 'AXIOMATE_CODE_MAX_OUTPUT_TOKENS',
-        // Validate against the currently configured main-loop model.
-        ...getModelMaxOutputTokens(getMainLoopModel()),
+        // Default is per-model; env var is an intentional escape hatch so
+        // no upper bound (validation just checks positive integer).
+        default: getModelMaxOutputTokens(getMainLoopModel()),
+        upperLimit: Number.MAX_SAFE_INTEGER,
       },
     ]
     return envVars

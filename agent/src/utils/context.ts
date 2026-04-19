@@ -1,23 +1,13 @@
 import { getGlobalConfig } from './config.js'
 import { isEnvTruthy } from './envUtils.js'
 
-// Model context window size (200k tokens for all models right now)
-export const MODEL_CONTEXT_WINDOW_DEFAULT = 200_000
+// Fallback when ModelProviderConfig.contextWindow is not set.
+// Small on purpose: signals "model unknown / unconfigured" rather than
+// assuming a large window the real model may not have.
+export const MODEL_CONTEXT_WINDOW_DEFAULT = 32_000
 
 // Maximum output tokens for compact operations
 export const COMPACT_MAX_OUTPUT_TOKENS = 20_000
-
-// Default max output tokens
-const MAX_OUTPUT_TOKENS_DEFAULT = 32_000
-const MAX_OUTPUT_TOKENS_UPPER_LIMIT = 64_000
-
-// Capped default for slot-reservation optimization. p99 output is typically
-// well below the 32k default, so the cap over-reserves slot capacity. With
-// the cap enabled, the rare request that hits it gets one clean retry at
-// the model's upperLimit (see query.ts max_output_tokens_escalate). Cap is
-// applied in llm.ts:getMaxOutputTokensForModel to avoid the
-// config→betas→context import cycle.
-export const CAPPED_DEFAULT_MAX_TOKENS = 8_000
 
 /**
  * Check if 1M context is disabled via environment variable.
@@ -96,41 +86,27 @@ export function calculateContextPercentages(
 }
 
 /**
- * Returns the model's default and upper limit for max output tokens.
+ * Returns the max output tokens for a given model.
+ *
+ * Rule:
+ *   - If user pinned maxOutputTokens in ModelProviderConfig → use it
+ *   - Else: contextWindow / 4 (reserve 1/4 of budget for output)
+ *
+ * No hard cap: scales naturally with the model's declared contextWindow.
  */
-export function getModelMaxOutputTokens(model: string): {
-  default: number
-  upperLimit: number
-} {
-  let defaultTokens: number
-  let upperLimit: number
-
-  // Config-driven: use explicit maxOutputTokens or derive from contextWindow
-  const modelConfig = getGlobalConfig().models?.[model]
-  if (modelConfig) {
-    if (modelConfig.maxOutputTokens) {
-      return { default: modelConfig.maxOutputTokens, upperLimit: modelConfig.maxOutputTokens }
-    }
-    if (modelConfig.contextWindow) {
-      upperLimit = modelConfig.contextWindow
-      defaultTokens = Math.min(MAX_OUTPUT_TOKENS_DEFAULT, Math.floor(modelConfig.contextWindow / 4))
-      return { default: defaultTokens, upperLimit }
-    }
-  }
-
-  defaultTokens = MAX_OUTPUT_TOKENS_DEFAULT
-  upperLimit = MAX_OUTPUT_TOKENS_UPPER_LIMIT
-
-  return { default: defaultTokens, upperLimit }
+export function getModelMaxOutputTokens(model: string): number {
+  const cfg = getGlobalConfig().models?.[model]
+  if (cfg?.maxOutputTokens) return cfg.maxOutputTokens
+  const contextWindow = cfg?.contextWindow ?? MODEL_CONTEXT_WINDOW_DEFAULT
+  return Math.floor(contextWindow / 4)
 }
 
 /**
- * Returns the max thinking budget tokens for a given model. The max
- * thinking tokens should be strictly less than the max output tokens.
- *
- * Deprecated since newer models use adaptive thinking rather than a
- * strict thinking token budget.
+ * Returns the max thinking budget tokens for a given model. Derived from
+ * the context window: thinking budget shouldn't exceed what the model can
+ * produce. Kept slightly below the ceiling so callers can still add a
+ * text response alongside thinking.
  */
 export function getMaxThinkingTokensForModel(model: string): number {
-  return getModelMaxOutputTokens(model).upperLimit - 1
+  return getContextWindowForModel(model) - 1
 }
