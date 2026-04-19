@@ -29,6 +29,9 @@ Features still gated at `feature('DEV')` with full implementations (VERIFICATION
 | `/resume` Deep + Agentic Search | `3776449` | Opt-in (both default off) |
 | `axiomate://` deep-link protocol handler | `6b84568` | Live, opt-out via `disableDeepLinkRegistration` |
 | `/export` local transcript export (covers most of B-2) | Preserved from initial import `2673a37` | Live — writes plain text to cwd or user path; see B-2 for format/path polish gaps |
+| **PERFETTO_TRACING** (A-3) | `152d159` | DEV-gated. Enable via `AXIOMATE_CODE_PERFETTO_TRACE=1` in DEV builds |
+| **Rate-limit recovery picker** (B-3) | `c7b18bd` | Live. Inline model-switcher when retries exhausted on `rate_limit` |
+| **Reactive compaction** (B-1) | `bb7bb8e` | Live, default ON. Intercepts `context_overflow` post-stream, runs auto-compact + retries |
 
 ---
 
@@ -54,7 +57,7 @@ Features where **the implementation is already in git history / on disk**, and r
 - **Default:** OFF — unexpected system messages could startle users. Power-user opt-in.
 - **Why it was tagged wrong before:** I previously assumed coupling to KAIROS / assistant-mode based on the name "AWAY". Inspection of pre-deletion source shows it's a clean feature with no KAIROS dependencies.
 
-### A-3 PERFETTO_TRACING (revived DEV-only)
+### A-3 ✓ PERFETTO_TRACING (done in `152d159`)
 
 - **What it does:** Chrome-trace-format performance profiler. Writes per-session JSON to `~/.axiomate/traces/trace-<session>.json`, viewable in [ui.perfetto.dev](https://ui.perfetto.dev) or `chrome://tracing`. Traces agent hierarchy (parent-child subagents), API calls (TTFT/TTLT/prompt size/cache stats), tool executions, and user-input waits. Supports periodic flush via `AXIOMATE_CODE_PERFETTO_WRITE_INTERVAL_S`.
 - **Status:** Revived behind `feature('DEV')` — stripped from non-DEV builds via the same `require()` pattern as [cli/print.ts:287-298](agent/src/cli/print.ts#L287-L298) (cron / extractMemories). In DEV builds, enable via env: `AXIOMATE_CODE_PERFETTO_TRACE=1` (or `=<abs_path>`).
@@ -66,13 +69,13 @@ Features where **the implementation is already in git history / on disk**, and r
 
 ## Tier B — Moderate ROI (worth doing)
 
-### B-1 Reactive compaction (documented as A1 in DELETED_FEATURES.md)
+### B-1 ✓ Reactive compaction (done in `bb7bb8e`)
 
-- **What it did:** When a turn hit `prompt_too_long` or media-size errors **mid-stream**, the error was withheld from SDK consumers, an auto-compact ran, and the turn was retried with compacted context. Complements proactive `isAutoCompactEnabled()` (~95% coverage); reactive was the fallback for "one big tool result pushed it over limit" cases.
-- **Origin:** Orchestration (~150 lines) deleted across `query.ts`, `commands/compact/compact.ts`, `services/compact/compact.ts`. Dependencies still live: [`compactConversation`](agent/src/services/compact/compact.ts), `buildPostCompactMessages`, `calculateTokenWarningState`.
-- **Provider-neutral:** Yes. `classifyError()` already handles both Anthropic and OpenAI 413/prompt_too_long shapes.
-- **Cost:** Medium (~half day). Stream-loop withhold logic + retry orchestration + `State.hasAttemptedReactiveCompact` guard (prevent death spirals).
-- **Default:** If revived, default ON — it's a robustness win with no user-visible overhead unless the 413 actually fires.
+- **What it does:** When a turn surfaces a `context_overflow` error (HTTP 413 or `prompt is too long` text), query.ts runs an auto-compact and retries with compacted history. Complements proactive `isAutoCompactEnabled()` — reactive catches "one big tool result pushed it over the limit" tail cases.
+- **Status:** Live, default ON for foreground queries (`repl_main_thread` / `sdk` / `agent:*`). Guarded by `State.hasAttemptedReactiveCompact` — one attempt per failed API call, resets on every non-reactive continue. Death-spiral-safe.
+- **Files:** [agent/src/query.ts](agent/src/query.ts) (reactive block after max_output_tokens recovery + 2 helpers `isContextOverflowError` / `isForegroundQuerySource`); [agent/src/services/api/errors.ts](agent/src/services/api/errors.ts) (tags prompt-too-long + 413 messages with `apiError: 'context_overflow'`).
+- **Provider-neutral:** Yes. `classifyError()` normalizes Anthropic + OpenAI + Chinese provider error text; `apiError: 'context_overflow'` is set uniformly.
+- **Design note:** Mutually exclusive with max_output_tokens recovery by construction (different `apiError` values — only one block matches any given error message).
 
 ### B-2 `/export` local transcript export (mostly done — polish remaining)
 
@@ -85,13 +88,13 @@ Features where **the implementation is already in git history / on disk**, and r
 - **Cost:** Small (~2h) if we do the polish; core feature already shipping.
 - **Default:** N/A — command is invoked on demand.
 
-### B-3 Rate-limit interactive UI (documented as A3)
+### B-3 ✓ Rate-limit interactive UI (done in `c7b18bd`)
 
-- **What it did:** When the model returned `rate_limit`, render an inline component offering "switch to fallback model" / "wait and retry" instead of plain error text.
-- **Origin:** React component + `onOpenRateLimitOptions` prop threading removed in Group 5. Clean slate.
-- **Provider-neutral:** Yes. `classifyError()?.reason === 'rate_limit'` and `parseRetryAfterMs()` from [`services/api/rateLimitTracker.ts`](agent/src/services/api/rateLimitTracker.ts) already normalize Anthropic + OpenAI shapes.
-- **Cost:** Small-medium (~half day). Suggest React context over re-threading props.
-- **Default:** OFF (don't hijack existing error display unless user opts in).
+- **What it does:** When withRetry's auto-retries exhaust on a `rate_limit` error, renders an inline `Select` picker below the error listing other configured models (from `config.models`). Pick one → writes `~/.axiomate.json` `currentModel` + syncs `AppState.mainLoopModel` + notifies user to ↑ Enter to resubmit.
+- **Status:** Live. Triggers only on final exhausted-retry message (`errorReason === 'rate_limit' && retryAttempt > maxRetries`); hidden when only one model is configured.
+- **Files:** [agent/src/components/messages/RateLimitRecovery.tsx](agent/src/components/messages/RateLimitRecovery.tsx) (new, ~70 LOC); [agent/src/components/messages/SystemAPIErrorMessage.tsx](agent/src/components/messages/SystemAPIErrorMessage.tsx) (conditional render); [agent/src/types/message.ts](agent/src/types/message.ts) + [agent/src/utils/messages.ts](agent/src/utils/messages.ts) + [agent/src/services/api/withRetry.ts](agent/src/services/api/withRetry.ts) (thread `errorReason` through).
+- **Provider-neutral:** Yes. `classifyError()?.reason === 'rate_limit'` and `parseRetryAfterMs()` from [services/api/rateLimitTracker.ts](agent/src/services/api/rateLimitTracker.ts) normalize Anthropic + OpenAI shapes.
+- **Out of scope (v1):** auto-retry after switch (user manually ↑ Enter), no in-dialog "wait N seconds" option (existing auto-retry countdown covers that path already).
 
 ---
 
@@ -129,10 +132,10 @@ Un-gating any of these follows the same pattern as prompt-suggestion / deep-sear
 
 | Area | Status |
 |---|---|
-| Tier A — extremely high ROI | 2 of 3 complete (DEEP_LINK live, PERFETTO_TRACING DEV-gated); A-2 AWAY_SUMMARY impl restored, wiring pending |
-| Tier B — moderate ROI | 1 of 3 complete (B-2 /export core; format/path polish pending) |
-| Rejections | Documented |
-| DEV-gated Part E | Left alone per maintainer preference |
+| Tier A — extremely high ROI | **2 of 3 complete** (A-1 DEEP_LINK, A-3 PERFETTO_TRACING). A-2 AWAY_SUMMARY impl restored in `services/awaySummary.ts`; wiring pending |
+| Tier B — moderate ROI | **3 of 3 complete** (B-1 reactive compaction, B-2 /export core, B-3 rate-limit picker). B-2 format/path polish optional |
+| Rejections | Documented — 7 items |
+| DEV-gated Part E | 15 items. Left alone per maintainer preference; each un-gate is a separate decision |
 
 ---
 
