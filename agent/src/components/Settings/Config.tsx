@@ -387,6 +387,97 @@ export function Config({
         setSettingsData(prev => ({ ...prev, agenticSearchEnabled: enabled }))
       },
     },
+    // Opt-in feature toggles. These all mirror an AXIOMATE_CODE_ENABLE_*
+    // env var; the helper at the feature's call site reads env-first-then-
+    // settings. TODO: when settingsItems migrates from hardcoded to
+    // iterating SUPPORTED_SETTINGS, these become automatic.
+    {
+      id: 'globalSearchEnabled',
+      label: 'Advanced search dialogs (Ctrl+Shift+F/P, modal history)',
+      value: settingsData?.globalSearchEnabled ?? false,
+      type: 'boolean' as const,
+      onChange(enabled: boolean) {
+        updateSettingsForSource('userSettings', {
+          globalSearchEnabled: enabled || undefined,
+        })
+        setSettingsData(prev => ({ ...prev, globalSearchEnabled: enabled }))
+      },
+    },
+    {
+      id: 'messageActionsEnabled',
+      label: 'Message actions menu (shift+up)',
+      value: settingsData?.messageActionsEnabled ?? false,
+      type: 'boolean' as const,
+      onChange(enabled: boolean) {
+        updateSettingsForSource('userSettings', {
+          messageActionsEnabled: enabled || undefined,
+        })
+        setSettingsData(prev => ({ ...prev, messageActionsEnabled: enabled }))
+      },
+    },
+    {
+      id: 'awaySummaryEnabled',
+      label: 'Away summary recap (on refocus after >5 min)',
+      value: settingsData?.awaySummaryEnabled ?? false,
+      type: 'boolean' as const,
+      onChange(enabled: boolean) {
+        updateSettingsForSource('userSettings', {
+          awaySummaryEnabled: enabled || undefined,
+        })
+        setSettingsData(prev => ({ ...prev, awaySummaryEnabled: enabled }))
+      },
+    },
+    {
+      id: 'sessionMemoryEnabled',
+      label: 'Session memory (periodic MEMORY.md updates)',
+      value: settingsData?.sessionMemoryEnabled ?? false,
+      type: 'boolean' as const,
+      onChange(enabled: boolean) {
+        updateSettingsForSource('userSettings', {
+          sessionMemoryEnabled: enabled || undefined,
+        })
+        setSettingsData(prev => ({ ...prev, sessionMemoryEnabled: enabled }))
+      },
+    },
+    {
+      id: 'extractMemoriesEnabled',
+      label: 'Auto-extract memories at end of each turn',
+      value: settingsData?.extractMemoriesEnabled ?? false,
+      type: 'boolean' as const,
+      onChange(enabled: boolean) {
+        updateSettingsForSource('userSettings', {
+          extractMemoriesEnabled: enabled || undefined,
+        })
+        setSettingsData(prev => ({
+          ...prev,
+          extractMemoriesEnabled: enabled,
+        }))
+      },
+    },
+    {
+      id: 'builtInAgentsEnabled',
+      label: 'Built-in Explore / Plan / Verification agents',
+      value: settingsData?.builtInAgentsEnabled ?? false,
+      type: 'boolean' as const,
+      onChange(enabled: boolean) {
+        updateSettingsForSource('userSettings', {
+          builtInAgentsEnabled: enabled || undefined,
+        })
+        setSettingsData(prev => ({ ...prev, builtInAgentsEnabled: enabled }))
+      },
+    },
+    {
+      id: 'bashAstEnabled',
+      label: 'Bash AST parser (stricter permission checks)',
+      value: settingsData?.bashAstEnabled ?? false,
+      type: 'boolean' as const,
+      onChange(enabled: boolean) {
+        updateSettingsForSource('userSettings', {
+          bashAstEnabled: enabled || undefined,
+        })
+        setSettingsData(prev => ({ ...prev, bashAstEnabled: enabled }))
+      },
+    },
     ...(isFileCheckpointingAvailable
       ? [
           {
