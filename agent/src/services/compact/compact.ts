@@ -34,7 +34,6 @@ import {
   getMcpInstructionsDeltaAttachment,
 } from '../../utils/attachments.js'
 import { getMemoryPath } from '../../utils/config.js'
-import { COMPACT_MAX_OUTPUT_TOKENS } from '../../utils/context.js'
 import {
   analyzeContext,
   tokenStatsToanalyticsMetrics,
@@ -1096,9 +1095,8 @@ async function streamCompactSummary({
           toolChoice: undefined,
           isNonInteractiveSession: context.options.isNonInteractiveSession,
           hasAppendSystemPrompt: !!context.options.appendSystemPrompt,
-          maxOutputTokensOverride: Math.min(
-            COMPACT_MAX_OUTPUT_TOKENS,
-            getMaxOutputTokensForModel(context.options.mainLoopModel),
+          maxOutputTokensOverride: getMaxOutputTokensForModel(
+            context.options.mainLoopModel,
           ),
           querySource: 'compact',
           agents: context.options.agentDefinitions.activeAgents,

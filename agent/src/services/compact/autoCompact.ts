@@ -22,16 +22,11 @@ import {
 import { runPostCompactCleanup } from './postCompactCleanup.js'
 import { trySessionMemoryCompaction } from './sessionMemoryCompact.js'
 
-// Reserve this many tokens for output during compaction
-// Based on p99.99 of compact summary output being 17,387 tokens.
-const MAX_OUTPUT_TOKENS_FOR_SUMMARY = 20_000
-
-// Returns the context window size minus the max output tokens for the model
+// Returns the context window size minus the max output tokens for the model.
+// Reserves the per-model max output so we don't trigger compaction when the
+// budget is still enough to cover both next input and summary response.
 export function getEffectiveContextWindowSize(model: string): number {
-  const reservedTokensForSummary = Math.min(
-    getMaxOutputTokensForModel(model),
-    MAX_OUTPUT_TOKENS_FOR_SUMMARY,
-  )
+  const reservedTokensForSummary = getMaxOutputTokensForModel(model)
   let contextWindow = getContextWindowForModel(model, getSdkBetas())
 
   const autoCompactWindow = process.env.AXIOMATE_CODE_AUTO_COMPACT_WINDOW

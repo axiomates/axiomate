@@ -6,9 +6,6 @@ import { isEnvTruthy } from './envUtils.js'
 // assuming a large window the real model may not have.
 export const MODEL_CONTEXT_WINDOW_DEFAULT = 32_000
 
-// Maximum output tokens for compact operations
-export const COMPACT_MAX_OUTPUT_TOKENS = 20_000
-
 /**
  * Check if 1M context is disabled via environment variable.
  * Used by deployment admins to disable 1M context for compliance.
