@@ -291,7 +291,13 @@ export async function* withRetry<C, T>(
 
 
       if (error instanceof LLMAPIError) {
-        yield createSystemAPIErrorMessage(error, delayMs, attempt, maxRetries)
+        yield createSystemAPIErrorMessage(
+          error,
+          delayMs,
+          attempt,
+          maxRetries,
+          classified.reason,
+        )
       }
       await sleep(delayMs, options.signal, { abortError })
     }

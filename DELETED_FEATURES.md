@@ -155,7 +155,7 @@ Origin commits: `586b6f9` ("rewire 13 valuable feature gates"), `59f6028` (VERIF
 - **VERIFICATION_AGENT** — independent adversarial verifier subagent for non-trivial implementation work. Catches "looks correct but actually broken" bugs. Self-contained, `model: 'inherit'`, ordinary tool set.
 - **TREE_SITTER_BASH** — 4436-line AST-based bash parser (pure TS, no native dep). Catches `trap/enable/hash` evil that the legacy regex path misses. Security win.
 - **EXTRACT_MEMORIES** — auto-extract durable learnings into project memory at session end. Complements existing `AXIOMATE.md` memory flow.
-- **NATIVE_CLIPBOARD_IMAGE** — macOS clipboard image fast path (~0.03ms warm vs ~1.5s osascript fallback). Workspace package `clipboard-axiomate` is axiomate's own, not Anthropic-private.
+- ~~**NATIVE_CLIPBOARD_IMAGE**~~ — macOS clipboard image fast path (~0.03ms warm vs ~1.5s osascript fallback). **Already active in every build** — `build.ts:35` declares `'DEV'` by default so the `feature('DEV')` gate at `imagePaste.ts:127` always fires. Nothing to do. Windows/Linux users go through shell-based `getClipboardCommands()` regardless of the gate.
 
 **Tier 2 — moderate value, low cost:**
 - **MESSAGE_ACTIONS** — message action menu (edit/rerun past messages).

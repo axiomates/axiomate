@@ -178,6 +178,10 @@ export type SystemAPIErrorMessage = SystemMessageBase & {
   retryInMs: number
   retryAttempt: number
   maxRetries: number
+  /** Classified failure reason (from errorClassifier.ErrorFailoverReason).
+   * Renderer uses this to decide whether to offer recovery UIs like the
+   * rate-limit model picker. */
+  errorReason?: import('../services/api/errorClassifier.js').ErrorFailoverReason
 }
 
 export type SystemMemorySavedMessage = SystemMessageBase & {

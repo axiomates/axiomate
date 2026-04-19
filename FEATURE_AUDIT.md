@@ -113,7 +113,9 @@ Features where **the implementation is already in git history / on disk**, and r
 
 These are fully-implemented, axiomate-compatible features, intentionally surface-only-in-DEV. They're valuable but flipping them to opt-in / production is a separate decision. See DELETED_FEATURES.md Part E for details.
 
-**Tier 1 (highest user value per LOC):** VERIFICATION_AGENT, TREE_SITTER_BASH, EXTRACT_MEMORIES, NATIVE_CLIPBOARD_IMAGE
+**Tier 1 (highest user value per LOC):** VERIFICATION_AGENT, TREE_SITTER_BASH, EXTRACT_MEMORIES
+
+> Previously listed NATIVE_CLIPBOARD_IMAGE here — removed. axiomate's [build.ts:35](build.ts#L35) includes `'DEV'` in the default feature set so that gate is active in every build. The macOS NAPI fast path via `clipboard-axiomate` / `image-processor-axiomate` is already on; nothing to revive. Windows/Linux are unaffected either way (their path is shell-based, not gated).
 
 **Tier 2 (moderate):** MESSAGE_ACTIONS, HISTORY_PICKER, TOKEN_BUDGET, COMMIT_ATTRIBUTION, BUILTIN_EXPLORE_PLAN_AGENTS, HOOK_PROMPTS
 

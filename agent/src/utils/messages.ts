@@ -3828,6 +3828,7 @@ export function createSystemAPIErrorMessage(
   retryInMs: number,
   retryAttempt: number,
   maxRetries: number,
+  errorReason?: import('../services/api/errorClassifier.js').ErrorFailoverReason,
 ): SystemAPIErrorMessage {
   return {
     type: 'system',
@@ -3838,6 +3839,7 @@ export function createSystemAPIErrorMessage(
     retryInMs,
     retryAttempt,
     maxRetries,
+    errorReason,
     timestamp: new Date().toISOString(),
     uuid: randomUUID(),
   }
