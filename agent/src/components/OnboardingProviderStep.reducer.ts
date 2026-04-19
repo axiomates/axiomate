@@ -42,7 +42,7 @@ export const DEFAULT_BASE_URLS: Record<Protocol, string> = {
 export const MODEL_ID_HINT: Record<Protocol, string> = {
   openai:
     'e.g., gpt-4o  or  qwen/qwen3-235b (OpenRouter)  or  Qwen/Qwen3-235B (SiliconFlow)',
-  anthropic: 'e.g., claude-sonnet-4-5  or  claude-opus-4-5',
+  anthropic: 'e.g., Qwen/Qwen3.6-Plus',
 }
 
 export const initialOnboardingProviderState: OnboardingProviderState = {

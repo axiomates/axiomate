@@ -1,4 +1,4 @@
-// Stub: MCP component types — type-only imports from ManagePlugins.tsx, mcp/utils.ts.
+// MCP UI types shared across ManagePlugins and mcp/utils.
 
 import type {
   ConfigScope,
@@ -62,7 +62,3 @@ export type MCPViewState =
   | { type: 'server-tools'; server: RegularServerInfo }
   | { type: 'server-tool-detail'; server: RegularServerInfo; toolIndex: number }
   | { type: 'agent-server-menu'; agentServer: AgentMcpServerInfo }
-
-export function getCwd(): string {
-  return process.cwd()
-}

@@ -425,8 +425,8 @@ export interface ComputerUseOverrides {
    * Writes the clipboardGuard stash to session state. `undefined` clears.
    * Sibling of `onAppsHidden` — the wrapper closure writes through to
    * `Session.cuClipboardStash`. At turn end the host reads + clears it
-   * directly and restores via Electron's `clipboard.writeText` (no nest-only
-   * import surface).
+   * directly and restores via Electron's `clipboard.writeText` — no extra
+   * import surface needed from this package.
    */
   onClipboardStashChanged?: (stash: string | undefined) => void;
 

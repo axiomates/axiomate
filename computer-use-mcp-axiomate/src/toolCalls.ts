@@ -359,7 +359,7 @@ const TIER_ANTI_SUBVERSION =
 // When frontmost becomes anything else, restore. Turn-end restore is inlined
 // in the host's result-handler + leavingRunning (same dual-location as
 // cuHiddenDuringTurn unhide) — reads `session.cuClipboardStash` directly and
-// writes via Electron's `clipboard.writeText`, so no nest-only import.
+// writes via Electron's `clipboard.writeText`, so no extra import from here.
 //
 // State lives on the session (via `overrides.getClipboardStash` /
 // `onClipboardStashChanged`), not module-level. The CU lock still guarantees

@@ -745,10 +745,7 @@ export function saveGlobalConfig(
         if (config === current) {
           return current
         }
-        written = {
-          ...config,
-          projects: removeLegacyProjectConfigFields(config.projects),
-        }
+        written = config
         return written
       },
     )
@@ -772,10 +769,7 @@ export function saveGlobalConfig(
     if (config === currentConfig) {
       return
     }
-    written = {
-      ...config,
-      projects: removeLegacyProjectConfigFields(config.projects),
-    }
+    written = config
     saveConfig(getGlobalConfigFile(), written, DEFAULT_GLOBAL_CONFIG)
     writeThroughGlobalConfigCache(written)
   }
@@ -814,39 +808,6 @@ function reportConfigCacheStats(): void {
 registerCleanup(async () => {
   reportConfigCacheStats()
 })
-
-/**
- * Removes legacy per-project config fields.
- */
-function removeLegacyProjectConfigFields(
-  projects: Record<string, ProjectConfig> | undefined,
-): Record<string, ProjectConfig> | undefined {
-  if (!projects) {
-    return projects
-  }
-
-  const cleanedProjects: Record<string, ProjectConfig> = {}
-  let needsCleaning = false
-
-  for (const [path, projectConfig] of Object.entries(projects)) {
-    const legacy = projectConfig as ProjectConfig & {
-      history?: unknown
-      remoteControlSpawnMode?: unknown
-    }
-    if (
-      Object.hasOwn(legacy, 'history') ||
-      Object.hasOwn(legacy, 'remoteControlSpawnMode')
-    ) {
-      needsCleaning = true
-      const { history, remoteControlSpawnMode, ...cleanedConfig } = legacy
-      cleanedProjects[path] = cleanedConfig
-    } else {
-      cleanedProjects[path] = projectConfig
-    }
-  }
-
-  return needsCleaning ? cleanedProjects : projects
-}
 
 // fs.watchFile poll interval for detecting writes from other instances (ms)
 const CONFIG_FRESHNESS_POLL_MS = 1000

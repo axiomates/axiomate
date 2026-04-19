@@ -4,8 +4,8 @@
  *   - `computer-use-native-axiomate` — SCContentFilter screenshots, NSWorkspace apps, TCC
  *
  * Contract: `packages/desktop/computer-use-mcp/src/executor.ts` in the apps
- * repo. The reference impl is the upstream Electron app's `apps/desktop/src/main/nest-only/
- * computer-use/executor.ts` — see notable deviations under "CLI deltas" below.
+ * repo. The reference impl is the upstream Electron app's computer-use
+ * executor — see notable deviations under "CLI deltas" below.
  *
  * ── CLI deltas from the upstream Electron app ─────────────────────────────────────────────────
  *

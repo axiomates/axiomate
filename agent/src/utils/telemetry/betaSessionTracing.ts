@@ -3,9 +3,7 @@
  *
  * This module contains beta tracing features enabled when
  * ENABLE_BETA_TRACING_DETAILED=1 and BETA_TRACING_ENDPOINT are set.
- *
- * Tracing is enabled in SDK/headless mode, or in interactive mode when
- * the org is allowlisted via the ax_trace_lantern config gate.
+ * Additionally requires SDK/headless mode (getIsNonInteractiveSession()).
  *
  * Features:
  * - Per-agent message tracking with hash-based deduplication
@@ -71,9 +69,7 @@ export function isBetaTracingEnabled(): boolean {
     return false
   }
 
-  // Enable in SDK/headless mode OR when org is allowlisted.
-  // Gate reads from disk cache, so first run after allowlisting returns false;
-  // works from second run onward (same behavior as enhanced_telemetry_beta).
+  // SDK / headless mode only — interactive TUI sessions don't emit beta traces.
   return getIsNonInteractiveSession()
 }
 

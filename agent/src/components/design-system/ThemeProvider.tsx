@@ -1,12 +1,9 @@
-import { feature } from 'bun:bundle'
 import React, {
   createContext,
   useContext,
-  useEffect,
   useMemo,
   useState,
 } from 'react'
-import useStdin from '../../ink/hooks/use-stdin.js'
 import { getGlobalConfig, saveGlobalConfig } from '../../utils/config.js'
 import {
   getSystemThemeName,
@@ -69,29 +66,6 @@ export function ThemeProvider({
 
   // The setting currently in effect (preview wins while picker is open)
   const activeSetting = previewTheme ?? themeSetting
-
-  const { internal_querier } = useStdin()
-
-  // Watch for live terminal theme changes while 'auto' is active.
-  // Positive feature() pattern so the watcher import is dead-code-eliminated
-  // in external builds.
-  useEffect(() => {
-    if (feature('DEV')) {
-      if (activeSetting !== 'auto' || !internal_querier) return
-      let cleanup: (() => void) | undefined
-      let cancelled = false
-      void import('../../utils/systemThemeWatcher.js').then(
-        ({ watchSystemTheme }) => {
-          if (cancelled) return
-          cleanup = watchSystemTheme(internal_querier, setSystemTheme)
-        },
-      )
-      return () => {
-        cancelled = true
-        cleanup?.()
-      }
-    }
-  }, [activeSetting, internal_querier])
 
   const currentTheme: ThemeName =
     activeSetting === 'auto' ? systemTheme : activeSetting

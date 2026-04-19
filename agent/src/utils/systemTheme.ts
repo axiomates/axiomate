@@ -1,14 +1,10 @@
 /**
  * Terminal dark/light mode detection for the 'auto' theme setting.
  *
- * Detection is based on the terminal's actual background color (queried via
- * OSC 11 by systemThemeWatcher.ts) rather than the OS appearance setting —
- * a dark terminal on a light-mode OS should still resolve to 'dark'.
- *
- * The detected theme is cached module-level so callers can resolve 'auto'
- * without awaiting the async OSC round-trip. The cache is seeded from
- * $COLORFGBG (synchronous, set by some terminals at launch) and then
- * updated by the watcher once the OSC 11 response arrives.
+ * Detection is based on the terminal's actual background color rather than
+ * the OS appearance setting — a dark terminal on a light-mode OS should
+ * still resolve to 'dark'. The cache is seeded from $COLORFGBG (synchronous,
+ * set by some terminals at launch). Live OSC 11 polling is not wired.
  */
 
 import type { ThemeName, ThemeSetting } from './theme.js'

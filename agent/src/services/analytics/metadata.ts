@@ -98,13 +98,6 @@ export function isAnalyticsToolDetailsLoggingEnabled(
 }
 
 /**
- * Built-in MCP servers whose names are fixed reserved strings, not
- * user-configured — so logging them is not PII. Currently empty; populated
- * only when built-in MCP servers are re-enabled.
- */
-const BUILTIN_MCP_SERVER_NAMES: ReadonlySet<string> = new Set<string>()
-
-/**
  * Spreadable helper for logEvent payloads — returns {mcpServerName, mcpToolName}
  * if the gate passes, empty object otherwise. Consolidates the identical IIFE
  * pattern at each ax_tool_use_* call site.
@@ -121,10 +114,7 @@ export function mcpToolDetailsForAnalytics(
   if (!details) {
     return {}
   }
-  if (
-    !BUILTIN_MCP_SERVER_NAMES.has(details.serverName) &&
-    !isAnalyticsToolDetailsLoggingEnabled(mcpServerType, mcpServerBaseUrl)
-  ) {
+  if (!isAnalyticsToolDetailsLoggingEnabled(mcpServerType, mcpServerBaseUrl)) {
     return {}
   }
   return {
