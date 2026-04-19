@@ -1,4 +1,3 @@
-import { feature } from 'bun:bundle'
 import type { Command } from '../commands.js'
 import { maybeMarkProjectOnboardingComplete } from '../projectOnboardingState.js'
 import { isEnvTruthy } from '../utils/envUtils.js'
@@ -227,10 +226,9 @@ const command = {
   type: 'prompt',
   name: 'init',
   get description() {
-    return feature('DEV') &&
-      isEnvTruthy(process.env.AXIOMATE_CODE_NEW_INIT)
-      ? 'Initialize new AXIOMATE.md file(s) and optional skills/hooks with codebase documentation'
-      : 'Initialize a new AXIOMATE.md file with codebase documentation'
+    return isEnvTruthy(process.env.AXIOMATE_CODE_OLD_INIT)
+      ? 'Initialize a new AXIOMATE.md file with codebase documentation'
+      : 'Initialize AXIOMATE.md file(s) and optional skills/hooks with codebase documentation'
   },
   contentLength: 0, // Dynamic content
   progressMessage: 'analyzing your codebase',
@@ -241,11 +239,9 @@ const command = {
     return [
       {
         type: 'text',
-        text:
-          feature('DEV') &&
-          isEnvTruthy(process.env.AXIOMATE_CODE_NEW_INIT)
-            ? NEW_INIT_PROMPT
-            : OLD_INIT_PROMPT,
+        text: isEnvTruthy(process.env.AXIOMATE_CODE_OLD_INIT)
+          ? OLD_INIT_PROMPT
+          : NEW_INIT_PROMPT,
       },
     ]
   },
