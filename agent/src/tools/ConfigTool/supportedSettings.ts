@@ -145,6 +145,12 @@ export const SUPPORTED_SETTINGS: Record<string, SettingConfig> = {
     description:
       'Periodically extract conversation notes to MEMORY.md (forked agent)',
   },
+  extractMemoriesEnabled: {
+    source: 'settings',
+    type: 'boolean',
+    description:
+      'At end of every turn, forked agent distills facts into daily memory logs',
+  },
 }
 
 export function isSupported(key: string): boolean {

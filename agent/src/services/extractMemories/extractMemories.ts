@@ -13,7 +13,6 @@
  * initExtractMemories() in beforeEach to get a fresh closure.
  */
 
-import { feature } from 'bun:bundle'
 import { basename } from 'path'
 import type { CanUseToolFn } from '../../hooks/useCanUseTool.js'
 import { ENTRYPOINT_NAME } from '../../memdir/memdir.js'
@@ -53,6 +52,7 @@ import {
   createUserMessage,
 } from '../../utils/messages.js'
 import { sanitizeToolNameForAnalytics } from '../analytics/metadata.js'
+import { isExtractMemoriesEnabled } from './extractMemoriesEnabled.js'
 import { buildExtractAutoOnlyPrompt } from './prompts.js'
 
 // ============================================================================
@@ -479,7 +479,7 @@ export function initExtractMemories(): void {
       return
     }
 
-    if (!feature('DEV')) {
+    if (!isExtractMemoriesEnabled()) {
       return
     }
 

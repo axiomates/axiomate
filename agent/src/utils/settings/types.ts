@@ -660,6 +660,15 @@ export const SettingsSchema = lazySchema(() =>
             'a roundtrip. Override via ' +
             'AXIOMATE_CODE_ENABLE_SESSION_MEMORY=1. Default: false.',
         ),
+      extractMemoriesEnabled: z
+        .boolean()
+        .optional()
+        .describe(
+          'When true, at the end of every completed turn a forked ' +
+            'agent distills facts into daily memory logs + a rolling ' +
+            'MEMORY.md index. Override via ' +
+            'AXIOMATE_CODE_ENABLE_EXTRACT_MEMORIES=1. Default: false.',
+        ),
       showClearContextOnPlanAccept: z
         .boolean()
         .optional()

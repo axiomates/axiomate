@@ -83,8 +83,8 @@ Follow the existing repo pattern: prompt suggestion / speculation / deep search 
 | # | Feature | Knob | Default |
 |---|---|---|---|
 | 5 | Bash AST parser ✅ done | `bashAstEnabled` + `AXIOMATE_CODE_ENABLE_BASH_AST` | off |
-| 2 | Session memory | `sessionMemoryEnabled` + `AXIOMATE_CODE_ENABLE_SESSION_MEMORY` | off |
-| 3 | Extract memories | `extractMemoriesEnabled` + `AXIOMATE_CODE_ENABLE_EXTRACT_MEMORIES` | off |
+| 2 | Session memory ✅ done | `sessionMemoryEnabled` + `AXIOMATE_CODE_ENABLE_SESSION_MEMORY` | off |
+| 3 | Extract memories ✅ done | `extractMemoriesEnabled` + `AXIOMATE_CODE_ENABLE_EXTRACT_MEMORIES` | off |
 
 (Item 1 cron moved to 🟢 — user decision: default-on, not env+settings+/config.)
 

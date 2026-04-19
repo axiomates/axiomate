@@ -292,9 +292,8 @@ const cronJitterConfigModule =
   require('../utils/cronJitterConfig.js') as typeof import('../utils/cronJitterConfig.js')
 const cronGate =
   require('../tools/ScheduleCronTool/prompt.js') as typeof import('../tools/ScheduleCronTool/prompt.js')
-const extractMemoriesModule = feature('DEV')
-  ? (require('../services/extractMemories/extractMemories.js') as typeof import('../services/extractMemories/extractMemories.js'))
-  : null
+const extractMemoriesModule =
+  require('../services/extractMemories/extractMemories.js') as typeof import('../services/extractMemories/extractMemories.js')
 /* eslint-enable @typescript-eslint/no-require-imports */
 
 const SHUTDOWN_TEAM_PROMPT = `<system-reminder>
@@ -807,8 +806,8 @@ export async function runHeadless(
   // delays process exit so gracefulShutdownSync's 5s failsafe doesn't kill
   // the forked agent mid-flight. Gated by isExtractModeActive so the
   // ax_slate_thimble flag controls non-interactive extraction end-to-end.
-  if (feature('DEV') && isExtractModeActive()) {
-    await extractMemoriesModule!.drainPendingExtraction()
+  if (isExtractModeActive()) {
+    await extractMemoriesModule.drainPendingExtraction()
   }
 
   gracefulShutdownSync(

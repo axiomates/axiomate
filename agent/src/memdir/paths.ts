@@ -5,7 +5,7 @@ import {
   getIsNonInteractiveSession,
   getProjectRoot,
 } from '../bootstrap/state.js'
-import { feature } from 'bun:bundle'
+import { isExtractMemoriesEnabled } from '../services/extractMemories/extractMemoriesEnabled.js'
 import {
   getConfigHomeDir,
   isEnvDefinedFalsy,
@@ -54,13 +54,9 @@ export function isAutoMemoryEnabled(): boolean {
  * this gate — when the main agent writes memories, the background agent
  * skips that range (hasMemoryWritesSince in extractMemories.ts); when it
  * doesn't, the background agent catches anything missed.
- *
- * Callers must also gate on feature('DEV') — that check cannot
- * live inside this helper because feature() only tree-shakes when used
- * directly in an `if` condition.
  */
 export function isExtractModeActive(): boolean {
-  if (!feature('DEV')) {
+  if (!isExtractMemoriesEnabled()) {
     return false
   }
   return (

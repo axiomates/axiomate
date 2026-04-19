@@ -1,14 +1,9 @@
-import { feature } from 'bun:bundle'
+import { initExtractMemories } from '../services/extractMemories/extractMemories.js'
+import { isExtractMemoriesEnabled } from '../services/extractMemories/extractMemoriesEnabled.js'
 import { initAutoDream } from '../services/autoDream/autoDream.js'
 import { initMagicDocs } from '../services/MagicDocs/magicDocs.js'
 import { ensureDeepLinkProtocolRegistered } from './deepLink/registerProtocol.js'
 import { initSkillImprovement } from './hooks/skillImprovement.js'
-
-/* eslint-disable @typescript-eslint/no-require-imports */
-const extractMemoriesModule = feature('DEV')
-  ? (require('../services/extractMemories/extractMemories.js') as typeof import('../services/extractMemories/extractMemories.js'))
-  : null
-/* eslint-enable @typescript-eslint/no-require-imports */
 
 import { getIsInteractive, getLastInteractionTime } from '../bootstrap/state.js'
 import { cleanupOldMessageFilesInBackground } from './cleanup.js'
@@ -23,8 +18,8 @@ const DELAY_VERY_SLOW_OPERATIONS_THAT_HAPPEN_EVERY_SESSION = 10 * 60 * 1000
 export function startBackgroundHousekeeping(): void {
   void initMagicDocs()
   void initSkillImprovement()
-  if (feature('DEV')) {
-    extractMemoriesModule!.initExtractMemories()
+  if (isExtractMemoriesEnabled()) {
+    initExtractMemories()
   }
   initAutoDream()
   void autoUpdateMarketplacesAndPluginsInBackground()
