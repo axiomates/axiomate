@@ -642,6 +642,15 @@ export const SettingsSchema = lazySchema(() =>
             'getFastModel() when the terminal regains focus after > 5 min. ' +
             'Override via AXIOMATE_CODE_ENABLE_AWAY_SUMMARY=1. Default: false.',
         ),
+      bashAstEnabled: z
+        .boolean()
+        .optional()
+        .describe(
+          'When true, use the tree-sitter-style AST parser for bash ' +
+            'permission checks (fail-closed on unknown syntax) instead of ' +
+            'the legacy shell-quote path. Override via ' +
+            'AXIOMATE_CODE_ENABLE_BASH_AST=1. Default: false.',
+        ),
       showClearContextOnPlanAccept: z
         .boolean()
         .optional()

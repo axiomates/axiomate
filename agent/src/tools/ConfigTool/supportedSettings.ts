@@ -133,6 +133,12 @@ export const SUPPORTED_SETTINGS: Record<string, SettingConfig> = {
     type: 'boolean',
     description: 'Enable voice dictation (hold-to-talk)',
   },
+  bashAstEnabled: {
+    source: 'settings',
+    type: 'boolean',
+    description:
+      'Use tree-sitter AST parser for bash permission checks (stricter)',
+  },
 }
 
 export function isSupported(key: string): boolean {

@@ -70,13 +70,9 @@ No new env vars, no settings — always on for all builds. These are migration r
 
 ### 🟡 Convert to runtime env opt-in (no settings / `/config`)
 
-Follows the pattern **just applied to bash AST**: release users can opt in at runtime, default unchanged. Use for items where *the feature exists* is not axiomate's core goal but users may want the option.
+Currently empty. After the bash AST revisit (user decided a `/config` toggle is warranted), this category has no committed members. Left as a category in case a future feature fits.
 
-| # | Feature | Proposed env var | Default |
-|---|---|---|---|
-| 5 | Bash AST parser ✅ done | `AXIOMATE_CODE_ENABLE_BASH_AST` | off |
-
-**Decision needed** — could also fit here:
+**Decision needed** — could fit here:
 - Global code search (item 10) — UX not polished, but runtime opt-in lets power users try it
 
 ### 🟠 Convert to env + settings + `/config` runtime toggle
@@ -85,8 +81,9 @@ These write durable state or have meaningful recurring cost. A single `:dev` run
 
 Follow the existing repo pattern: prompt suggestion / speculation / deep search / `awaySummaryEnabled` (see `agent/src/utils/settings/types.ts` + `agent/src/tools/ConfigTool/supportedSettings.ts`).
 
-| # | Feature | Proposed knob | Default |
+| # | Feature | Knob | Default |
 |---|---|---|---|
+| 5 | Bash AST parser ✅ done | `bashAstEnabled` + `AXIOMATE_CODE_ENABLE_BASH_AST` | off |
 | 1 | Cron scheduling | `cronSchedulingEnabled` + `AXIOMATE_CODE_ENABLE_CRON` | off |
 | 2 | Session memory | `sessionMemoryEnabled` + `AXIOMATE_CODE_ENABLE_SESSION_MEMORY` | off |
 | 3 | Extract memories | `extractMemoriesEnabled` + `AXIOMATE_CODE_ENABLE_EXTRACT_MEMORIES` | off |
