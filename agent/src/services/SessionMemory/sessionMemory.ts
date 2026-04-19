@@ -60,20 +60,11 @@ import {
 } from './sessionMemoryUtils.js'
 
 // ============================================================================
-// Feature Gate and Config (Cached - Non-blocking)
+// Config helpers
 // ============================================================================
-// Feature gate and config helpers.
 
 import { errorMessage, getErrnoCode } from '../../utils/errors.js'
-import { feature } from 'bun:bundle'
-
-/**
- * Check if session memory feature is enabled.
- * Uses cached gate value - returns immediately without blocking.
- */
-function isSessionMemoryGateEnabled(): boolean {
-  return feature('DEV') ? true : false
-}
+import { isSessionMemoryEnabled } from './sessionMemoryEnabled.js'
 
 /**
  * Get session memory config from cache.
@@ -268,8 +259,7 @@ const extractSessionMemory = sequential(async function (
     return
   }
 
-  // Check gate lazily when hook runs (cached, non-blocking)
-  if (!isSessionMemoryGateEnabled()) {
+  if (!isSessionMemoryEnabled()) {
     return
   }
 

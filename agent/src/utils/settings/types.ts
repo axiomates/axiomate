@@ -651,6 +651,15 @@ export const SettingsSchema = lazySchema(() =>
             'the legacy shell-quote path. Override via ' +
             'AXIOMATE_CODE_ENABLE_BASH_AST=1. Default: false.',
         ),
+      sessionMemoryEnabled: z
+        .boolean()
+        .optional()
+        .describe(
+          'When true, periodically extract conversation notes into ' +
+            'MEMORY.md using a forked fastModel agent. Each trigger costs ' +
+            'a roundtrip. Override via ' +
+            'AXIOMATE_CODE_ENABLE_SESSION_MEMORY=1. Default: false.',
+        ),
       showClearContextOnPlanAccept: z
         .boolean()
         .optional()

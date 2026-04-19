@@ -139,6 +139,12 @@ export const SUPPORTED_SETTINGS: Record<string, SettingConfig> = {
     description:
       'Use tree-sitter AST parser for bash permission checks (stricter)',
   },
+  sessionMemoryEnabled: {
+    source: 'settings',
+    type: 'boolean',
+    description:
+      'Periodically extract conversation notes to MEMORY.md (forked agent)',
+  },
 }
 
 export function isSupported(key: string): boolean {

@@ -1,7 +1,7 @@
-import { feature } from 'bun:bundle'
 import { join } from 'path'
 import { getFsImplementation } from '../utils/fsOperations.js'
 import { getOriginalCwd } from '../bootstrap/state.js'
+import { isSessionMemoryEnabled } from '../services/SessionMemory/sessionMemoryEnabled.js'
 import { getAutoMemPath, isAutoMemoryEnabled } from './paths.js'
 
 import { GREP_TOOL_NAME } from '../tools/GrepTool/prompt.js'
@@ -344,10 +344,11 @@ function buildAssistantDailyLogPrompt(skipIndex = false): string {
 }
 
 /**
- * Build the "Searching past context" section if the feature gate is enabled.
+ * Build the "Searching past context" section when session memory is enabled.
+ * Empty when disabled — the section is meaningless without the memory files.
  */
 export function buildSearchingPastContextSection(autoMemDir: string): string[] {
-  if (!feature('DEV')) {
+  if (!isSessionMemoryEnabled()) {
     return []
   }
   const projectDir = getProjectDir(getOriginalCwd())
