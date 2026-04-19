@@ -3,7 +3,7 @@ import figures from 'figures';
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useNotifications } from '../../../context/notifications.js';
 import { useAppState, useAppStateStore, useSetAppState } from '../../../state/AppState.js';
-import { getSdkBetas, getSessionId, isSessionPersistenceDisabled, setHasExitedPlanMode, setNeedsPlanModeExitAttachment } from '../../../bootstrap/state.js';
+import { getSessionId, isSessionPersistenceDisabled, setHasExitedPlanMode, setNeedsPlanModeExitAttachment } from '../../../bootstrap/state.js';
 import { generateSessionName } from '../../../commands/rename/generateSessionName.js';
 import type { KeyboardEvent } from '../../../ink/events/keyboard-event.js';
 import { Box, Text } from '../../../ink.js';
@@ -522,7 +522,7 @@ function getContextUsedPercent(usage: {
     mainLoopModel: getMainLoopModel(),
     exceeds200kTokens: false
   });
-  const contextWindowSize = getContextWindowForModel(runtimeModel, getSdkBetas());
+  const contextWindowSize = getContextWindowForModel(runtimeModel);
   const {
     used
   } = calculateContextPercentages({

@@ -23,7 +23,6 @@ import {
   countToolDefinitionTokens,
   TOOL_TOKEN_COUNT_OVERHEAD,
 } from './analyzeContext.js'
-import { getMergedBetas } from './betas.js'
 import { getGlobalConfig } from './config.js'
 import { getContextWindowForModel } from './context.js'
 import { logForDebugging } from './debug.js'
@@ -92,8 +91,7 @@ const CHARS_PER_TOKEN = 2.5
  * Get the token threshold for auto-enabling tool search for a given model.
  */
 function getAutoToolSearchTokenThreshold(model: string): number {
-  const betas = getMergedBetas(model)
-  const contextWindow = getContextWindowForModel(model, betas)
+  const contextWindow = getContextWindowForModel(model)
   const percentage = getAutoToolSearchPercentage() / 100
   return Math.floor(contextWindow * percentage)
 }

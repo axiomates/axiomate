@@ -28,6 +28,7 @@ Features still gated at `feature('DEV')` with full implementations (VERIFICATION
 | Prompt Suggestion + Speculation | `e8a7c39` | Opt-in (prompt suggestion default on, speculation default off) |
 | `/resume` Deep + Agentic Search | `3776449` | Opt-in (both default off) |
 | `axiomate://` deep-link protocol handler | `6b84568` | Live, opt-out via `disableDeepLinkRegistration` |
+| `/export` local transcript export (covers most of B-2) | Preserved from initial import `2673a37` | Live — writes plain text to cwd or user path; see B-2 for format/path polish gaps |
 
 ---
 
@@ -43,12 +44,13 @@ Features where **the implementation is already in git history / on disk**, and r
 - **Cost:** Trivial (~30 min).
 - **Status:** Revived. Registration is automatic, idempotent, self-healing. Opt-out via `~/.axiomate.json` `"disableDeepLinkRegistration": "disable"`.
 
-### A-2 AWAY_SUMMARY (pending)
+### A-2 AWAY_SUMMARY (partially wired — implementation restored, hookup pending)
 
 - **What it does:** Monitor terminal focus/blur (DECSET 1004). When user is away for 5+ minutes and a turn has finished, use `getFastModel()` to generate a 1-3 sentence "while you were away" recap from recent messages + session memory. Appended as an `away_summary` message type when the user returns.
-- **Origin:** Deleted in `8dc6139` ("delete 5 dead feature gates") as part of AWAY_SUMMARY feature-gate cleanup. Full implementation (~120 lines) is in git history.
+- **Origin:** Deleted in `8dc6139` ("delete 5 dead feature gates") as part of AWAY_SUMMARY feature-gate cleanup.
+- **Current state:** Service file is **already restored** at [agent/src/services/awaySummary.ts](agent/src/services/awaySummary.ts), exports `generateAwaySummary()`. **Zero callers** in the current tree — needs: terminal focus/blur detection hookup (ink has `terminal-focus-state.ts` infrastructure), `awaySummaryEnabled` settings gate, `AXIOMATE_CODE_ENABLE_AWAY_SUMMARY` env var, message-insertion into REPL state.
 - **Provider-neutral:** Yes. Uses `getFastModel()`, `queryModelWithoutStreaming()`, session memory — all provider-agnostic. Zero Anthropic-specific API calls.
-- **Cost:** Small (1-2h): `git show 8dc6139~1` to retrieve the source, port to current tree, add opt-in settings (`awaySummaryEnabled`), env (`AXIOMATE_CODE_ENABLE_AWAY_SUMMARY`), `/config` toggle.
+- **Cost:** Small (1-2h): pure wiring; service logic is pre-staged.
 - **Default:** OFF — unexpected system messages could startle users. Power-user opt-in.
 - **Why it was tagged wrong before:** I previously assumed coupling to KAIROS / assistant-mode based on the name "AWAY". Inspection of pre-deletion source shows it's a clean feature with no KAIROS dependencies.
 
@@ -73,13 +75,15 @@ Features where **the implementation is already in git history / on disk**, and r
 - **Cost:** Medium (~half day). Stream-loop withhold logic + retry orchestration + `State.hasAttemptedReactiveCompact` guard (prevent death spirals).
 - **Default:** If revived, default ON — it's a robustness win with no user-visible overhead unless the 413 actually fires.
 
-### B-2 `/export` local transcript export
+### B-2 `/export` local transcript export (mostly done — polish remaining)
 
-- **What it does (original):** UI modal "Can we look at your session transcript?" → upload transcript to Anthropic.
-- **What it should do (rebuilt):** `/export [markdown|html]` slash command → write session to `~/.axiomate/exports/<session-id>-<date>.md` for sharing with colleagues, archiving, bug reports.
-- **Origin:** Original `transcript-share` deleted in `2754f52`. The collection logic (normalize messages, pull subagent transcripts, redact sensitive info) is generic; only the `axios.post('', ...)` upload was Anthropic-coupled — and that endpoint URL was an **empty string** in the shipped code, so it was never actually functional externally.
-- **Provider-neutral:** Yes (if we only keep the collection + local-write paths).
-- **Cost:** Small-medium (~half day). Retrieve collection logic from `2754f52~1`, add markdown/HTML formatter, register `/export` slash command, skip the upload path entirely.
+- **Current state:** `/export` slash command **is live** — [agent/src/commands/export/](agent/src/commands/export/) preserved from initial import. Writes plain text via [exportRenderer.ts](agent/src/utils/exportRenderer.ts) to cwd or a user-supplied path, optional `ExportDialog` UI. No Anthropic upload (the pre-existing `transcript-share` was a separate deleted command).
+- **Remaining polish (optional):**
+  - Markdown / HTML format options (currently plain text only)
+  - Default output path `~/.axiomate/exports/<session-id>-<date>.md` when no filename given
+  - Tool-call collection + subagent transcript pull-in (current exporter is turn-level only)
+- **Provider-neutral:** Yes.
+- **Cost:** Small (~2h) if we do the polish; core feature already shipping.
 - **Default:** N/A — command is invoked on demand.
 
 ### B-3 Rate-limit interactive UI (documented as A3)
@@ -124,8 +128,8 @@ Un-gating any of these follows the same pattern as prompt-suggestion / deep-sear
 
 | Area | Status |
 |---|---|
-| Tier A — extremely high ROI | 1 of 3 complete (DEEP_LINK) |
-| Tier B — moderate ROI | 0 of 3 |
+| Tier A — extremely high ROI | 1 of 3 complete (DEEP_LINK); A-2 AWAY_SUMMARY impl restored, wiring pending |
+| Tier B — moderate ROI | 1 of 3 complete (B-2 /export core; format/path polish pending) |
 | Rejections | Documented |
 | DEV-gated Part E | Left alone per maintainer preference |
 

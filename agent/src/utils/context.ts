@@ -1,53 +1,15 @@
 import { getGlobalConfig } from './config.js'
-import { isEnvTruthy } from './envUtils.js'
 
 // Fallback when ModelProviderConfig.contextWindow is not set.
 // Small on purpose: signals "model unknown / unconfigured" rather than
 // assuming a large window the real model may not have.
 export const MODEL_CONTEXT_WINDOW_DEFAULT = 32_000
 
-/**
- * Check if 1M context is disabled via environment variable.
- * Used by deployment admins to disable 1M context for compliance.
- */
-export function is1mContextDisabled(): boolean {
-  return isEnvTruthy(process.env.AXIOMATE_CODE_DISABLE_1M_CONTEXT)
-}
-
-export function has1mContext(model: string): boolean {
-  if (is1mContextDisabled()) {
-    return false
-  }
-  return /\[1m\]/i.test(model)
-}
-
-export function modelSupports1M(model: string): boolean {
-  if (is1mContextDisabled()) {
-    return false
-  }
-  if (has1mContext(model)) {
-    return true
-  }
-  const modelConfig = getGlobalConfig().models?.[model]
-  return (modelConfig?.contextWindow ?? 0) >= 1_000_000
-}
-
-export function getContextWindowForModel(
-  model: string,
-  _betas?: string[],
-): number {
-  // Config-driven: check ModelProviderConfig.contextWindow (for OpenAI/custom models)
-  const modelConfig = getGlobalConfig().models?.[model]
-  if (modelConfig?.contextWindow) {
-    return modelConfig.contextWindow
-  }
-
-  // [1m] suffix — explicit client-side opt-in, respected over all detection
-  if (has1mContext(model)) {
-    return 1_000_000
-  }
-
-  return MODEL_CONTEXT_WINDOW_DEFAULT
+export function getContextWindowForModel(model: string): number {
+  return (
+    getGlobalConfig().models?.[model]?.contextWindow ??
+    MODEL_CONTEXT_WINDOW_DEFAULT
+  )
 }
 
 /**

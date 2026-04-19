@@ -54,7 +54,7 @@ const coordinatorModeModule = require('./coordinator/coordinatorMode.js') as typ
 /* eslint-enable @typescript-eslint/no-require-imports */
 import { relative, resolve } from 'path';
 import { isAnalyticsDisabled } from './services/analytics/config.js';
-import { getInitialMainLoopModel, getIsNonInteractiveSession, getOriginalCwd, getSdkBetas, setAdditionalDirectoriesForAxiomateMd, setAllowedSettingSources, setClientType, setCwdState, setFlagSettingsPath, setInitialMainLoopModel, setInlinePlugins, setIsInteractive, setMainLoopModelOverride, setMainThreadAgentType, setQuestionPreviewFormat, setSdkBetas, setSessionBypassPermissionsMode, setSessionPersistenceDisabled } from './bootstrap/state.js';
+import { getInitialMainLoopModel, getIsNonInteractiveSession, getOriginalCwd, setAdditionalDirectoriesForAxiomateMd, setAllowedSettingSources, setClientType, setCwdState, setFlagSettingsPath, setInitialMainLoopModel, setInlinePlugins, setIsInteractive, setMainLoopModelOverride, setMainThreadAgentType, setQuestionPreviewFormat, setSdkBetas, setSessionBypassPermissionsMode, setSessionPersistenceDisabled } from './bootstrap/state.js';
 import { getCommands } from './commands.js';
 import type { StatsStore } from './context/stats.js';
 import { launchInvalidSettingsDialog, launchResumeChooser } from './dialogLaunchers.js';
@@ -204,7 +204,7 @@ if (isBeingDebugged()) {
  */
 function logSessionTelemetry(): void {
   const model = parseUserSpecifiedModel(getInitialMainLoopModel() ?? getDefaultMainLoopModel());
-  void logSkillsLoaded(getCwd(), getContextWindowForModel(model, getSdkBetas()));
+  void logSkillsLoaded(getCwd(), getContextWindowForModel(model));
   void loadAllPluginsCacheOnly().then(({
     enabled,
     errors

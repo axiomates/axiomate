@@ -4,7 +4,6 @@ import {
   SYSTEM_PROMPT_DYNAMIC_BOUNDARY,
 } from '../constants/prompts.js'
 import { microcompactMessages } from '../services/compact/microCompact.js'
-import { getSdkBetas } from '../bootstrap/state.js'
 import { getCommandName } from '../commands.js'
 import { getSystemContext } from '../context.js'
 import {
@@ -924,7 +923,7 @@ export async function analyzeContextUsage(
     mainLoopModel: model,
   })
   // Get context window size
-  const contextWindow = getContextWindowForModel(runtimeModel, getSdkBetas())
+  const contextWindow = getContextWindowForModel(runtimeModel)
 
   // Build the effective system prompt using the shared utility
   const defaultSystemPrompt = await getSystemPrompt(tools, runtimeModel)

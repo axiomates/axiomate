@@ -3,9 +3,6 @@
  */
 import { getMainLoopModelOverride } from '../../bootstrap/state.js'
 import { getGlobalConfig } from '../config.js'
-import {
-  has1mContext,
-} from '../context.js'
 import { getSettings_DEPRECATED } from '../settings/settings.js'
 import type { PermissionMode } from '../permissions/PermissionMode.js'
 import { isModelAllowed } from './modelAllowlist.js'
@@ -158,16 +155,12 @@ export function getPublicModelName(model: ModelName): string {
 /**
  * Parse a user-specified model string. Axiomate has no hardcoded aliases;
  * the input is treated as a config.models key or raw model ID and passed
- * through unchanged (apart from trim + [1m] normalization).
+ * through unchanged (apart from trim).
  */
 export function parseUserSpecifiedModel(
   modelInput: ModelName | ModelAlias,
 ): ModelName {
-  const modelInputTrimmed = modelInput.trim()
-  if (has1mContext(modelInputTrimmed.toLowerCase())) {
-    return modelInputTrimmed.replace(/\[1m\]$/i, '').trim() + '[1m]'
-  }
-  return modelInputTrimmed
+  return modelInput.trim()
 }
 
 export function modelDisplayString(model: ModelSetting): string {

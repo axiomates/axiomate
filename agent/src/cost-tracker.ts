@@ -5,7 +5,6 @@ import {
   addToTotalLinesChanged,
   getCostCounter,
   getModelUsage,
-  getSdkBetas,
   getSessionId,
   getTokenCounter,
   getTotalAPIDuration,
@@ -99,7 +98,7 @@ export function getStoredSessionCosts(
         model,
         {
           ...usage,
-          contextWindow: getContextWindowForModel(model, getSdkBetas()),
+          contextWindow: getContextWindowForModel(model),
           maxOutputTokens: getModelMaxOutputTokens(model),
         },
       ]),
@@ -267,7 +266,7 @@ function addToTotalModelUsage(
   modelUsage.webSearchRequests +=
     usage.server_tool_use?.web_search_requests ?? 0
   modelUsage.costUSD += cost
-  modelUsage.contextWindow = getContextWindowForModel(model, getSdkBetas())
+  modelUsage.contextWindow = getContextWindowForModel(model)
   modelUsage.maxOutputTokens = getModelMaxOutputTokens(model)
   return modelUsage
 }

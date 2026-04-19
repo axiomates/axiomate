@@ -1,5 +1,4 @@
 import { feature } from 'bun:bundle'
-import { getSdkBetas } from '../../bootstrap/state.js'
 import type { QuerySource } from '../../constants/querySource.js'
 import type { ToolUseContext } from '../../Tool.js'
 import type { Message } from '../../types/message.js'
@@ -27,7 +26,7 @@ import { trySessionMemoryCompaction } from './sessionMemoryCompact.js'
 // budget is still enough to cover both next input and summary response.
 export function getEffectiveContextWindowSize(model: string): number {
   const reservedTokensForSummary = getMaxOutputTokensForModel(model)
-  let contextWindow = getContextWindowForModel(model, getSdkBetas())
+  let contextWindow = getContextWindowForModel(model)
 
   const autoCompactWindow = process.env.AXIOMATE_CODE_AUTO_COMPACT_WINDOW
   if (autoCompactWindow) {
