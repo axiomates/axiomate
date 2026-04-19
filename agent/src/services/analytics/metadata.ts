@@ -410,7 +410,7 @@ export type EnvContext = {
   runtimes: string
   isRunningWithBun: boolean
   isCi: boolean
-  isClaubbit: boolean
+  isConcurrentSessions: boolean
   isLocalAgentMode: boolean
   isConductor: boolean
   coworkerType?: string
@@ -572,7 +572,7 @@ const buildEnvContext = memoize(async (): Promise<EnvContext> => {
     runtimes: runtimes.join(','),
     isRunningWithBun: env.isRunningWithBun(),
     isCi: isEnvTruthy(process.env.CI),
-    isClaubbit: isEnvTruthy(process.env.CLAUBBIT),
+    isConcurrentSessions: isEnvTruthy(process.env.AXIOMATE_CONCURRENT_SESSIONS),
     isLocalAgentMode: process.env.AXIOMATE_CODE_ENTRYPOINT === 'local-agent',
     isConductor: env.isConductor(),
     // Gated by feature flag to prevent leaking "coworkerType" string in external builds

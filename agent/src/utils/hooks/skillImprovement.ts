@@ -162,7 +162,7 @@ Output <updates>[]</updates> if no updates are needed.`,
 }
 
 export function initSkillImprovement(): void {
-  // Skill improvement hook disabled (was gated by ax_copper_panda)
+  // Skill improvement hook is currently disabled.
 }
 
 /**

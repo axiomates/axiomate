@@ -109,13 +109,6 @@ export function GlobalKeybindingHandlers({
     }
   }, [setScreen, showAllInTranscript, setShowAllInTranscript, messageCount, onExitTranscript]);
 
-  // Toggle brief-only view (ctrl+shift+b). Pure display filter toggle —
-  // does not touch opt-in state. Asymmetric gate (mirrors /brief): OFF
-  // transition always allowed so the same key that got you in gets you
-  // out even if the GB kill-switch fires mid-session.
-  const handleToggleBrief = useCallback(() => {
-  }, []);
-
   // Register keybinding handlers
   useKeybinding('app:toggleTodos', handleToggleTodos, {
     context: 'Global'
@@ -137,6 +130,7 @@ export function GlobalKeybindingHandlers({
   // Toggle built-in terminal panel (meta+j).
   // toggle() blocks in spawnSync until the user detaches from tmux.
   const handleToggleTerminal = useCallback(() => {
+    getTerminalPanel().toggle();
   }, []);
   useKeybinding('app:toggleTerminal', handleToggleTerminal, {
     context: 'Global'

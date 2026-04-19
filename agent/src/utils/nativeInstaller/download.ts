@@ -1,12 +1,9 @@
 /**
  * Download functionality for native installer
  *
- * Handles downloading axiomate binaries from various sources:
- * - Artifactory NPM packages
- * - GCS bucket
+ * Handles downloading axiomate binaries from the GCS release bucket.
  */
 
-import { feature } from 'bun:bundle'
 import axios from 'axios'
 import { createHash } from 'crypto'
 import { chmod, writeFile } from 'fs/promises'
@@ -14,52 +11,13 @@ import { join } from 'path'
 import type { ReleaseChannel } from '../config.js'
 import { logForDebugging } from '../debug.js'
 import { toError } from '../errors.js'
-import { execFileNoThrowWithCwd } from '../execFileNoThrow.js'
 import { getFsImplementation } from '../fsOperations.js'
 import { logError } from '../log.js'
 import { sleep } from '../sleep.js'
-import { jsonStringify, writeFileSync_DEPRECATED } from '../slowOperations.js'
 import { getBinaryName, getPlatform } from './installer.js'
 
 const GCS_BUCKET_URL =
   'https://storage.googleapis.com/axiomate-releases'
-export const ARTIFACTORY_REGISTRY_URL =
-  'https://artifactory.infra.ant.dev/artifactory/api/npm/npm-all/'
-
-export async function getLatestVersionFromArtifactory(
-  tag: string = 'latest',
-): Promise<string> {
-  const startTime = Date.now()
-  const { stdout, code, stderr } = await execFileNoThrowWithCwd(
-    'npm',
-    [
-      'view',
-      `${MACRO.NATIVE_PACKAGE_URL}@${tag}`,
-      'version',
-      '--prefer-online',
-      '--registry',
-      ARTIFACTORY_REGISTRY_URL,
-    ],
-    {
-      timeout: 30000,
-      preserveOutputOnError: true,
-    },
-  )
-
-  const latencyMs = Date.now() - startTime
-
-  if (code !== 0) {
-    const error = new Error(`npm view failed with code ${code}: ${stderr}`)
-    logError(error)
-    throw error
-  }
-
-  logForDebugging(
-    `npm view ${MACRO.NATIVE_PACKAGE_URL}@${tag} version: ${stdout}`,
-  )
-  const latestVersion = stdout.trim()
-  return latestVersion
-}
 
 export async function getLatestVersionFromBinaryRepo(
   channel: ReleaseChannel = 'latest',
@@ -100,10 +58,7 @@ export async function getLatestVersion(
       ? channelOrVersion.slice(1)
       : channelOrVersion
     // 99.99.x is reserved for CI smoke-test fixtures on real GCS.
-    // feature() is false in all shipped builds — DCE collapses this to an
-    // unconditional throw. Only `bun --feature=ALLOW_TEST_VERSIONS` (the
-    // smoke test's source-level invocation) bypasses.
-    if (/^99\.99\./.test(normalized) && !false) {
+    if (/^99\.99\./.test(normalized)) {
       throw new Error(
         `Version ${normalized} is not available for installation. Use 'stable' or 'latest'.`,
       )
@@ -121,126 +76,6 @@ export async function getLatestVersion(
 
   // Use GCS for external users
   return getLatestVersionFromBinaryRepo(channel, GCS_BUCKET_URL)
-}
-
-export async function downloadVersionFromArtifactory(
-  version: string,
-  stagingPath: string,
-) {
-  const fs = getFsImplementation()
-
-  // If we get here, we own the lock and can delete a partial download
-  await fs.rm(stagingPath, { recursive: true, force: true })
-
-  // Get the platform-specific package name
-  const platform = getPlatform()
-  const platformPackageName = `${MACRO.NATIVE_PACKAGE_URL}-${platform}`
-
-  // Fetch integrity hash for the platform-specific package
-  logForDebugging(
-    `Fetching integrity hash for ${platformPackageName}@${version}`,
-  )
-  const {
-    stdout: integrityOutput,
-    code,
-    stderr,
-  } = await execFileNoThrowWithCwd(
-    'npm',
-    [
-      'view',
-      `${platformPackageName}@${version}`,
-      'dist.integrity',
-      '--registry',
-      ARTIFACTORY_REGISTRY_URL,
-    ],
-    {
-      timeout: 30000,
-      preserveOutputOnError: true,
-    },
-  )
-
-  if (code !== 0) {
-    throw new Error(`npm view integrity failed with code ${code}: ${stderr}`)
-  }
-
-  const integrity = integrityOutput.trim()
-  if (!integrity) {
-    throw new Error(
-      `Failed to fetch integrity hash for ${platformPackageName}@${version}`,
-    )
-  }
-
-  logForDebugging(`Got integrity hash for ${platform}: ${integrity}`)
-
-  // Create isolated npm project in staging
-  await fs.mkdir(stagingPath)
-
-  const packageJson = {
-    name: 'axiomate-native-installer',
-    version: '0.0.1',
-    dependencies: {
-      [MACRO.NATIVE_PACKAGE_URL!]: version,
-    },
-  }
-
-  // Create package-lock.json with integrity verification for platform-specific package
-  const packageLock = {
-    name: 'axiomate-native-installer',
-    version: '0.0.1',
-    lockfileVersion: 3,
-    requires: true,
-    packages: {
-      '': {
-        name: 'axiomate-native-installer',
-        version: '0.0.1',
-        dependencies: {
-          [MACRO.NATIVE_PACKAGE_URL!]: version,
-        },
-      },
-      [`node_modules/${MACRO.NATIVE_PACKAGE_URL}`]: {
-        version: version,
-        optionalDependencies: {
-          [platformPackageName]: version,
-        },
-      },
-      [`node_modules/${platformPackageName}`]: {
-        version: version,
-        integrity: integrity,
-      },
-    },
-  }
-
-  writeFileSync_DEPRECATED(
-    join(stagingPath, 'package.json'),
-    jsonStringify(packageJson, null, 2),
-    { encoding: 'utf8', flush: true },
-  )
-
-  writeFileSync_DEPRECATED(
-    join(stagingPath, 'package-lock.json'),
-    jsonStringify(packageLock, null, 2),
-    { encoding: 'utf8', flush: true },
-  )
-
-  // Install with npm - it will verify integrity from package-lock.json
-  // Use --prefer-online to force fresh metadata checks, helping with Artifactory replication delays
-  const result = await execFileNoThrowWithCwd(
-    'npm',
-    ['ci', '--prefer-online', '--registry', ARTIFACTORY_REGISTRY_URL],
-    {
-      timeout: 60000,
-      preserveOutputOnError: true,
-      cwd: stagingPath,
-    },
-  )
-
-  if (result.code !== 0) {
-    throw new Error(`npm ci failed with code ${result.code}: ${result.stderr}`)
-  }
-
-  logForDebugging(
-    `Successfully downloaded and verified ${MACRO.NATIVE_PACKAGE_URL}@${version}`,
-  )
 }
 
 // Stall timeout: abort if no bytes received for this duration

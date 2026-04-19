@@ -7,7 +7,6 @@ import { getInitialSettings } from '../../utils/settings/settings.js'
 /**
  * Whether background memory consolidation should run. User setting
  * (autoDreamEnabled in settings.json) overrides the default.
- * Previously fell through to config ax_onyx_plover; now defaults to false.
  */
 export function isAutoDreamEnabled(): boolean {
   const setting = getInitialSettings().autoDreamEnabled

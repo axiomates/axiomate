@@ -130,13 +130,3 @@ export type REPLToolCallProgress = {
   [key: string]: unknown
 }
 
-// ============================================================================
-// SDK workflow progress (emitted via sdkEventQueue)
-// ============================================================================
-
-export type SdkWorkflowProgress = {
-  tool_use_id?: string
-  tool_name?: string
-  status?: string
-  [key: string]: unknown
-}

@@ -139,7 +139,6 @@ import {
   EMPTY_USAGE,
   type GlobalCacheStrategy,
   logAPIError,
-  logAPIQuery,
   logAPISuccessAndDuration,
   type NonNullableUsage,
 } from './logging.js'
@@ -932,35 +931,6 @@ async function* queryModel(
     }
   }
 
-  // Compute log scalars synchronously so the fire-and-forget .then() closure
-  // captures only primitives instead of paramsFromContext's full closure scope
-  // (messagesForAPI, system, allTools, betas — the entire request-building
-  // context), which would otherwise be pinned until the promise resolves.
-  {
-    const queryParams = paramsFromContext({
-      model: options.model,
-      thinkingConfig,
-    })
-    const logMessagesLength = queryParams.messages.length
-    const logBetas = useBetas ? (queryParams.betas ?? []) : []
-    const logThinkingType = queryParams.thinking?.type ?? 'disabled'
-    const logEffortValue = queryParams.output_config?.effort
-    void options.getToolPermissionContext().then(permissionContext => {
-      logAPIQuery({
-        model: options.model,
-        messagesLength: logMessagesLength,
-        temperature: options.temperatureOverride ?? 1,
-        betas: logBetas,
-        permissionMode: permissionContext.mode,
-        querySource: options.querySource,
-        queryTracking: options.queryTracking,
-        thinkingType: logThinkingType,
-        effortValue: logEffortValue,
-        previousRequestId,
-      })
-    })
-  }
-
   const newMessages: AssistantMessage[] = []
   let ttftMs = 0
   let hasResponseStart = false
@@ -1523,24 +1493,13 @@ async function* queryModel(
         // Wrap raw SDK error into neutral LLMAPIError at the provider boundary
         const wrappedError = provider.wrapError(error)
 
-        const requestId =
-          streamRequestId || wrappedError.request_id
-
         logAPIError({
           error: wrappedError,
           model: errorModel,
-          messageCount: messagesForAPI.length,
-          messageTokens: tokenCountFromLastAPIResponse(messagesForAPI),
           durationMs: Date.now() - start,
-          durationMsIncludingRetries: Date.now() - startIncludingRetries,
           attempt: attemptNumber,
-          requestId,
           clientRequestId,
-          didFallBackToNonStreaming,
-          queryTracking: options.queryTracking,
-          querySource: options.querySource,
           llmSpan,
-          previousRequestId,
         })
 
         // Protocol-neutral abort detection via wrapped error type
@@ -1572,24 +1531,13 @@ async function* queryModel(
       // Wrap raw SDK error into neutral LLMAPIError at the provider boundary
       const wrappedError = provider.wrapError(error)
 
-      const requestId =
-        streamRequestId || wrappedError.request_id
-
       logAPIError({
         error: wrappedError,
         model: errorModel,
-        messageCount: messagesForAPI.length,
-        messageTokens: tokenCountFromLastAPIResponse(messagesForAPI),
         durationMs: Date.now() - start,
-        durationMsIncludingRetries: Date.now() - startIncludingRetries,
         attempt: attemptNumber,
-        requestId,
         clientRequestId,
-        didFallBackToNonStreaming,
-        queryTracking: options.queryTracking,
-        querySource: options.querySource,
         llmSpan,
-        previousRequestId,
       })
 
       // Protocol-neutral abort detection via wrapped error type
@@ -1645,41 +1593,20 @@ async function* queryModel(
     setLastMainRequestId(streamRequestId)
   }
 
-  // Precompute scalars so the fire-and-forget .then() closure doesn't pin the
-  // full messagesForAPI array (the entire conversation up to the context window
-  // limit) until getToolPermissionContext() resolves.
-  const logMessageCount = messagesForAPI.length
-  const logMessageTokens = tokenCountFromLastAPIResponse(messagesForAPI)
-  void options.getToolPermissionContext().then(permissionContext => {
-    logAPISuccessAndDuration({
-      model:
-        newMessages[0]?.message.model ?? options.model,
-      preNormalizedModel: options.model,
-      usage,
-      start,
-      startIncludingRetries,
-      attempt: attemptNumber,
-      messageCount: logMessageCount,
-      messageTokens: logMessageTokens,
-      requestId: streamRequestId ?? null,
-      stopReason,
-      ttftMs,
-      didFallBackToNonStreaming,
-      querySource: options.querySource,
-      headers: responseHeaders,
-      costUSD,
-      queryTracking: options.queryTracking,
-      permissionMode: permissionContext.mode,
-      // Pass newMessages for beta tracing - extraction happens in logging.ts
-      // only when beta tracing is enabled
-      newMessages,
-      llmSpan,
-      globalCacheStrategy,
-      requestSetupMs: start - startIncludingRetries,
-      attemptStartTimes,
-      previousRequestId,
-      betas: lastRequestBetas,
-    })
+  logAPISuccessAndDuration({
+    model: newMessages[0]?.message.model ?? options.model,
+    usage,
+    start,
+    startIncludingRetries,
+    attempt: attemptNumber,
+    ttftMs,
+    costUSD,
+    // Pass newMessages for beta tracing - extraction happens in logging.ts
+    // only when beta tracing is enabled
+    newMessages,
+    llmSpan,
+    requestSetupMs: start - startIncludingRetries,
+    attemptStartTimes,
   })
 
   // Defensive: also release on normal completion (no-op if finally already ran).

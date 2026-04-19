@@ -433,9 +433,6 @@ export async function runHeadless(
   headlessProfilerStartTurn()
   headlessProfilerCheckpoint('runHeadless_entry')
 
-  headlessProfilerCheckpoint('after_grove_check')
-
-
   if (options.resumeSessionAt && !options.resume) {
     process.stderr.write(`Error: --resume-session-at requires --resume\n`)
     gracefulShutdownSync(1)
@@ -1891,10 +1888,7 @@ function runHeadlessStreaming(
                 const currentState = getAppState()
                 if (
                   getRunningTasks(currentState).some(
-                    t =>
-                      (t.type === 'local_agent' ||
-                        t.type === 'local_workflow') &&
-                      isBackgroundTask(t),
+                    t => t.type === 'local_agent' && isBackgroundTask(t),
                   )
                 ) {
                   heldBackResult = message

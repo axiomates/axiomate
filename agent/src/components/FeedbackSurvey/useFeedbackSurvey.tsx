@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useDynamicConfig } from '../../hooks/useDynamicConfig.js';
 import { isFeedbackSurveyDisabled } from '../../services/analytics/config.js';
 import type { Message } from '../../types/message.js';
 import { getGlobalConfig, saveGlobalConfig } from '../../utils/config.js';
@@ -44,7 +43,7 @@ export function useFeedbackSurvey(messages: Message[], isLoading: boolean, submi
     timeLastShown: null,
     submitCountAtLastAppearance: null
   }));
-  const config = useDynamicConfig<FeedbackSurveyConfig>('ax_feedback_survey_config', DEFAULT_FEEDBACK_SURVEY_CONFIG);
+  const config = DEFAULT_FEEDBACK_SURVEY_CONFIG;
   const settingsRate = getInitialSettings().feedbackSurveyRate;
   const sessionStartTime = useRef(Date.now());
   const submitCountAtSessionStart = useRef(submitCount);

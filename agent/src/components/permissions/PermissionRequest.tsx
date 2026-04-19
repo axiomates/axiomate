@@ -31,13 +31,6 @@ import { PowerShellPermissionRequest } from './PowerShellPermissionRequest/Power
 import { SkillPermissionRequest } from './SkillPermissionRequest/SkillPermissionRequest.js'
 import { WebFetchPermissionRequest } from './WebFetchPermissionRequest/WebFetchPermissionRequest.js'
 
-const ReviewArtifactTool = null
-const ReviewArtifactPermissionRequest = null
-const WorkflowTool = null
-const WorkflowPermissionRequest = null
-const MonitorTool = null
-const MonitorPermissionRequest = null
-
 import type { ContentBlockParam } from '@anthropic-ai/sdk/resources/messages.mjs'
 /* eslint-enable @typescript-eslint/no-require-imports */
 import type { z } from 'zod/v4'
@@ -56,8 +49,6 @@ function permissionComponentForTool(
       return BashPermissionRequest
     case PowerShellTool:
       return PowerShellPermissionRequest
-    case ReviewArtifactTool:
-      return ReviewArtifactPermissionRequest ?? FallbackPermissionRequest
     case WebFetchTool:
       return WebFetchPermissionRequest
     case NotebookEditTool:
@@ -70,10 +61,6 @@ function permissionComponentForTool(
       return SkillPermissionRequest
     case AskUserQuestionTool:
       return AskUserQuestionPermissionRequest
-    case WorkflowTool:
-      return WorkflowPermissionRequest ?? FallbackPermissionRequest
-    case MonitorTool:
-      return MonitorPermissionRequest ?? FallbackPermissionRequest
     case GlobTool:
     case GrepTool:
     case FileReadTool:

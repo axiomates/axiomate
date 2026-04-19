@@ -16,6 +16,7 @@ import { logForDebugging } from '../debug.js'
 import { errorMessage, getErrnoCode } from '../errors.js'
 import { getFsImplementation } from '../fsOperations.js'
 import { logError } from '../log.js'
+import { isEssentialTrafficOnly } from '../privacyLevel.js'
 import { jsonParse, jsonStringify } from '../slowOperations.js'
 import { classifyFetchError, logPluginFetch } from './fetchTelemetry.js'
 import { getPluginsDirectory } from './pluginDirectories.js'
@@ -233,6 +234,14 @@ export async function getInstallCounts(): Promise<Map<string, number> | null> {
       map.set(entry.plugin, entry.unique_installs)
     }
     return map
+  }
+
+  // Skip network fetch if nonessential traffic is disabled
+  if (isEssentialTrafficOnly()) {
+    logForDebugging(
+      'Skipping install counts fetch (essential-traffic-only mode)',
+    )
+    return null
   }
 
   // Cache miss or stale - fetch from GitHub

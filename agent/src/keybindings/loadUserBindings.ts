@@ -30,12 +30,9 @@ import {
 } from './validate.js'
 
 /**
- * Check if keybinding customization is enabled.
- *
- * Returns true if the ax_keybinding_customization_release config gate is enabled.
- *
- * This function is exported so other parts of the codebase (e.g., /doctor)
- * can check the same condition consistently.
+ * Check if keybinding customization is enabled. Currently gated on dev
+ * builds; exported so other parts of the codebase (e.g., /doctor) can
+ * check the same condition consistently.
  */
 export function isKeybindingCustomizationEnabled(): boolean {
   return feature('DEV') ? true : false

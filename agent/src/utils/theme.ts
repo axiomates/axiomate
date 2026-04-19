@@ -45,13 +45,13 @@ export type Theme = {
   orange_FOR_SUBAGENTS_ONLY: string
   pink_FOR_SUBAGENTS_ONLY: string
   cyan_FOR_SUBAGENTS_ONLY: string
-  // Grove colors
+  // Logo colors
   professionalBlue: string
   // Chrome colors
   chromeYellow: string
   // TUI V2 colors
-  clawd_body: string
-  clawd_background: string
+  logo_body: string
+  logo_background: string
   userMessageBackground: string
   userMessageBackgroundHover: string
   /** Message-actions selection. Cool shift toward `suggestion` blue; distinct from default AND userMessageBackground. */
@@ -148,13 +148,13 @@ const lightTheme: Theme = {
   orange_FOR_SUBAGENTS_ONLY: 'rgb(234,88,12)', // Orange 600
   pink_FOR_SUBAGENTS_ONLY: 'rgb(219,39,119)', // Pink 600
   cyan_FOR_SUBAGENTS_ONLY: 'rgb(8,145,178)', // Cyan 600
-  // Grove colors
+  // Logo colors
   professionalBlue: 'rgb(106,155,204)',
   // Chrome colors
   chromeYellow: 'rgb(251,188,4)', // Chrome yellow
   // TUI V2 colors
-  clawd_body: 'rgb(135,206,235)',
-  clawd_background: 'rgb(0,0,0)',
+  logo_body: 'rgb(135,206,235)',
+  logo_background: 'rgb(0,0,0)',
   userMessageBackground: 'rgb(240, 240, 240)', // Slightly darker grey for optimal contrast
   userMessageBackgroundHover: 'rgb(252, 252, 252)', // ≥250 to quantize distinct from base at 256-color level
   messageActionsBackground: 'rgb(232, 236, 244)', // cool gray — darker than userMsg 240 (visible on white), slight blue toward `suggestion`
@@ -225,13 +225,13 @@ const lightAnsiTheme: Theme = {
   orange_FOR_SUBAGENTS_ONLY: 'ansi:redBright',
   pink_FOR_SUBAGENTS_ONLY: 'ansi:magentaBright',
   cyan_FOR_SUBAGENTS_ONLY: 'ansi:cyan',
-  // Grove colors
+  // Logo colors
   professionalBlue: 'ansi:blueBright',
   // Chrome colors
   chromeYellow: 'ansi:yellow', // Chrome yellow
   // TUI V2 colors
-  clawd_body: 'ansi:cyanBright',
-  clawd_background: 'ansi:black',
+  logo_body: 'ansi:cyanBright',
+  logo_background: 'ansi:black',
   userMessageBackground: 'ansi:white',
   userMessageBackgroundHover: 'ansi:whiteBright',
   messageActionsBackground: 'ansi:white',
@@ -302,13 +302,13 @@ const darkAnsiTheme: Theme = {
   orange_FOR_SUBAGENTS_ONLY: 'ansi:redBright',
   pink_FOR_SUBAGENTS_ONLY: 'ansi:magentaBright',
   cyan_FOR_SUBAGENTS_ONLY: 'ansi:cyanBright',
-  // Grove colors
+  // Logo colors
   professionalBlue: 'rgb(106,155,204)',
   // Chrome colors
   chromeYellow: 'ansi:yellowBright', // Chrome yellow
   // TUI V2 colors
-  clawd_body: 'ansi:cyanBright',
-  clawd_background: 'ansi:black',
+  logo_body: 'ansi:cyanBright',
+  logo_background: 'ansi:black',
   userMessageBackground: 'ansi:blackBright',
   userMessageBackgroundHover: 'ansi:white',
   messageActionsBackground: 'ansi:blackBright',
@@ -379,13 +379,13 @@ const lightDaltonizedTheme: Theme = {
   orange_FOR_SUBAGENTS_ONLY: 'rgb(255,128,0)', // True orange
   pink_FOR_SUBAGENTS_ONLY: 'rgb(255,102,178)', // Adjusted pink
   cyan_FOR_SUBAGENTS_ONLY: 'rgb(0,178,178)', // Adjusted cyan
-  // Grove colors
+  // Logo colors
   professionalBlue: 'rgb(106,155,204)',
   // Chrome colors
   chromeYellow: 'rgb(251,188,4)', // Chrome yellow
   // TUI V2 colors
-  clawd_body: 'rgb(135,206,235)',
-  clawd_background: 'rgb(0,0,0)',
+  logo_body: 'rgb(135,206,235)',
+  logo_background: 'rgb(0,0,0)',
   userMessageBackground: 'rgb(220, 220, 220)', // Slightly darker grey for optimal contrast
   userMessageBackgroundHover: 'rgb(232, 232, 232)', // ≥230 to quantize distinct from base at 256-color level
   messageActionsBackground: 'rgb(210, 216, 226)', // cool gray — darker than userMsg 220, slight blue
@@ -456,13 +456,13 @@ const darkTheme: Theme = {
   orange_FOR_SUBAGENTS_ONLY: 'rgb(234,88,12)', // Orange 600
   pink_FOR_SUBAGENTS_ONLY: 'rgb(219,39,119)', // Pink 600
   cyan_FOR_SUBAGENTS_ONLY: 'rgb(8,145,178)', // Cyan 600
-  // Grove colors
+  // Logo colors
   professionalBlue: 'rgb(106,155,204)',
   // Chrome colors
   chromeYellow: 'rgb(251,188,4)', // Chrome yellow
   // TUI V2 colors
-  clawd_body: 'rgb(135,206,235)',
-  clawd_background: 'rgb(0,0,0)',
+  logo_body: 'rgb(135,206,235)',
+  logo_background: 'rgb(0,0,0)',
   userMessageBackground: 'rgb(55, 55, 55)', // Lighter grey for better visual contrast
   userMessageBackgroundHover: 'rgb(70, 70, 70)',
   messageActionsBackground: 'rgb(44, 50, 62)', // cool gray, slight blue
@@ -533,13 +533,13 @@ const darkDaltonizedTheme: Theme = {
   orange_FOR_SUBAGENTS_ONLY: 'rgb(255,178,102)', // Bright orange
   pink_FOR_SUBAGENTS_ONLY: 'rgb(255,153,204)', // Bright pink
   cyan_FOR_SUBAGENTS_ONLY: 'rgb(102,204,204)', // Bright cyan
-  // Grove colors
+  // Logo colors
   professionalBlue: 'rgb(106,155,204)',
   // Chrome colors
   chromeYellow: 'rgb(251,188,4)', // Chrome yellow
   // TUI V2 colors
-  clawd_body: 'rgb(135,206,235)',
-  clawd_background: 'rgb(0,0,0)',
+  logo_body: 'rgb(135,206,235)',
+  logo_background: 'rgb(0,0,0)',
   userMessageBackground: 'rgb(55, 55, 55)', // Lighter grey for better visual contrast
   userMessageBackgroundHover: 'rgb(70, 70, 70)',
   messageActionsBackground: 'rgb(44, 50, 62)', // cool gray, slight blue

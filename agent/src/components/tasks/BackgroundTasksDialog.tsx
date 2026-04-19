@@ -26,8 +26,6 @@ import type { LocalAgentTaskState } from '../../tasks/LocalAgentTask/LocalAgentT
 import { LocalAgentTask } from '../../tasks/LocalAgentTask/LocalAgentTask.js'
 import type { LocalShellTaskState } from '../../tasks/LocalShellTask/guards.js'
 import { LocalShellTask } from '../../tasks/LocalShellTask/LocalShellTask.js'
-type LocalWorkflowTaskState = any
-type MonitorMcpTaskState = any
 import {
   type BackgroundTaskState,
   isBackgroundTask,
@@ -88,20 +86,6 @@ type ListItem =
     }
   | {
       id: string
-      type: 'local_workflow'
-      label: string
-      status: string
-      task: DeepImmutable<LocalWorkflowTaskState>
-    }
-  | {
-      id: string
-      type: 'monitor_mcp'
-      label: string
-      status: string
-      task: DeepImmutable<MonitorMcpTaskState>
-    }
-  | {
-      id: string
       type: 'dream'
       label: string
       status: string
@@ -113,13 +97,6 @@ type ListItem =
       label: string
       status: 'running'
     }
-
-const WorkflowDetailDialog = null
-const killWorkflowTask = null
-const skipWorkflowAgent = null
-const retryWorkflowAgent = null
-const killMonitorMcp = null
-const MonitorMcpDetailDialog = null
 
 // Helper to get filtered background tasks (excludes foregrounded local_agent)
 function getSelectableBackgroundTasks(
@@ -178,8 +155,6 @@ export function BackgroundTasksDialog({
     bashTasks,
     agentTasks,
     teammateTasks,
-    workflowTasks,
-    mcpMonitors,
     dreamTasks,
     allSelectableItems,
   } = useMemo(() => {
@@ -202,8 +177,6 @@ export function BackgroundTasksDialog({
     const agent = sorted.filter(
       item => item.type === 'local_agent' && item.id !== foregroundedTaskId,
     )
-    const workflows = sorted.filter(item => item.type === 'local_workflow')
-    const monitorMcp = sorted.filter(item => item.type === 'monitor_mcp')
     const dreamTasks = sorted.filter(item => item.type === 'dream')
     // In spinner-tree mode, exclude teammates from the dialog (they appear in the tree)
     const teammates = showSpinnerTree
@@ -224,20 +197,15 @@ export function BackgroundTasksDialog({
     return {
       bashTasks: bash,
       agentTasks: agent,
-      workflowTasks: workflows,
-      mcpMonitors: monitorMcp,
       dreamTasks,
       teammateTasks: [...leaderItem, ...teammates],
-      // Order MUST match JSX render order (teammates -> bash -> monitorMcp ->
-      // agent -> workflows -> dream) so up/down navigation moves the cursor
-      // visually downward.
+      // Order MUST match JSX render order (teammates -> bash -> agent -> dream)
+      // so up/down navigation moves the cursor visually downward.
       allSelectableItems: [
         ...leaderItem,
         ...teammates,
         ...bash,
-        ...monitorMcp,
         ...agent,
-        ...workflows,
         ...dreamTasks,
       ],
     }
@@ -303,18 +271,6 @@ export function BackgroundTasksDialog({
       ) {
         void killTeammateTask(currentSelection.id)
       } else if (
-        currentSelection.type === 'local_workflow' &&
-        currentSelection.status === 'running' &&
-        killWorkflowTask
-      ) {
-        killWorkflowTask(currentSelection.id, setAppState)
-      } else if (
-        currentSelection.type === 'monitor_mcp' &&
-        currentSelection.status === 'running' &&
-        killMonitorMcp
-      ) {
-        killMonitorMcp(currentSelection.id, setAppState)
-      } else if (
         currentSelection.type === 'dream' &&
         currentSelection.status === 'running'
       ) {
@@ -361,12 +317,7 @@ export function BackgroundTasksDialog({
   useEffect(() => {
     if (viewState.mode !== 'list') {
       const task = (typedTasks ?? {})[viewState.itemId]
-      // Workflow tasks get a grace: their detail view stays open through
-      // completion so the user sees the final state before eviction.
-      if (
-        !task ||
-        (task.type !== 'local_workflow' && !isBackgroundTask(task))
-      ) {
+      if (!task || !isBackgroundTask(task)) {
         // Task was removed or is no longer a background task (e.g. killed).
         // If we skipped the list on mount, close the dialog entirely.
         if (skippedListOnMount.current) {
@@ -449,45 +400,6 @@ export function BackgroundTasksDialog({
             key={`teammate-${task.id}`}
           />
         )
-      case 'local_workflow':
-        if (!WorkflowDetailDialog) return null
-        return (
-          <WorkflowDetailDialog
-            workflow={task}
-            onDone={onDone}
-            onKill={
-              task.status === 'running' && killWorkflowTask
-                ? () => killWorkflowTask(task.id, setAppState)
-                : undefined
-            }
-            onSkipAgent={
-              task.status === 'running' && skipWorkflowAgent
-                ? agentId => skipWorkflowAgent(task.id, agentId, setAppState)
-                : undefined
-            }
-            onRetryAgent={
-              task.status === 'running' && retryWorkflowAgent
-                ? agentId => retryWorkflowAgent(task.id, agentId, setAppState)
-                : undefined
-            }
-            onBack={goBackToList}
-            key={`workflow-${task.id}`}
-          />
-        )
-      case 'monitor_mcp':
-        if (!MonitorMcpDetailDialog) return null
-        return (
-          <MonitorMcpDetailDialog
-            task={task}
-            onKill={
-              task.status === 'running' && killMonitorMcp
-                ? () => killMonitorMcp(task.id, setAppState)
-                : undefined
-            }
-            onBack={goBackToList}
-            key={`monitor-mcp-${task.id}`}
-          />
-        )
       case 'dream':
         return (
           <DreamDetailDialog
@@ -558,8 +470,6 @@ export function BackgroundTasksDialog({
     ...((currentSelection?.type === 'local_bash' ||
       currentSelection?.type === 'local_agent' ||
       currentSelection?.type === 'in_process_teammate' ||
-      currentSelection?.type === 'local_workflow' ||
-      currentSelection?.type === 'monitor_mcp' ||
       currentSelection?.type === 'dream') &&
     currentSelection.status === 'running'
       ? [<KeyboardShortcutHint key="kill" shortcut="x" action="stop" />]
@@ -645,37 +555,11 @@ export function BackgroundTasksDialog({
               </Box>
             )}
 
-            {mcpMonitors.length > 0 && (
-              <Box
-                flexDirection="column"
-                marginTop={
-                  teammateTasks.length > 0 || bashTasks.length > 0 ? 1 : 0
-                }
-              >
-                <Text dimColor>
-                  <Text bold>{'  '}Monitors</Text> ({mcpMonitors.length})
-                </Text>
-                <Box flexDirection="column">
-                  {mcpMonitors.map(item => (
-                    <Item
-                      key={item.id}
-                      item={item}
-                      isSelected={item.id === currentSelection?.id}
-                    />
-                  ))}
-                </Box>
-              </Box>
-            )}
-
             {agentTasks.length > 0 && (
               <Box
                 flexDirection="column"
                 marginTop={
-                  teammateTasks.length > 0 ||
-                  bashTasks.length > 0 ||
-                  mcpMonitors.length > 0
-                    ? 1
-                    : 0
+                  teammateTasks.length > 0 || bashTasks.length > 0 ? 1 : 0
                 }
               >
                 <Text dimColor>
@@ -693,42 +577,13 @@ export function BackgroundTasksDialog({
               </Box>
             )}
 
-            {workflowTasks.length > 0 && (
-              <Box
-                flexDirection="column"
-                marginTop={
-                  teammateTasks.length > 0 ||
-                  bashTasks.length > 0 ||
-                  mcpMonitors.length > 0 ||
-                  agentTasks.length > 0
-                    ? 1
-                    : 0
-                }
-              >
-                <Text dimColor>
-                  <Text bold>{'  '}Workflows</Text> ({workflowTasks.length})
-                </Text>
-                <Box flexDirection="column">
-                  {workflowTasks.map(item => (
-                    <Item
-                      key={item.id}
-                      item={item}
-                      isSelected={item.id === currentSelection?.id}
-                    />
-                  ))}
-                </Box>
-              </Box>
-            )}
-
             {dreamTasks.length > 0 && (
               <Box
                 flexDirection="column"
                 marginTop={
                   teammateTasks.length > 0 ||
                   bashTasks.length > 0 ||
-                  mcpMonitors.length > 0 ||
-                  agentTasks.length > 0 ||
-                  workflowTasks.length > 0
+                  agentTasks.length > 0
                     ? 1
                     : 0
                 }
@@ -774,22 +629,6 @@ function toListItem(task: BackgroundTaskState): ListItem {
         id: task.id,
         type: 'in_process_teammate',
         label: `@${task.identity.agentName}`,
-        status: task.status,
-        task,
-      }
-    case 'local_workflow':
-      return {
-        id: task.id,
-        type: 'local_workflow',
-        label: task.summary ?? task.description,
-        status: task.status,
-        task,
-      }
-    case 'monitor_mcp':
-      return {
-        id: task.id,
-        type: 'monitor_mcp',
-        label: task.description,
         status: task.status,
         task,
       }

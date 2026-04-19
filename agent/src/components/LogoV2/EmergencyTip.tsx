@@ -2,7 +2,6 @@ import * as React from 'react';
 import { useEffect, useMemo } from 'react';
 import { Box, Text } from '../../ink.js';
 import { getGlobalConfig, saveGlobalConfig } from '../../utils/config.js';
-const CONFIG_NAME = 'ax-top-of-feed-tip';
 export function EmergencyTip(): React.ReactNode {
   const tip = useMemo(getTipOfFeed, []);
   // Memoize to prevent re-reads after we save - we want the value at mount time

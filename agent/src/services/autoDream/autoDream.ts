@@ -57,30 +57,6 @@ const DEFAULTS: AutoDreamConfig = {
   minSessions: 5,
 }
 
-/**
- * Thresholds from ax_onyx_plover. The enabled gate lives in config.ts
- * (isAutoDreamEnabled); this returns only the scheduling knobs. Defensive
- * per-field validation since GB cache can return stale wrong-type values.
- */
-function getConfig(): AutoDreamConfig {
-  const raw =
-    null as Partial<AutoDreamConfig> | null
-  return {
-    minHours:
-      typeof raw?.minHours === 'number' &&
-      Number.isFinite(raw.minHours) &&
-      raw.minHours > 0
-        ? raw.minHours
-        : DEFAULTS.minHours,
-    minSessions:
-      typeof raw?.minSessions === 'number' &&
-      Number.isFinite(raw.minSessions) &&
-      raw.minSessions > 0
-        ? raw.minSessions
-        : DEFAULTS.minSessions,
-  }
-}
-
 function isGateOpen(): boolean {
   if (!isAutoMemoryEnabled()) return false
   return isAutoDreamEnabled()
@@ -103,7 +79,7 @@ export function initAutoDream(): void {
   let lastSessionScanAt = 0
 
   runner = async function runAutoDream(context, appendSystemMessage) {
-    const cfg = getConfig()
+    const cfg = DEFAULTS
     if (!isGateOpen()) return
 
     // --- Time gate ---

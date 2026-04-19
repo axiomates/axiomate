@@ -13,7 +13,7 @@ import {
 import { useAppState } from '../../state/AppState.js'
 import { MCPAgentServerMenu } from './MCPAgentServerMenu.js'
 import { MCPListPanel } from './MCPListPanel.js'
-const MCPRemoteServerMenu = (_props: Record<string, unknown>) => null
+import { MCPRemoteServerMenu } from './MCPRemoteServerMenu.js'
 import { MCPStdioServerMenu } from './MCPStdioServerMenu.js'
 import { MCPToolDetailView } from './MCPToolDetailView.js'
 import { MCPToolListView } from './MCPToolListView.js'

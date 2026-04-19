@@ -15,7 +15,6 @@ import { errorMessage } from '../../utils/errors.js'
 import { truncate } from '../../utils/format.js'
 import { gracefulShutdown } from '../../utils/gracefulShutdown.js'
 import { lazySchema } from '../../utils/lazySchema.js'
-import { parseAddress } from '../../utils/peerAddress.js'
 import { semanticBoolean } from '../../utils/semanticBoolean.js'
 import { jsonStringify } from '../../utils/slowOperations.js'
 import type { BackendType } from '../../utils/swarm/backends/types.js'
@@ -573,14 +572,6 @@ export const SendMessageTool: Tool<InputSchema, SendMessageToolOutput> =
         return {
           result: false,
           message: 'to must not be empty',
-          errorCode: 9,
-        }
-      }
-      const addr = parseAddress(input.to)
-      if (addr.scheme === 'uds' && addr.target.trim().length === 0) {
-        return {
-          result: false,
-          message: 'address target must not be empty',
           errorCode: 9,
         }
       }

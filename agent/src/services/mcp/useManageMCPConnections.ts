@@ -18,10 +18,6 @@ import type {
   ServerResource,
 } from './types.js'
 
-/* eslint-disable @typescript-eslint/no-require-imports */
-const fetchMcpSkillsForClient = null
-const clearSkillIndexCache = null
-
 import {
   PromptListChangedNotificationSchema,
   ResourceListChangedNotificationSchema,
@@ -441,22 +437,12 @@ export function useManageMCPConnections(
                   `Received prompts/list_changed notification, refreshing prompts`,
                 )
                 try {
-                  // Skills come from resources, not prompts — don't invalidate their
-                  // cache here. fetchMcpSkillsForClient returns the cached result.
                   fetchCommandsForClient.cache.delete(client.name)
-                  const [mcpPrompts, mcpSkills] = await Promise.all([
-                    fetchCommandsForClient(client),
-                    false
-                      ? fetchMcpSkillsForClient!(client)
-                      : Promise.resolve([]),
-                  ])
+                  const mcpPrompts = await fetchCommandsForClient(client)
                   updateServer({
                     ...client,
-                    commands: [...mcpPrompts, ...mcpSkills],
+                    commands: mcpPrompts,
                   })
-                  // MCP skills changed — invalidate skill-search index so
-                  // next discovery rebuilds with the new set.
-                  clearSkillIndexCache?.()
                 } catch (error) {
                   logMCPError(
                     client.name,

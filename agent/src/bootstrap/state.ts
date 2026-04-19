@@ -198,12 +198,13 @@ type State = {
   // Read at shutdown to send cache eviction hints to inference.
   lastMainRequestId: string | undefined
   // Timestamp (Date.now()) of the last successful API call completion.
-  // Used to compute timeSinceLastApiCallMs in ax_api_success for
-  // correlating cache misses with idle time (cache TTL is ~5min).
+  // Updated by logAPISuccessAndDuration; read by callers that time out
+  // cache-affecting gaps.
   lastApiCompletionTimestamp: number | null
-  // Set to true after compaction (auto or manual /compact). Consumed by
-  // logAPISuccess to tag the first post-compaction API call so we can
-  // distinguish compaction-induced cache misses from TTL expiry.
+  // Set to true after compaction (auto or manual /compact).
+  // TODO: no consumer remaining after the logging.ts cleanup — flag is
+  // written by markPostCompaction() but never read. Can be removed along
+  // with the 4 call sites in compact/autoCompact.
   pendingPostCompaction: boolean
 }
 

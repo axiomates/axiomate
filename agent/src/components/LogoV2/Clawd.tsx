@@ -12,7 +12,7 @@ type Props = {
 }
 
 // 5-row ASCII cat. Pure foreground color, no background tricks.
-// Uses clawd_body color for the whole cat.
+// Uses logo_body color for the whole cat.
 
 const CATS: Record<ClawdPose, string[]> = {
   default: [
@@ -50,7 +50,7 @@ export function Clawd({ pose = 'default' }: Props = {}): React.ReactNode {
   return (
     <Box flexDirection="column" alignItems="center">
       {lines.map((line, i) => (
-        <Text key={i} color="clawd_body">{line}</Text>
+        <Text key={i} color="logo_body">{line}</Text>
       ))}
     </Box>
   )

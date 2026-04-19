@@ -1096,10 +1096,7 @@ async function run(): Promise<CommanderCommand> {
     const {
       setup
     } = await import('./setup.js');
-    const messagingSocketPath = undefined;
-    // Parallelize setup() with commands+agents loading. setup()'s ~28ms is
-    // mostly startUdsMessaging (socket bind, ~20ms) — not disk-bound, so it
-    // doesn't contend with getCommands' file reads. Gated on !worktreeEnabled
+    // Parallelize setup() with commands+agents loading. Gated on !worktreeEnabled
     // since --worktree makes setup() process.chdir() (setup.ts:203), and
     // commands/agents need the post-chdir cwd.
     const preSetupCwd = getCwd();
@@ -1111,7 +1108,7 @@ async function run(): Promise<CommanderCommand> {
       initBuiltinPlugins();
       initBundledSkills();
     }
-    const setupPromise = setup(preSetupCwd, worktreeEnabled, worktreeName, tmuxEnabled, sessionId ? validateUuid(sessionId) : undefined, worktreePRNumber, messagingSocketPath);
+    const setupPromise = setup(preSetupCwd, worktreeEnabled, worktreeName, tmuxEnabled, sessionId ? validateUuid(sessionId) : undefined, worktreePRNumber);
     const commandsPromise = worktreeEnabled ? null : getCommands(preSetupCwd);
     const agentDefsPromise = worktreeEnabled ? null : getAgentDefinitionsWithOverrides(preSetupCwd);
     // Suppress transient unhandledRejection if these reject during the
@@ -1180,12 +1177,6 @@ async function run(): Promise<CommanderCommand> {
       }
     }
 
-    // Replay user messages into stream-json only when the socket was
-    // explicitly requested. The auto-generated socket is passive — it
-    // lets tools inject if they want to, but turning it on by default
-    // shouldn't reshape stream-json for SDK consumers who never touch it.
-    // Callers who inject and also want those injections visible in the
-    // stream pass --messaging-socket-path explicitly (or --replay-user-messages).
     let effectiveReplayUserMessages = !!options.replayUserMessages;
     if (getIsNonInteractiveSession()) {
       // Apply full merged settings env now (including project-scoped
@@ -1547,7 +1538,6 @@ async function run(): Promise<CommanderCommand> {
       numDisallowedTools: disallowedTools.length,
       mcpClientCount: Object.keys(allMcpConfigs).length,
       worktreeEnabled,
-      skipWebFetchPreflight: getInitialSettings().skipWebFetchPreflight,
       githubActionInputs: process.env.GITHUB_ACTION_INPUTS,
       permissionMode,
       modeIsBypass: permissionMode === 'bypassPermissions',
@@ -1562,7 +1552,7 @@ async function run(): Promise<CommanderCommand> {
     logManagedSettings();
 
     // Register PID file for concurrent-session detection (~/.axiomate/sessions/)
-    // and fire multi-clauding telemetry. Lives here (not init.ts) so only the
+    // and fire concurrent-session telemetry. Lives here (not init.ts) so only the
     // REPL path registers — not subcommands like `axiomate doctor`. Chained:
     // count must run after register's write completes or it misses our own file.
     void registerSession().then(registered => {
@@ -1676,7 +1666,7 @@ async function run(): Promise<CommanderCommand> {
       }
 
       // Store SDK betas in global state for context window calculation
-      // Only store allowed betas (filters by allowlist and subscriber status)
+      // Only store allowed betas (filters by allowlist).
       setSdkBetas(filterAllowedSdkBetas(betas));
 
       // Print-mode MCP: per-server incremental push into headlessStore.
@@ -2401,7 +2391,6 @@ async function logTenguInit({
   numDisallowedTools,
   mcpClientCount,
   worktreeEnabled,
-  skipWebFetchPreflight,
   githubActionInputs,
   permissionMode,
   modeIsBypass,
@@ -2422,7 +2411,6 @@ async function logTenguInit({
   numDisallowedTools: number;
   mcpClientCount: number;
   worktreeEnabled: boolean;
-  skipWebFetchPreflight: boolean | undefined;
   githubActionInputs: string | undefined;
   permissionMode: string;
   modeIsBypass: boolean;
