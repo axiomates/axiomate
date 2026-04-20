@@ -519,7 +519,13 @@ function repairNumberAgainstSchema(
   if (typeof value === 'number' && Number.isFinite(value)) {
     return { value, cost: 0, repairs: [] }
   }
-  if (typeof value === 'string' && /^-?\d+(?:\.\d+)?$/.test(value.trim())) {
+  // Regexes match canValuePossiblyMatchSchema's feasibility checks, so any
+  // string that passes feasibility can also be coerced here (no stranded
+  // "feasible but uncoercible" values).
+  const regex = integer
+    ? /^[-+]?\d+$/
+    : /^[-+]?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?$/
+  if (typeof value === 'string' && regex.test(value.trim())) {
     const parsed = Number(value.trim())
     if (Number.isFinite(parsed) && (!integer || Number.isInteger(parsed))) {
       return {

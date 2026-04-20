@@ -585,6 +585,60 @@ describe('repair system: safety boundaries', () => {
     }
   })
 
+  it('coerces positive-signed string to number (feasibility and coercion regexes agree)', () => {
+    const numTool: SchemaGuidedToolDefinition = {
+      name: 'SetCount',
+      inputSchema: z.strictObject({
+        count: z.number(),
+      }),
+    }
+    const result = repairToolInputAgainstSchema(
+      { count: '+5' },
+      undefined,
+      numTool,
+    )
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.input.count).toBe(5)
+    }
+  })
+
+  it('coerces exponent-form string to number', () => {
+    const numTool: SchemaGuidedToolDefinition = {
+      name: 'SetRate',
+      inputSchema: z.strictObject({
+        rate: z.number(),
+      }),
+    }
+    const result = repairToolInputAgainstSchema(
+      { rate: '3e4' },
+      undefined,
+      numTool,
+    )
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.input.rate).toBe(30000)
+    }
+  })
+
+  it('coerces positive-signed string to integer', () => {
+    const intTool: SchemaGuidedToolDefinition = {
+      name: 'SetCount',
+      inputSchema: z.strictObject({
+        n: z.number().int(),
+      }),
+    }
+    const result = repairToolInputAgainstSchema(
+      { n: '+42' },
+      undefined,
+      intTool,
+    )
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.input.n).toBe(42)
+    }
+  })
+
   it('does not claim a decimal string for a required integer field', () => {
     // Regression for integer vs number split in canValuePossiblyMatchSchema:
     // "3.14" must NOT be accepted as a candidate for a required integer field,
