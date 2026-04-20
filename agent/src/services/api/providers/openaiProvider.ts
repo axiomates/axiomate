@@ -36,7 +36,6 @@ import {
 } from '../adapters/openaiRequestAdapter.js'
 import { OpenAIStreamState, type OpenAIChatChunk } from '../adapters/openaiStreamAdapter.js'
 import { mapOpenAIUsage } from '../adapters/openaiUsageMapper.js'
-import { rememberUnparsedToolInputForRepair } from '../toolInputRepairMetadata.js'
 import { withRetry } from '../withRetry.js'
 
 // ---------------------------------------------------------------------------
@@ -397,24 +396,21 @@ export class OpenAIProvider implements LLMProvider {
     if (choice.message.tool_calls) {
       for (const tc of choice.message.tool_calls) {
         let input: Record<string, unknown> = {}
-        let unparsedInput: string | undefined
+        const rawArgs =
+          typeof tc.function.arguments === 'string'
+            ? tc.function.arguments
+            : undefined
         try {
           input = JSON.parse(tc.function.arguments)
         } catch {
           input = {}
-          unparsedInput =
-            typeof tc.function.arguments === 'string'
-              ? tc.function.arguments
-              : undefined
         }
         const block: ContentBlock = {
           type: 'tool_use',
           id: tc.id,
           name: tc.function.name,
           input,
-        }
-        if (unparsedInput) {
-          rememberUnparsedToolInputForRepair(block, unparsedInput)
+          ...(rawArgs && rawArgs.length > 0 ? { unparsedInput: rawArgs } : {}),
         }
         blocks.push(block)
       }

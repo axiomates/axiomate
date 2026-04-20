@@ -4,7 +4,6 @@ import { describe, expect, it, vi } from 'vitest'
 vi.mock('../withRetry.js', () => ({ withRetry: vi.fn() }))
 
 import { OpenAIProvider } from '../providers/openaiProvider.js'
-import { getUnparsedToolInputForRepair } from '../toolInputRepairMetadata.js'
 
 describe('OpenAIProvider.inference', () => {
   it('preserves raw tool arguments when they are invalid JSON', async () => {
@@ -64,14 +63,9 @@ describe('OpenAIProvider.inference', () => {
         id: 'call_123',
         name: 'Read',
         input: {},
+        unparsedInput: '{"file_path":',
       },
     ])
-    const [toolUse] = result.content
-    expect(
-      toolUse?.type === 'tool_use'
-        ? getUnparsedToolInputForRepair(toolUse)
-        : undefined,
-    ).toBe('{"file_path":')
   })
 
   it('maps OpenAI-compatible cache usage details', async () => {

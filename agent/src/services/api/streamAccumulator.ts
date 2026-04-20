@@ -13,7 +13,6 @@ import type { AgentId } from '../../types/ids.js'
 import type { AssistantMessage } from '../../types/message.js'
 import { normalizeToolInput } from '../../utils/api.js'
 import { createAssistantAPIErrorMessage } from '../../utils/messages.js'
-import { rememberUnparsedToolInputForRepair } from './toolInputRepairMetadata.js'
 import {
   API_ERROR_MESSAGE_PREFIX,
   getErrorMessageIfRefusal,
@@ -317,14 +316,15 @@ function finalizeBlock(block: AccBlock | ContentBlock, tools: Tools, agentId?: A
       let input: unknown = typeof block.input === 'object' ? block.input : {}
       const accumulatedInputText =
         typeof block.input === 'string' ? block.input : ''
-      let unparsedInput: string | undefined
+      // Always preserve the raw text for schema repair; repair uses it both when
+      // JSON.parse fails and when the parsed shape doesn't match the tool schema.
+      const unparsedInput: string | undefined =
+        accumulatedInputText.length > 0 ? accumulatedInputText : undefined
       if (accumulatedInputText.length > 0) {
         try {
           input = JSON.parse(accumulatedInputText)
         } catch {
-          // JSON parse failed — keep the raw text for opt-in schema repair.
           input = {}
-          unparsedInput = accumulatedInputText
         }
       }
       // Apply tool-specific input corrections (e.g., type coercion)
@@ -347,9 +347,7 @@ function finalizeBlock(block: AccBlock | ContentBlock, tools: Tools, agentId?: A
         id: block.id,
         name: block.name,
         input: input as Record<string, unknown>,
-      }
-      if (unparsedInput) {
-        rememberUnparsedToolInputForRepair(finalizedBlock, unparsedInput)
+        ...(unparsedInput ? { unparsedInput } : {}),
       }
       return finalizedBlock
     }

@@ -4,7 +4,6 @@ import type {
   ToolResultBlockParam,
   ToolUseBlock,
 } from '../api/streamTypes.js'
-import { getUnparsedToolInputForRepair } from '../api/toolInputRepairMetadata.js'
 import {
   logEvent,
 } from '../analytics/index.js'
@@ -65,6 +64,7 @@ import {
   getErrnoCode,
   ShellError,
   TelemetrySafeError_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+  toError,
 } from '../../utils/errors.js'
 import { logError } from '../../utils/log.js'
 import {
@@ -400,9 +400,8 @@ export async function* runToolUse(
 
     for await (const update of streamedCheckPermissionsAndCallTool(
       tool,
-      toolUse.id,
+      toolUse,
       toolInput,
-      getUnparsedToolInputForRepair(toolUse),
       toolUseContext,
       canUseTool,
       assistantMessage,
@@ -438,9 +437,8 @@ export async function* runToolUse(
 
 function streamedCheckPermissionsAndCallTool(
   tool: Tool,
-  toolUseID: string,
+  toolUseBlock: ToolUseBlock,
   input: { [key: string]: boolean | string | number },
-  unparsedInput: string | undefined,
   toolUseContext: ToolUseContext,
   canUseTool: CanUseToolFn,
   assistantMessage: AssistantMessage,
@@ -457,9 +455,8 @@ function streamedCheckPermissionsAndCallTool(
   const stream = new Stream<MessageUpdateLazy>()
   checkPermissionsAndCallTool(
     tool,
-    toolUseID,
+    toolUseBlock,
     input,
-    unparsedInput,
     toolUseContext,
     canUseTool,
     assistantMessage,
@@ -471,7 +468,7 @@ function streamedCheckPermissionsAndCallTool(
       stream.enqueue({
         message: createProgressMessage({
           toolUseID: progress.toolUseID,
-          parentToolUseID: toolUseID,
+          parentToolUseID: toolUseBlock.id,
           data: progress.data,
         }),
       })
@@ -499,7 +496,12 @@ function repairToolInputForFinalSchemaCheck(
   try {
     const repaired = repairToolInputAgainstSchema(input, unparsedInput, tool)
     return repaired.ok ? repaired.input : input
-  } catch {
+  } catch (error) {
+    logError(toError(error))
+    logForDebugging(
+      `Tool input repair threw for ${tool.name}; falling back to original input`,
+      { level: 'warn' },
+    )
     return input
   }
 }
@@ -533,9 +535,8 @@ export function buildSchemaNotSentHint(
 
 async function checkPermissionsAndCallTool(
   tool: Tool,
-  toolUseID: string,
+  toolUseBlock: ToolUseBlock,
   input: { [key: string]: boolean | string | number },
-  unparsedInput: string | undefined,
   toolUseContext: ToolUseContext,
   canUseTool: CanUseToolFn,
   assistantMessage: AssistantMessage,
@@ -547,8 +548,10 @@ async function checkPermissionsAndCallTool(
     progress: ToolProgress<ToolProgressData> | ProgressMessage<HookProgress>,
   ) => void,
 ): Promise<MessageUpdateLazy[]> {
+  const toolUseID = toolUseBlock.id
   // Validate input types with zod (surprisingly, the model is not great at generating valid input)
   let parsedInput = tool.inputSchema.safeParse(input)
+  let repairedFromMalformedInput = false
   if (
     !parsedInput.success &&
     shouldRepairToolCallsForResponseModel(assistantMessage.message.model)
@@ -556,12 +559,26 @@ async function checkPermissionsAndCallTool(
     const repairedInput = repairToolInputForFinalSchemaCheck(
       tool,
       input,
-      unparsedInput,
+      toolUseBlock.unparsedInput,
     )
     parsedInput = tool.inputSchema.safeParse(repairedInput)
     if (parsedInput.success) {
+      repairedFromMalformedInput = true
       logForDebugging(`Repaired tool input for ${tool.name}`)
+    } else {
+      logForDebugging(
+        `Repair attempted but schema still failed for ${tool.name} ` +
+          `(model=${assistantMessage.message.model})`,
+        { level: 'warn' },
+      )
     }
+  }
+  // Persist the repaired shape back onto the tool_use block so transcripts,
+  // logs, and downstream consumers see what the tool actually received rather
+  // than the model's malformed original (which gets coerced to {} upstream
+  // when JSON.parse fails).
+  if (repairedFromMalformedInput && parsedInput.success) {
+    toolUseBlock.input = parsedInput.data as Record<string, unknown>
   }
   if (!parsedInput.success) {
     let errorContent = formatZodValidationError(tool.name, parsedInput.error)

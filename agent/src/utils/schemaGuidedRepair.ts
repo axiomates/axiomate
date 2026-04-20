@@ -1015,6 +1015,55 @@ export function repairToolInputAgainstSchema(
 // Shared core: repair parsed value against a known tool's schema
 // ---------------------------------------------------------------------------
 
+/**
+ * Given a single candidate value, try schema validation twice: first on the
+ * raw value (direct parse), then on a schema-guided-repaired copy. Returns
+ * the first successful outcome, or a failure marker. Shared by both repair
+ * entry points so changes to the "try + repair" strategy stay in one place.
+ */
+type CandidateOutcome =
+  | {
+      success: true
+      input: Record<string, unknown>
+      schemaRepairs: SchemaGuidedToolInputRepair[]
+      coerced: boolean
+    }
+  | { success: false }
+
+function tryRepairCandidate(
+  candidateValue: unknown,
+  tool: SchemaGuidedToolDefinition,
+  schema: Record<string, unknown>,
+): CandidateOutcome {
+  const directParse = tool.inputSchema.safeParse(candidateValue)
+  if (directParse.success) {
+    const input = parsedInputAsRecord(directParse.data)
+    if (!input) return { success: false }
+    return {
+      success: true,
+      input,
+      schemaRepairs: [],
+      coerced: !valuesDeepEqual(candidateValue, directParse.data),
+    }
+  }
+  const repaired = repairValueAgainstSchema(
+    candidateValue,
+    schema,
+    '$',
+    tool.propertyAliases,
+  )
+  const repairedParse = tool.inputSchema.safeParse(repaired.value)
+  if (!repairedParse.success) return { success: false }
+  const input = parsedInputAsRecord(repairedParse.data)
+  if (!input) return { success: false }
+  return {
+    success: true,
+    input,
+    schemaRepairs: repaired.repairs,
+    coerced: true,
+  }
+}
+
 function repairToolInputCore(
   raw: string,
   tool: SchemaGuidedToolDefinition,
@@ -1080,43 +1129,23 @@ function repairToolInputCore(
       : []
 
   for (const candidate of candidates) {
-    const directParse = tool.inputSchema.safeParse(candidate.value)
-    if (directParse.success) {
-      const input = parsedInputAsRecord(directParse.data)
-      if (!input) continue
-      return {
-        ok: true,
-        raw,
-        toolName: tool.name,
-        extractedToolName: toolNameExtraction.candidate.extractedName,
-        input,
-        needsRepair:
-          jsonRepairMarkers.length > 0 ||
-          candidate.jsonRepairs.length > 0 ||
-          !valuesDeepEqual(candidate.value, directParse.data),
-        repairs: [...jsonRepairMarkers, ...candidate.repairs],
-        jsonRepairs: [...parsedToolCall.repairs, ...candidate.jsonRepairs],
-        toolNameExtraction,
-      }
-    }
-
-    const repaired = repairValueAgainstSchema(candidate.value, schema, '$', tool.propertyAliases)
-    const repairedParse = tool.inputSchema.safeParse(repaired.value)
-    if (!repairedParse.success) continue
-    const input = parsedInputAsRecord(repairedParse.data)
-    if (!input) continue
-
+    const outcome = tryRepairCandidate(candidate.value, tool, schema)
+    if (!outcome.success) continue
     return {
       ok: true,
       raw,
       toolName: tool.name,
       extractedToolName: toolNameExtraction.candidate.extractedName,
-      input,
-      needsRepair: true,
+      input: outcome.input,
+      needsRepair:
+        jsonRepairMarkers.length > 0 ||
+        candidate.jsonRepairs.length > 0 ||
+        outcome.coerced ||
+        outcome.schemaRepairs.length > 0,
       repairs: [
         ...jsonRepairMarkers,
         ...candidate.repairs,
-        ...repaired.repairs,
+        ...outcome.schemaRepairs,
       ],
       jsonRepairs: [...parsedToolCall.repairs, ...candidate.jsonRepairs],
       toolNameExtraction,
@@ -1148,90 +1177,62 @@ function repairToolInputFromParsedValue(
   preJsonRepairs: JsonRepair[],
 ): SchemaGuidedToolCallRepairResult {
   const schema = getToolInputJsonSchema(tool)
+  const toolNameExtraction: JsonLikeToolNameExtractionSuccess = {
+    ok: true,
+    raw,
+    name: tool.name,
+    candidate: {
+      name: tool.name,
+      extractedName: tool.name,
+      key: 'name',
+      position: 0,
+      score: 200,
+      confidence: 'high',
+      matchedKnownTool: true,
+      delimiter: ':',
+    },
+    candidates: [],
+  }
 
-  // Try direct parse first
-  const directParse = tool.inputSchema.safeParse(parsedValue)
-  if (directParse.success) {
-    const input = parsedInputAsRecord(directParse.data)
-    if (input) {
-      return {
-        ok: true,
-        raw,
-        toolName: tool.name,
-        extractedToolName: tool.name,
-        input,
-        needsRepair: preRepairs.length > 0 || preJsonRepairs.length > 0,
-        repairs: [
-          ...preRepairs,
-          { kind: 'extracted_tool_input', path: '$', message: 'Used parsed input directly' },
-        ],
-        jsonRepairs: preJsonRepairs,
-        toolNameExtraction: {
-          ok: true,
-          raw,
-          name: tool.name,
-          candidate: {
-            name: tool.name,
-            extractedName: tool.name,
-            key: 'name',
-            position: 0,
-            score: 200,
-            confidence: 'high',
-            matchedKnownTool: true,
-            delimiter: ':',
-          },
-          candidates: [],
-        },
-      }
+  const outcome = tryRepairCandidate(parsedValue, tool, schema)
+  if (!outcome.success) {
+    return {
+      ok: false,
+      raw,
+      toolName: tool.name,
+      extractedToolName: tool.name,
+      needsRepair: true,
+      repairs: preRepairs,
+      jsonRepairs: preJsonRepairs,
+      error: 'schema_mismatch',
+      message: `Unable to repair '${tool.name}' input so it satisfies the selected tool schema`,
     }
   }
 
-  // Try schema-guided repair
-  if (isRecordValue(parsedValue)) {
-    const repaired = repairValueAgainstSchema(parsedValue, schema, '$', tool.propertyAliases)
-    const repairedParse = tool.inputSchema.safeParse(repaired.value)
-    if (repairedParse.success) {
-      const input = parsedInputAsRecord(repairedParse.data)
-      if (input) {
-        return {
-          ok: true,
-          raw,
-          toolName: tool.name,
-          extractedToolName: tool.name,
-          input,
-          needsRepair: true,
-          repairs: [...preRepairs, ...repaired.repairs],
-          jsonRepairs: preJsonRepairs,
-          toolNameExtraction: {
-            ok: true,
-            raw,
-            name: tool.name,
-            candidate: {
-              name: tool.name,
-              extractedName: tool.name,
-              key: 'name',
-              position: 0,
-              score: 200,
-              confidence: 'high',
-              matchedKnownTool: true,
-              delimiter: ':',
-            },
-            candidates: [],
-          },
-        }
-      }
-    }
-  }
-
+  // When schema-guided repair was needed, surface its repair breadcrumbs.
+  // When direct parse already worked, emit the generic "used parsed input
+  // directly" marker so callers can distinguish zero-repair passes from
+  // pre-existing JSON repairs.
+  const usedSchemaRepair = outcome.schemaRepairs.length > 0
+  const repairs = usedSchemaRepair
+    ? [...preRepairs, ...outcome.schemaRepairs]
+    : [
+        ...preRepairs,
+        {
+          kind: 'extracted_tool_input',
+          path: '$',
+          message: 'Used parsed input directly',
+        } as SchemaGuidedToolInputRepair,
+      ]
   return {
-    ok: false,
+    ok: true,
     raw,
     toolName: tool.name,
     extractedToolName: tool.name,
-    needsRepair: true,
-    repairs: preRepairs,
+    input: outcome.input,
+    needsRepair: usedSchemaRepair || preRepairs.length > 0 || preJsonRepairs.length > 0,
+    repairs,
     jsonRepairs: preJsonRepairs,
-    error: 'schema_mismatch',
-    message: `Unable to repair '${tool.name}' input so it satisfies the selected tool schema`,
+    toolNameExtraction,
   }
 }

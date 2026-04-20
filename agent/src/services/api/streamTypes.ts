@@ -27,6 +27,12 @@ export type ToolUseBlock = {
   id: string
   name: string
   input: Record<string, unknown>
+  /**
+   * Original tool-argument text as emitted by the model, preserved for schema
+   * repair. Populated by stream accumulation and the OpenAI provider whenever
+   * raw argument text is available, regardless of whether JSON.parse succeeded.
+   */
+  unparsedInput?: string
 }
 
 export type ThinkingBlock = {
