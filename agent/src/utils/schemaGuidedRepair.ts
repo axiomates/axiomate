@@ -41,6 +41,7 @@ export type SchemaGuidedToolInputRepairKind =
   | 'coerced_primitive_to_string'
   | 'matched_enum_case'
   | 'wrapped_scalar_as_array'
+  | 'parsed_array_string'
 
 export type SchemaGuidedToolInputRepair = {
   kind: SchemaGuidedToolInputRepairKind
@@ -581,6 +582,33 @@ function repairArrayAgainstSchema(
     }
   }
 
+  // String containing JSON array literal: parse it, then recurse as a
+  // real array. Covers `{tags: "[\"a\",\"b\"]"}` shape from LLMs that
+  // stringify scalar arguments.
+  if (typeof value === 'string' && value.trim().startsWith('[')) {
+    const parsed = repairJsonText(value)
+    if (parsed.ok && Array.isArray(parsed.value)) {
+      const inner = repairArrayAgainstSchema(
+        parsed.value,
+        schema,
+        path,
+        propertyAliases,
+      )
+      return {
+        value: inner.value,
+        cost: inner.cost + 6,
+        repairs: [
+          {
+            kind: 'parsed_array_string',
+            path,
+            message: 'Parsed string value as JSON array',
+          },
+          ...inner.repairs,
+        ],
+      }
+    }
+  }
+
   if (!itemSchema) {
     return {
       value: [value],
@@ -927,7 +955,13 @@ function canValuePossiblyMatchSchema(
         ['true', 'false'].includes(value.trim().toLowerCase()))
     )
   }
-  if (types.includes('array')) return Array.isArray(value)
+  if (types.includes('array')) {
+    if (Array.isArray(value)) return true
+    // Accept strings that look like a JSON array; repairArrayAgainstSchema
+    // will call repairJsonText on them.
+    if (typeof value === 'string' && value.trim().startsWith('[')) return true
+    return false
+  }
   if (types.includes('object')) return isRecordValue(value)
   return true
 }

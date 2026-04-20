@@ -508,6 +508,28 @@ describe('repair system: safety boundaries', () => {
     expect(result.ok).toBe(false)
   })
 
+  it('parses a stringified JSON array into a real array for array-typed fields', () => {
+    // LLMs sometimes stringify array arguments: `{tags: "[\"a\",\"b\"]"}`.
+    // The repair should parse the string and emit a parsed_array_string
+    // repair breadcrumb rather than wrapping the string as a single item.
+    const tagsTool: SchemaGuidedToolDefinition = {
+      name: 'Tagger',
+      inputSchema: z.strictObject({
+        tags: z.array(z.string()),
+      }),
+    }
+    const result = repairToolInputAgainstSchema(
+      { tags: '["a","b"]' },
+      undefined,
+      tagsTool,
+    )
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.input.tags).toEqual(['a', 'b'])
+      expect(result.repairs.map(r => r.kind)).toContain('parsed_array_string')
+    }
+  })
+
   it('does not claim a decimal string for a required integer field', () => {
     // Regression for integer vs number split in canValuePossiblyMatchSchema:
     // "3.14" must NOT be accepted as a candidate for a required integer field,
