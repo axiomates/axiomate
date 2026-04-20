@@ -1,4 +1,9 @@
 
+// Must run before anything that transitively loads a .node file. Redirects
+// native module loading to <exeDir>/<basename>.node in packaged exes.
+// eslint-disable-next-line custom-rules/no-top-level-side-effects
+import './nativeModuleShim.js';
+
 // Bugfix for corepack auto-pinning, which adds yarnpkg to peoples' package.jsons
 // eslint-disable-next-line custom-rules/no-top-level-side-effects
 process.env.COREPACK_ENABLE_AUTO_PIN = '0';

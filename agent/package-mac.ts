@@ -23,6 +23,7 @@ import {
 import { arch, platform } from 'os'
 import { basename, dirname, join, resolve } from 'path'
 import { getBuildDefine, parseFeatures, printBuildFeatures } from './buildConfig.ts'
+import { nativeExeDirPlugin } from './bunPluginNativeExeDir.ts'
 
 if (platform() !== 'darwin') {
   console.error('package:mac must be run on macOS.')
@@ -158,6 +159,10 @@ const result = await Bun.build({
   // Bun compiled binaries resolve bundled JS from a virtual path, so runtime
   // npm packages should be bundled. Native addons are copied beside the binary.
   external: [],
+
+  // Rewrite literal .node imports to load from <exeDir>/<basename>.node
+  // at runtime (Bun's virtual-path resolver can't reach the real files).
+  plugins: [nativeExeDirPlugin],
 })
 
 if (!result.success) {

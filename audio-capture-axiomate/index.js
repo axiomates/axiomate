@@ -10,7 +10,6 @@ function loadNative() {
   const candidates = [
     './audio-capture-axiomate.node',
     `./audio-capture-axiomate.${platform}-${arch}.node`,
-    `./audio-capture-axiomate.${platform === 'win32' ? 'win32' : platform}-${arch}.node`,
   ]
 
   for (const candidate of candidates) {

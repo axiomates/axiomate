@@ -22,6 +22,7 @@ import {
 } from 'fs'
 import { join, dirname, resolve } from 'path'
 import { getBuildDefine, parseFeatures, printBuildFeatures } from './buildConfig.ts'
+import { nativeExeDirPlugin } from './bunPluginNativeExeDir.ts'
 
 const agentDir = dirname(import.meta.path)
 const pkg = JSON.parse(readFileSync(join(agentDir, 'package.json'), 'utf-8'))
@@ -113,6 +114,10 @@ const result = await Bun.build({
     'modifiers-mac-napi-axiomate',  // macOS-only
     'url-handler-mac-napi-axiomate', // macOS-only
   ],
+
+  // Rewrite literal .node imports to load from <exeDir>/<basename>.node
+  // at runtime (Bun's virtual-path resolver can't reach the real files).
+  plugins: [nativeExeDirPlugin],
 })
 
 if (!result.success) {
