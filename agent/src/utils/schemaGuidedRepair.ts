@@ -904,10 +904,20 @@ function canValuePossiblyMatchSchema(
       value === null
     )
   }
-  if (types.includes('number') || types.includes('integer')) {
+  if (types.includes('integer')) {
+    // Integer: accept only integer-shaped strings (no decimal, no exponent).
+    // Matters for phase-2 required-field matching — otherwise a "3.14" would
+    // claim an integer slot and then fail coercion, starving a better match.
+    return (
+      (typeof value === 'number' && Number.isInteger(value)) ||
+      (typeof value === 'string' && /^[-+]?\d+$/.test(value.trim()))
+    )
+  }
+  if (types.includes('number')) {
     return (
       typeof value === 'number' ||
-      (typeof value === 'string' && /^-?\d+(?:\.\d+)?$/.test(value.trim()))
+      (typeof value === 'string' &&
+        /^[-+]?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?$/.test(value.trim()))
     )
   }
   if (types.includes('boolean')) {

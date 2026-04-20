@@ -107,7 +107,7 @@ function isDigit(ch: string | undefined): boolean {
 }
 
 function isNumberStart(ch: string | undefined): boolean {
-  return ch === '-' || isDigit(ch)
+  return ch === '-' || ch === '+' || isDigit(ch)
 }
 
 function isIdentifierStart(ch: string | undefined): boolean {
@@ -894,14 +894,9 @@ class TolerantJsonParser {
       }
 
       if (ch === '\n' || ch === '\r') {
-        if (this.shouldAutoCloseStringAt(this.index, quote!)) {
-          this.repair(
-            'closed_unterminated_string',
-            start,
-            'Closed unterminated string before newline',
-          )
-          return { type: 'string', value }
-        }
+        // Keep the newline as string content; if the unterminated string
+        // spills into a structural token (`}`, `]`, `,`), the check below
+        // will auto-close it there.
         value += ch
         this.index++
         continue
@@ -989,7 +984,7 @@ class TolerantJsonParser {
   private tryParseNumber(): Extract<JsonAstNode, { type: 'number' }> | null {
     const remaining = this.source.slice(this.index)
     const match = remaining.match(
-      /^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?/,
+      /^[-+]?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?/,
     )
     if (!match || !match[0]) return null
 
@@ -1040,7 +1035,7 @@ class TolerantJsonParser {
     }
 
     const maybeNumber = token.match(
-      /^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?$/,
+      /^[-+]?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?$/,
     )
     if (maybeNumber) {
       return {

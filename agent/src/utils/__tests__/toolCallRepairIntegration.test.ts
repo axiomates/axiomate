@@ -507,4 +507,24 @@ describe('repair system: safety boundaries', () => {
     // Bash requires "command" — file_path alone should fail
     expect(result.ok).toBe(false)
   })
+
+  it('does not claim a decimal string for a required integer field', () => {
+    // Regression for integer vs number split in canValuePossiblyMatchSchema:
+    // "3.14" must NOT be accepted as a candidate for a required integer field,
+    // because it will fail coercion and starve any better match.
+    const intTool: SchemaGuidedToolDefinition = {
+      name: 'CountItems',
+      inputSchema: z.strictObject({
+        total: z.number().int(),
+        label: z.string(),
+      }),
+    }
+    const result = repairToolInputAgainstSchema(
+      { total: '3.14', label: 'x' },
+      undefined,
+      intTool,
+    )
+    // No candidate satisfies the required integer; repair should fail cleanly
+    expect(result.ok).toBe(false)
+  })
 })

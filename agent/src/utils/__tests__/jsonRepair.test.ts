@@ -223,6 +223,27 @@ describe('repairJsonText', () => {
     const result = repairJsonText('totally not json output')
     expect(result.ok).toBe(false)
   })
+
+  it('parses positive-sign numbers', () => {
+    const result = expectSuccess('{"a":+5,"b":+3.14,"c":+1e2}')
+    expect(result.value).toEqual({ a: 5, b: 3.14, c: 100 })
+    expect(result.repairs).toEqual([])
+  })
+
+  it('parses positive-sign bareword numbers in object values', () => {
+    const result = expectSuccess('{a: +5, b: +3.14}')
+    expect(result.value).toEqual({ a: 5, b: 3.14 })
+  })
+
+  it('closes unterminated strings that span a newline then hit a structural token', () => {
+    // Regression guard for the removed-dead-code fix: the newline itself is
+    // kept as string content, but the autoclose still triggers at the `}`.
+    const result = expectSuccess('{"msg":"hello\n}')
+    expect(result.value).toEqual({ msg: 'hello\n' })
+    expect(result.repairs.map(repair => repair.kind)).toContain(
+      'closed_unterminated_string',
+    )
+  })
 })
 
 describe('extractToolNameFromJsonLikeText', () => {
