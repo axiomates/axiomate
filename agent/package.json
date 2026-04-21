@@ -16,7 +16,13 @@
     "package:win:dev": "bun run package-win.ts --features=DEV",
     "build:types": "tsc --noEmit",
     "start": "bun dist/cli.js",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:unit": "vitest run",
+    "test:integration": "vitest run --passWithNoTests --config vitest.integration.config.ts",
+    "test:e2e": "vitest run --passWithNoTests --config vitest.e2e.config.ts",
+    "test:all": "vitest run --config vitest.all.config.ts",
+    "test:coverage": "vitest run --coverage",
+    "test:coverage:all": "vitest run --coverage --config vitest.all.config.ts"
   },
   "dependencies": {
     "@alcalzone/ansi-tokenize": "^0.3.0",
@@ -122,6 +128,7 @@
     "@types/react": "^19.0.0",
     "@types/shell-quote": "^1.7.0",
     "@types/ws": "^8.0.0",
+    "@vitest/coverage-v8": "^1.0.0",
     "typescript": "^5.5.0",
     "vitest": "^1.0.0"
   }
