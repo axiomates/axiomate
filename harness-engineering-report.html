@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Harness Engineering Report: Hermes-Agent vs Axiomate (v3)</title>
+<title>Harness Engineering Report: Hermes-Agent vs Axiomate (v3.2)</title>
 <style>
   :root {
     --bg: #0d1117;
@@ -177,11 +177,13 @@
 <body>
 
 <h1>Harness Engineering Report</h1>
-<p class="subtitle">Hermes-Agent vs Axiomate &mdash; 全面对比分析 <span style="color:var(--purple);">(Update v3 — field-tested + tool-repair deepened)</span></p>
-<p class="date">Generated: 2026-04-21 &nbsp;|&nbsp; v2: 2026-04-19 &nbsp;|&nbsp; v1: 2026-04-14</p>
+<p class="subtitle">Hermes-Agent vs Axiomate &mdash; 全面对比分析 <span style="color:var(--purple);">(Update v3.2 — compact forensic + self-correction)</span></p>
+<p class="date">Generated: 2026-04-21 &nbsp;|&nbsp; v3: 2026-04-21 (earlier) &nbsp;|&nbsp; v2: 2026-04-19 &nbsp;|&nbsp; v1: 2026-04-14</p>
 
 <div class="delta-banner">
-  <strong>v3 变化摘要（2 天内）：</strong>
+  <strong>v3.2 自我纠错（1 天内）：</strong>
+  读完 hermes <code>context_compressor.py</code> 1,229 行 + axiomate compact 全家桶后，修正 v3 里对 "Iterative Summary 是唯一 compact gap" 的 under-estimate。真差距是 <strong>10 feature 不是 1 feature</strong>，compact feature parity 实为约 40%。新增 GAP 2 下的 18-feature 比对表；Priority 里 "Iterative Summary 2-3 天" 重拆为 5 个 PR、5-7 天路线图。
+  <br/><strong>v3 变化摘要（2 天内）：</strong>
   Tool-call repair 深度加固 — 6 个新 commit 完成 Hungarian 全局分配 (<code>bace428</code>)、JSON-in-string 数组强转 (<code>d69efd4</code>)、+N/exponent/integer 区分 (<code>d6a4546</code>/<code>22f0e09</code>)、评分契约测试 (<code>9575ca8</code>)、repair 失败时 structured hint + 连续失败升级 (<code>e53e773</code>)。447+ tests 全绿。
   <strong>实测校准：</strong>对 MiniMax M2.5/M2.7 跑 6 次 tool-triggering smoke，<strong>0/6</strong> 命中曾经怀疑的 <code>&lt;invoke&gt;</code>-in-text 故障——决定不再投入 XML tolerant parser；但意外发现 M2.7 via NVIDIA 的 <strong>duplicate tool_use ID bug</strong>（2/2 可复现，用户可见为"用工具就没输出"）。
   <br/><strong>v2 变化摘要（5 天内）：</strong>
@@ -217,6 +219,10 @@
 </div>
 
 <p>Hermes-agent 实现了 18 个核心 harness engineering 模式。Axiomate 当前覆盖其中 <strong>11 个完整</strong>（含 5 个比 hermes 更强，<strong>Tool Call Repair 在 v3 拉大差距</strong>）、<strong>6 个部分实现</strong>、1 个缺失。v3 校准发现 axiomate 的三级模型体系（<code>currentModel</code> / <code>midModel</code> / <code>fastModel</code>）+ 自动 fallback 链已覆盖 hermes "Auxiliary LLM Client" 与 "Smart Model Routing" 的核心功能，只是形式化程度低于 hermes —— 从"缺失"校准为"部分实现"。</p>
+
+<div class="detail-section" style="border-left: 4px solid var(--red); background: rgba(248,81,73,0.05);">
+<p style="margin: 0;"><strong style="color: var(--red);">⚠ v3.2 Compact 诚实重评：</strong> "Context Compression" 虽仍归在"6 部分实现"内，但 forensic 比对显示 <strong>feature parity 仅约 40%</strong>（10 个真 gap vs 4 个 axiomate 独有 vs 2 个哲学差异）。之前 v3 说"只剩 iterative summary 一条大鱼"，低估了。详见 <a href="#gap-detail">GAP 2 的 18-feature 对比表</a> 与 Priority 表里的 5 个 PR 路线图。</p>
+</div>
 
 <div class="detail-section" style="border-left: 4px solid var(--yellow); background: rgba(210,153,34,0.05);">
   <p style="margin: 0;"><strong style="color: var(--yellow);">⚠ v3 实测校准声明：</strong> 之前 v1/v2 标注的 <code>project_xml_toolcall_repair</code> "MiniMax 把 tool call emit 到文本块" 假设，经 2026-04-21 针对 M2.5/M2.7 各 3 轮 smoke 测试 <strong>0/6 复现</strong> 后，已**不再计作 gap**。同期发现 <strong>M2.7 duplicate tool_use ID</strong> 是真正 100% 可复现的新 gap，见下方"v3 新发现"。</p>
@@ -494,42 +500,199 @@ user(tool_results=[call_6bb0951..., call_6bb0951...])    ← 对应结果也同 
 <p><strong>价值</strong>: 安全防线。用户 clone 的项目可能包含恶意 AXIOMATE.md。实现成本最低（纯正则 + Unicode 范围检查）。</p>
 </div>
 
-<!-- GAP 2 -->
+<!-- GAP 2 (v3.2 全面诚实对比) -->
 <div class="detail-section">
-<h3><span class="pri pri-1">P1</span> LLM-Assisted Context Compression（Iterative Summary 缺失）</h3>
-<div class="detail-grid">
-<div class="detail-col hermes">
-  <h4>Hermes 实现</h4>
-  <p><code>agent/context_compressor.py</code> (1,216 行)</p>
-  <ul>
-    <li><strong>5 阶段算法</strong>:
-      <ol>
-        <li>Pre-pass: placeholder 替换旧 tool results (>200 chars)</li>
-        <li>Boundary protection: 保护 head (前 3 条) + tail (~20K tokens)</li>
-        <li>LLM Summarization: 用便宜模型 summarize 中间部分</li>
-        <li>Tool pair sanitization: 修复孤立的 tool_call/result</li>
-        <li>Assembly: head + summary + tail 拼接</li>
-      </ol>
-    </li>
-    <li><strong>Summary 结构化模板</strong>: Goal / Constraints / Progress (Done/In Progress/Blocked) / Key Decisions / Resolved Questions / Pending User Asks / Relevant Files / Remaining Work / Critical Context</li>
-    <li><strong>迭代更新</strong>: 多次压缩时保留并更新 previous summary</li>
-    <li><strong>本期新增</strong>: <code>_truncate_tool_call_args_json()</code> 防止压缩破坏 tool-call JSON</li>
-    <li><strong>失败 cooldown</strong>: LLM 失败后 600s 内不再尝试</li>
-  </ul>
+<h3><span class="pri pri-1">P1</span> LLM-Assisted Context Compression <span class="badge badge-new">v3.2 — 10-feature forensic 比对</span></h3>
+
+<div class="detail-section" style="border-left: 4px solid var(--red); background: rgba(248,81,73,0.05); margin-bottom: 1rem;">
+<p style="margin: 0;"><strong style="color: var(--red);">⚠ v3.1 误判修正：</strong> 之前版本把这条描述为"缺 iterative summary + structured template + tool pair sanitization"三条，并在 Priority 里标"~2-3 天"。<strong>错。</strong>实测行级对读 hermes <code>context_compressor.py</code>（1,229 行）和 axiomate 的 compact 全家桶，真实差距 <strong>10 个 feature</strong>，不是 3 个；工作量 <strong>5-7 天</strong>，不是 2-3 天。axiomate 的 template 已经存在（9 段）且 tool pair sanitization 在 <code>ensureToolResultPairing</code> 已解决 —— 那两条是假差距；但真差距比 v3.1 说的多得多。</p>
 </div>
-<div class="detail-col axiomate">
-  <h4>Axiomate 现状</h4>
-  <p><code>services/compact/compact.ts</code> (1,468 行) + microCompact + postCompactCleanup</p>
-  <ul>
-    <li>4 种 compaction 策略: full / micro / reactive / snip</li>
-    <li>本期新增: 在 context_overflow 错误时 <strong>reactive compact 跳跃式压缩</strong>（commit <code>bb7bb8e</code>）</li>
-    <li>Full compact 调用 API summarize 但 <strong>无结构化模板</strong></li>
-    <li>Post-compact 恢复文件 + skills</li>
-    <li><span class="gap-tag">缺少</span>: iterative summary update、structured Goal/Progress/Pending template、tool pair sanitization</li>
-  </ul>
+
+<h4>Feature-by-feature（带行号证据）</h4>
+<table>
+<thead>
+<tr><th style="width:3%">#</th><th style="width:20%">Feature</th><th style="width:35%">Hermes</th><th style="width:30%">Axiomate</th><th style="width:12%">归属</th></tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td><strong>Iterative update prompt</strong></td>
+<td>VARIANT B 分支（<code>context_compressor.py:712-724</code>）：显式 <code>PREVIOUS SUMMARY:</code> 注入 + "PRESERVE all existing information… Move items from In Progress to Completed Actions when done… CRITICAL: Update Active Task"</td>
+<td>单 prompt 无分支，prev summary 作为 <code>isCompactSummary:true</code> 消息躺在上下文里但 prompt 不引用</td>
+<td><span class="gap-tag">真差距</span></td>
+</tr>
+<tr>
+<td>2</td>
+<td><strong>Previous summary 显式注入</strong></td>
+<td><code>self._previous_summary</code> 存储 + 显式 prompt 注入</td>
+<td>被动保留在消息流，LLM 自行推断</td>
+<td><span class="gap-tag">真差距（与 #1 配对）</span></td>
+</tr>
+<tr>
+<td>3</td>
+<td><strong>Structured template 字段</strong></td>
+<td>13 段：Active Task（用户原话）/ Goal / Constraints / Completed Actions（numbered） / Active State / In Progress / Blocked / Key Decisions / Resolved Questions / Pending User Asks / Relevant Files / Remaining Work / Critical Context</td>
+<td>9 段：Primary Request / Key Concepts / Files &amp; Code / Errors / Problem Solving / All User Messages / Pending Tasks / Current Work / Optional Next Step</td>
+<td>🟡 minor 差距 — schema 重叠约 70%，hermes Done/InProgress/Blocked 状态分离更适合迭代</td>
+</tr>
+<tr>
+<td>4</td>
+<td><strong>Pre-pass tool-aware 结果剪枝</strong></td>
+<td><code>_prune_old_tool_results</code>（<code>:383-522</code>）生成 <strong>tool 特定</strong>一行总结：<code>[terminal] ran 'npm test' -&gt; exit 0, 47 lines</code>、<code>[read_file] read config.py from line 1 (1,200 chars)</code> —— 10+ tool-specific 处理器，&gt;200 chars 就剪枝</td>
+<td>Full compact <strong>不剪枝</strong>。仅 <code>microCompact.ts:449</code> 在 60 min 间隔触发时用通用 <code>[Old tool result content cleared]</code></td>
+<td><span class="gap-tag">significant 差距</span></td>
+</tr>
+<tr>
+<td>5</td>
+<td><strong>重复 tool 结果去重</strong></td>
+<td><code>:452-472</code> 保留最新一份，旧份替换为 <code>[Duplicate tool output — same content as a more recent call]</code></td>
+<td>无</td>
+<td><span class="gap-tag">真差距</span></td>
+</tr>
+<tr>
+<td>6</td>
+<td><strong>Summarization 模型路由</strong></td>
+<td><code>call_llm(task='compression', ...)</code> 经 <code>auxiliary_client</code>，<code>summary_model</code> 可独立配置，model-not-found fallback 到主模型</td>
+<td>恒用 <code>context.options.mainLoopModel</code>（<code>compact.ts:1094</code>）。Axiomate 有 <code>getMidModel()</code>/<code>getFastModel()</code> <strong>但 compact 未接入</strong></td>
+<td><span class="gap-tag">真差距（infra 已有，只差接入）</span></td>
+</tr>
+<tr>
+<td>7</td>
+<td><strong>失败 cooldown</strong></td>
+<td>双层：600s（provider 不可用）/ 60s（rate-limit、timeout）；成功即清零</td>
+<td>3 次连续失败断路器（整 session 禁用，无时间恢复）—— <code>autoCompact.ts:61</code></td>
+<td>🟡 哲学差异，各有取舍</td>
+</tr>
+<tr>
+<td>8</td>
+<td><strong>失败 fallback 静态消息</strong></td>
+<td>LLM 失败时插入静态标记 <code>"Summary generation was unavailable. N turns were removed…"</code>，compaction 仍完成</td>
+<td>抛错；auto-compact 默默跳过不通知用户</td>
+<td><span class="gap-tag">真差距 — 优雅降级</span></td>
+</tr>
+<tr>
+<td>9</td>
+<td><strong>Anti-thrashing（防徒劳压缩）</strong></td>
+<td>追踪 <code>_last_compression_savings_pct</code>，连续 2 次 &lt;10% savings 就跳过下次 auto-compact</td>
+<td>无</td>
+<td><span class="gap-tag">真差距</span></td>
+</tr>
+<tr>
+<td>10</td>
+<td><strong>Focus-topic compaction</strong></td>
+<td><code>/compress &lt;topic&gt;</code>：topic 相关内容分配 60-70% summary budget</td>
+<td>可传 <code>customInstructions</code>，但无结构化 focus-topic + budget 分配语义</td>
+<td>🟡 partial — 基础功能有，分配策略无</td>
+</tr>
+<tr>
+<td>11</td>
+<td><strong>Tool-call 参数 JSON-safe 截断</strong></td>
+<td><code>:67-110</code> 收缩 tool_call JSON 里的长字符串值，保 JSON 合法，不动 paths/ints/bools</td>
+<td>无（<code>stripImagesFromMessages</code> 只去图片）</td>
+<td><span class="gap-tag">真差距</span></td>
+</tr>
+<tr>
+<td>12</td>
+<td><strong>Secret redaction</strong></td>
+<td><code>redact_sensitive_text()</code> + prompt 指令 <code>"NEVER include API keys…[REDACTED]"</code></td>
+<td>compact 管线无 redaction</td>
+<td><span class="gap-tag">真差距</span></td>
+</tr>
+<tr style="background: rgba(63,185,80,0.05);">
+<td>13</td>
+<td><strong>边界不分裂 tool pair</strong></td>
+<td><code>_align_boundary_forward/backward</code>（<code>:904-936</code>）</td>
+<td><code>adjustIndexToPreserveAPIInvariants</code>（<code>sessionMemoryCompact.ts:226-308</code>）—— proactive，可能更强</td>
+<td><span class="ok-tag">Axiomate 领先</span></td>
+</tr>
+<tr style="background: rgba(63,185,80,0.05);">
+<td>14</td>
+<td><strong>Orphan tool pair sanitization</strong></td>
+<td><code>_sanitize_tool_pairs</code> 内嵌于 compressor</td>
+<td><code>ensureToolResultPairing</code>（<code>messages.ts:4342-4657</code>）—— 在 API boundary，作用更广，额外处理重复 tool_use ID</td>
+<td><span class="ok-tag">Axiomate 领先</span></td>
+</tr>
+<tr style="background: rgba(63,185,80,0.05);">
+<td>15</td>
+<td><strong>Post-compact 缓存失效</strong></td>
+<td>无</td>
+<td><code>postCompactCleanup.ts</code>：清 userContext、memory files、system prompt sections、session messages 缓存</td>
+<td><span class="ok-tag">Axiomate 独有</span></td>
+</tr>
+<tr style="background: rgba(63,185,80,0.05);">
+<td>16</td>
+<td><strong>Session-memory-based compact</strong></td>
+<td>无</td>
+<td><code>sessionMemoryCompact.ts</code>：实验性，不调用 LLM，用预计算 session memory</td>
+<td><span class="ok-tag">Axiomate 独有（实验）</span></td>
+</tr>
+<tr>
+<td>17</td>
+<td><strong>Boundary protection 算法</strong></td>
+<td>Token 预算 dynamic：1.5x soft ceiling + 3-msg 硬下限，按 len/4 估算</td>
+<td>按 API round 分组（<code>grouping.ts:22-63</code>）<br/>PTL 时丢最老 round</td>
+<td>🟡 哲学差异（两者都合理）</td>
+</tr>
+<tr style="background: rgba(63,185,80,0.05);">
+<td>18</td>
+<td><strong>Compaction 策略数</strong></td>
+<td>1（phase pipeline）</td>
+<td>4-5：full / microCompact（time-based + cached）/ partial（用户 pivot）/ sessionMemoryCompact（实验）/ reactive（在 query.ts 处理 context_overflow）</td>
+<td><span class="ok-tag">Axiomate 独有</span></td>
+</tr>
+</tbody>
+</table>
+
+<div class="detail-section" style="border-color: var(--yellow); background: rgba(210,153,34,0.04); margin-top: 1rem;">
+<h4 style="margin-top:0;">Score card</h4>
+<p><strong>Hermes 有、axiomate 缺的真差距：</strong>10 条（#1, 2, 4, 5, 6, 8, 9, 11, 12 + minor #3）</p>
+<p><strong>Axiomate 有、hermes 缺的真优势：</strong>4 条（#13, 14, 15, 16 — 其中 15/16 是 axiomate 原创）</p>
+<p><strong>哲学差异（各有取舍）：</strong>2 条（#7 cooldown、#17 boundary 算法）</p>
+<p style="color: var(--red);"><strong>结论：</strong>远未达到 v3.1 声称的"接近 parity"。真 gap 5-7 天工作量，不是 1-2 天。Compact 该从"6 部分实现"里重新拆出来单独评级 <strong>~40% feature parity</strong>。</p>
 </div>
+
+<h4>拆解 PR 路线图（v3.2 取代 v3.1 的"2-3 天小改动"框架）</h4>
+<table>
+<thead>
+<tr><th>阶段</th><th>范围</th><th>工作量</th><th>覆盖 feature</th></tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>PR 1</strong></td>
+<td>Iterative update prompt + prev summary 注入</td>
+<td>~1 天</td>
+<td>#1, #2（最大单点 ROI）</td>
+</tr>
+<tr>
+<td><strong>PR 2</strong></td>
+<td>Pre-pass tool-aware 结果剪枝 —— 10 个 tool-specific 摘要函数</td>
+<td>~2 天</td>
+<td>#4</td>
+</tr>
+<tr>
+<td><strong>PR 3</strong></td>
+<td>Compact 走 <code>getMidModel()</code> + 失败 fallback 静态消息</td>
+<td>~0.5 天</td>
+<td>#6, #8</td>
+</tr>
+<tr>
+<td><strong>PR 4</strong></td>
+<td>Parallel 集合：secret redaction + dup dedup + anti-thrashing + JSON-safe arg truncate</td>
+<td>~2 天</td>
+<td>#5, #9, #11, #12</td>
+</tr>
+<tr>
+<td><strong>PR 5</strong></td>
+<td><code>/compact &lt;topic&gt;</code> focus-topic with budget allocation</td>
+<td>~1 天</td>
+<td>#10</td>
+</tr>
+</tbody>
+</table>
+<p><strong>PR 1-3：~3.5 天</strong> 关掉最痛的 gap（iterative + tool pruning + model routing + graceful fail）<br/>
+<strong>PR 4-5：~3 天</strong> 追平剩余 feature<br/>
+<strong>总计 5-7 天</strong> 可与 hermes compact 实现功能上对等（且 axiomate 保留 #13-16 的独有优势）</p>
 </div>
-<p><strong>价值</strong>: 长对话 (&gt;50 轮) 会丢失关键上下文。结构化 summary 保留语义信息，成本低。<span class="badge badge-new">v3 校准</span>：<strong>便宜模型基础设施已就绪</strong>（axiomate 三级模型 <code>currentModel</code> / <code>midModel</code> / <code>fastModel</code> 直接可用），不依赖额外 Auxiliary Client。</p>
 </div>
 
 <!-- GAP 3 (v3 重评) -->
@@ -752,11 +915,20 @@ user(tool_results=[call_6bb0951..., call_6bb0951...])    ← 对应结果也同 
   <td><strong>100% 可复现</strong>的用户可见故障：M2.7 via NVIDIA 一调工具就"没输出"。<code>ensureToolResultPairing</code> 结构性兜住但模型后续无回复。怀疑 <code>openaiStreamAdapter.ts</code> 对 NVIDIA 流式格式的兼容 bug。<span class="ok-tag">最高 ROI</span> — 修好等于救活整个 M2.7 支持路径</td>
 </tr>
 <tr>
-  <td><span class="pri pri-1">P1</span></td>
-  <td>Iterative Summary Templates (compaction 增强)</td>
-  <td>2-3 天</td>
+  <td><span class="pri pri-1">P1</span><span class="badge badge-new">v3.2 重拆</span></td>
+  <td><strong>Compact 多 PR 路线图</strong>（取代 v3.1 的"2-3 天单 PR"）</td>
+  <td>5-7 天</td>
   <td>高</td>
-  <td>长对话 (&gt;50 轮) 质量退化是**每天**撞得到的问题，非假想。<code>compact.ts</code> 已有 1,468 行基建，只需 structured Goal/Progress/Pending/Remaining template + iterative update 逻辑。<strong>用主模型也能做，不阻塞在 auxiliary client 上</strong></td>
+  <td>v3.2 forensic 比对发现真 gap 是 10 条不是 3 条。拆成：
+    <ul style="margin: 0.5rem 0; padding-left: 1.2rem;">
+      <li><strong>PR 1</strong>（1 天）— Iterative update prompt + prev summary 显式注入（#1, #2）<span class="ok-tag">最大 ROI</span></li>
+      <li><strong>PR 2</strong>（2 天）— Pre-pass tool-aware 结果剪枝（#4）</li>
+      <li><strong>PR 3</strong>（0.5 天）— Compact 走 midModel + 失败 fallback（#6, #8）</li>
+      <li><strong>PR 4</strong>（2 天）— redaction + dup dedup + anti-thrash + arg truncate（#5, #9, #11, #12）</li>
+      <li><strong>PR 5</strong>（1 天）— <code>/compact &lt;topic&gt;</code> budget allocation（#10）</li>
+    </ul>
+    详见上方 GAP 2 的 18-feature 对比表
+  </td>
 </tr>
 <tr>
   <td><span class="pri pri-2">P2</span><span class="badge badge-new">v3 校准</span></td>
@@ -803,7 +975,8 @@ user(tool_results=[call_6bb0951..., call_6bb0951...])    ← 对应结果也同 
   <li><strong>实测 &gt; 推测</strong>: v2 标 XML-in-text 是潜在 gap，v3 跑 6 次 MiniMax smoke 得 0/6，直接关闭。<span class="ok-tag">经验教训：再好的理论假设也要真跑过才算数</span></li>
   <li><strong>真正的 P1 不是 hermes 有的 gap，而是 axiomate 自己的 bug</strong>: M2.7 duplicate tool_use ID 在两次实测中 100% 复现 — 比任何"port hermes 模式"都更值得优先修</li>
   <li><strong>威胁模型要区分场景</strong>: v2 把 Prompt Injection 标 P1 "最低成本最高回报"，v3 校准为 P3 — 本地 CLI 的 attack surface 小于 SaaS。照搬 hermes 优先级等于接管 hermes 的威胁假设</li>
-  <li><strong>v2 的"模型层架构差距"被 v3 大幅修正</strong>: axiomate 实际已有 <code>currentModel</code> / <code>midModel</code> / <code>fastModel</code> 三级 + 自动 fallback + 内部任务分流。"剩余差距是依赖链"的 v2 判断错了 — Smart Model Routing 可以直接做，不需要先建 auxiliary client。真正的架构缺口只剩 Iterative Summary Template</li>
+  <li><strong>v2 的"模型层架构差距"被 v3 大幅修正</strong>: axiomate 实际已有 <code>currentModel</code> / <code>midModel</code> / <code>fastModel</code> 三级 + 自动 fallback + 内部任务分流。Smart Model Routing 可以直接做，不需要先建 auxiliary client <span style="color: var(--red);">←但 compact 本身还没接入三级模型，详见 v3.2 的 GAP 2 #6</span></li>
+  <li><strong>v3.2 — compact 不是小差距</strong>: 先前 v3.1 说 "唯一真正的 hermes 结构性优势只剩 Iterative Summary"，并给出 "1-2 天小改动" 估计。实测 forensic 比对后发现 <strong>真差距是 10 个 feature 不是 1 个</strong>——iterative prompt 只是其中之一，还有 tool-aware 剪枝、模型路由、失败 fallback、anti-thrashing、secret redaction 等。axiomate 在 compact 上 feature parity 只有约 40%，需要 5-7 天分 5 个 PR 才能追平</li>
   <li><strong>Hermes 5 天仍在防御加固</strong>: JSON 完整性、Codex auth 隔离、cron approval、auto routing、4.7 迁移。hermes 的 18 模式趋于饱和，axiomate 在 v3 期对 Tool Repair 的深度投入已反超此格局</li>
 </ul>
 </div>
