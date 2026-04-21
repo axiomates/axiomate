@@ -75,6 +75,7 @@ import {
   createUserMessage,
   withMemoryCorrectionHint,
 } from '../../utils/messages.js'
+import { countConsecutiveInputValidationFailures } from './toolCallFailureCounter.js'
 import type {
   PermissionDecisionReason,
   PermissionResult,
@@ -488,22 +489,103 @@ function streamedCheckPermissionsAndCallTool(
   return stream
 }
 
+type RepairOutcome =
+  | { status: 'succeeded'; input: unknown }
+  | { status: 'failed'; error: string; message: string }
+  | { status: 'threw' }
+
 function repairToolInputForFinalSchemaCheck(
   tool: Tool,
   input: unknown,
   unparsedInput?: string,
-): unknown {
+): RepairOutcome {
   try {
     const repaired = repairToolInputAgainstSchema(input, unparsedInput, tool)
-    return repaired.ok ? repaired.input : input
+    if (repaired.ok === true) {
+      return { status: 'succeeded', input: repaired.input }
+    }
+    return {
+      status: 'failed',
+      error: repaired.error,
+      message: repaired.message,
+    }
   } catch (error) {
     logError(toError(error))
     logForDebugging(
       `Tool input repair threw for ${tool.name}; falling back to original input`,
       { level: 'warn' },
     )
-    return input
+    return { status: 'threw' }
   }
+}
+
+/**
+ * Builds a hint appended to the Zod error when an automatic repair was
+ * attempted but couldn't satisfy the schema. Surfaces the structured
+ * error code from schemaGuidedRepair so the model knows what was tried
+ * (vs leaving it to guess why the value it emitted was rejected).
+ */
+function buildRepairOutcomeHint(outcome: RepairOutcome | null): string | null {
+  if (!outcome) return null
+  switch (outcome.status) {
+    case 'succeeded':
+      return null
+    case 'threw':
+      return (
+        '\n\nNote: automatic tool-input repair crashed unexpectedly while ' +
+        'processing your call. The original (unrepaired) input is what ' +
+        "Zod saw. Double-check the schema and re-emit."
+      )
+    case 'failed':
+      switch (outcome.error) {
+        case 'unrepairable_json':
+          return (
+            '\n\nRepair diagnostic: the input text could not be parsed as ' +
+            'JSON even with tolerant parsing. Re-emit the tool call with ' +
+            'properly quoted strings, matching braces, and no trailing junk.'
+          )
+        case 'missing_tool_input':
+          return (
+            '\n\nRepair diagnostic: the tool name was recognized but no ' +
+            'valid input object was found. Make sure the tool call carries ' +
+            'an `input` / `arguments` object matching the schema.'
+          )
+        case 'schema_mismatch':
+          return (
+            '\n\nRepair diagnostic: even after property aliasing, enum ' +
+            'case-matching, and type coercion, no interpretation of your ' +
+            "input satisfied the tool's schema. Property names are " +
+            'case-sensitive and snake_case/camelCase matters — re-read the ' +
+            'schema carefully.'
+          )
+        default:
+          return null
+      }
+  }
+}
+
+/**
+ * Builds an escalating hint based on how many consecutive
+ * InputValidationError failures this tool has produced. The count passed
+ * in is inclusive of the failure about to be emitted.
+ */
+function buildConsecutiveFailureHint(totalFailures: number): string | null {
+  if (totalFailures >= 4) {
+    return (
+      `\n\nSTOP: this is the ${totalFailures}th consecutive ` +
+      'InputValidationError for this tool. Do NOT re-emit the same call ' +
+      'shape again. Re-read the tool schema line by line, or pause and ' +
+      'ask the user for guidance.'
+    )
+  }
+  if (totalFailures >= 2) {
+    return (
+      `\n\nThis is the ${totalFailures}nd consecutive InputValidationError ` +
+      'for this tool. Pay close attention to the schema — property names ' +
+      'are case-sensitive, and snake_case vs camelCase matters.'
+    )
+  }
+  return null
 }
 
 /**
@@ -552,15 +634,18 @@ async function checkPermissionsAndCallTool(
   // Validate input types with zod (surprisingly, the model is not great at generating valid input)
   let parsedInput = tool.inputSchema.safeParse(input)
   let repairedFromMalformedInput = false
+  let repairOutcome: RepairOutcome | null = null
   if (
     !parsedInput.success &&
     shouldRepairToolCallsForResponseModel(assistantMessage.message.model)
   ) {
-    const repairedInput = repairToolInputForFinalSchemaCheck(
+    repairOutcome = repairToolInputForFinalSchemaCheck(
       tool,
       input,
       toolUseBlock.unparsedInput,
     )
+    const repairedInput =
+      repairOutcome.status === 'succeeded' ? repairOutcome.input : input
     parsedInput = tool.inputSchema.safeParse(repairedInput)
     if (parsedInput.success) {
       repairedFromMalformedInput = true
@@ -591,6 +676,18 @@ async function checkPermissionsAndCallTool(
     if (schemaHint) {
       errorContent += schemaHint
     }
+
+    const repairHint = buildRepairOutcomeHint(repairOutcome)
+    if (repairHint) errorContent += repairHint
+
+    // Include the current failure (this one, about to be emitted) in the
+    // escalation count — prior count reflects state BEFORE this turn.
+    const priorFailures = countConsecutiveInputValidationFailures(
+      toolUseContext.messages,
+      tool.name,
+    )
+    const consecutiveHint = buildConsecutiveFailureHint(priorFailures + 1)
+    if (consecutiveHint) errorContent += consecutiveHint
 
     logForDebugging(
       `${tool.name} tool input error: ${errorContent.slice(0, 200)}`,
