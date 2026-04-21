@@ -200,14 +200,14 @@
     <span class="delta up">+1 (Error Classifier)</span>
   </div>
   <div class="card yellow">
-    <div class="num">4</div>
+    <div class="num">6</div>
     <div class="label">Axiomate 部分实现</div>
-    <span class="delta">+1 (Subagent 重新评估)</span>
+    <span class="delta up">+2 (v3: Aux Client / Smart Routing 升级为部分)</span>
   </div>
   <div class="card red">
-    <div class="num">3</div>
+    <div class="num">1</div>
     <div class="label">Axiomate 缺失</div>
-    <span class="delta up">−2 vs v1</span>
+    <span class="delta up">−2 vs v2 (aux / routing 移到部分)</span>
   </div>
   <div class="card purple">
     <div class="num">7</div>
@@ -216,7 +216,7 @@
   </div>
 </div>
 
-<p>Hermes-agent 是一个 production-grade 的 AI agent harness，实现了 18 个核心 harness engineering 模式。Axiomate 当前覆盖其中 <strong>11 个完整</strong>（含 5 个比 hermes 更强，<strong>Tool Call Repair 在 v3 拉大差距</strong>）、4 个部分实现、3 个缺失。Independence 清理后，axiomate 不再依赖 Anthropic 私有协议或 Claude Code first-party 行为。</p>
+<p>Hermes-agent 实现了 18 个核心 harness engineering 模式。Axiomate 当前覆盖其中 <strong>11 个完整</strong>（含 5 个比 hermes 更强，<strong>Tool Call Repair 在 v3 拉大差距</strong>）、<strong>6 个部分实现</strong>、1 个缺失。v3 校准发现 axiomate 的三级模型体系（<code>currentModel</code> / <code>midModel</code> / <code>fastModel</code>）+ 自动 fallback 链已覆盖 hermes "Auxiliary LLM Client" 与 "Smart Model Routing" 的核心功能，只是形式化程度低于 hermes —— 从"缺失"校准为"部分实现"。</p>
 
 <div class="detail-section" style="border-left: 4px solid var(--yellow); background: rgba(210,153,34,0.05);">
   <p style="margin: 0;"><strong style="color: var(--yellow);">⚠ v3 实测校准声明：</strong> 之前 v1/v2 标注的 <code>project_xml_toolcall_repair</code> "MiniMax 把 tool call emit 到文本块" 假设，经 2026-04-21 针对 M2.5/M2.7 各 3 轮 smoke 测试 <strong>0/6 复现</strong> 后，已**不再计作 gap**。同期发现 <strong>M2.7 duplicate tool_use ID</strong> 是真正 100% 可复现的新 gap，见下方"v3 新发现"。</p>
@@ -387,8 +387,8 @@ user(tool_results=[call_6bb0951..., call_6bb0951...])    ← 对应结果也同 
   <td>9</td>
   <td>Smart Model Routing</td>
   <td><span class="badge badge-int">Intermediate</span></td>
-  <td><span class="badge badge-none">缺失</span></td>
-  <td><span class="gap-tag">GAP</span> Hermes <code>smart_model_routing.py</code> (195 行): 简单请求路由到便宜模型。Axiomate: 所有请求走同一模型（缺乏 auxiliary client 基础设施）</td>
+  <td><span class="badge badge-part">部分实现</span><span class="badge badge-new">v3 校准</span></td>
+  <td><span class="gap-tag">GAP</span> Hermes <code>smart_model_routing.py</code> (195 行): 简单请求路由到便宜模型。Axiomate <strong>v3 校准</strong>: 已有 <code>currentModel</code> / <code>midModel</code> / <code>fastModel</code> 三级 + 自动 fallback (<code>query.ts:255-263</code>) + 内部任务 (memory / summary / tokenEstimation) 已硬编码走 cheap tier；<strong>缺</strong> user-turn 级的 heuristic classifier</td>
 </tr>
 <tr>
   <td>10</td>
@@ -450,8 +450,8 @@ user(tool_results=[call_6bb0951..., call_6bb0951...])    ← 对应结果也同 
   <td>18</td>
   <td>Auxiliary LLM Client</td>
   <td><span class="badge badge-adv">Advanced</span></td>
-  <td><span class="badge badge-none">缺失</span></td>
-  <td><span class="gap-tag">GAP</span> Hermes <code>auxiliary_client.py</code> (2,771 行): 独立辅助 LLM client (compression/vision/search), 6 级 fallback chain, per-task override。Axiomate: 没有 auxiliary model 概念</td>
+  <td><span class="badge badge-part">部分实现</span><span class="badge badge-new">v3 校准</span></td>
+  <td>Hermes <code>auxiliary_client.py</code> (2,771 行): 6 级 fallback + per-task override。Axiomate <strong>v3 校准</strong>: 有三级模型 (<code>currentModel</code> / <code>midModel</code> / <code>fastModel</code>) + 自动 fallback 链 + 内部任务路由到 cheap tier — 功能重叠 &gt;70%。<strong>v2 标"完全没有"错了。</strong>差距: 3 级 vs 6 级、无 per-task 配置表、无 credit exhaustion tracking、无 vision provider 单独 resolution — 主要服务多用户场景</td>
 </tr>
 </tbody>
 </table>
@@ -529,39 +529,54 @@ user(tool_results=[call_6bb0951..., call_6bb0951...])    ← 对应结果也同 
   </ul>
 </div>
 </div>
-<p><strong>价值</strong>: 长对话 (>50 轮) 会丢失关键上下文。结构化 summary 保留语义信息，成本很低（用便宜模型 — 这又依赖 Auxiliary LLM Client）。</p>
+<p><strong>价值</strong>: 长对话 (&gt;50 轮) 会丢失关键上下文。结构化 summary 保留语义信息，成本低。<span class="badge badge-new">v3 校准</span>：<strong>便宜模型基础设施已就绪</strong>（axiomate 三级模型 <code>currentModel</code> / <code>midModel</code> / <code>fastModel</code> 直接可用），不依赖额外 Auxiliary Client。</p>
 </div>
 
-<!-- GAP 3 -->
+<!-- GAP 3 (v3 重评) -->
 <div class="detail-section">
-<h3><span class="pri pri-2">P2</span> Auxiliary LLM Client（Smart Routing 的前置依赖）</h3>
+<h3><span class="pri pri-3">P3</span> Auxiliary LLM Client <span class="badge badge-new">v3 重评：部分实现</span></h3>
 <div class="detail-grid">
 <div class="detail-col hermes">
   <h4>Hermes 实现</h4>
-  <p><code>agent/auxiliary_client.py</code> (2,771 行) — <span class="highlight">5 天内多次更新</span></p>
+  <p><code>agent/auxiliary_client.py</code> (2,771 行)</p>
   <ul>
     <li>独立辅助 LLM client，专用于 compression / vision / search</li>
     <li><strong>6 级 fallback chain</strong>: per-task config overrides → primary aux → secondary aux → main model → cheap model → local</li>
-    <li><strong>本期更新 <code>a155b4a1</code></strong>: 'auto' 路由默认指向主模型，多供应商枯竭时平滑降级</li>
     <li>Credit exhaustion 自动 fallback</li>
     <li>新增 <code>resolve_vision_provider_client()</code> 选择视觉模型</li>
   </ul>
 </div>
 <div class="detail-col axiomate">
-  <h4>Axiomate 现状</h4>
+  <h4>Axiomate 现状 <span class="badge badge-new">v3 校准</span></h4>
+  <p><strong>v2 标"完全没有"错了。</strong>axiomate 已有三级模型体系：</p>
   <ul>
-    <li><strong>没有 auxiliary model 概念</strong></li>
-    <li>所有请求 (主对话 / 压缩 / 命名) 走同一 provider/model</li>
-    <li>需要新增 model config 维度: <code>main</code> / <code>auxiliary</code> / <code>vision</code></li>
+    <li><strong>config.ts</strong>: <code>currentModel</code> / <code>midModel</code> / <code>fastModel</code> 三级 config 字段</li>
+    <li><strong>Resolver 层</strong>: <code>getCurrentModel()</code> / <code>getMidModel()</code> / <code>getFastModel()</code> 在 <code>utils/model/model.ts</code></li>
+    <li><strong>自动 fallback 链</strong> (<code>query.ts:255-263</code>): main 失败时 current → mid → fast 降级；等价于 hermes "auxiliary fallback"</li>
+    <li><strong>已有内部 smart routing</strong>:
+      <ul>
+        <li><code>findRelevantMemories</code> → midModel</li>
+        <li><code>awaySummary</code> → fastModel</li>
+        <li><code>tokenEstimation</code> → fastModel</li>
+        <li><code>anthropicProvider</code> connection probe → fastModel</li>
+      </ul>
+    </li>
+  </ul>
+  <p><strong>与 hermes 的真实差距（远小于 v2 标注）</strong>：</p>
+  <ul>
+    <li>3 级 vs 6 级 fallback（对单用户 CLI 足够）</li>
+    <li>无 per-task override 配置表（硬编码哪个任务用哪个 tier）</li>
+    <li>无 credit exhaustion tracking（但 <code>errorClassifier</code> 已能分辨 billing/auth 失败）</li>
+    <li>无独立的 vision provider resolution（单用户场景未遇到）</li>
   </ul>
 </div>
 </div>
-<p><strong>价值</strong>: 是 LLM-assisted compression 和 smart routing 的基础设施。实现后能立即降低成本 30-50%。</p>
+<p><strong>价值</strong>: 功能重叠度 &gt; 70%。Hermes 多出来的部分（per-task 表、6 级、credit tracking）主要服务多用户/高负载场景，对本地 CLI 边际价值低。<strong>不是 P2 gap，是 P3 完善项。</strong></p>
 </div>
 
-<!-- GAP 4 -->
+<!-- GAP 4 (v3 重评) -->
 <div class="detail-section">
-<h3><span class="pri pri-2">P2</span> Smart Model Routing</h3>
+<h3><span class="pri pri-2">P2</span> Smart Model Routing <span class="badge badge-new">v3 校准：依赖已满足</span></h3>
 <div class="detail-grid">
 <div class="detail-col hermes">
   <h4>Hermes 实现</h4>
@@ -579,15 +594,15 @@ user(tool_results=[call_6bb0951..., call_6bb0951...])    ← 对应结果也同 
   </ul>
 </div>
 <div class="detail-col axiomate">
-  <h4>Axiomate 现状</h4>
+  <h4>Axiomate 现状 <span class="badge badge-new">v3 校准</span></h4>
   <ul>
-    <li>没有 cheap model routing</li>
-    <li>所有请求走同一模型配置</li>
-    <li>依赖先实现 Auxiliary LLM Client</li>
+    <li>基础设施已就绪 — <code>getMidModel()</code> / <code>getFastModel()</code> 可直接调用</li>
+    <li>没有 **user-turn 级** heuristic classifier 分流（只在内部任务如 memory/summary 硬编码用 cheap tier）</li>
+    <li><strong>v2 说"依赖先实现 Auxiliary LLM Client"错了</strong> — 依赖已满足，直接能做</li>
   </ul>
 </div>
 </div>
-<p><strong>价值</strong>: 降低成本 30-50%（简单问题用 fast model 而非 main model）。</p>
+<p><strong>价值</strong>: 降低 token 费 30-50%（"2+2" 不该用 main model 回）。<strong>因为依赖已满足，纯粹是加一个 heuristic classifier + 路由判断，1-2 天可完成。</strong></p>
 </div>
 
 <!-- GAP 5 -->
@@ -744,18 +759,18 @@ user(tool_results=[call_6bb0951..., call_6bb0951...])    ← 对应结果也同 
   <td>长对话 (&gt;50 轮) 质量退化是**每天**撞得到的问题，非假想。<code>compact.ts</code> 已有 1,468 行基建，只需 structured Goal/Progress/Pending/Remaining template + iterative update 逻辑。<strong>用主模型也能做，不阻塞在 auxiliary client 上</strong></td>
 </tr>
 <tr>
-  <td><span class="pri pri-2">P2</span></td>
-  <td>Auxiliary LLM Client</td>
-  <td>3-5 天</td>
-  <td>中（enabler）</td>
-  <td>Smart routing 和 cheap compression 的前置。**本身不是 feature**，是架构维度 — 添加 <code>main</code>/<code>auxiliary</code>/<code>vision</code> model config。只在真要做 smart routing / cheap compression 时才建，不要为建而建</td>
-</tr>
-<tr>
-  <td><span class="pri pri-2">P2</span></td>
-  <td>Smart Model Routing</td>
-  <td>1-2 天（依赖 Auxiliary Client）</td>
+  <td><span class="pri pri-2">P2</span><span class="badge badge-new">v3 校准</span></td>
+  <td>Smart Model Routing（user-turn 级分流）</td>
+  <td>1-2 天（<strong>依赖已满足</strong>）</td>
   <td>中</td>
-  <td>降 token 费 30-50%（"2+2" 不该用 Qwen3.6 Plus 回）。heuristic classifier 简单，但需要前置 auxiliary client</td>
+  <td>降 token 费 30-50%。axiomate 已有三级模型 + 内部任务硬编码分流，只差 user-turn 级 heuristic classifier。<strong>v2 说需要先建 Auxiliary Client 错了</strong> — 可以直接开干</td>
+</tr>
+<tr style="opacity: 0.7;">
+  <td><span class="pri pri-3">P3</span><span class="badge badge-new">v3 下调</span></td>
+  <td>Auxiliary LLM Client 完善（vs hermes per-task 表 / 6 级 fallback）</td>
+  <td>3-5 天</td>
+  <td>低（边际价值）</td>
+  <td><strong>v2 标 P2，v3 下调：</strong>axiomate 三级体系已覆盖核心功能。hermes 多出来的 per-task override 表 + 6 级 fallback + credit exhaustion + vision provider resolution 主要服务多用户/高负载场景，对本地 CLI 边际价值低</td>
 </tr>
 <tr style="opacity: 0.7;">
   <td><span class="pri pri-3">P3</span><span style="color: var(--red);">（v2→v3 下调）</span></td>
@@ -788,7 +803,7 @@ user(tool_results=[call_6bb0951..., call_6bb0951...])    ← 对应结果也同 
   <li><strong>实测 &gt; 推测</strong>: v2 标 XML-in-text 是潜在 gap，v3 跑 6 次 MiniMax smoke 得 0/6，直接关闭。<span class="ok-tag">经验教训：再好的理论假设也要真跑过才算数</span></li>
   <li><strong>真正的 P1 不是 hermes 有的 gap，而是 axiomate 自己的 bug</strong>: M2.7 duplicate tool_use ID 在两次实测中 100% 复现 — 比任何"port hermes 模式"都更值得优先修</li>
   <li><strong>威胁模型要区分场景</strong>: v2 把 Prompt Injection 标 P1 "最低成本最高回报"，v3 校准为 P3 — 本地 CLI 的 attack surface 小于 SaaS。照搬 hermes 优先级等于接管 hermes 的威胁假设</li>
-  <li><strong>v2 洞察仍有效</strong>: axiomate 在工具层 + 安全层（命令检测）仍强于 hermes；剩余架构差距集中在"模型层"（auxiliary client / smart routing / LLM-assisted compression），三者形成依赖链</li>
+  <li><strong>v2 的"模型层架构差距"被 v3 大幅修正</strong>: axiomate 实际已有 <code>currentModel</code> / <code>midModel</code> / <code>fastModel</code> 三级 + 自动 fallback + 内部任务分流。"剩余差距是依赖链"的 v2 判断错了 — Smart Model Routing 可以直接做，不需要先建 auxiliary client。真正的架构缺口只剩 Iterative Summary Template</li>
   <li><strong>Hermes 5 天仍在防御加固</strong>: JSON 完整性、Codex auth 隔离、cron approval、auto routing、4.7 迁移。hermes 的 18 模式趋于饱和，axiomate 在 v3 期对 Tool Repair 的深度投入已反超此格局</li>
 </ul>
 </div>
@@ -798,7 +813,7 @@ user(tool_results=[call_6bb0951..., call_6bb0951...])    ← 对应结果也同 
 <ul>
   <li><strong>Axiomate 5 天进步显著</strong>: Error Classification 从 P1 缺口闭环为 Advanced；同时完成 Independence 清理 (~5,900 LOC 移除 + first-party feature pruning)，harness 与 Anthropic 私有协议彻底解耦</li>
   <li><strong>Axiomate 在工具层 + 安全层（命令检测）已非常强</strong>: tool call repair (1,237 行 schema-guided), tool result management (983 行), bash security (2,427 行) 都比 hermes 更成熟</li>
-  <li><strong>剩余差距集中在 "模型层"</strong>: auxiliary LLM client / smart routing / LLM-assisted compression — 这三者形成依赖链，是下一阶段架构升级的核心</li>
+  <li><strong>剩余差距集中在 "模型层"</strong>: auxiliary LLM client / smart routing / LLM-assisted compression — 这三者形成依赖链 <span style="color: var(--red);">← v3 校准：依赖链是错的。axiomate 三级模型 + fallback 链已存在，Smart Routing 可独立做</span></li>
   <li><strong>Hermes 转向防御加固而非新模式</strong>: 5 天内所有重要更新都是 hardening (JSON 完整性、Codex auth 隔离、cron approval、auto routing) 或新模型迁移 (4.7) — 暗示 hermes 的 18 模式已基本饱和，竞争重点转向稳定性</li>
   <li><strong>最低成本高回报仍是 prompt injection detection</strong> <span style="color: var(--red);">← v3 校准：该结论过度乐观，详见上方 v3 洞察第 4 条</span></li>
 </ul>
