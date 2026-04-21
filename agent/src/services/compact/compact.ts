@@ -54,6 +54,7 @@ import { MEMORY_TYPE_VALUES } from '../../utils/memory/types.js'
 import {
   createCompactBoundaryMessage,
   createUserMessage,
+  findLastCompactBoundaryIndex,
   getAssistantMessageText,
   getLastAssistantMessage,
   getMessagesAfterCompactBoundary,
@@ -95,6 +96,10 @@ import {
   roughTokenCountEstimationForMessages,
 } from '../tokenEstimation.js'
 import { groupMessagesByApiRound } from './grouping.js'
+import {
+  extractPreviousCompactSummary,
+  filterPreviousSummaryForIterativeCompact,
+} from './iterativeCompact.js'
 import {
   getCompactPrompt,
   getCompactUserSummaryMessage,
@@ -404,12 +409,25 @@ export async function compactConversation(
     // with cold GB cache and 3P providers where GB is disabled. GB gate kept as kill-switch.
     const promptCacheSharingEnabled = true
 
-    const compactPrompt = getCompactPrompt(customInstructions)
+    // Iterative compact: if a previous compact summary exists in history,
+    // pull it out and inject it explicitly into the prompt with "update,
+    // don't rewrite" instructions. Filter it from messagesToSummarize so
+    // the LLM doesn't see two copies.
+    const previousSummary = extractPreviousCompactSummary(messages)
+    const compactPrompt = getCompactPrompt(
+      customInstructions,
+      previousSummary?.summaryText,
+    )
     const summaryRequest = createUserMessage({
       content: compactPrompt,
     })
 
-    let messagesToSummarize = messages
+    let messagesToSummarize = previousSummary
+      ? filterPreviousSummaryForIterativeCompact(
+          messages,
+          previousSummary.summaryMessageUuid,
+        )
+      : messages
     let retryCacheSafeParams = cacheSafeParams
     let summaryResponse: AssistantMessage
     let summary: string | null

@@ -256,6 +256,87 @@ Here's an example of how your output should be structured:
 Please provide your summary following this structure, ensuring precision and thoroughness in your response.
 `
 
+// Placeholder for iterative compact prompt — replaced at runtime with the
+// extracted prior summary text. Exported so tests can assert the literal.
+export const ITERATIVE_COMPACT_PREVIOUS_SUMMARY_PLACEHOLDER =
+  '{{ previousSummary }}'
+
+// Iterative variant used when a previous compact summary exists in history.
+// Instead of asking the LLM to "summarize the conversation so far" (which
+// causes it to re-narrate old content or drop still-valid Pending Tasks),
+// we explicitly hand it the prior summary and tell it to UPDATE field-by-field.
+// The same 9-section schema as BASE_COMPACT_PROMPT is used so downstream
+// formatting (formatCompactSummary) stays unchanged.
+const ITERATIVE_COMPACT_PROMPT = `Your task is to UPDATE an existing context compaction summary with new conversation turns that have occurred since.
+
+PREVIOUS SUMMARY:
+${ITERATIVE_COMPACT_PREVIOUS_SUMMARY_PLACEHOLDER}
+
+Focus your update on what changed — do NOT re-narrate the previous summary's contents. Preserve all existing information that is still valid. The new conversation turns follow this prompt in the conversation history.
+
+${DETAILED_ANALYSIS_INSTRUCTION_BASE}
+
+Use the SAME 9-section structure as a fresh summary. Field-by-field update rules:
+
+1. Primary Request and Intent — PRESERVE from the previous summary. Only add a "Current Focus:" sub-entry if the user explicitly redirected in the new turns.
+2. Key Technical Concepts — APPEND new concepts. Do not remove existing ones.
+3. Files and Code Sections — APPEND new files. Keep existing file summaries unless the file was substantially refactored in new turns; in that case UPDATE the entry and note "(updated)".
+4. Errors and fixes — APPEND new errors. For old errors fixed in new turns, keep them and add "(resolved in this update)".
+5. Problem Solving — APPEND new problems with their status (solved / ongoing / blocked).
+6. All user messages — APPEND new user messages. Keep existing ones from the previous summary.
+7. Pending Tasks —
+   - MOVE completed tasks to a new "Completed This Session:" sub-list
+   - APPEND new pending tasks from new turns
+   - REMOVE a task only if the user explicitly retracted it
+8. Current Work — REPLACE with the description of what's happening at the end of the new turns. This field reflects current frontier, not history.
+9. Optional Next Step — REPLACE with the next step at the end of new turns. Include direct quotes from the most recent conversation.
+
+CRITICAL: "Pending Tasks" and "Current Work" are the most load-bearing fields for a continuation assistant. A pending task accidentally dropped means the user's request is forgotten.
+
+Output structure is identical to a fresh summary:
+
+<example>
+<analysis>
+[Your thought process, ensuring every update rule above was applied to each section]
+</analysis>
+
+<summary>
+1. Primary Request and Intent:
+   [Preserved from previous summary, with any Current Focus addition]
+
+2. Key Technical Concepts:
+   - [preserved + appended]
+
+3. Files and Code Sections:
+   - [preserved + appended, with (updated) markers if any]
+
+4. Errors and fixes:
+    - [preserved + appended, with (resolved in this update) markers if any]
+
+5. Problem Solving:
+   [preserved + appended]
+
+6. All user messages:
+    - [preserved + appended]
+
+7. Pending Tasks:
+   - [remaining pending from previous]
+   - [new pending from new turns]
+
+   Completed This Session:
+   - [tasks moved from Pending]
+
+8. Current Work:
+   [refreshed to reflect end-of-new-turns state]
+
+9. Optional Next Step:
+   [refreshed to reflect end-of-new-turns state]
+</summary>
+</example>
+
+Please provide your updated summary following this structure and the field-by-field rules.
+`
+
 const NO_TOOLS_TRAILER =
   '\n\nREMINDER: Do NOT call any tools. Respond with plain text only — ' +
   'an <analysis> block followed by a <summary> block. ' +
@@ -280,8 +361,19 @@ export function getPartialCompactPrompt(
   return prompt
 }
 
-export function getCompactPrompt(customInstructions?: string): string {
-  let prompt = NO_TOOLS_PREAMBLE + BASE_COMPACT_PROMPT
+export function getCompactPrompt(
+  customInstructions?: string,
+  previousSummary?: string,
+): string {
+  let prompt = NO_TOOLS_PREAMBLE
+  if (previousSummary && previousSummary.trim() !== '') {
+    prompt += ITERATIVE_COMPACT_PROMPT.replace(
+      ITERATIVE_COMPACT_PREVIOUS_SUMMARY_PLACEHOLDER,
+      previousSummary,
+    )
+  } else {
+    prompt += BASE_COMPACT_PROMPT
+  }
 
   if (customInstructions && customInstructions.trim() !== '') {
     prompt += `\n\nAdditional Instructions:\n${customInstructions}`
@@ -324,6 +416,18 @@ export function formatCompactSummary(summary: string): string {
   return formattedSummary.trim()
 }
 
+// Exported so extractPreviousCompactSummary in compact.ts can reliably
+// strip the wrapper without string-duplicating these literals. Updating
+// any of these requires updating the extractor's test fixtures too.
+export const COMPACT_SUMMARY_PREAMBLE =
+  'This session is being continued from a previous conversation that ran out of context. The summary below covers the earlier portion of the conversation.'
+export const COMPACT_SUMMARY_TRANSCRIPT_TRAILER_PREFIX =
+  'If you need specific details from before compaction (like exact code snippets, error messages, or content you generated), read the full transcript at: '
+export const COMPACT_SUMMARY_RECENT_TRAILER =
+  'Recent messages are preserved verbatim.'
+export const COMPACT_SUMMARY_SUPPRESS_TRAILER =
+  'Continue the conversation from where it left off without asking the user any further questions. Resume directly — do not acknowledge the summary, do not recap what was happening, do not preface with "I\'ll continue" or similar. Pick up the last task as if the break never happened.'
+
 export function getCompactUserSummaryMessage(
   summary: string,
   suppressFollowUpQuestions?: boolean,
@@ -332,21 +436,21 @@ export function getCompactUserSummaryMessage(
 ): string {
   const formattedSummary = formatCompactSummary(summary)
 
-  let baseSummary = `This session is being continued from a previous conversation that ran out of context. The summary below covers the earlier portion of the conversation.
+  let baseSummary = `${COMPACT_SUMMARY_PREAMBLE}
 
 ${formattedSummary}`
 
   if (transcriptPath) {
-    baseSummary += `\n\nIf you need specific details from before compaction (like exact code snippets, error messages, or content you generated), read the full transcript at: ${transcriptPath}`
+    baseSummary += `\n\n${COMPACT_SUMMARY_TRANSCRIPT_TRAILER_PREFIX}${transcriptPath}`
   }
 
   if (recentMessagesPreserved) {
-    baseSummary += `\n\nRecent messages are preserved verbatim.`
+    baseSummary += `\n\n${COMPACT_SUMMARY_RECENT_TRAILER}`
   }
 
   if (suppressFollowUpQuestions) {
     let continuation = `${baseSummary}
-Continue the conversation from where it left off without asking the user any further questions. Resume directly — do not acknowledge the summary, do not recap what was happening, do not preface with "I'll continue" or similar. Pick up the last task as if the break never happened.`
+${COMPACT_SUMMARY_SUPPRESS_TRAILER}`
 
     return continuation
   }
