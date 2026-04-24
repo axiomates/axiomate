@@ -177,8 +177,19 @@
 <body>
 
 <h1>Harness Engineering Report</h1>
-<p class="subtitle">Hermes-Agent vs Axiomate &mdash; 全面对比分析 <span style="color:var(--green);">(Update v4.5 — Phase 1 SessionSearchTool SHIPPED)</span></p>
-<p class="date">Generated: 2026-04-24 &nbsp;|&nbsp; v4.5: 2026-04-24 (Phase 1 ship) &nbsp;|&nbsp; v4.4: 2026-04-24 (architectural reframe) &nbsp;|&nbsp; v4.3: 2026-04-24 (4 patterns added) &nbsp;|&nbsp; v4.2: 2026-04-24 (M2.7 cleanup) &nbsp;|&nbsp; v4: 2026-04-24 (earlier) &nbsp;|&nbsp; v3.2: 2026-04-21 &nbsp;|&nbsp; v3: 2026-04-21 (earlier) &nbsp;|&nbsp; v2: 2026-04-19 &nbsp;|&nbsp; v1: 2026-04-14</p>
+<p class="subtitle">Hermes-Agent vs Axiomate &mdash; 全面对比分析 <span style="color:var(--green);">(Update v4.6 — hermes session_search added as mode #23)</span></p>
+<p class="date">Generated: 2026-04-24 &nbsp;|&nbsp; v4.6: 2026-04-24 (mode #23 categorized) &nbsp;|&nbsp; v4.5: 2026-04-24 (Phase 1 ship) &nbsp;|&nbsp; v4.4: 2026-04-24 (architectural reframe) &nbsp;|&nbsp; v4.3: 2026-04-24 (4 patterns added) &nbsp;|&nbsp; v4.2: 2026-04-24 (M2.7 cleanup) &nbsp;|&nbsp; v4: 2026-04-24 (earlier) &nbsp;|&nbsp; v3.2: 2026-04-21 &nbsp;|&nbsp; v3: 2026-04-21 (earlier) &nbsp;|&nbsp; v2: 2026-04-19 &nbsp;|&nbsp; v1: 2026-04-14</p>
+
+<div class="delta-banner">
+  <strong style="color: var(--orange);">v4.6 概念归位（同日 2026-04-24）—— hermes session_search 补入主表为模式 #23：</strong>
+  <ul style="margin: 0.4rem 0 0.4rem 1.2rem; padding: 0;">
+    <li><strong>4 个版本的 blind spot</strong>：hermes <code>tools/session_search_tool.py</code>（590 LOC）是个独立 LLM-facing 工具，与 WebSearchTool / Bash 同级，但报告 v1-v4.5 都没把它列入主 22 模式表。v4.5 把 axiomate 实现说成"Phase 1 MVP 起点"，实际是 hermes #23 的 axiomate 端实现。</li>
+    <li><strong>漏掉根因</strong>：① v3 期搜 "session search" 关键词在 framework 内找不到独立条目，误以为它"属于" Cross-Session Memory（#17）② v4.3 web search 补 4 missed pattern 时关键词偏向用户营销词（skill_manage / hooks / auto_recall / title_gen），search 是基础工具不在营销文案突出 ③ v4.4 user-RAG framing 把 session_search 作为 Retrieval 层组件提了（line 1428），但忘了回头去 18-mode 主表加 #23。</li>
+    <li><strong>修正</strong>：新增 #23 Session Search Tool 行；hermes 标 Advanced；axiomate 同标 Advanced（commits <code>cf76352</code> → <code>b6ef58f</code> 已 ship 完毕，与 hermes 对齐）。</li>
+    <li><strong>新计数</strong>：22 模式 → <strong>23</strong> / 11 完整 → <strong>12</strong>（+1 #23）/ 7 部分（不变）/ 4 缺失 → <strong>3</strong>（-1 #23 已实现）。</li>
+    <li><strong>差异化点（与 hermes #23 比）</strong>：① axiomate 默认包含当前 session（hermes 排除；axiomate 因 compact 抹原文需要恢复）② <code>include_summary: false</code> 默认（hermes 默认 summary）③ JSONL streaming（hermes 用 SQLite + FTS5，相同接口不同存储）④ CJK substring 友好（hermes 必须 LIKE-fallback FTS5 弱点）。</li>
+  </ul>
+</div>
 
 <div class="delta-banner">
   <strong style="color: var(--green);">v4.5 SHIPPED（同日 2026-04-24）—— Phase 1 SessionSearchTool 落地：</strong>
@@ -244,24 +255,24 @@
 
 <div class="summary-grid">
   <div class="card blue">
-    <div class="num">22</div>
+    <div class="num">23</div>
     <div class="label">Hermes 模式总数</div>
-    <span class="delta up">+4 (v4.3 missed patterns)</span>
+    <span class="delta up">+1 (v4.6: hermes #23 session_search 补入主表)</span>
   </div>
   <div class="card green">
-    <div class="num">11</div>
+    <div class="num">12</div>
     <div class="label">Axiomate 已实现</div>
-    <span class="delta">不变</span>
+    <span class="delta up">+1 (#23 SessionSearch SHIPPED, commit b6ef58f)</span>
   </div>
   <div class="card yellow">
     <div class="num">7</div>
     <div class="label">Axiomate 部分实现</div>
-    <span class="delta up">+1 (#19 Skill/Memory Auto-Distillation: /skillify 已部分覆盖)</span>
+    <span class="delta">不变</span>
   </div>
   <div class="card red">
-    <div class="num">4</div>
+    <div class="num">3</div>
     <div class="label">Axiomate 缺失</div>
-    <span class="delta down">+3 (v4.3: hooks / auto-recall / title-gen)</span>
+    <span class="delta up">−1 (v4.6: #23 已实现 SHIPPED)</span>
   </div>
   <div class="card purple">
     <div class="num">5</div>
@@ -270,7 +281,7 @@
   </div>
 </div>
 
-<p>Hermes-agent 实现了 <strong>22 个</strong>核心 harness engineering 模式（v4.3 补 4 个遗漏）。Axiomate 当前覆盖其中 <strong>11 个完整</strong>（含 5 个比 hermes 更强，<strong>Tool Call Repair 在 v3 拉大差距</strong>）、<strong>7 个部分实现</strong>、<strong>4 个缺失</strong>。v3 校准发现 axiomate 的三级模型体系（<code>currentModel</code> / <code>midModel</code> / <code>fastModel</code>）+ 自动 fallback 链已覆盖 hermes "Auxiliary LLM Client" 与 "Smart Model Routing" 的核心功能。<strong>v4.3 新增的 #19-22 中，#19 Skill/Memory Auto-Distillation 是 hermes 核心营销 feature，axiomate 通过 <code>/skillify</code> 半覆盖 → 升级到 P1 推荐补齐。</strong></p>
+<p>Hermes-agent 实现了 <strong>23 个</strong>核心 harness engineering 模式（v4.3 补 4 missed patterns，v4.6 补 #23 session_search）。Axiomate 当前覆盖其中 <strong>12 个完整</strong>（含 5 个比 hermes 更强 + #23 v4.5 ship 完毕，<strong>Tool Call Repair 在 v3 拉大差距</strong>）、<strong>7 个部分实现</strong>、<strong>3 个缺失</strong>。v3 校准发现 axiomate 的三级模型体系（<code>currentModel</code> / <code>midModel</code> / <code>fastModel</code>）+ 自动 fallback 链已覆盖 hermes "Auxiliary LLM Client" 与 "Smart Model Routing" 的核心功能。<strong>v4.3 新增的 #19-22 中，#19 Skill/Memory Auto-Distillation 是 hermes 核心营销 feature，axiomate 通过 <code>/skillify</code> 半覆盖 → 升级到 P1 推荐补齐。</strong></p>
 
 <div class="detail-section" style="border-left: 4px solid var(--red); background: rgba(248,81,73,0.05);">
 <p style="margin: 0;"><strong style="color: var(--red);">⚠ v3.2 Compact 诚实重评：</strong> "Context Compression" 虽仍归在"6 部分实现"内，但 forensic 比对显示 <strong>feature parity 仅约 40%</strong>（10 个真 gap vs 4 个 axiomate 独有 vs 2 个哲学差异）。之前 v3 说"只剩 iterative summary 一条大鱼"，低估了。详见 <a href="#gap-detail">GAP 2 的 18-feature 对比表</a> 与 Priority 表里的 5 个 PR 路线图。</p>
@@ -707,6 +718,15 @@
   <td><span class="badge badge-basic">Basic</span></td>
   <td><span class="badge badge-none">缺失</span><span class="badge badge-new" style="background: var(--red); color: white;">v4.3</span></td>
   <td><span class="gap-tag">GAP</span> Hermes <code>agent/title_generator.py</code> (125 行)：首次 assistant 响应后 fire-and-forget 后台线程，30s timeout 调辅助 LLM (<code>task='title_generation'</code>, max 500 tokens, T=0.3) 生 80-char 内 title，写入 session_db；失败静默不阻塞。Axiomate session title 仅用户手设</td>
+</tr>
+<tr style="background: rgba(63,185,80,0.10);">
+  <td>23</td>
+  <td><strong>Session Search Tool</strong></td>
+  <td><span class="badge badge-adv">Advanced</span></td>
+  <td><span class="badge badge-adv">Advanced</span><span class="badge badge-new" style="background: var(--green); color: white;">v4.6 SHIPPED</span></td>
+  <td>
+    <strong>独立 LLM-facing 工具，与 WebSearchTool/Bash 同级</strong>。Hermes <code>tools/session_search_tool.py</code> (590 行)：FTS5 BM25 + 父链 walk + 默认 per-session aux LLM 5-段式 recap + LLM-facing search tool 暴露给主 agent。Axiomate <code>tools/SessionSearchTool/</code> (1244 行, 9 文件, commits <code>cf76352</code> → <code>b6ef58f</code>): JSONL 流式扫描 + 4-stage 算法 (mtime → metadata tail → 全文 → rank/snippet) + <strong>snippet 默认零 LLM</strong>（hermes 默认每次摘要）+ <strong>include_summary 显式 opt-in</strong>（用户判定 hermes 默认 summary 是 category error）+ <strong>默认包含当前 session</strong>（hermes 排除；axiomate compact 抹原文需要恢复）+ <strong>CJK substring 友好</strong>（hermes 必须 LIKE-fallback FTS5 弱点）+ <strong>shouldDefer:true 渐进发现</strong>（与 WebSearchTool 同模式）。685 tests 全绿（含真 Qwen3 8B e2e）
+  </td>
 </tr>
 </tbody>
 </table>
@@ -1276,6 +1296,7 @@ v3 报告把它们隐性归并为"模型层架构"是<strong>分类错误</stron
 <tr><td>20</td><td>Lifecycle Hooks / Plugin System <span class="badge badge-new" style="background: var(--red); color: white;">v4.3</span></td><td><code>shell_hooks.py</code> (831) + <code>hermes_cli/hooks.py</code> (385) + <code>context_engine.py</code> (184)</td><td>14+ event hooks (pre/post tool_call, on_session_*, transform_terminal_output, subagent_stop); 4-source plugin discovery (bundled / ~/.hermes / ./.hermes / pip entry-points); plugin.yaml manifest + register(ctx); 权限 allowlist + 脚本指纹</td></tr>
 <tr><td>21</td><td>Auto-Recall / Pre-Turn Memory Prefetch <span class="badge badge-new" style="background: var(--red); color: white;">v4.3</span></td><td><code>plugins/memory/hindsight/__init__.py</code> + <code>memory_manager.py</code></td><td>auto_recall=true 时每轮前 vector + 知识图检索，结果以 <code>&lt;memory-context&gt;</code> 块注入 system; 可配 budget low/mid/high + max_tokens 4096 + tag 过滤; 三种 backend (cloud / local_embedded / local_external)</td></tr>
 <tr><td>22</td><td>Session Title Auto-Generation <span class="badge badge-new" style="background: var(--red); color: white;">v4.3</span></td><td><code>agent/title_generator.py</code> (125)</td><td>首次 assistant 响应后 fire-and-forget 后台线程，30s timeout 调辅助 LLM (task='title_generation', max 500 tokens, T=0.3) 生 80-char 内 title，写 session_db; 失败静默</td></tr>
+<tr><td>23</td><td>Session Search Tool <span class="badge badge-new" style="background: var(--green); color: white;">v4.6</span></td><td><code>tools/session_search_tool.py</code> (590)</td><td>LLM-facing search tool: FTS5 BM25 query → top-N session 父链 walk → 默认 per-session aux LLM 5-段式 recap → return summarized recall to main agent. Used proactively per system prompt ("when user references past conversation"). Underlying storage = <code>hermes_state.py</code> SessionDB (next section)</td></tr>
 </tbody>
 </table>
 
@@ -1283,7 +1304,7 @@ v3 报告把它们隐性归并为"模型层架构"是<strong>分类错误</stron
 <table>
 <thead><tr><th>模块</th><th>说明</th></tr></thead>
 <tbody>
-<tr><td><code>hermes_state.py</code> — SessionDB</td><td>SQLite WAL + FTS5; jittered retry on write contention (20-150ms random, 15 retries); periodic passive checkpoint</td></tr>
+<tr><td><code>hermes_state.py</code> — SessionDB</td><td>SQLite WAL + FTS5; jittered retry on write contention (20-150ms random, 15 retries); periodic passive checkpoint。<strong>是模式 #23 Session Search Tool 的底层存储</strong>（FTS5 倒排索引 + parent_session_id chain），上层 search tool 通过它做检索</td></tr>
 <tr><td><code>rate_limit_tracker.py</code> (265)</td><td>解析 12 种 x-ratelimit-* headers; RPM/RPH/TPM/TPH 四象限跟踪; >80% 利用率告警</td></tr>
 <tr><td><code>nous_rate_guard.py</code> (182) <span class="badge badge-new">NEW</span></td><td>本期新增: Nous Portal 专用速率限制守卫，防止重试放大；429 时智能限流</td></tr>
 <tr><td><code>model_metadata.py</code> (1,050)</td><td>Context length probing: models.dev API → OpenRouter → local fallback → descending tiers (128K→8K); 1h cache TTL</td></tr>
@@ -1325,7 +1346,7 @@ v3 报告把它们隐性归并为"模型层架构"是<strong>分类错误</stron
 </tr>
 <tr style="background: rgba(63,185,80,0.10);">
   <td><span class="pri pri-1" style="background: var(--green);">DONE</span><span class="badge badge-new" style="background: var(--green); color: white;">v4.5 SHIPPED</span></td>
-  <td><strong>Phase 1: <code>SessionSearch</code> tool over JSONL</strong>（user-RAG MVP 起点）<br/><span style="color: var(--text2); font-size: 0.85em;">commits cf76352 → 6675d5b (2026-04-24)</span></td>
+  <td><strong>#23 Session Search Tool</strong> —— 对齐 hermes harness pattern（user-RAG MVP 起点）<br/><span style="color: var(--text2); font-size: 0.85em;">commits cf76352 → b6ef58f (2026-04-24)</span><br/><span style="color: var(--orange); font-size: 0.85em;"><strong>v4.6 修正</strong>：原 v4.5 叙述把这个工作描述成"新建 Phase 1"，实际是 hermes 第 23 个 harness pattern 的 axiomate 端实现 —— 用 22 模式 + v4.3 4 patterns 框架看本就该是 #23，v4.6 完成了概念归位</span></td>
   <td>实际 ~1 天（vs 原估 1 周）</td>
   <td><strong>已 ship + 全自动化验证</strong></td>
   <td>
