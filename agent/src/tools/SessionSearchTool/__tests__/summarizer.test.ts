@@ -14,8 +14,15 @@ vi.mock('../../../services/api/providerRegistry.js', () => ({
   getProviderForModel: vi.fn(() => ({ name: 'openai' })),
 }))
 
-vi.mock('../../../utils/model/model.js', () => ({
-  getFastModel: vi.fn(() => 'fake/fast-model'),
+vi.mock('../../../utils/config.js', () => ({
+  getGlobalConfig: vi.fn(() => ({
+    currentModel: 'fake/current',
+    fastModel: 'fake/fast-model',
+    models: {
+      'fake/current': { model: 'fake/current' },
+      'fake/fast-model': { model: 'fake/fast-model' },
+    },
+  })),
 }))
 
 vi.mock('../../../utils/debug.js', () => ({
@@ -24,11 +31,13 @@ vi.mock('../../../utils/debug.js', () => ({
 
 import { sideQuery } from '../../../services/api/capabilities/sideQuery.js'
 import { getProviderForModel } from '../../../services/api/providerRegistry.js'
-import { summarizeAll, summarizeHit } from '../summarizer.js'
+import { getGlobalConfig } from '../../../utils/config.js'
+import { pickSummaryModel, summarizeAll, summarizeHit } from '../summarizer.js'
 import type { SessionSearchHit } from '../types.js'
 
 const mockSideQuery = vi.mocked(sideQuery)
 const mockGetProvider = vi.mocked(getProviderForModel)
+const mockGetGlobalConfig = vi.mocked(getGlobalConfig)
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -79,9 +88,11 @@ describe('summarizeHit', () => {
     expect(args.messages[0].content).toContain('docker debug')
   })
 
-  test('uses fastModel by default; modelOverride wins when set', async () => {
+  test('uses fastModel by default (no midModel configured); modelOverride wins', async () => {
     mockLLMText('s')
     await summarizeHit(makeHit(), { query: 'q' })
+    // pickSummaryModel preference: midModel → fastModel → currentModel.
+    // Default mock has fastModel set + no midModel → fastModel chosen.
     expect(mockSideQuery.mock.calls[0]![1]).toMatchObject({
       model: 'fake/fast-model',
     })
@@ -235,5 +246,62 @@ describe('summarizeAll', () => {
       concurrency: 0,
     })
     expect(out).toHaveLength(1)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// pickSummaryModel — fallback chain semantics
+// ---------------------------------------------------------------------------
+
+describe('pickSummaryModel — preference order midModel → fastModel → currentModel', () => {
+  test('midModel chosen when explicitly configured + present in models map', () => {
+    mockGetGlobalConfig.mockReturnValueOnce({
+      currentModel: 'a',
+      fastModel: 'b',
+      midModel: 'c',
+      models: { a: { model: 'a' }, b: { model: 'b' }, c: { model: 'c' } },
+    } as any)
+    expect(pickSummaryModel()).toBe('c')
+  })
+
+  test('falls back to fastModel when midModel unconfigured', () => {
+    mockGetGlobalConfig.mockReturnValueOnce({
+      currentModel: 'a',
+      fastModel: 'b',
+      models: { a: { model: 'a' }, b: { model: 'b' } },
+    } as any)
+    expect(pickSummaryModel()).toBe('b')
+  })
+
+  test('falls back to currentModel when neither mid nor fast configured', () => {
+    mockGetGlobalConfig.mockReturnValueOnce({
+      currentModel: 'a',
+      models: { a: { model: 'a' } },
+    } as any)
+    expect(pickSummaryModel()).toBe('a')
+  })
+
+  test('skips midModel when configured but missing from models map', () => {
+    mockGetGlobalConfig.mockReturnValueOnce({
+      currentModel: 'a',
+      fastModel: 'b',
+      midModel: 'orphan-mid',
+      models: { a: { model: 'a' }, b: { model: 'b' } }, // 'orphan-mid' absent
+    } as any)
+    expect(pickSummaryModel()).toBe('b')
+  })
+
+  test('skips fastModel when configured but missing from models map', () => {
+    mockGetGlobalConfig.mockReturnValueOnce({
+      currentModel: 'a',
+      fastModel: 'orphan-fast',
+      models: { a: { model: 'a' } },
+    } as any)
+    expect(pickSummaryModel()).toBe('a')
+  })
+
+  test('throws when no model configured at all', () => {
+    mockGetGlobalConfig.mockReturnValueOnce({ models: {} } as any)
+    expect(() => pickSummaryModel()).toThrow(/No model configured/)
   })
 })

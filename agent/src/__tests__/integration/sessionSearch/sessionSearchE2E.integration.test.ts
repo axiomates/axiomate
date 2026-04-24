@@ -232,9 +232,14 @@ describe('SessionSearchTool E2E — include_summary=true (real Qwen3 8B)', () =>
     const summaryLower = entry.summary.toLowerCase()
     const distinctiveTokens = ['docker', 'nginx', 'database_url', 'log']
     const hits = distinctiveTokens.filter(t => summaryLower.includes(t))
-    // Reasonable Qwen3 8B summary should retain ≥2 of the 4 distinctive
-    // tokens; if it retains 0-1, prompt or model is misbehaving.
-    expect(hits.length).toBeGreaterThanOrEqual(2)
+    // Empirical baseline (2026-04-24): 7/7 runs of Qwen3 8B against this
+    // fixture hit 4/4 tokens. Floor set to ≥3/4 — tightened from initial
+    // ≥2/4 after measured stability — so a one-token paraphrase is OK
+    // but two-token miss is a real signal (model regression / prompt
+    // drift / aux endpoint misconfig). 'log' is the weakest token
+    // (matches 'blog'/'dialog' as false positive) so the floor relies
+    // on stronger ones (docker/nginx/database_url) for real signal.
+    expect(hits.length).toBeGreaterThanOrEqual(3)
   }, 60_000) // 60s timeout — accommodates LLM latency + occasional retries
 })
 

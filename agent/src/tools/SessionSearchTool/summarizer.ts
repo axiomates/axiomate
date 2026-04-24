@@ -12,7 +12,7 @@
  */
 import { sideQuery } from '../../services/api/capabilities/sideQuery.js'
 import { getProviderForModel } from '../../services/api/providerRegistry.js'
-import { getFastModel } from '../../utils/model/model.js'
+import { getGlobalConfig } from '../../utils/config.js'
 import { logForDebugging } from '../../utils/debug.js'
 import { getSummaryPrompt } from './prompt.js'
 import type { SessionSearchHit } from './types.js'
@@ -31,6 +31,33 @@ export interface SummarizeOpts {
   signal?: AbortSignal
 }
 
+/**
+ * Pick the model for per-session summarization.
+ *
+ * Preference order:
+ *   1. Explicit `midModel` from config — better instruction following for
+ *      synthesis-class queries when user has bothered to configure one
+ *   2. Explicit `fastModel` from config — cheap aux model
+ *   3. `currentModel` — last resort if neither aux is configured
+ *
+ * Why not `getMidModel()` directly: that helper falls back to
+ * currentModel when midModel is unset, which would route summary calls
+ * through the user's flagship model. That defeats the whole "cheap aux
+ * task" purpose for the (common) case of users who only configure a
+ * fastModel. We fall back to fastModel first to preserve that intent.
+ */
+export function pickSummaryModel(): string {
+  const cfg = getGlobalConfig()
+  const models = cfg.models ?? {}
+  if (cfg.midModel && models[cfg.midModel]) return cfg.midModel
+  if (cfg.fastModel && models[cfg.fastModel]) return cfg.fastModel
+  if (cfg.currentModel && models[cfg.currentModel]) return cfg.currentModel
+  throw new Error(
+    'No model configured. Set currentModel (and optionally fastModel/midModel) ' +
+      'in ~/.axiomate.json.',
+  )
+}
+
 /** Run summarizer on one hit. Returns the hit with `summary` populated, or the hit unchanged on failure. */
 export async function summarizeHit(
   hit: SessionSearchHit,
@@ -38,7 +65,7 @@ export async function summarizeHit(
 ): Promise<SessionSearchHit> {
   if (!hit.snippet) return hit // nothing to summarize (metadata-only with empty snippet)
 
-  const model = opts.modelOverride ?? getFastModel()
+  const model = opts.modelOverride ?? pickSummaryModel()
   let provider
   try {
     provider = getProviderForModel(model)
