@@ -29,5 +29,6 @@ export type QuerySource =
   | 'hook_prompt'
   | 'verification_agent'
   | 'side_question'
+  | 'session_search'
   // Catch-all for forward compatibility
   | (string & {})
