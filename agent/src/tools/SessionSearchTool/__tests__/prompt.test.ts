@@ -26,13 +26,13 @@ describe('getSessionSearchPrompt', () => {
     expect(text).toContain('role_filter')
     expect(text).toContain('recent_days')
     expect(text).toContain('limit')
-    expect(text).toContain('mode')
+    expect(text).toContain('include_summary')
   })
 
-  test('explains the two modes (summary vs snippets) with cost trade-off', () => {
-    expect(text).toContain("'summary'")
-    expect(text).toContain("'snippets'")
-    expect(text).toMatch(/zero LLM cost|no LLM cost/)
+  test('explains the cost trade-off + retrieval vs synthesis distinction', () => {
+    expect(text.toLowerCase()).toContain('retrieval')
+    expect(text.toLowerCase()).toContain('synthesis')
+    expect(text).toMatch(/zero LLM cost|no LLM cost|default false/)
   })
 
   test('signals the axiomate-specific design (current session included)', () => {
@@ -47,9 +47,9 @@ describe('getSessionSearchPrompt', () => {
     expect(text).toContain('Stage 4')
   })
 
-  test('non-empty, reasonable size (<2000 chars to keep token cost in check)', () => {
+  test('non-empty, reasonable size (<3500 chars; retrieval/synthesis examples added)', () => {
     expect(text.length).toBeGreaterThan(200)
-    expect(text.length).toBeLessThan(2000)
+    expect(text.length).toBeLessThan(3500)
   })
 })
 

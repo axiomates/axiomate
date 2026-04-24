@@ -27,16 +27,31 @@ How it works:
 - Stage 2: scans session metadata (title / tag / summary) for the query
 - Stage 3: streams full message content looking for case-insensitive substring match
 - Stage 4: ranks by relevance (BM25-like + tag/title boost + recency decay)
-- Returns top N session results with focused summaries (or raw snippets)
 
 Inputs:
-- query: keyword(s) or short phrase to search for. Empty/missing → recent-mode (metadata listing only)
+- query: keyword(s) or short phrase. Empty/missing → recent-mode (metadata listing only, no search)
 - role_filter: optional 'user' | 'assistant' | 'tool' to restrict matches
 - recent_days: how far back to search (default 30; set to 0 for no time filter)
 - limit: top-N results (default 3, max 5)
-- mode: 'summary' (default; LLM-summarized per session) or 'snippets' (raw windows, zero LLM cost)
+- include_summary: default false. When true, additionally calls a cheap aux LLM to produce a focused 5-point recap per result (adds 1-3s + LLM cost)
 
-Returns: structured JSON with success / results[] / count / message. Each result has session_id, mtime, snippet OR summary, score, optional metadata field hints.
+Returns: JSON envelope with results[]. Each result always has session_id, mtime, snippet, score, optional metadata_matches. summary is added only when include_summary=true.
+
+Choosing include_summary:
+- Default (false) — RETRIEVAL: you want verbatim text. Examples:
+  * "what was that exact docker command"
+  * "what was the auth error stack trace"
+  * "did we discuss kubernetes" (yes/no via metadata + first lines)
+  * "find the session where we changed nginx.conf"
+  Use the raw snippet — summary may paraphrase critical tokens.
+
+- include_summary=true — SYNTHESIS: you want pre-digested overview. Examples:
+  * "what did I work on last week" (multi-session digest)
+  * "have I made the same mistake before" (cross-session pattern)
+  * "summarize the React refactor sessions"
+  The 5-point recap (asked / actions / decisions / technical details / unresolved) is structured for cross-session comparison.
+
+Mixed strategy: start with default (snippet only). If snippets are too noisy or you need a per-session digest, retry with include_summary=true.
 
 The current session IS included in the search by default — useful for recalling content lost to compact.`
 }

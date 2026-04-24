@@ -60,11 +60,17 @@ const inputSchema = lazySchema(() =>
       .int()
       .optional()
       .describe('Top-N results to return. Default 3, max 5.'),
-    mode: z
-      .enum(['summary', 'snippets'])
+    include_summary: z
+      .boolean()
       .optional()
       .describe(
-        "'summary' (default) invokes a cheap LLM to produce per-session focused summaries; 'snippets' returns raw windows with no LLM cost.",
+        'When true, additionally invoke a cheap aux LLM (fastModel) per ' +
+          'result to produce a focused 5-point recap. Adds 1-3s latency + ' +
+          'LLM cost. Default false: pure retrieval, raw snippets only, ' +
+          'zero LLM cost. Use true for synthesis-class queries (overview ' +
+          'across sessions). Prefer false for retrieval-class queries ' +
+          '(verbatim commands / errors / paths) — summary may paraphrase ' +
+          'specific tokens.',
       ),
   }),
 )
@@ -143,9 +149,10 @@ export const SessionSearchTool = buildTool({
   name: SESSION_SEARCH_TOOL_NAME,
   searchHint: 'search past conversation sessions for content or metadata',
   shouldDefer: true,
-  // Cap returned text to keep summary results from blowing tool result quota.
-  // Each session summary is targeted ~800 tokens (~3KB); 5 sessions × 3KB
-  // = 15KB; +snippets in 'snippets' mode pushes higher. 50K is comfortable.
+  // Cap returned text to keep results from blowing tool result quota.
+  // Default path returns snippets; include_summary=true adds ~3KB per hit.
+  // Worst case: 5 hits × ~10KB snippet + ~3KB summary ≈ 65KB; 50KB cap is
+  // a forcing function for snippet windowing to stay tight.
   maxResultSizeChars: 50_000,
 
   // Minimal inline renderToolUseMessage — no React component file needed.
@@ -231,7 +238,7 @@ export const SessionSearchTool = buildTool({
       }
     }
 
-    // Search mode
+    // Search mode (with query)
     const hits = await runSearch(input, {
       projectDir,
       // Default INCLUDES current session (axiomate-specific divergence — see plan).
@@ -239,27 +246,23 @@ export const SessionSearchTool = buildTool({
       // in the future if we add that flag; for Phase 1 we always include.
     })
 
-    if (input.mode === 'snippets') {
-      return {
-        data: {
-          success: true as const,
-          mode: 'search' as const,
-          query,
-          results: hits.slice(0, limit).map(hitToEntry),
-          count: Math.min(hits.length, limit),
-        } satisfies SessionSearchToolOutput,
-      }
-    }
+    const topHits = hits.slice(0, limit)
 
-    // Default mode: summary
-    const summarized = await summarizeAll(hits.slice(0, limit), { query })
+    // Default: pure retrieval, snippet only, NO LLM call.
+    // include_summary=true: also call cheap aux LLM (fastModel) per hit
+    // to add a focused recap. This is opt-in so the tool is honest about
+    // when it's spending tokens — search remains deterministic by default.
+    const finalHits = input.include_summary
+      ? await summarizeAll(topHits, { query })
+      : topHits
+
     return {
       data: {
         success: true as const,
         mode: 'search' as const,
         query,
-        results: summarized.map(hitToEntry),
-        count: summarized.length,
+        results: finalHits.map(hitToEntry),
+        count: finalHits.length,
       } satisfies SessionSearchToolOutput,
     }
   },

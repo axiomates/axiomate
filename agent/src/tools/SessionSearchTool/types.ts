@@ -5,7 +5,6 @@
  * the LLM. See plan file (Step 1a) for the design rationale.
  */
 
-export type SearchMode = 'summary' | 'snippets'
 export type RoleFilter = 'user' | 'assistant' | 'tool'
 
 /** Inputs accepted by the tool / search algorithm. */
@@ -18,8 +17,19 @@ export interface SessionSearchInput {
   recent_days?: number
   /** Top-N session results to return; default 3, clamped to [1, 5]. */
   limit?: number
-  /** 'summary' invokes LLM per session; 'snippets' returns raw windows only. */
-  mode?: SearchMode
+  /**
+   * When true, additionally invoke a cheap aux LLM (fastModel) per result
+   * to produce a focused 5-point recap (user ask / actions / decisions /
+   * technical details / unresolved). Adds 1-3s latency and LLM cost.
+   *
+   * Default false → pure retrieval, raw snippets only, zero LLM cost.
+   *
+   * Use `true` for synthesis-class queries where you want pre-digested
+   * overview across sessions ("what did I work on last week"). For
+   * retrieval-class queries ("what was that exact command") prefer the
+   * default — snippets preserve verbatim tokens that summary may paraphrase.
+   */
+  include_summary?: boolean
 }
 
 /** Per-session file info from the mtime pre-filter stage. */
