@@ -243,39 +243,11 @@
 </thead>
 <tbody>
 <tr>
-  <td>1</td>
-  <td>Tool Call Repair</td>
-  <td><span class="badge badge-int">Intermediate</span></td>
-  <td><span class="badge badge-better">更强 ++</span><span class="badge badge-new">v3 拉大差距</span></td>
-  <td>Hermes: fuzzy name match (difflib 0.7) + JSON validation + truncation detection + 3-retry。Axiomate v3: <code>schemaGuidedRepair.ts</code>（~1,300 行，Hungarian 全局分配替换贪心匹配） + <code>tolerantJsonParser.ts</code> (21 种 repair kind + 评分契约测试) + <code>rectangularAssignment.ts</code>（Kuhn-Munkres + property test）+ 类型强转链 (<code>coerced_string_to_number</code> / <code>coerced_string_to_boolean</code> / <code>parsed_array_string</code> / <code>matched_enum_case</code>) + <code>toolCallFailureCounter.ts</code>（连续失败升级 hint）+ <code>repair-outcome</code> 结构化诊断透传给 LLM</td>
-</tr>
-<tr>
-  <td>2</td>
-  <td>Error Classification</td>
-  <td><span class="badge badge-adv">Advanced</span></td>
-  <td><span class="badge badge-adv">Advanced</span><span class="badge badge-new">NEW</span></td>
-  <td>Hermes: 14 FailoverReason + recovery hints。Axiomate: <code>errorClassifier.ts</code> (642 行) 18 reasons + 3 hints (retryable/shouldCompress/shouldFallback) + 中文识别 — <span class="ok-tag">本期闭环</span></td>
-</tr>
-<tr>
-  <td>3</td>
-  <td>Retry + Backoff</td>
-  <td><span class="badge badge-adv">Advanced</span></td>
-  <td><span class="badge badge-adv">Advanced</span></td>
-  <td>两者都有 exponential backoff + jitter。Axiomate <code>withRetry.ts</code> (395 行) 额外有 persistent retry mode (unattended) 和 consecutive 529 tracking</td>
-</tr>
-<tr>
   <td>4</td>
   <td>Context Compression</td>
   <td><span class="badge badge-adv">Advanced</span></td>
   <td><span class="badge badge-int">Partial</span></td>
   <td><span class="gap-tag">GAP</span> Hermes <code>context_compressor.py</code> (1,216 行): LLM-assisted summarization + 本期新增 tool-call JSON integrity。Axiomate <code>compact.ts</code> (1,468 行): 4 策略 (full/micro/reactive/snip)，但缺少 <strong>iterative summary template</strong></td>
-</tr>
-<tr>
-  <td>5</td>
-  <td>Prompt Caching</td>
-  <td><span class="badge badge-int">Intermediate</span></td>
-  <td><span class="badge badge-adv">Advanced</span></td>
-  <td>Axiomate <code>promptCacheBreakDetection.ts</code> (634 行): hash-based cache break detection + per-tool schema diff。<span class="highlight">本期 cache_edits 集成被剪除（first-party only），核心模块仍保留</span></td>
 </tr>
 <tr>
   <td>6</td>
@@ -290,27 +262,6 @@
   <td><span class="badge" style="background: var(--text2); color: var(--bg);">N/A</span></td>
   <td><span class="badge" style="background: var(--text2); color: var(--bg);">CANCELLED</span><span class="badge badge-new" style="background: var(--red); color: white;">v4.1</span></td>
   <td>Hermes 在 commit <code>424e9f36</code>（2026-04-19）<strong>整体删除</strong>了 <code>smart_model_routing.py</code>（详见 GAP 4 / v4.1 概念纠错）。axiomate 不需要 port —— hermes 用产品事实证明此 feature ROI 不够。替代：<code>/fast</code> slash command 让用户主动选 fastModel</td>
-</tr>
-<tr>
-  <td>10</td>
-  <td>Tool Result Size Mgmt</td>
-  <td><span class="badge badge-int">Intermediate</span></td>
-  <td><span class="badge badge-better">更强</span></td>
-  <td>Axiomate <code>toolResultStorage.ts</code> (983 行): per-tool 50K + per-message 200K + disk overflow + token budget enforcement。Hermes: per-tool max_result_size_chars</td>
-</tr>
-<tr>
-  <td>11</td>
-  <td>Parallel Tool Execution</td>
-  <td><span class="badge badge-adv">Advanced</span></td>
-  <td><span class="badge badge-adv">Advanced</span></td>
-  <td>Hermes: path-overlap detection + 8 workers。Axiomate <code>StreamingToolExecutor.ts</code> (240+ 行): concurrent-safe 分类 + sibling abort 在 Bash 错误时</td>
-</tr>
-<tr>
-  <td>13</td>
-  <td>Iteration Budget</td>
-  <td><span class="badge badge-int">Intermediate</span></td>
-  <td><span class="badge badge-better">更强</span></td>
-  <td>Axiomate <code>query.ts</code>: diminishing returns + continuation heuristics + multi-factor exhaustion。Hermes: simple counter (max 90 parent / 50 child)</td>
 </tr>
 <tr>
   <td>14</td>
@@ -355,13 +306,6 @@
   <td><strong>Hermes 核心营销 feature</strong>（"the agent that grows with you"），3 层架构：<code>prompt_builder.py:170-177</code> SKILLS_GUIDANCE 教 LLM "5+ tool call 后存 skill" + <code>tools/skill_manager_tool.py</code> (817 行) 6 action (create/edit/patch/delete/write_file/remove_file) 暴露给 LLM 自主写 + <code>run_agent.py:2840-2980</code> 每 N 轮 (默认 10) 后台 fork-agent 跑 review prompt 自动决策存/更/不存。Axiomate <strong>有 <code>/skillify</code> bundled skill</strong>（用户主动 interview 半自动）+ skill loader + chokidar watcher + forkedAgent 基础设施全在；缺自主 skill_manage tool + 周期 fork-review 触发器 → <strong>升 P1 推荐补齐</strong></td>
 </tr>
 <tr>
-  <td>20</td>
-  <td>Lifecycle Hooks / Plugin System</td>
-  <td><span class="badge badge-adv">Advanced</span></td>
-  <td><span class="badge badge-full">✅ 完整</span><span class="badge badge-new" style="background: var(--green); color: white;">v4.8 平反</span></td>
-  <td>Axiomate 实现：<code>agent/src/types/hooks.ts</code> 11+ event types（PreToolUse / PostToolUse / PostToolUseFailure / SessionStart / Setup / UserPromptSubmit / PermissionRequest / FileChanged / CwdChanged / Notification 等）+ <code>agent/src/utils/hooks/</code> 17 文件（agent subprocess / HTTP POST + ssrfGuard / LLM-prompt 三轨执行）+ 已 wired 到 <code>toolExecution.ts</code> + <code>/hooks</code> slash command。结构上比 hermes 更丰富（hermes 仅 shell subprocess）。<strong>v4.3 探勘漏判，v4.8 平反</strong></td>
-</tr>
-<tr>
   <td>21</td>
   <td>Auto-Recall / Pre-Turn Memory Prefetch</td>
   <td><span class="badge badge-int">Intermediate</span></td>
@@ -374,15 +318,6 @@
   <td><span class="badge badge-basic">Basic</span></td>
   <td><span class="badge" style="background: var(--text2); color: white;">WONTFIX</span><span class="badge badge-new" style="background: var(--text2); color: white;">v4.7</span></td>
   <td><strong>v4.7 决策：axiomate 显式不做。</strong>审计发现 axiomate REPL 已生成 title（首次 user message 触发 → 终端窗口标题显示）但只存内存；SDK 路径有 saveAiGeneratedTitle 但要显式请求。用户判定持久化不值得：title 信息密度低（仅反映首条提问，session 实际走向常发散）/ Agent 不消费 / <code>/resume</code> firstPrompt 截断已够 / 持久化收益不抵心智+维护包袱。Hermes 实现仍列于 Section 5（仅作为对比参考）</td>
-</tr>
-<tr style="background: rgba(63,185,80,0.10);">
-  <td>23</td>
-  <td><strong>Session Search Tool</strong></td>
-  <td><span class="badge badge-adv">Advanced</span></td>
-  <td><span class="badge badge-adv">Advanced</span><span class="badge badge-new" style="background: var(--green); color: white;">v4.6 SHIPPED</span></td>
-  <td>
-    <strong>独立 LLM-facing 工具，与 WebSearchTool/Bash 同级</strong>。Hermes <code>tools/session_search_tool.py</code> (590 行)：FTS5 BM25 + 父链 walk + 默认 per-session aux LLM 5-段式 recap + LLM-facing search tool 暴露给主 agent。Axiomate <code>tools/SessionSearchTool/</code> (1244 行, 9 文件, commits <code>cf76352</code> → <code>b6ef58f</code>): JSONL 流式扫描 + 4-stage 算法 (mtime → metadata tail → 全文 → rank/snippet) + <strong>snippet 默认零 LLM</strong>（hermes 默认每次摘要）+ <strong>include_summary 显式 opt-in</strong>（用户判定 hermes 默认 summary 是 category error）+ <strong>默认包含当前 session</strong>（hermes 排除；axiomate compact 抹原文需要恢复）+ <strong>CJK substring 友好</strong>（hermes 必须 LIKE-fallback FTS5 弱点）+ <strong>shouldDefer:true 渐进发现</strong>（与 WebSearchTool 同模式）。685 tests 全绿（含真 Qwen3 8B e2e）
-  </td>
 </tr>
 </tbody>
 </table>
