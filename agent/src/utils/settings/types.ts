@@ -698,16 +698,6 @@ export const SettingsSchema = lazySchema(() =>
             'to the classic backward-search. Override via ' +
             'AXIOMATE_CODE_ENABLE_GLOBAL_SEARCH=1. Default: false.',
         ),
-      sessionSearchEnabled: z
-        .boolean()
-        .optional()
-        .describe(
-          'When true, expose the SessionSearch tool to the LLM so it can ' +
-            'autonomously search past project sessions for content recall. ' +
-            'Tool is deferred (discovered via ToolSearch). Override via ' +
-            'AXIOMATE_CODE_ENABLE_SESSION_SEARCH=1. Default: false (Phase 1 ' +
-            'gradual rollout — env override during early adoption).',
-        ),
       showClearContextOnPlanAccept: z
         .boolean()
         .optional()
