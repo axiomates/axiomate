@@ -22,6 +22,7 @@ import { TASK_GET_TOOL_NAME } from '../tools/TaskGetTool/constants.js'
 import { TASK_LIST_TOOL_NAME } from '../tools/TaskListTool/constants.js'
 import { TASK_UPDATE_TOOL_NAME } from '../tools/TaskUpdateTool/constants.js'
 import { TOOL_SEARCH_TOOL_NAME } from '../tools/ToolSearchTool/prompt.js'
+import { SESSION_SEARCH_TOOL_NAME } from '../tools/SessionSearchTool/prompt.js'
 import { SYNTHETIC_OUTPUT_TOOL_NAME } from '../tools/SyntheticOutputTool/SyntheticOutputTool.js'
 import { ENTER_WORKTREE_TOOL_NAME } from '../tools/EnterWorktreeTool/constants.js'
 import { EXIT_WORKTREE_TOOL_NAME } from '../tools/ExitWorktreeTool/constants.js'
@@ -38,6 +39,12 @@ export const ALL_AGENT_DISALLOWED_TOOLS = new Set([
   AGENT_TOOL_NAME,
   ASK_USER_QUESTION_TOOL_NAME,
   TASK_STOP_TOOL_NAME,
+  // Sub-agents are scoped to a focused subtask. Letting them recall
+  // arbitrary cross-session history (and re-trigger summarization on each
+  // call) inflates context and risks recursive history-spelunking. Main
+  // thread can do the recall and pass the summary down via the AgentTool
+  // prompt if needed.
+  SESSION_SEARCH_TOOL_NAME,
 ])
 
 export const CUSTOM_AGENT_DISALLOWED_TOOLS = new Set([

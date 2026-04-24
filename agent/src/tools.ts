@@ -35,6 +35,8 @@ import { AskUserQuestionTool } from './tools/AskUserQuestionTool/AskUserQuestion
 import { LSPTool } from './tools/LSPTool/LSPTool.js'
 import { ListMcpResourcesTool } from './tools/ListMcpResourcesTool/ListMcpResourcesTool.js'
 import { ReadMcpResourceTool } from './tools/ReadMcpResourceTool/ReadMcpResourceTool.js'
+import { SessionSearchTool } from './tools/SessionSearchTool/SessionSearchTool.js'
+import { isSessionSearchEnabled } from './tools/SessionSearchTool/featureFlag.js'
 import { ToolSearchTool } from './tools/ToolSearchTool/ToolSearchTool.js'
 import { EnterPlanModeTool } from './tools/EnterPlanModeTool/EnterPlanModeTool.js'
 import { EnterWorktreeTool } from './tools/EnterWorktreeTool/EnterWorktreeTool.js'
@@ -143,6 +145,12 @@ export function getAllBaseTools(): Tools {
     ...(process.env.NODE_ENV === 'test' ? [TestingPermissionTool] : []),
     ListMcpResourcesTool,
     ReadMcpResourceTool,
+    // SessionSearchTool: gated by features.sessionSearchEnabled (or
+    // AXIOMATE_CODE_ENABLE_SESSION_SEARCH=1 env override). Phase 1 default
+    // is OFF — we expose only when explicitly opted-in to keep the deferred-
+    // tool surface tight and avoid the ~10 token name list cost for users
+    // who don't need cross-session recall.
+    ...(isSessionSearchEnabled() ? [SessionSearchTool] : []),
     // Include ToolSearchTool when tool search might be enabled (optimistic check)
     // The actual decision to defer tools happens at request time in llm.ts
     ...(isToolSearchEnabledOptimistic() ? [ToolSearchTool] : []),
