@@ -117,6 +117,11 @@ export function createComputerUseSwift(): ComputerUseAPI {
         const running = await listRunningApps()
         const hidden: string[] = []
         const activated: string[] = []
+        // Hide serially — NSWorkspace's runningApplications iteration shares
+        // state with hide() side effects, and parallel hides can produce
+        // z-order flicker (one hide reorders, the next races on the new
+        // order). ~30ms × N apps; for typical N=10-30 that's <1s, dominated
+        // by the AppKit ipc round-trip per app. Don't Promise.all this.
         for (const app of running) {
           if (allowSet.has(app.bundleId)) continue
           // hideApp resolves true if any matching running app was hidden.

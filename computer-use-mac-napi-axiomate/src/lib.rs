@@ -184,29 +184,28 @@ mod macos {
         //!
         //! ## Lifecycle
         //!
-        //! `register` creates a session-level event tap filtered to keyDown
-        //! events, attaches it to the main CFRunLoop's source, and stashes a
-        //! ThreadsafeFunction for the JS callback. The tap callback fires on
-        //! every keyDown — we filter for Esc (kVK_Escape = 53), check the
-        //! decay gate (`expected_escape_until` in nanoseconds), and either
-        //! consume + invoke the callback or pass through.
+        //! First `register` call creates a session-level event tap filtered to
+        //! keyDown events on the calling thread (the Accessibility prompt
+        //! comes from main thread on first call), then spawns a dedicated
+        //! `cu-esc-tap` thread that attaches the tap's CFRunLoopSource to
+        //! its OWN runloop (`CFRunLoopGetCurrent`) and runs `CFRunLoopRun`.
+        //! That spawned thread is the only thread that pumps the tap — node
+        //! CLI doesn't drive CFRunLoop main, so attaching to main would
+        //! silently drop every keypress.
         //!
-        //! `unregister` invalidates the run-loop source and the tap. The
-        //! ThreadsafeFunction is dropped via the global `Mutex<Option<…>>`.
+        //! Subsequent `register` calls just replace the JS callback and
+        //! re-enable the tap if it was disabled. `unregister` disables the
+        //! tap (CGEventTapEnable false) and clears the callback ref —
+        //! the spawned thread keeps running its CFRunLoop and is reaped
+        //! at process exit. Re-register flips the tap back on.
         //!
-        //! ## Run-loop pump
-        //!
-        //! The CGEventTap fires on the main CFRunLoop. axiomate's drainRunLoop
-        //! (in computer-use-native-axiomate) keeps that runloop ticking via
-        //! `_drainMainRunLoop` — when we wire this binding in, the JS side
-        //! must keep calling drainRunLoop for events to flow.
+        //! Decay gate: the tap callback consumes Esc by default and invokes
+        //! the JS callback. When `notify_expected_escape` was called within
+        //! the last 100ms, the tap silently passes Esc through (the agent
+        //! is synthesizing an Escape via `key("escape")` and shouldn't
+        //! abort itself).
 
-        use core_foundation::base::{CFRelease, TCFType};
-        use core_foundation::mach_port::CFMachPort;
-        use core_foundation::runloop::{
-            kCFRunLoopCommonModes, CFRunLoopAddSource, CFRunLoopGetMain, CFRunLoopRemoveSource,
-            CFRunLoopSourceRef,
-        };
+        use core_foundation::base::CFRelease;
         use napi::threadsafe_function::{ThreadsafeFunction, ThreadsafeFunctionCallMode};
         use std::sync::atomic::{AtomicI64, AtomicPtr, Ordering};
         use std::sync::Mutex;
@@ -242,6 +241,9 @@ mod macos {
             user_info: *mut std::ffi::c_void,
         ) -> CGEventRef;
 
+        type CFRunLoopSourceRef = *mut std::ffi::c_void;
+        type CFStringRef = *const std::ffi::c_void;
+
         extern "C" {
             fn CGEventTapCreate(
                 tap: u32,
@@ -257,16 +259,23 @@ mod macos {
                 port: CFMachPortRef,
                 order: i64,
             ) -> CFRunLoopSourceRef;
-            fn CFMachPortInvalidate(port: CFMachPortRef);
             fn CGEventGetIntegerValueField(event: CGEventRef, field: u32) -> i64;
+            fn CFRunLoopGetCurrent() -> CFRunLoopRef;
+            fn CFRunLoopAddSource(rl: CFRunLoopRef, source: CFRunLoopSourceRef, mode: CFStringRef);
+            fn CFRunLoopRun();
+            // kCFRunLoopCommonModes is a CFStringRef constant exported by
+            // CoreFoundation. Declared here so we can pass it to AddSource
+            // without pulling the core-foundation crate's runloop binding.
+            static kCFRunLoopCommonModes: CFStringRef;
         }
 
         // kCGKeyboardEventKeycode = 9
         const KEYCODE_FIELD: u32 = 9;
 
         static EXPECTED_UNTIL_NS: AtomicI64 = AtomicI64::new(0);
+        // TAP_PORT is the only main-thread-visible pointer. The CFRunLoopSource
+        // is owned by the spawned runloop thread; we don't track it here.
         static TAP_PORT: AtomicPtr<std::ffi::c_void> = AtomicPtr::new(std::ptr::null_mut());
-        static SOURCE_REF: AtomicPtr<std::ffi::c_void> = AtomicPtr::new(std::ptr::null_mut());
 
         static CB: Mutex<Option<ThreadsafeFunction<()>>> = Mutex::new(None);
 
@@ -305,19 +314,37 @@ mod macos {
                 .unwrap_or(0)
         }
 
+        // Wrap raw pointers for cross-thread move. The CGEventTap port and
+        // CFRunLoopSource are reference-counted by Core Foundation; the
+        // spawned thread takes ownership of both for the runloop's lifetime.
+        struct TapHandle {
+            port: CFMachPortRef,
+            source: CFRunLoopSourceRef,
+        }
+        unsafe impl Send for TapHandle {}
+
         pub fn register(callback: ThreadsafeFunction<()>) -> bool {
-            // Re-registration is idempotent — drop the old callback, keep the
-            // existing tap if one is attached.
+            // Update the JS callback ref. The tap_callback C function reads
+            // through this Mutex on every Esc keydown.
             if let Ok(mut guard) = CB.lock() {
                 *guard = Some(callback);
             } else {
                 return false;
             }
-            if !TAP_PORT.load(Ordering::Relaxed).is_null() {
+
+            // Re-registration: tap thread already running, just re-enable
+            // the tap (it may have been disabled by an earlier `unregister`).
+            let existing_port = TAP_PORT.load(Ordering::Relaxed);
+            if !existing_port.is_null() {
+                unsafe { CGEventTapEnable(existing_port as CFMachPortRef, true) };
                 return true;
             }
 
-            unsafe {
+            // First registration: create the tap synchronously on the
+            // calling thread (Accessibility prompt must come from main
+            // thread the first time), then move ownership to a dedicated
+            // runloop thread.
+            let handle = unsafe {
                 let mask = cg_event_mask_bit(KCG_EVENT_KEY_DOWN);
                 let port = CGEventTapCreate(
                     KCG_SESSION_EVENT_TAP,
@@ -338,35 +365,46 @@ mod macos {
                     CFRelease(port as _);
                     return false;
                 }
-                let runloop = CFRunLoopGetMain();
-                CFRunLoopAddSource(
-                    runloop as CFRunLoopRef as _,
-                    source as _,
-                    kCFRunLoopCommonModes,
-                );
-                CGEventTapEnable(port, true);
-                TAP_PORT.store(port as *mut std::ffi::c_void, Ordering::Relaxed);
-                SOURCE_REF.store(source as *mut std::ffi::c_void, Ordering::Relaxed);
-            }
+                TapHandle { port, source }
+            };
+
+            // Stash the port pointer so re-register / unregister can find it.
+            // The source ref lives only on the spawned thread (added to its
+            // own runloop) — we don't track it from the main thread.
+            TAP_PORT.store(handle.port as *mut std::ffi::c_void, Ordering::Relaxed);
+
+            // Spawn the runloop thread. Adds the source to its OWN runloop
+            // (CFRunLoopGetCurrent), enables the tap, then blocks in
+            // CFRunLoopRun forever. Process exit reaps the thread.
+            std::thread::Builder::new()
+                .name("cu-esc-tap".to_string())
+                .spawn(move || {
+                    unsafe {
+                        let runloop = CFRunLoopGetCurrent();
+                        CFRunLoopAddSource(runloop, handle.source, kCFRunLoopCommonModes);
+                        CGEventTapEnable(handle.port, true);
+                        CFRunLoopRun();
+                        // CFRunLoopRun returns only if the runloop is
+                        // explicitly stopped. We never call CFRunLoopStop;
+                        // process exit reaps this thread. Defensive cleanup
+                        // in case the API changes:
+                        CFRelease(handle.source as _);
+                        CFRelease(handle.port as _);
+                    }
+                })
+                .expect("spawn cu-esc-tap thread");
+
             true
         }
 
         pub fn unregister() {
-            unsafe {
-                let port = TAP_PORT.swap(std::ptr::null_mut(), Ordering::Relaxed);
-                let source = SOURCE_REF.swap(std::ptr::null_mut(), Ordering::Relaxed);
-                if !port.is_null() {
-                    CGEventTapEnable(port as CFMachPortRef, false);
-                    CFMachPortInvalidate(port as CFMachPortRef);
-                }
-                if !source.is_null() {
-                    let runloop = CFRunLoopGetMain();
-                    CFRunLoopRemoveSource(runloop, source as _, kCFRunLoopCommonModes);
-                    CFRelease(source as _);
-                }
-                if !port.is_null() {
-                    CFRelease(port as _);
-                }
+            // Disable the tap (events stop being captured) and clear the
+            // callback. Don't tear down the tap port or the spawned thread —
+            // re-register flips the tap back on. Process exit reaps the
+            // thread.
+            let port = TAP_PORT.load(Ordering::Relaxed);
+            if !port.is_null() {
+                unsafe { CGEventTapEnable(port as CFMachPortRef, false) };
             }
             if let Ok(mut guard) = CB.lock() {
                 *guard = None;
