@@ -8,5 +8,6 @@ packages:
   - 'sandbox-axiomate'
   - 'computer-use-mcp-axiomate'
   - 'computer-use-native-axiomate'
+  - 'computer-use-mac-napi-axiomate'
   - 'mcpb-axiomate'
   - 'agent'

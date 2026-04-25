@@ -117,6 +117,7 @@ const result = await Bun.build({
   external: [
     'modifiers-mac-napi-axiomate',  // macOS-only
     'url-handler-mac-napi-axiomate', // macOS-only
+    'computer-use-mac-napi-axiomate', // macOS-only, gated by feature('DARWIN')
     'computer-use-mcp-axiomate',  // macOS-only, gated by feature('DARWIN')
     'computer-use-native-axiomate', // macOS-only, gated by feature('DARWIN')
   ],

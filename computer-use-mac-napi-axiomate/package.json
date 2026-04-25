@@ -1,0 +1,23 @@
+{
+  "name": "computer-use-mac-napi-axiomate",
+  "version": "0.1.0",
+  "description": "macOS native bindings for computer-use: SCContentFilter screenshots, CGEventTap Esc hotkey, NSRunningApplication hide/unhide",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "files": ["index.js", "index.d.ts", "*.node"],
+  "scripts": {
+    "build": "napi build --release",
+    "build:debug": "napi build",
+    "test": "vitest run --passWithNoTests"
+  },
+  "napi": {
+    "name": "computer-use-mac-napi-axiomate",
+    "triples": {
+      "additional": ["aarch64-apple-darwin", "x86_64-apple-darwin"]
+    }
+  },
+  "devDependencies": {
+    "@napi-rs/cli": "^2.18.0",
+    "vitest": "^1.0.0"
+  }
+}

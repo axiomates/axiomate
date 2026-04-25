@@ -4,7 +4,15 @@
  *
  * Agent loads this via: require('computer-use-native-axiomate') as ComputerUseAPI
  * The original is a macOS-only Swift NAPI module. We provide cross-platform
- * equivalents where possible and no-ops for macOS-specific features.
+ * equivalents where possible.
+ *
+ * On macOS, when the optional `computer-use-mac-napi-axiomate` native module
+ * loads successfully, methods that need real Quartz / AppKit / ScreenCaptureKit
+ * APIs (hide / unhide / activate / Esc hotkey / SCContentFilter screenshot)
+ * route through the native binding. When the module isn't installed (debug
+ * builds, missing Accessibility perms, etc.), each method falls back to its
+ * cross-platform behavior (no-op for hide-style methods, full-screen capture
+ * for SCContentFilter screenshots).
  */
 
 import {
@@ -23,18 +31,63 @@ import {
 } from '../platforms/apps.js'
 import type { ComputerUseAPI } from '../index.js'
 
+// Lazy-load the optional macOS native binding. Requiring it is the only
+// platform-specific syscall in this module — keep it best-effort so a
+// missing binary just disables native features without breaking the build.
+type MacNativeBinding = {
+  isAvailable: () => boolean
+  hideApp: (bundleId: string) => Promise<boolean>
+  unhideApp: (bundleId: string) => Promise<boolean>
+  activateApp: (bundleId: string) => Promise<boolean>
+  registerEscapeHotkey: (cb: () => void) => boolean
+  unregisterEscapeHotkey: () => void
+  notifyExpectedEscape: () => void
+  captureExcluding: (opts: {
+    allowedBundleIds: string[]
+    displayId: number
+    quality?: number
+    width?: number
+    height?: number
+  }) => Promise<{ base64: string; width: number; height: number } | null>
+}
+
+let macNativeCached: MacNativeBinding | null | undefined
+function loadMacNative(): MacNativeBinding | null {
+  if (macNativeCached !== undefined) return macNativeCached
+  if (process.platform !== 'darwin') {
+    macNativeCached = null
+    return null
+  }
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const mod = require('computer-use-mac-napi-axiomate') as MacNativeBinding
+    macNativeCached = mod.isAvailable() ? mod : null
+  } catch {
+    macNativeCached = null
+  }
+  return macNativeCached
+}
+
 export function createComputerUseSwift(): ComputerUseAPI {
   return {
     hotkey: {
       register(_callback: () => void): void {
-        // macOS CGEventTap — no cross-platform equivalent
+        // Generic hotkey registration not exposed by the binding —
+        // CGEventTap variant is registerEscape below.
       },
-      registerEscape(_callback: () => void): any {
-        // macOS-specific escape key monitoring
-        return false
+      registerEscape(callback: () => void): any {
+        const native = loadMacNative()
+        if (!native) return false
+        return native.registerEscapeHotkey(callback)
       },
-      unregister(): void {},
-      notifyExpectedEscape(): void {},
+      unregister(): void {
+        const native = loadMacNative()
+        if (native) native.unregisterEscapeHotkey()
+      },
+      notifyExpectedEscape(): void {
+        const native = loadMacNative()
+        if (native) native.notifyExpectedEscape()
+      },
     },
 
     apps: {
@@ -48,9 +101,39 @@ export function createComputerUseSwift(): ComputerUseAPI {
         const app = await getFrontmostApp()
         return app ? { bundleId: app.bundleId, displayName: app.displayName } : null
       },
-      async prepareDisplay(..._args: any[]): Promise<any> {
-        // macOS-specific: hide/activate apps before screenshot
-        return { hidden: [], activated: [] }
+      async prepareDisplay(...args: any[]): Promise<any> {
+        // Args from the dispatch layer (executor.ts:319):
+        //   (allowedBundleIds: string[], hostBundleId?: string, displayId?: number, hostBundleId2?: string)
+        // We hide every running app NOT in the allowlist (and not the host
+        // terminal). The original Swift impl also re-orders z-order so the
+        // allowlisted app comes forward; we approximate by `activate`-ing
+        // the first allowlisted app that's running.
+        const native = loadMacNative()
+        if (!native) return { hidden: [], activated: [] }
+        const allowedBundleIds = Array.isArray(args[0]) ? (args[0] as string[]) : []
+        const hostBundleId = typeof args[1] === 'string' ? (args[1] as string) : undefined
+        const allowSet = new Set(allowedBundleIds)
+        if (hostBundleId) allowSet.add(hostBundleId)
+        const running = await listRunningApps()
+        const hidden: string[] = []
+        const activated: string[] = []
+        for (const app of running) {
+          if (allowSet.has(app.bundleId)) continue
+          // hideApp resolves true if any matching running app was hidden.
+          const ok = await native.hideApp(app.bundleId).catch(() => false)
+          if (ok) hidden.push(app.bundleId)
+        }
+        // Bring the first allowlisted running app forward.
+        for (const app of running) {
+          if (!allowSet.has(app.bundleId)) continue
+          if (hostBundleId && app.bundleId === hostBundleId) continue
+          const ok = await native.activateApp(app.bundleId).catch(() => false)
+          if (ok) {
+            activated.push(app.bundleId)
+            break
+          }
+        }
+        return { hidden, activated }
       },
       async previewHideSet(...args: any[]): Promise<Array<{ bundleId: string; displayName: string }>> {
         // Args: (allowlistBundleIds: string[], displayId?: number)
@@ -105,19 +188,47 @@ export function createComputerUseSwift(): ComputerUseAPI {
       async open(bundleId: string): Promise<void> {
         await openApp(bundleId)
       },
-      async unhide(..._args: any[]): Promise<void> {
-        // macOS-specific: NSRunningApplication.unhide
+      async unhide(...args: any[]): Promise<void> {
+        // Args: (bundleIds: string[]) — the dispatch layer's
+        // hiddenDuringTurn set, restored at turn end.
+        const native = loadMacNative()
+        if (!native) return
+        const bundleIds = Array.isArray(args[0]) ? (args[0] as string[]) : []
+        await Promise.allSettled(bundleIds.map(id => native.unhideApp(id)))
       },
     },
 
     display: {
       async captureExcluding(...args: any[]): Promise<any> {
-        // Original takes (bundleIds[], quality, w, h, displayId?)
-        // We ignore bundle filtering and quality, just capture the display.
-        // Return the {base64, width, height} object — toolCalls.ts reads
-        // shot.base64 to compute decodedByteLength. Returning a raw Buffer
-        // here makes shot.base64 undefined → "endsWith of undefined" crash.
-        const displayId = args[4] ?? args[0]
+        // Original signature: (bundleIds[], quality, w, h, displayId?).
+        // When the mac native binding is loaded AND its capture_excluding
+        // returns a non-null result, use it (proper compositor-level
+        // filtering by the SCContentFilter). Otherwise fall back to a
+        // full-screen node-screenshots capture (current cross-platform
+        // behavior — the agent's CLI_CU_CAPABILITIES.screenshotFiltering
+        // is set to 'none', so the LLM is told the screenshot is
+        // unfiltered).
+        const allowedBundleIds = Array.isArray(args[0]) ? (args[0] as string[]) : []
+        const quality = typeof args[1] === 'number' ? (args[1] as number) : undefined
+        const width = typeof args[2] === 'number' ? (args[2] as number) : undefined
+        const height = typeof args[3] === 'number' ? (args[3] as number) : undefined
+        const displayId = typeof args[4] === 'number' ? (args[4] as number) : undefined
+
+        const native = loadMacNative()
+        if (native && typeof displayId === 'number') {
+          try {
+            const filtered = await native.captureExcluding({
+              allowedBundleIds,
+              displayId,
+              quality,
+              width,
+              height,
+            })
+            if (filtered) return filtered
+          } catch {
+            // fall through to node-screenshots full-screen capture
+          }
+        }
         return captureDisplay(typeof displayId === 'number' ? displayId : undefined)
       },
       async captureRegion(...args: any[]): Promise<any> {

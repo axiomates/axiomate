@@ -134,6 +134,7 @@ buildNapiWorkspace('clipboard-axiomate')
 buildNapiWorkspace('audio-capture-axiomate')
 buildNapiWorkspace('modifiers-mac-napi-axiomate')
 buildNapiWorkspace('url-handler-mac-napi-axiomate')
+buildNapiWorkspace('computer-use-mac-napi-axiomate')
 
 // -- Step 1: Bundle everything into a single JS file --------------------------
 
@@ -237,6 +238,7 @@ copyWorkspaceNativeFiles('clipboard-axiomate')
 copyWorkspaceNativeFiles('audio-capture-axiomate')
 copyWorkspaceNativeFiles('modifiers-mac-napi-axiomate')
 copyWorkspaceNativeFiles('url-handler-mac-napi-axiomate')
+copyWorkspaceNativeFiles('computer-use-mac-napi-axiomate')
 
 const bundledCliPath = join(distDir, 'cli.js')
 if (existsSync(bundledCliPath)) {

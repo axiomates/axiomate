@@ -1,0 +1,32 @@
+[package]
+name = "computer-use-mac-napi-axiomate"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+napi = { version = "2", features = ["napi6"] }
+napi-derive = "2"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+# ObjC runtime for NSWorkspace + NSRunningApplication.hide/unhide.
+objc = "0.2"
+# Cocoa bindings for NSWorkspace, NSImage, NSData (CFData utils used by
+# ScreenCaptureKit pixel encoding paths).
+cocoa = "0.26"
+core-foundation = "0.10"
+core-graphics = "0.24"
+# JPEG encoder for screenshot output. node-screenshots ships its own;
+# native binding stays consistent with the {base64,width,height} contract.
+image = { version = "0.25", default-features = false, features = ["jpeg"] }
+base64 = "0.22"
+
+[build-dependencies]
+napi-build = "2"
+
+[profile.release]
+lto = true
+strip = true
+opt-level = "z"
