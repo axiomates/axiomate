@@ -485,9 +485,10 @@ function buildNativeWorkspaces() {
       ['clipboard-axiomate', 'build:native'],
       ['modifiers-mac-napi-axiomate', 'build'],
       ['url-handler-mac-napi-axiomate', 'build'],
+      ['computer-use-mac-napi-axiomate', 'build'],
     )
   } else {
-    note('Skipping macOS-only clipboard/modifier/url-handler native packages on this platform.')
+    note('Skipping macOS-only clipboard/modifier/url-handler/computer-use native packages on this platform.')
   }
 
   for (const [workspace, script] of builds) {
