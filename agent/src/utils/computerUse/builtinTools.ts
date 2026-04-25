@@ -3,6 +3,34 @@ import type { Tool, ToolInputJSONSchema } from '../../Tool.js'
 
 let cachedTools: readonly Tool[] | undefined
 
+// Usage hints prepended to specific computer-use tool descriptions so the
+// LLM doesn't fall into the multi-step request_access guess-the-bundle-id
+// trap. The dispatch flow already handles permission prompts via
+// ComputerUseAppListPanel — the hint just tells the LLM to trust that
+// flow instead of trying to drive it manually.
+const SCREENSHOT_USAGE_HINT =
+  'USAGE NOTE (axiomate): Call this tool directly when asked to screenshot. ' +
+  'If no apps are in the session allowlist, axiomate pops up a permission ' +
+  'dialog listing the user\'s installed apps; the user picks one and the ' +
+  'screenshot succeeds on retry. Do NOT call request_access first to "set ' +
+  'up" — guessing bundle IDs is not necessary and usually fails.'
+
+const REQUEST_ACCESS_USAGE_HINT =
+  'USAGE NOTE (axiomate): Do NOT call this tool proactively before a ' +
+  'screenshot. The screenshot tool already triggers an interactive ' +
+  'permission dialog. Only call request_access when the user explicitly ' +
+  'asks to grant a specific app, or to expand the allowlist mid-session.'
+
+function prependUsageHint(toolName: string, base: string): string {
+  if (toolName === 'screenshot' || toolName === 'zoom') {
+    return `${SCREENSHOT_USAGE_HINT}\n\n${base}`
+  }
+  if (toolName === 'request_access') {
+    return `${REQUEST_ACCESS_USAGE_HINT}\n\n${base}`
+  }
+  return base
+}
+
 /**
  * Build axiomate Tool[] for the computer-use suite.
  *
@@ -101,11 +129,13 @@ export function getComputerUseBuiltinTools(): readonly Tool[] {
       isEnabled: () => process.platform === 'darwin',
       async description() {
         const map = await augmentedDescPromise
-        return map.get(tool.name) || tool.description || ''
+        const base = map.get(tool.name) || tool.description || ''
+        return prependUsageHint(tool.name, base)
       },
       async prompt() {
         const map = await augmentedDescPromise
-        return map.get(tool.name) || tool.description || ''
+        const base = map.get(tool.name) || tool.description || ''
+        return prependUsageHint(tool.name, base)
       },
       inputJSONSchema: tool.inputSchema as ToolInputJSONSchema,
       // overrides provides: userFacingName, renderToolUseMessage,
