@@ -13,6 +13,7 @@ import { CronCreateTool } from './tools/ScheduleCronTool/CronCreateTool.js'
 import { CronDeleteTool } from './tools/ScheduleCronTool/CronDeleteTool.js'
 import { CronListTool } from './tools/ScheduleCronTool/CronListTool.js'
 const cronTools = [CronCreateTool, CronDeleteTool, CronListTool]
+import { getComputerUseBuiltinTools } from './utils/computerUse/builtinTools.js'
 import { TaskOutputTool } from './tools/TaskOutputTool/TaskOutputTool.js'
 import { WebSearchTool } from './tools/WebSearchTool/WebSearchTool.js'
 import { TodoWriteTool } from './tools/TodoWriteTool/TodoWriteTool.js'
@@ -140,6 +141,7 @@ export function getAllBaseTools(): Tools {
       ? [getTeamCreateTool(), getTeamDeleteTool()]
       : []),
     ...cronTools,
+    ...getComputerUseBuiltinTools(),
     ...(getPowerShellTool() ? [getPowerShellTool()] : []),
     ...(process.env.NODE_ENV === 'test' ? [TestingPermissionTool] : []),
     ListMcpResourcesTool,
