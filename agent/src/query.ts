@@ -88,6 +88,26 @@ import {
 import { createBudgetTracker, checkTokenBudget } from './query/tokenBudget.js'
 import { count } from './utils/array.js'
 
+/**
+ * Computer-use turn-end cleanup wrapper. Called from abort paths
+ * (aborted_streaming, aborted_tools) — natural turn end runs cleanup via
+ * stopHooks.ts's finally block. DARWIN-gated so windows / linux DCE strips
+ * the import; bunPluginComputerUseStub stubs the dynamic-import target.
+ */
+async function runComputerUseCleanup(
+  toolUseContext: ToolUseContext,
+): Promise<void> {
+  if (!feature('DARWIN') || process.platform !== 'darwin') return
+  try {
+    const { cleanupComputerUseAfterTurn } = await import(
+      './utils/computerUse/cleanup.js'
+    )
+    await cleanupComputerUseAfterTurn(toolUseContext)
+  } catch (err) {
+    logForDebugging(`[Computer Use MCP] cleanup failed: ${String(err)}`)
+  }
+}
+
 function* yieldMissingToolResultBlocks(
   assistantMessages: AssistantMessage[],
   errorMessage: string,
@@ -820,6 +840,7 @@ async function* queryLoop(
           toolUse: false,
         })
       }
+      await runComputerUseCleanup(toolUseContext)
       return { reason: 'aborted_streaming' }
     }
 
@@ -1166,6 +1187,7 @@ async function* queryLoop(
           turnCount: nextTurnCountOnAbort,
         })
       }
+      await runComputerUseCleanup(toolUseContext)
       return { reason: 'aborted_tools' }
     }
 

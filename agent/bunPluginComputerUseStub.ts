@@ -33,6 +33,23 @@ const WRAPPER_STUB =
   'export function setCurrentToolUseContext() {}\n' +
   'export function buildSessionContext() { throw new Error("computer-use stub") }\n'
 
+// `toolRendering.tsx` is dynamic-imported by client.ts only when
+// `client.name === 'computer-use'`, but the import statement itself
+// would still bundle the module on non-darwin. The render functions
+// are pure UI (React + ink) so harmless to bundle, but stubbing keeps
+// the windows / linux bundle audit clean (0 computerUse symbols).
+const TOOL_RENDERING_STUB =
+  '// computer-use stub: windows / linux build, rendering overrides unused\n' +
+  'export function getComputerUseMCPRenderingOverrides() { return {} }\n'
+
+// `cleanup.ts` is dynamic-imported by query.ts (abort paths) and
+// stopHooks.ts (natural turn end). Both call sites are DARWIN-gated
+// at the call site, but stubbing the module guards against the dynamic
+// import being seen as reachable by the bundler.
+const CLEANUP_STUB =
+  '// computer-use stub: windows / linux build, cleanup is no-op\n' +
+  'export async function cleanupComputerUseAfterTurn() {}\n'
+
 export function makeComputerUseStubPlugin(enabled: boolean): BunPlugin {
   return {
     name: 'computer-use-stub',
@@ -60,6 +77,24 @@ export function makeComputerUseStubPlugin(enabled: boolean): BunPlugin {
           namespace: 'computer-use-wrapper-stub',
         }),
       )
+      build.onResolve(
+        {
+          filter: /computerUse[\\/]toolRendering(?:\.js|\.tsx?)?$/,
+        },
+        args => ({
+          path: args.path,
+          namespace: 'computer-use-tool-rendering-stub',
+        }),
+      )
+      build.onResolve(
+        {
+          filter: /computerUse[\\/]cleanup(?:\.js|\.ts)?$/,
+        },
+        args => ({
+          path: args.path,
+          namespace: 'computer-use-cleanup-stub',
+        }),
+      )
 
       build.onLoad(
         { filter: /.*/, namespace: 'computer-use-setup-stub' },
@@ -68,6 +103,14 @@ export function makeComputerUseStubPlugin(enabled: boolean): BunPlugin {
       build.onLoad(
         { filter: /.*/, namespace: 'computer-use-wrapper-stub' },
         () => ({ contents: WRAPPER_STUB, loader: 'js' }),
+      )
+      build.onLoad(
+        { filter: /.*/, namespace: 'computer-use-tool-rendering-stub' },
+        () => ({ contents: TOOL_RENDERING_STUB, loader: 'js' }),
+      )
+      build.onLoad(
+        { filter: /.*/, namespace: 'computer-use-cleanup-stub' },
+        () => ({ contents: CLEANUP_STUB, loader: 'js' }),
       )
     },
   }

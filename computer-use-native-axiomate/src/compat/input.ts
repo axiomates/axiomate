@@ -79,9 +79,11 @@ const inputAPI: ComputerUseInputAPI = {
   },
 
   getFrontmostAppInfo(): { bundleId: string; appName: string; name: string; pid: number } | null {
-    // getFrontmostApp is async but the original interface is sync.
-    // Return null synchronously — agent code handles null gracefully.
-    // TODO: cache last-known frontmost app from an async poll
+    // Sync interface inherited from @ant/computer-use-input. axiomate's
+    // executor.ts (post commit 1e2339d) routes through the async path
+    // `cu.apps.getFrontmostApp()` instead of this sync method, so the
+    // null return here is never observed via that path. Kept as a stub
+    // for any other consumer that might still reach for the sync API.
     return null
   },
 }

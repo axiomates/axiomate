@@ -1518,6 +1518,17 @@ export const fetchToolsForClient = memoizeWithLRU(
         client.config.type === 'sdk' &&
         isEnvTruthy(process.env.AXIOMATE_AGENT_SDK_MCP_NO_PREFIX)
 
+      // Computer-use specific rendering overrides for the LLM-facing tool
+      // messages (Computer Use[screenshot] header, "Captured" / "Clicked"
+      // dim summaries instead of raw MCP output blocks). Sync-loaded once
+      // per fetchToolsForClient and spread into each tool object below.
+      const computerUseRendering =
+        client.config.type === 'in-process' && client.name === 'computer-use'
+          ? (
+              await import('../../utils/computerUse/toolRendering.js')
+            ).getComputerUseMCPRenderingOverrides
+          : undefined
+
       // Convert MCP tools to our Tool format
       return toolsToProcess
         .map((tool): Tool => {
@@ -1738,6 +1749,10 @@ export const fetchToolsForClient = memoizeWithLRU(
               const displayName = tool.annotations?.title || tool.name
               return `${client.name} - ${displayName} (MCP)`
             },
+            // Computer-use rendering overrides spread last so they win over
+            // the generic MCPTool defaults (userFacingName / renderToolUseMessage
+            // / renderToolResultMessage). Empty for any other server.
+            ...(computerUseRendering ? computerUseRendering(tool.name) : {}),
           }
         })
         .filter(isIncludedMcpTool)

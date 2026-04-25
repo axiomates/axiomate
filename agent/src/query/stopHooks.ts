@@ -1,3 +1,4 @@
+import { feature } from 'bun:bundle'
 import { getShortcutDisplay } from '../keybindings/shortcutFormat.js'
 import { isExtractModeActive } from '../memdir/paths.js'
 import { executeExtractMemories } from '../services/extractMemories/extractMemories.js'
@@ -392,5 +393,22 @@ export async function* handleStopHooks(
       'warning',
     )
     return { blockingErrors: [], preventContinuation: false }
+  } finally {
+    // Computer-use turn-end cleanup: auto-unhide apps that prepareForAction
+    // hid, unregister Esc hotkey, release file lock. Cheap no-ops on
+    // non-CU turns (zero-syscall lock check). DARWIN-gated so windows /
+    // linux DCE strips the import. The dynamic-import target is stubbed
+    // by bunPluginComputerUseStub on non-darwin builds.
+    if (feature('DARWIN') && process.platform === 'darwin') {
+      try {
+        const { cleanupComputerUseAfterTurn } = await import(
+          '../utils/computerUse/cleanup.js'
+        )
+        await cleanupComputerUseAfterTurn(toolUseContext)
+      } catch (err) {
+        // Cleanup is best-effort. Never block the stop-hook return.
+        logForDebugging(`[Computer Use MCP] cleanup failed: ${errorMessage(err)}`)
+      }
+    }
   }
 }
