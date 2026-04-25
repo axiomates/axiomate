@@ -2068,10 +2068,7 @@ export function startRelevantMemoryPrefetch(
   messages: ReadonlyArray<Message>,
   toolUseContext: ToolUseContext,
 ): MemoryPrefetch | undefined {
-  if (
-    !isAutoMemoryEnabled() ||
-    !feature('DEV')
-  ) {
+  if (!isAutoMemoryEnabled()) {
     return undefined
   }
 

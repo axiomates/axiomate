@@ -1089,10 +1089,25 @@ export function getLargeMemoryFiles(files: MemoryFileInfo[]): MemoryFileInfo[] {
 }
 
 /**
- * When ax_moth_copse is on, the findRelevantMemories prefetch surfaces
- * memory files via attachments, so the MEMORY.md index is no longer injected
- * into the system prompt. Callsites that care about "what's actually in
- * context" (context builder, /context viz) should filter through this.
+ * Dual-injection hook for the MEMORY.md index.
+ *
+ * Default behaviour (`skipMemoryIndex = false`): inject both the index and
+ * the prefetch bodies. The two are complementary, not redundant:
+ *   - Index lines cover ALL memory files' frontmatter description (including
+ *     the N-5 not picked by the selector this turn).
+ *   - Prefetch bodies cover only the 5 files the LLM-based selector chose,
+ *     truncated to MAX_MEMORY_BYTES.
+ * If the index were dropped while the selector missed a relevant file
+ * (synonym / paraphrase / fuzzy match), the model would have no fallback
+ * channel to learn that the file even exists. Index ~200-400 tokens frozen
+ * in the system prompt is cheap insurance.
+ *
+ * Flip `skipMemoryIndex = true` once a higher-precision retriever (vector +
+ * graph RAG) replaces the description-based selector and the recall floor
+ * is high enough that the fallback is no longer warranted.
+ *
+ * Callsites that care about "what's actually in context" (context builder,
+ * /context viz) filter through this to stay consistent with the toggle.
  */
 export function filterInjectedMemoryFiles(
   files: MemoryFileInfo[],
