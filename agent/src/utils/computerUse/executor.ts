@@ -406,7 +406,7 @@ export function createCliExecutor(opts: {
         d.height,
         d.scaleFactor,
       )
-      return drainRunLoop(() =>
+      const result = await drainRunLoop(() =>
         cu.screenshot.captureExcluding(
           withoutTerminal(opts.allowedBundleIds),
           SCREENSHOT_JPEG_QUALITY,
@@ -415,6 +415,19 @@ export function createCliExecutor(opts: {
           opts.displayId,
         ),
       )
+      // TEMPORARY DEBUG: surface what cu.screenshot.captureExcluding actually
+      // returns at runtime. Remove after the base64.endsWith mystery is solved.
+      // eslint-disable-next-line no-console
+      console.error(
+        '[CU-DEBUG] screenshot result:',
+        'isBuffer=' + (Buffer.isBuffer(result) || result instanceof Uint8Array),
+        'type=' + typeof result,
+        'ctor=' + (result?.constructor?.name ?? 'null'),
+        'keys=' + (result && typeof result === 'object' ? Object.keys(result).join(',') : 'n/a'),
+        'base64Type=' + typeof (result as { base64?: unknown })?.base64,
+        'base64Len=' + ((result as { base64?: string })?.base64?.length ?? 'n/a'),
+      )
+      return result
     },
 
     async zoom(
