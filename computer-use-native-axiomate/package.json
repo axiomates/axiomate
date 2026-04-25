@@ -16,6 +16,8 @@
     "computer-use-mcp-axiomate": "*",
     "clipboard-axiomate": "*",
     "node-screenshots": "^0.2.8",
+    "node-screenshots-darwin-arm64": "^0.2.8",
+    "node-screenshots-darwin-x64": "^0.2.8",
     "@nut-tree-fork/nut-js": "^4.2.0"
   },
   "devDependencies": {
