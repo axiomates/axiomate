@@ -6,7 +6,10 @@
  * Linux: wmctrl / xdotool / desktop files
  */
 
-import { execSync } from 'node:child_process'
+import { execSync, execFile } from 'node:child_process'
+import { promisify } from 'node:util'
+
+const execFileP = promisify(execFile)
 
 export interface AppInfo {
   bundleId: string
@@ -120,14 +123,85 @@ export async function openApp(bundleIdOrName: string): Promise<void> {
   }
 }
 
-// ── List installed apps (stub — expensive operation) ──────────────────────
+// ── List installed apps ───────────────────────────────────────────────────
 
 export async function listInstalledApps(): Promise<Array<AppInfo & { path: string }>> {
-  // TODO: implement per platform
-  // macOS: mdfind "kMDItemContentType == 'com.apple.application-bundle'"
-  // Windows: Get-ItemProperty HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*
-  // Linux: parse .desktop files in /usr/share/applications/
+  if (process.platform === 'darwin') {
+    return listInstalledMacOS()
+  }
+  // Windows / Linux still TODO:
+  //   Windows: Get-ItemProperty HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*
+  //   Linux:   parse .desktop files in /usr/share/applications/
   return []
+}
+
+/**
+ * Enumerate /Applications + ~/Applications + system app dirs via Spotlight,
+ * then read each .app's Info.plist for bundleId + display name. Parallel
+ * plutil calls bound to PLIST_CONCURRENCY so we don't fork-bomb on machines
+ * with hundreds of apps installed.
+ *
+ * Typical timing: mdfind ~100ms, plist read N × 50ms / 16 concurrency
+ * ≈ 700-800ms for 200 apps. Caller's timeout should accommodate this.
+ */
+const PLIST_CONCURRENCY = 16
+
+async function listInstalledMacOS(): Promise<Array<AppInfo & { path: string }>> {
+  let findStdout: string
+  try {
+    const { stdout } = await execFileP(
+      'mdfind',
+      ['kMDItemContentType == "com.apple.application-bundle"'],
+      { maxBuffer: 16 * 1024 * 1024 },
+    )
+    findStdout = stdout
+  } catch {
+    return []
+  }
+
+  const paths = findStdout
+    .split('\n')
+    .map(p => p.trim())
+    .filter(Boolean)
+  if (paths.length === 0) return []
+
+  const results: Array<AppInfo & { path: string }> = []
+  for (let i = 0; i < paths.length; i += PLIST_CONCURRENCY) {
+    const batch = paths.slice(i, i + PLIST_CONCURRENCY)
+    const settled = await Promise.allSettled(
+      batch.map(async appPath => {
+        const plistPath = `${appPath}/Contents/Info.plist`
+        const { stdout } = await execFileP(
+          'plutil',
+          ['-convert', 'json', '-o', '-', plistPath],
+          { maxBuffer: 1024 * 1024 },
+        )
+        const info = JSON.parse(stdout) as Record<string, unknown>
+        const bundleId =
+          typeof info.CFBundleIdentifier === 'string' ? info.CFBundleIdentifier : ''
+        if (!bundleId) return null
+        const displayName =
+          (typeof info.CFBundleDisplayName === 'string' && info.CFBundleDisplayName) ||
+          (typeof info.CFBundleName === 'string' && info.CFBundleName) ||
+          appPath.split('/').pop()?.replace(/\.app$/, '') ||
+          bundleId
+        return { bundleId, displayName, path: appPath }
+      }),
+    )
+    for (const r of settled) {
+      if (r.status === 'fulfilled' && r.value) {
+        results.push(r.value)
+      }
+    }
+  }
+
+  // Same bundleId can show up in /Applications and ~/Applications. Keep first.
+  const seen = new Set<string>()
+  return results.filter(a => {
+    if (seen.has(a.bundleId)) return false
+    seen.add(a.bundleId)
+    return true
+  })
 }
 
 // ── App under point (stub) ────────────────────────────────────────────────
