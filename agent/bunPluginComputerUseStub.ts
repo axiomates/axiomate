@@ -12,7 +12,7 @@
 // Usage:
 //   plugins: [makeComputerUseStubPlugin(process.platform !== 'darwin')]
 //
-// The workspace packages computer-use-mcp-axiomate and
+// The workspace packages computer-use-dispatch-axiomate and
 // computer-use-native-axiomate are already listed in `external` for both
 // build.ts and package-win.ts, so they don't need plugin handling — only
 // the source-tree entry point does.

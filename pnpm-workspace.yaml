@@ -6,7 +6,7 @@ packages:
   - 'url-handler-mac-napi-axiomate'
   - 'audio-capture-axiomate'
   - 'sandbox-axiomate'
-  - 'computer-use-mcp-axiomate'
+  - 'computer-use-dispatch-axiomate'
   - 'computer-use-native-axiomate'
   - 'mcpb-axiomate'
   - 'agent'

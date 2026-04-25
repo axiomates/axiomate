@@ -4,7 +4,7 @@
  * (same pattern as Chrome's rendering overrides, plus `.call()`).
  *
  * The wrapper-closure logic (build overrides fresh, lock gate, permission
- * merge, screenshot stash) lives in `computer-use-mcp-axiomate`'s
+ * merge, screenshot stash) lives in `computer-use-dispatch-axiomate`'s
  * `bindSessionContext`. This file binds it once per process,
  * caches the dispatcher, and updates a per-call ref for the pieces of
  * `ToolUseContext` that vary per-call (`abortController`, `setToolJSX`,
@@ -16,7 +16,7 @@
  * config gate `ax_malort_pedway` (see gates.ts).
  */
 
-import { bindSessionContext, type ComputerUseSessionContext, type CuCallToolResult, type CuPermissionRequest, type CuPermissionResponse, DEFAULT_GRANT_FLAGS, type ScreenshotDims } from 'computer-use-mcp-axiomate';
+import { bindSessionContext, type ComputerUseSessionContext, type CuCallToolResult, type CuPermissionRequest, type CuPermissionResponse, DEFAULT_GRANT_FLAGS, type ScreenshotDims } from 'computer-use-dispatch-axiomate';
 import * as React from 'react';
 import { getSessionId } from '../../bootstrap/state.js';
 import { ComputerUseApproval } from '../../components/permissions/ComputerUseApproval/ComputerUseApproval.js';

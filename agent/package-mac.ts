@@ -126,7 +126,7 @@ buildTscWorkspace('clipboard-axiomate')
 buildTscWorkspace('treeify-axiomate')
 buildTscWorkspace('sandbox-axiomate')
 buildTscWorkspace('mcpb-axiomate')
-buildTscWorkspace('computer-use-mcp-axiomate')
+buildTscWorkspace('computer-use-dispatch-axiomate')
 buildTscWorkspace('image-processor-axiomate')
 buildTscWorkspace('computer-use-native-axiomate')
 

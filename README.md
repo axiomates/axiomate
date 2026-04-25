@@ -458,7 +458,7 @@ axiomate/
   audio-capture-axiomate/         Audio recording (Rust NAPI, cpal)
   image-processor-axiomate/       Image processing (sharp wrapper)
   computer-use-native-axiomate/   Mouse/keyboard/screenshot (nut-js, node-screenshots)
-  computer-use-mcp-axiomate/      Computer use MCP server
+  computer-use-dispatch-axiomate/ Computer use dispatch + 5-gate engine
   sandbox-axiomate/               Sandbox execution
   treeify-axiomate/               Directory tree display
   mcpb-axiomate/                  MCP bridge

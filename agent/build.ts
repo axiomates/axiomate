@@ -54,7 +54,7 @@ const result = await Bun.build({
     'image-processor-axiomate',
     'audio-capture-axiomate',
     'sandbox-axiomate',
-    'computer-use-mcp-axiomate',
+    'computer-use-dispatch-axiomate',
     'computer-use-native-axiomate',
     'mcpb-axiomate',
     // react-reconciler-axiomate is NOT external — must be bundled

@@ -2003,17 +2003,90 @@ async function buildMonitorNote(
   return undefined;
 }
 
+/**
+ * Empty-allowlist auto-trigger. When a screenshot is requested and the session
+ * allowlist is empty, we surface a permission dialog (running apps list) instead
+ * of returning a hard error — the LLM shouldn't have to pre-call request_access
+ * with guessed bundle IDs to make a first screenshot work. On success, mutates
+ * `overrides.allowedApps` in place so the same dispatch can fall through with
+ * the new grants. Returns a CuCallToolResult only when the auto-trigger itself
+ * resolved to an error (no permission handler, no running apps, user denied).
+ */
+async function autoTriggerEmptyAllowlistDialog(
+  adapter: ComputerUseHostAdapter,
+  overrides: ComputerUseOverrides,
+  reason: string,
+): Promise<CuCallToolResult | undefined> {
+  if (!overrides.onPermissionRequest) {
+    return errorResult(
+      "No applications are granted for this session and the session has no permission handler. Computer control is unavailable here.",
+      "feature_unavailable",
+    );
+  }
+
+  const running = await adapter.executor.listRunningApps();
+  const userDeniedSet = new Set(overrides.userDeniedBundleIds);
+  const apps: ResolvedAppRequest[] = [];
+  for (const r of running) {
+    if (userDeniedSet.has(r.bundleId)) continue;
+    if (isPolicyDenied(r.bundleId, r.displayName)) continue;
+    apps.push({
+      requestedName: r.displayName,
+      resolved: {
+        bundleId: r.bundleId,
+        displayName: r.displayName,
+        path: "",
+      },
+      isSentinel: SENTINEL_BUNDLE_IDS.has(r.bundleId),
+      alreadyGranted: false,
+      proposedTier: getDefaultTierForApp(r.bundleId, r.displayName),
+    });
+  }
+
+  if (apps.length === 0) {
+    return errorResult(
+      "No running applications are available to grant. Ask the user to open the apps you need to control, then retry.",
+      "allowlist_empty",
+    );
+  }
+
+  const req: CuPermissionRequest = {
+    requestId: randomUUID(),
+    reason,
+    apps,
+    requestedFlags: {},
+    screenshotFiltering: adapter.executor.capabilities.screenshotFiltering,
+  };
+  const response = await overrides.onPermissionRequest(req);
+
+  if (response.granted.length === 0) {
+    return errorResult(
+      "User dismissed the permission dialog without granting any application. Ask the user which apps you should be allowed to control, then retry.",
+      "allowlist_empty",
+    );
+  }
+
+  overrides.allowedApps.push(...response.granted);
+  overrides.displayResolvedForApps = undefined;
+  return undefined;
+}
+
 async function handleScreenshot(
   adapter: ComputerUseHostAdapter,
   overrides: ComputerUseOverrides,
   subGates: CuSubGates,
 ): Promise<CuCallToolResult> {
-  // §2 — empty allowlist → tool error, no screenshot.
+  // Empty allowlist → auto-trigger the permission dialog instead of erroring.
+  // The host renders the running-apps list; user picks; we fall through with
+  // the new grants applied to overrides.allowedApps. The wrapPermission
+  // wrapper persists grants for subsequent dispatches as well.
   if (overrides.allowedApps.length === 0) {
-    return errorResult(
-      "No applications are granted for this session. Call request_access first.",
-      "allowlist_empty",
+    const triggerError = await autoTriggerEmptyAllowlistDialog(
+      adapter,
+      overrides,
+      "Take a screenshot of your screen.",
     );
+    if (triggerError) return triggerError;
   }
 
   // Atomic resolve→prepare→capture (one Swift call, no scheduler gap).

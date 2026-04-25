@@ -1,4 +1,4 @@
-import type { CoordinateMode, CuSubGates } from 'computer-use-mcp-axiomate'
+import type { CoordinateMode, CuSubGates } from 'computer-use-dispatch-axiomate'
 
 type ChicagoConfig = CuSubGates & {
   enabled: boolean

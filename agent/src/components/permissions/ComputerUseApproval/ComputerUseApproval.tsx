@@ -1,8 +1,8 @@
-import { getSentinelCategory, DEFAULT_GRANT_FLAGS } from 'computer-use-mcp-axiomate'
+import { getSentinelCategory, DEFAULT_GRANT_FLAGS } from 'computer-use-dispatch-axiomate'
 import type {
   CuPermissionRequest,
   CuPermissionResponse,
-} from 'computer-use-mcp-axiomate/types'
+} from 'computer-use-dispatch-axiomate/types'
 import figures from 'figures'
 import * as React from 'react'
 import { useMemo, useState } from 'react'

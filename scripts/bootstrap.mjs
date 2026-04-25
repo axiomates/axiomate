@@ -467,7 +467,7 @@ function buildJsWorkspaces() {
     ['treeify-axiomate', 'build'],
     ['sandbox-axiomate', 'build'],
     ['mcpb-axiomate', 'build'],
-    ['computer-use-mcp-axiomate', 'build'],
+    ['computer-use-dispatch-axiomate', 'build'],
     ['image-processor-axiomate', 'build'],
     ['computer-use-native-axiomate', 'build'],
   ]

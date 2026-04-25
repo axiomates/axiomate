@@ -10,7 +10,7 @@ let cachedTools: readonly Tool[] | undefined
  * package-mac.ts; auto-set by build.ts when host is darwin) and false
  * on windows / linux builds. The non-darwin branch returns [] and bun
  * bundler DCE-strips the entire lazy require chain — including the
- * workspace packages computer-use-mcp-axiomate and
+ * workspace packages computer-use-dispatch-axiomate and
  * computer-use-native-axiomate plus every sibling source file under
  * utils/computerUse/. Net effect: windows / linux binaries contain no
  * computer-use code or dependency.
@@ -41,8 +41,8 @@ export function getComputerUseBuiltinTools(): readonly Tool[] {
   // the bundler can DCE this branch on non-darwin builds.
   /* eslint-disable @typescript-eslint/no-require-imports */
   const { buildComputerUseTools } = require(
-    'computer-use-mcp-axiomate',
-  ) as typeof import('computer-use-mcp-axiomate')
+    'computer-use-dispatch-axiomate',
+  ) as typeof import('computer-use-dispatch-axiomate')
   const { MCPTool } = require(
     '../../tools/MCPTool/MCPTool.js',
   ) as typeof import('../../tools/MCPTool/MCPTool.js')

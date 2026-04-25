@@ -1,7 +1,7 @@
 import type {
   ComputerUseHostAdapter,
   Logger,
-} from 'computer-use-mcp-axiomate'
+} from 'computer-use-dispatch-axiomate'
 import { format } from 'util'
 import { logForDebugging } from '../debug.js'
 import { COMPUTER_USE_MCP_SERVER_NAME } from './common.js'

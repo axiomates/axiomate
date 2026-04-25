@@ -1,7 +1,7 @@
 {
-  "name": "computer-use-mcp-axiomate",
+  "name": "computer-use-dispatch-axiomate",
   "version": "0.1.0",
-  "description": "Computer Use MCP protocol layer (tools, permissions, coordinates, safety checks)",
+  "description": "Computer Use dispatch + 5-gate engine (tools, permissions, coordinates, safety checks)",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

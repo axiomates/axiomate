@@ -74,7 +74,7 @@ buildTscWorkspace('clipboard-axiomate')
 buildTscWorkspace('treeify-axiomate')
 buildTscWorkspace('sandbox-axiomate')
 buildTscWorkspace('mcpb-axiomate')
-buildTscWorkspace('computer-use-mcp-axiomate')
+buildTscWorkspace('computer-use-dispatch-axiomate')
 buildTscWorkspace('image-processor-axiomate')
 buildTscWorkspace('computer-use-native-axiomate')
 
@@ -117,7 +117,7 @@ const result = await Bun.build({
   external: [
     'modifiers-mac-napi-axiomate',  // macOS-only
     'url-handler-mac-napi-axiomate', // macOS-only
-    'computer-use-mcp-axiomate',  // macOS-only, gated by feature('DARWIN')
+    'computer-use-dispatch-axiomate',  // macOS-only, gated by feature('DARWIN')
     'computer-use-native-axiomate', // macOS-only, gated by feature('DARWIN')
   ],
 

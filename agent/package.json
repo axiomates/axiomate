@@ -62,7 +62,7 @@
     "clipboard-axiomate": "workspace:*",
     "code-excerpt": "^4.0.0",
     "combined-stream": "^1.0.8",
-    "computer-use-mcp-axiomate": "workspace:*",
+    "computer-use-dispatch-axiomate": "workspace:*",
     "commander": "~12.1.0",
     "computer-use-native-axiomate": "workspace:*",
     "diff": "^5.0.0",

@@ -158,9 +158,11 @@ export function buildComputerUseTools(
     {
       name: "request_access",
       description:
-        "Request user permission to control a set of applications for this session. Must be called before any other tool in this server. " +
+        "Request user permission to control a set of applications for this session. " +
+        "The dispatch layer auto-throws a PermissionRequest when the session allowlist is empty — the host application surfaces an interactive dialog, the user picks apps, and the original tool call resumes automatically. " +
+        "**Do NOT pre-call request_access as a 'setup step'**: just call screenshot/click/etc. directly and the host dialog will appear when needed. " +
+        "Only call this tool explicitly when (a) the user mid-session asks to grant access to a specific named app, or (b) you need to expand the allowlist to additional apps after an initial dialog already happened. " +
         "The user sees a single dialog listing all requested apps and either allows the whole set or denies it. " +
-        "Call this again mid-session to add more apps; previously granted apps remain granted. " +
         "Returns the granted apps, denied apps, and screenshot filtering capability.",
       inputSchema: {
         type: "object" as const,
@@ -201,7 +203,9 @@ export function buildComputerUseTools(
       name: "screenshot",
       description:
         screenshotDesc +
-        " Returns an error if the allowlist is empty. The returned image is what subsequent click coordinates are relative to.",
+        " If the session allowlist is empty, the dispatch layer auto-throws a PermissionRequest (not a hard error) and the host application surfaces an interactive dialog where the user picks apps to allow; the screenshot then resumes automatically. " +
+        "**Just call this tool directly — do NOT pre-call request_access, and do NOT fall back to shell commands like `screencapture` if you see a permission-related result. Retry once if the call appears interrupted.** " +
+        "The returned image is what subsequent click coordinates are relative to.",
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -219,6 +223,7 @@ export function buildComputerUseTools(
       name: "zoom",
       description:
         "Take a higher-resolution screenshot of a specific region of the last full-screen screenshot. Use this liberally to inspect small text, button labels, or fine UI details that are hard to read in the downsampled full-screen image. " +
+        "If permission is required, the dispatch layer auto-throws a PermissionRequest and the host surfaces a dialog — just retry the zoom afterward; do NOT fall back to shell commands. " +
         "IMPORTANT: Coordinates in subsequent click calls always refer to the full-screen screenshot, never the zoomed image. This tool is read-only for inspecting detail.",
       inputSchema: {
         type: "object" as const,
