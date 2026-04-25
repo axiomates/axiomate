@@ -27,7 +27,9 @@ beforeEach(() => {
   mockCtx.mockReturnValue(32_000)
 })
 
-afterEach(() => vi.restoreAllMocks())
+afterEach(() => {
+  vi.restoreAllMocks()
+})
 
 // ---------------------------------------------------------------------------
 // isObviouslyLocalHostname

@@ -1,13 +1,18 @@
 import { getGlobalConfig } from './config.js'
+import { fuzzyMatchContextWindow } from './model/contextWindowFuzzy.js'
 
-// Fallback when ModelProviderConfig.contextWindow is not set.
-// Small on purpose: signals "model unknown / unconfigured" rather than
-// assuming a large window the real model may not have.
-export const MODEL_CONTEXT_WINDOW_DEFAULT = 32_000
+// Final fallback when neither the user config nor the fuzzy matcher can
+// identify the model. 64K is the floor because most modern open-weight
+// LLMs ship with at least that much context (Qwen 2.x at 32K is rare
+// today; Qwen 3, Llama 3.1+, DeepSeek V2+, Kimi K2, GLM-4 are all ≥ 128K).
+// Picking 64K means: even a totally unknown model gets enough headroom
+// to avoid premature compact while staying under any model's real cap.
+export const MODEL_CONTEXT_WINDOW_DEFAULT = 64_000
 
 export function getContextWindowForModel(model: string): number {
   return (
     getGlobalConfig().models?.[model]?.contextWindow ??
+    fuzzyMatchContextWindow(model) ??
     MODEL_CONTEXT_WINDOW_DEFAULT
   )
 }
