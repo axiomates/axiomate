@@ -4,41 +4,12 @@ import {
 } from 'computer-use-mcp-axiomate'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js'
-import { homedir } from 'os'
 
 import { enableConfigs } from '../config.js'
 import { logForDebugging } from '../debug.js'
-import { filterAppsForDescription } from './appNames.js'
 import { getChicagoCoordinateMode } from './gates.js'
 import { getComputerUseHostAdapter } from './hostAdapter.js'
-
-const APP_ENUM_TIMEOUT_MS = 1000
-
-/**
- * Enumerate installed apps, timed. Fails soft — if Spotlight is slow or
- * the computer-use-chrome MCP server throws, the tool description just omits the list. Resolution
- * happens at call time regardless; the model just doesn't get hints.
- */
-async function tryGetInstalledAppNames(): Promise<string[] | undefined> {
-  const adapter = getComputerUseHostAdapter()
-  const enumP = adapter.executor.listInstalledApps()
-  let timer: ReturnType<typeof setTimeout> | undefined
-  const timeoutP = new Promise<undefined>(resolve => {
-    timer = setTimeout(resolve, APP_ENUM_TIMEOUT_MS, undefined)
-  })
-  const installed = await Promise.race([enumP, timeoutP])
-    .catch(() => undefined)
-    .finally(() => clearTimeout(timer))
-  if (!installed) {
-    // The enumeration continues in the background — swallow late rejections.
-    void enumP.catch(() => {})
-    logForDebugging(
-      `[Computer Use MCP] app enumeration exceeded ${APP_ENUM_TIMEOUT_MS}ms or failed; tool description omits list`,
-    )
-    return undefined
-  }
-  return filterAppsForDescription(installed, homedir())
-}
+import { tryGetInstalledAppNames } from './installedApps.js'
 
 /**
  * Construct the in-process server. Delegates to the package's

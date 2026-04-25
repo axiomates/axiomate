@@ -55,14 +55,35 @@ export function getComputerUseBuiltinTools(): readonly Tool[] {
   const { getComputerUseMCPToolOverrides } = require(
     './wrapper.js',
   ) as typeof import('./wrapper.js')
+  const { tryGetInstalledAppNames } = require(
+    './installedApps.js',
+  ) as typeof import('./installedApps.js')
   /* eslint-enable @typescript-eslint/no-require-imports */
 
-  const cuTools = buildComputerUseTools(
+  const baseTools = buildComputerUseTools(
     CLI_CU_CAPABILITIES,
     getChicagoCoordinateMode(),
   )
 
-  cachedTools = cuTools.map(tool => {
+  // Lazy-build augmented descriptions: Spotlight enumeration takes ~100ms
+  // and we don't want it on the startup path, so the first description()
+  // call awaits this promise (~1s timeout in tryGetInstalledAppNames) and
+  // every subsequent call hits the cached Map. The augmented variant is
+  // critical for `request_access` — without `installedAppNames` the tool
+  // description doesn't list real bundle-ids and the LLM has no way to
+  // pick one. Failure (timeout / null) falls back to the base description.
+  const augmentedDescPromise: Promise<Map<string, string>> = (async () => {
+    const apps = await tryGetInstalledAppNames()
+    if (!apps) return new Map()
+    const augmented = buildComputerUseTools(
+      CLI_CU_CAPABILITIES,
+      getChicagoCoordinateMode(),
+      apps,
+    )
+    return new Map(augmented.map(t => [t.name, t.description ?? '']))
+  })()
+
+  cachedTools = baseTools.map(tool => {
     const overrides = getComputerUseMCPToolOverrides(tool.name)
     return {
       ...MCPTool,
@@ -79,10 +100,12 @@ export function getComputerUseBuiltinTools(): readonly Tool[] {
         tool.name,
       isEnabled: () => process.platform === 'darwin',
       async description() {
-        return tool.description ?? ''
+        const map = await augmentedDescPromise
+        return map.get(tool.name) || tool.description || ''
       },
       async prompt() {
-        return tool.description ?? ''
+        const map = await augmentedDescPromise
+        return map.get(tool.name) || tool.description || ''
       },
       inputJSONSchema: tool.inputSchema as ToolInputJSONSchema,
       // overrides provides: userFacingName, renderToolUseMessage,
