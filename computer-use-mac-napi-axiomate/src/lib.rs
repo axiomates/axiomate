@@ -132,6 +132,8 @@ pub async fn capture_excluding(
 #[cfg(target_os = "macos")]
 mod macos {
     pub mod running_app {
+        use objc2::msg_send;
+        use objc2::rc::Retained;
         use objc2_app_kit::{NSRunningApplication, NSWorkspace};
         use objc2_foundation::NSString;
 
@@ -148,32 +150,53 @@ mod macos {
         ) -> bool {
             let workspace = NSWorkspace::sharedWorkspace();
             let running = workspace.runningApplications();
-            let target = NSString::from_str(bundle_id);
+            let count = running.count();
             let mut hit = false;
-            for app in running.iter() {
-                let Some(bid) = app.bundleIdentifier() else { continue };
-                if bid.isEqualToString(&target) {
-                    action(&app);
-                    hit = true;
+            // Index NSArray by integer — objc2-foundation 0.2's NSArray<T>
+            // implements `Index<usize, Output = T>`. Avoid `.iter()` (not on
+            // Retained<NSArray<T>> in 0.2) and Obj-C string compare (use
+            // Rust str equality after bridging through to_string()).
+            for i in 0..count {
+                let app: &NSRunningApplication = &running[i];
+                let bid: Option<Retained<NSString>> = app.bundleIdentifier();
+                if let Some(bid) = bid {
+                    if bid.to_string() == bundle_id {
+                        action(app);
+                        hit = true;
+                    }
                 }
             }
             hit
         }
 
+        // hide / unhide / activate go through `msg_send!` directly. The
+        // alternative — calling Rust binding methods like `app.hide()` —
+        // depends on which selectors objc2-app-kit 0.2 exposes on
+        // NSRunningApplication. activate() (no args, macOS 14+) isn't
+        // bound there yet, and we want consistent codepath, so route all
+        // three through Obj-C runtime selectors. Selectors have been
+        // stable on NSRunningApplication since 10.6 (hide / unhide) and
+        // 10.6 (activateWithOptions:).
+
         pub fn hide(bundle_id: &str) -> bool {
-            unsafe { for_each_matching(bundle_id, |app| { app.hide(); }) }
+            unsafe { for_each_matching(bundle_id, |app| {
+                let _: () = msg_send![app, hide];
+            }) }
         }
 
         pub fn unhide(bundle_id: &str) -> bool {
-            unsafe { for_each_matching(bundle_id, |app| { app.unhide(); }) }
+            unsafe { for_each_matching(bundle_id, |app| {
+                let _: () = msg_send![app, unhide];
+            }) }
         }
 
         pub fn activate(bundle_id: &str) -> bool {
-            // `activate()` (no options) uses the app's default activation
-            // policy. Adequate for the prepareDisplay path — the resolver
-            // re-orders z-order separately. The richer
-            // `activateWithOptions:` is deprecated in macOS 14+ anyway.
-            unsafe { for_each_matching(bundle_id, |app| { app.activate(); }) }
+            unsafe { for_each_matching(bundle_id, |app| {
+                // Pass 0 as default options (NSApplicationActivateAllWindows = 1
+                // is the only nontrivial flag pre-14; default 0 is fine for
+                // prepareDisplay's "bring forward" use).
+                let _: () = msg_send![app, activateWithOptions: 0usize];
+            }) }
         }
     }
 
