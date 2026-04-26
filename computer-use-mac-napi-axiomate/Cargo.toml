@@ -7,7 +7,11 @@ edition = "2021"
 crate-type = ["cdylib"]
 
 [dependencies]
-napi = { version = "2", features = ["napi6"] }
+# tokio_rt feature: required for `#[napi] pub async fn` — napi-rs's async
+# expansion calls `napi::bindgen_prelude::execute_tokio_future` which is
+# only compiled in when this feature is enabled. We have 4 async exports
+# (hideApp / unhideApp / activateApp / captureExcluding).
+napi = { version = "2", features = ["napi6", "tokio_rt"] }
 napi-derive = "2"
 
 [target.'cfg(target_os = "macos")'.dependencies]
