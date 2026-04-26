@@ -73,6 +73,10 @@ export function messagesToOpenAI(
     const textParts: OpenAIContentPart[] = []
     const toolCalls: OpenAIToolCall[] = []
     const toolResults: OpenAIMessage[] = []
+    // Image parts extracted from tool_result blocks in this msg. OpenAI's
+    // role:'tool' message can't carry image content; deferred and emitted
+    // as a follow-up role:'user' message after all tool replies.
+    const pendingToolResultImages: OpenAIContentPart[] = []
 
     for (const block of msg.content) {
       switch (block.type) {
@@ -113,16 +117,62 @@ export function messagesToOpenAI(
           })
           break
         case 'tool_result': {
-          const content = typeof block.content === 'string'
-            ? block.content
-            : block.content
-                ?.filter(b => b.type === 'text')
-                .map(b => (b as { text: string }).text)
-                .join('\n') ?? ''
+          // Split tool_result content: text → tool message string content,
+          // image → deferred to a follow-up user message (OpenAI forbids
+          // image_url inside role:'tool').
+          let textContent = ''
+          let hadImageDropped = false
+          if (typeof block.content === 'string') {
+            textContent = block.content
+          } else if (Array.isArray(block.content)) {
+            const textChunks: string[] = []
+            for (const inner of block.content) {
+              if (inner.type === 'text') {
+                textChunks.push((inner as { text: string }).text)
+              } else if (inner.type === 'image') {
+                if (!supportsImages) {
+                  hadImageDropped = true
+                  continue
+                }
+                const src = (inner as {
+                  source?: {
+                    type?: string
+                    data?: string
+                    media_type?: string
+                    url?: string
+                  }
+                }).source
+                if (src?.type === 'base64' && src.data && src.media_type) {
+                  pendingToolResultImages.push({
+                    type: 'image_url',
+                    image_url: {
+                      url: `data:${src.media_type};base64,${src.data}`,
+                    },
+                  })
+                } else if (src?.type === 'url' && src.url) {
+                  pendingToolResultImages.push({
+                    type: 'image_url',
+                    image_url: { url: src.url },
+                  })
+                }
+              }
+            }
+            textContent = textChunks.join('\n')
+          }
+          // OpenAI requires non-empty tool message content. If we deferred
+          // images, tell the model so it doesn't see an empty result.
+          if (textContent.length === 0) {
+            if (pendingToolResultImages.length > 0) {
+              textContent = '[Image returned in following message]'
+            } else if (hadImageDropped) {
+              textContent =
+                '[Tool returned an image; this model does not support image input]'
+            }
+          }
           toolResults.push({
             role: 'tool',
             tool_call_id: block.tool_use_id,
-            content: block.is_error ? `Error: ${content}` : content,
+            content: block.is_error ? `Error: ${textContent}` : textContent,
           })
           break
         }
@@ -156,6 +206,12 @@ export function messagesToOpenAI(
     // Emit tool results as separate messages
     for (const tr of toolResults) {
       result.push(tr)
+    }
+
+    // Emit images returned by tools as a follow-up user message. OpenAI
+    // protocol routes images through user/image_url, never role:'tool'.
+    if (pendingToolResultImages.length > 0) {
+      result.push({ role: 'user', content: pendingToolResultImages })
     }
   }
 
