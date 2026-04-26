@@ -312,11 +312,15 @@ export function createComputerUseSwift(): ComputerUseAPI {
       const display = getDisplaySize(preferredDisplayId)
       const displayId = display.displayId
 
-      // Hide non-allowlisted apps via native binding (when available + doHide).
-      // Falls through to no-hide on non-darwin or when binding missing.
+      // Hide non-allowlisted apps via native binding (when available + doHide
+      // + the user actually allowlisted some apps). When allowedBundleIds is
+      // empty, treat the screenshot as "no restriction" — capture full-screen
+      // without hiding anything (pre-21097da behavior; matches the dispatch's
+      // bypass of auto-trigger on `screenshotFiltering: 'none'`). Falls
+      // through to no-hide on non-darwin or when binding missing.
       const hidden: string[] = []
       const native = loadMacNative()
-      if (doHide && native) {
+      if (doHide && native && allowedBundleIds.length > 0) {
         const allowSet = new Set(allowedBundleIds)
         if (hostBundleId) allowSet.add(hostBundleId)
         const running = await listRunningApps()

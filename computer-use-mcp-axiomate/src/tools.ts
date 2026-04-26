@@ -203,8 +203,10 @@ export function buildComputerUseTools(
       name: "screenshot",
       description:
         screenshotDesc +
-        " If the session allowlist is empty, the dispatch layer auto-throws a PermissionRequest (not a hard error) and the host application surfaces an interactive dialog where the user picks apps to allow; the screenshot then resumes automatically. " +
-        "**Just call this tool directly — do NOT pre-call request_access, and do NOT fall back to shell commands like `screencapture` if you see a permission-related result. Retry once if the call appears interrupted.** " +
+        (caps.screenshotFiltering === "native"
+          ? " If the session allowlist is empty, the dispatch layer auto-throws a PermissionRequest (not a hard error) and the host application surfaces an interactive dialog where the user picks apps to allow; the screenshot then resumes automatically. "
+          : " The screen is captured as-is; the session allowlist does not need to be populated for screenshots on this platform. Just call this tool directly. ") +
+        "**Do NOT pre-call request_access for the screenshot itself, and do NOT fall back to shell commands like `screencapture` if you see a permission-related result. Retry once if the call appears interrupted.** " +
         "The returned image is what subsequent click coordinates are relative to.",
       inputSchema: {
         type: "object" as const,

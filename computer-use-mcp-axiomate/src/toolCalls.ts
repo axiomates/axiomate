@@ -2076,11 +2076,18 @@ async function handleScreenshot(
   overrides: ComputerUseOverrides,
   subGates: CuSubGates,
 ): Promise<CuCallToolResult> {
-  // Empty allowlist → auto-trigger the permission dialog instead of erroring.
-  // The host renders the running-apps list; user picks; we fall through with
-  // the new grants applied to overrides.allowedApps. The wrapPermission
-  // wrapper persists grants for subsequent dispatches as well.
-  if (overrides.allowedApps.length === 0) {
+  // The allowlist gate only matters when the platform actually filters
+  // screenshots by allowlist (compositor-level). On platforms where
+  // `screenshotFiltering === 'none'` (the screen is captured as-is), the
+  // gate is ceremony — TCC Screen Recording perms already gate
+  // "permission to look at the screen", and screenshots are read-only.
+  // Skip the auto-trigger entirely; capture full-screen.
+  if (
+    adapter.executor.capabilities.screenshotFiltering === "native" &&
+    overrides.allowedApps.length === 0
+  ) {
+    // Native compositor filtering: empty allowlist means no apps would be
+    // visible. Auto-trigger the dialog so the user picks something to keep.
     const triggerError = await autoTriggerEmptyAllowlistDialog(
       adapter,
       overrides,
