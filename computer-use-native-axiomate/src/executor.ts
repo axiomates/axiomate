@@ -129,6 +129,14 @@ export function createExecutor(): ComputerExecutor {
       }
     },
 
+    async screenshotWindow(_bundleId: string): Promise<ScreenshotResult | null> {
+      // Per-app window capture — macOS-only via `screencapture -l <CGWindowID>`.
+      // The cross-platform executor in this workspace doesn't implement it
+      // (no equivalent CLI on win/linux); the agent's CLI executor delegates
+      // to compat/swift.ts:captureWindow which does the real work on darwin.
+      return null
+    },
+
     async zoom(
       region: { x: number; y: number; w: number; h: number },
       _allowedBundleIds: string[],

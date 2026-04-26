@@ -417,6 +417,27 @@ export function createCliExecutor(opts: {
       )
     },
 
+    async screenshotWindow(
+      bundleId: string,
+    ): Promise<ScreenshotResult | null> {
+      // Delegates to the compat layer's `captureWindow` — no drainRunLoop
+      // needed (the impl shells out to osascript + screencapture, no
+      // Swift @MainActor dispatch involved).
+      const result = await cu.captureWindow(bundleId)
+      if (!result) return null
+      // captureWindow returns { base64, width, height }. Pad to ScreenshotResult
+      // shape — `displayId`, `displayWidth`, `displayHeight` are unused for
+      // window captures (click coords always refer to the full screen).
+      return {
+        base64: result.base64,
+        width: result.width,
+        height: result.height,
+        displayId: 0,
+        displayWidth: result.width,
+        displayHeight: result.height,
+      }
+    },
+
     async zoom(
       regionLogical: { x: number; y: number; w: number; h: number },
       allowedBundleIds: string[],

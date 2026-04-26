@@ -15,6 +15,11 @@
  * for SCContentFilter screenshots).
  */
 
+import { execFile } from 'node:child_process'
+import { readFile, unlink } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { promisify } from 'node:util'
 import {
   listDisplays,
   getDisplaySize,
@@ -30,6 +35,8 @@ import {
   getFrontmostApp,
 } from '../platforms/apps.js'
 import type { ComputerUseAPI } from '../index.js'
+
+const execFileP = promisify(execFile)
 
 // Lazy-load the optional macOS native binding. Requiring it is the only
 // platform-specific syscall in this module — keep it best-effort so a
@@ -285,6 +292,88 @@ export function createComputerUseSwift(): ComputerUseAPI {
       const [x, y, w, h] = args
       return captureRegion(x, y, w, h)
     },
+    async captureWindow(bundleId: string): Promise<CaptureResult | null> {
+      // Per-app window capture via macOS's native `screencapture -l <CGWindowID>`.
+      // Two-step: AppleScript → CGWindowID, then `screencapture` CLI →
+      // JPEG. Both shipped with macOS since 10.4 / 10.6, no extra binaries.
+      // Returns null on non-darwin (no equivalent CLI we can rely on),
+      // when the app isn't running, or when the AppleScript / capture fails.
+      if (process.platform !== 'darwin') return null
+
+      // Step 1: resolve windowID via AppleScript. Tries bundle-id match
+      // first; falls back to display-name match (case-insensitive).
+      // System Events' window `id` is the CGWindowID — same value
+      // `screencapture -l` expects.
+      const script = `
+on resolveWindow(target)
+  tell application "System Events"
+    set procs to (every application process whose bundle identifier is target)
+    if (count of procs) is 0 then
+      set procs to (every application process whose name is target)
+    end if
+    if (count of procs) is 0 then
+      -- case-insensitive name fallback
+      set targetLower to do shell script "echo " & quoted form of target & " | tr '[:upper:]' '[:lower:]'"
+      repeat with p in (every application process)
+        set pname to do shell script "echo " & quoted form of (name of p) & " | tr '[:upper:]' '[:lower:]'"
+        if pname is targetLower then
+          set procs to {p}
+          exit repeat
+        end if
+      end repeat
+    end if
+    if (count of procs) is 0 then return ""
+    set proc to item 1 of procs
+    if (count of windows of proc) is 0 then return ""
+    return (id of (first window of proc)) as text
+  end tell
+end resolveWindow
+
+return resolveWindow("${bundleId.replace(/"/g, '\\"')}")
+`
+
+      let windowId: number
+      try {
+        const { stdout } = await execFileP('osascript', ['-e', script])
+        const trimmed = stdout.trim()
+        if (!trimmed) return null
+        const id = parseInt(trimmed, 10)
+        if (isNaN(id)) return null
+        windowId = id
+      } catch {
+        return null
+      }
+
+      // Step 2: capture that window to a temp jpeg, read + base64.
+      // -l <id>: target window | -t jpg: format | -x: silent | -o: no shadow
+      const tmpPath = join(tmpdir(), `axiomate-cu-window-${process.pid}-${Date.now()}.jpg`)
+      try {
+        await execFileP('screencapture', [
+          '-l', String(windowId),
+          '-t', 'jpg',
+          '-x',
+          '-o',
+          tmpPath,
+        ])
+        const buf = await readFile(tmpPath)
+        const base64 = buf.toString('base64')
+        // We don't have a cheap pure-JS way to read JPEG dims here without
+        // pulling sharp. The dispatch only needs base64 to feed the LLM —
+        // width/height are advisory. Use a tiny JPEG SOF parser to get
+        // exact pixel dims (works for baseline + progressive JPEGs).
+        const dims = readJpegDimensions(buf)
+        return {
+          base64,
+          width: dims?.width ?? 0,
+          height: dims?.height ?? 0,
+        }
+      } catch {
+        return null
+      } finally {
+        // Best-effort cleanup. Temp file leak is harmless; tmpdir is GC'd.
+        unlink(tmpPath).catch(() => {})
+      }
+    },
     async resolvePrepareCapture(...args: any[]): Promise<any> {
       // Atomic resolve→prepare→capture path used by dispatch's autoTargetDisplay
       // gate. Original Swift impl chose a display, hid non-allowlist apps,
@@ -350,4 +439,55 @@ export function createComputerUseSwift(): ComputerUseAPI {
       // No equivalent needed on other platforms
     },
   }
+}
+
+/**
+ * Tiny baseline + progressive JPEG dimension reader. Parses SOF0/SOF1/SOF2
+ * markers to extract width/height. Avoids pulling sharp just to read header
+ * dims for a screenshot we already have on disk.
+ *
+ * Returns null on non-JPEG / truncated input. Spec: ITU-T T.81.
+ */
+function readJpegDimensions(buf: Buffer): { width: number; height: number } | null {
+  // JPEG starts with FF D8 (SOI). Each segment: FF <marker> [length(2)] [payload].
+  if (buf.length < 4 || buf[0] !== 0xff || buf[1] !== 0xd8) return null
+  let i = 2
+  while (i < buf.length - 8) {
+    if (buf[i] !== 0xff) return null
+    // Skip pad bytes (FF FF FF...).
+    let marker = buf[i + 1]!
+    while (marker === 0xff) {
+      i++
+      marker = buf[i + 1]!
+    }
+    // SOF0..SOF15 except DHT (C4), DAC (CC), RST (C0..C7 reserved here).
+    // The frame markers carrying dimensions are 0xC0..0xC3, 0xC5..0xC7,
+    // 0xC9..0xCB, 0xCD..0xCF.
+    if (
+      (marker >= 0xc0 && marker <= 0xc3) ||
+      (marker >= 0xc5 && marker <= 0xc7) ||
+      (marker >= 0xc9 && marker <= 0xcb) ||
+      (marker >= 0xcd && marker <= 0xcf)
+    ) {
+      // SOF segment: [FF Cx] [length(2)] [precision(1)] [height(2)] [width(2)] ...
+      const height = buf.readUInt16BE(i + 5)
+      const width = buf.readUInt16BE(i + 7)
+      return { width, height }
+    }
+    // Standalone markers (no payload): SOI (D8), EOI (D9), TEM (01),
+    // RST0..RST7 (D0..D7). Skip 2 bytes.
+    if (
+      marker === 0xd8 ||
+      marker === 0xd9 ||
+      marker === 0x01 ||
+      (marker >= 0xd0 && marker <= 0xd7)
+    ) {
+      i += 2
+      continue
+    }
+    // Variable-length segment: skip past payload using its length field.
+    const segLen = buf.readUInt16BE(i + 2)
+    i += 2 + segLen
+  }
+  return null
 }

@@ -2271,6 +2271,43 @@ async function handleScreenshot(
 }
 
 /**
+ * Per-app window capture via the platform's window-id-aware screenshot API
+ * (macOS: `screencapture -l <CGWindowID>`; other platforms currently null).
+ * Returns ONLY the target window's pixels — no other app is hidden as a
+ * side effect (cleaner UX than full-screen + prepareForAction hide).
+ *
+ * Same coord-invariant guard as handleZoom: return has NO `.screenshot`
+ * field, so subsequent click coords still refer to the last full-screen
+ * screenshot. This is for inspection.
+ */
+async function handleScreenshotWindow(
+  adapter: ComputerUseHostAdapter,
+  args: Record<string, unknown>,
+): Promise<CuCallToolResult> {
+  const bundleId = requireString(args, "bundle_id");
+  if (bundleId instanceof Error)
+    return errorResult(bundleId.message, "bad_args");
+
+  const result = await adapter.executor.screenshotWindow(bundleId);
+  if (!result) {
+    return errorResult(
+      `No frontmost window found for "${bundleId}". The app may not be running, may have no windows, or the bundle id may not match a running app. Call \`screenshot\` (full-screen) to see what's currently open, then try again with the right bundle id or display name.`,
+      "capture_failed",
+    );
+  }
+
+  return {
+    content: [
+      {
+        type: "image",
+        data: result.base64,
+        mimeType: "image/jpeg",
+      },
+    ],
+  };
+}
+
+/**
  * Region-crop upscaled screenshot. Coord invariant (computer_use_v2.py:1092):
  * click coords ALWAYS refer to the full-screen screenshot, never the zoom.
  * Enforced structurally: this handler's return has NO `.screenshot` field,
@@ -3441,6 +3478,9 @@ async function dispatchAction(
   switch (name) {
     case "screenshot":
       return handleScreenshot(adapter, overrides, subGates);
+
+    case "screenshot_window":
+      return handleScreenshotWindow(adapter, a);
 
     case "zoom":
       return handleZoom(adapter, a, overrides);

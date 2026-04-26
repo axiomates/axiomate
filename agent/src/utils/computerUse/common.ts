@@ -50,9 +50,16 @@ export function getTerminalBundleId(): string | null {
  * Static capabilities for macOS CLI. `hostBundleId` is not here — it's added
  * by `executor.ts` per `ComputerExecutor.capabilities`. `buildComputerUseTools`
  * takes this shape (no `hostBundleId`, no `teachMode`).
+ *
+ * `screenshotFiltering: 'none'` reflects current state — SCContentFilter
+ * binding in computer-use-mac-napi-axiomate's lib.rs is still a stub
+ * (`Ok(None)`). Full-screen screenshot via node-screenshots is unfiltered.
+ * Specific-window capture goes through the separate `screenshot_window`
+ * tool (osascript + screencapture -l). Flip back to `'native'` when
+ * SCContentFilter is wired and capable of compositor-level filtering.
  */
 export const CLI_CU_CAPABILITIES = {
-  screenshotFiltering: 'native' as const,
+  screenshotFiltering: 'none' as const,
   platform: 'darwin' as const,
 }
 

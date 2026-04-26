@@ -76,6 +76,10 @@ export interface ComputerUseAPI {
   captureExcluding(...args: any[]): any
   captureRegion(...args: any[]): any
   resolvePrepareCapture(...args: any[]): any
+  /** Capture the frontmost window of `bundleId` (or display name).
+   *  macOS-only — uses `screencapture -l <CGWindowID>`. Returns null on
+   *  non-darwin or when the app/window can't be resolved. */
+  captureWindow?(bundleId: string): Promise<{ base64: string; width: number; height: number } | null>
   _drainMainRunLoop?(): void
   [key: string]: any
 }

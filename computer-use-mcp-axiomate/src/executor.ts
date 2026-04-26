@@ -95,6 +95,15 @@ export interface ComputerExecutor {
     autoResolve: boolean;
     doHide?: boolean;
   }): Promise<ResolvePrepareCaptureResult>;
+  /**
+   * Capture the frontmost window of the given app. macOS uses
+   * `screencapture -l <windowID>` (CGWindowID resolved via osascript).
+   * Returns null when no window can be found (app not running, no windows,
+   * unknown bundle id, platform without per-window capture support).
+   * Coordinates in subsequent click calls still refer to the FULL screen
+   * — this is for inspection, not click-target setup.
+   */
+  screenshotWindow(bundleId: string): Promise<ScreenshotResult | null>;
 
   // ── Pre-action ───────────────────────────────────────────────────────
   prepareForAction(allowlistBundleIds: string[], displayId?: number): Promise<string[]>;
