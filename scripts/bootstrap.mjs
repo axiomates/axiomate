@@ -24,7 +24,11 @@ const options = {
   skipInstall: args.has('--skip-install'),
   noBuild: args.has('--no-build'),
   noAgentBuild: args.has('--no-agent-build'),
-  native: args.has('--native') && !args.has('--no-native'),
+  // Native NAPI modules ship with axiomate (audio-capture cross-platform;
+  // mac adds clipboard/modifiers/url-handler/computer-use). Bootstrap is
+  // a one-shot setup command — building them by default is the right
+  // behavior. `--no-native` lets pure-JS developers skip the Rust step.
+  native: !args.has('--no-native'),
 }
 
 if (args.has('--help') || args.has('-h')) {
@@ -70,7 +74,7 @@ function main() {
     if (options.native) {
       buildNativeWorkspaces()
     } else {
-      note('Skipping native NAPI builds. Pass --native to build platform native modules.')
+      note('Skipping native NAPI builds (--no-native).')
     }
 
     if (!options.noAgentBuild) {
@@ -106,8 +110,7 @@ Options:
   --skip-install   Do not run pnpm install.
   --no-build       Do not build workspaces or the agent.
   --no-agent-build Build support workspaces only.
-  --native         Also build platform native NAPI modules.
-  --no-native      Explicitly skip native NAPI builds.
+  --no-native      Skip platform native NAPI module builds (Rust optional).
 `)
 }
 

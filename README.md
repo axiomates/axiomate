@@ -34,13 +34,13 @@ pnpm start
 
 ### Automated Environment Setup
 
-The bootstrap script works on macOS, Windows, and Linux. It checks Node/pnpm/Git, installs Bun, pnpm, and Rust when missing, runs `pnpm install`, builds workspace packages, and builds the agent.
+The bootstrap script works on macOS, Windows, and Linux. It checks Node/pnpm/Git, installs Bun, pnpm, and Rust when missing, runs `pnpm install`, builds workspace packages including platform native NAPI modules, and builds the agent.
 
 ```bash
 pnpm doctor              # check only, do not install or build
-pnpm bootstrap           # install tools/deps, build JS workspaces, build agent
-pnpm bootstrap -- --native
-                             # also build platform native NAPI modules
+pnpm bootstrap           # install tools/deps, build all workspaces (JS + native), build agent
+pnpm bootstrap -- --no-native
+                             # skip native NAPI builds (no Rust required)
 pnpm bootstrap -- --no-build
                              # install tools/deps only
 ```
@@ -71,11 +71,7 @@ Then run:
 pnpm bootstrap
 ```
 
-For local native modules:
-
-```bash
-pnpm bootstrap -- --native
-```
+This builds the macOS native NAPI modules (clipboard, modifiers, url-handler, computer-use) by default. Pass `--no-native` to skip them.
 
 macOS may ask for Accessibility, Screen Recording, Microphone, or Automation permissions when computer-use, screenshot, audio, or URL handler features are used.
 
@@ -110,11 +106,7 @@ Then run:
 pnpm bootstrap
 ```
 
-For local native audio:
-
-```bash
-pnpm bootstrap -- --native
-```
+This builds the audio-capture NAPI module by default. Pass `--no-native` to skip it.
 
 ## Configuration
 
