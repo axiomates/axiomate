@@ -14,6 +14,7 @@ import type {
 import { mapFinishReason } from './openaiRequestAdapter.js'
 import type { ModelProviderUsageMapping } from '../../../utils/config.js'
 import { mapOpenAIUsage } from './openaiUsageMapper.js'
+import { logForDebugging } from '../../../utils/debug.js'
 
 // ---------------------------------------------------------------------------
 // OpenAI chunk shape (subset of openai SDK types we actually use)
@@ -137,6 +138,19 @@ export class OpenAIStreamState {
 
       // --- Tool calls ---
       if (delta.tool_calls) {
+        logForDebugging(
+          `[image-flow:L5-stream-tc-in] ${delta.tool_calls
+            .map(tc => {
+              const state = this.toolBlockIndices.has(tc.index)
+                ? 'continue'
+                : this.pendingToolCalls.has(tc.index)
+                  ? 'pending'
+                  : 'new'
+              return `tc[idx=${tc.index},id=${tc.id ?? '_'},name=${tc.function?.name ?? '_'},argLen=${tc.function?.arguments?.length ?? 0},${state}]`
+            })
+            .join(' ')}`,
+          { level: 'debug' },
+        )
         for (const tc of delta.tool_calls) {
           let blockIdx = this.toolBlockIndices.get(tc.index)
 
@@ -172,6 +186,10 @@ export class OpenAIStreamState {
                 input: {},
               }
               events.push({ type: 'block_start', index: blockIdx, block })
+              logForDebugging(
+                `[image-flow:L5-stream-tc-promote] tcIdx=${tc.index} → blockIdx=${blockIdx} id=${pending.id} name=${pending.name}`,
+                { level: 'debug' },
+              )
               // Flush buffered argument chunks
               for (const arg of pending.argChunks) {
                 events.push({ type: 'block_delta', index: blockIdx, delta: { type: 'tool_input', json: arg } })
@@ -199,6 +217,15 @@ export class OpenAIStreamState {
         for (const [, idx] of this.toolBlockIndices) {
           events.push({ type: 'block_stop', index: idx })
         }
+
+        logForDebugging(
+          `[image-flow:L5-stream-finish] finish_reason=${choice.finish_reason} toolBlocksEmitted=${this.toolBlockIndices.size} pending=${this.pendingToolCalls.size} entries=[${Array.from(
+            this.toolBlockIndices.entries(),
+          )
+            .map(([tcIdx, blockIdx]) => `tc[${tcIdx}]→block[${blockIdx}]`)
+            .join(',')}]`,
+          { level: 'debug' },
+        )
 
         // Extract usage if present in this chunk (SiliconFlow sends it with finish_reason)
         if (chunk.usage) {
