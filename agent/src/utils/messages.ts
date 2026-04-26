@@ -1811,22 +1811,6 @@ export function normalizeMessagesForAPI(
 
             if (msg.type === 'assistant') {
               if (msg.message.id === normalizedMessage.message.id) {
-                const summarize = (
-                  blocks: { type: string; id?: string }[],
-                ): string =>
-                  blocks
-                    .map(b =>
-                      b.type === 'tool_use' ? `tool_use(${b.id?.slice(-8)})` : b.type,
-                    )
-                    .join(',')
-                logForDebugging(
-                  `[image-flow:L7-norm-merge] mergeAssistantMessages id=${msg.message.id} prev=[${summarize(
-                    msg.message.content as { type: string; id?: string }[],
-                  )}] + new=[${summarize(
-                    normalizedMessage.message.content as { type: string; id?: string }[],
-                  )}]`,
-                  { level: 'debug' },
-                )
                 result[i] = mergeAssistantMessages(msg, normalizedMessage)
                 return
               }

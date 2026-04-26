@@ -13,7 +13,6 @@ import type { AgentId } from '../../types/ids.js'
 import type { AssistantMessage } from '../../types/message.js'
 import { normalizeToolInput } from '../../utils/api.js'
 import { createAssistantAPIErrorMessage } from '../../utils/messages.js'
-import { logForDebugging } from '../../utils/debug.js'
 import {
   API_ERROR_MESSAGE_PREFIX,
   getErrorMessageIfRefusal,
@@ -206,16 +205,6 @@ export async function* processStream(
 
         // Finalize accumulated block: parse JSON input, apply tool-specific normalization
         const normalizedContent = [finalizeBlock(block, tools, agentId)]
-
-        const finalized = normalizedContent[0]!
-        logForDebugging(
-          `[image-flow:L6-acc-blockstop] event.index=${event.index} blockType=${finalized.type}${
-            finalized.type === 'tool_use'
-              ? ` toolUseId=${(finalized as { id: string }).id} name=${(finalized as { name: string }).name}`
-              : ''
-          } responseId=${response.id} → newMessages.push (count=${newMessages.length + 1})`,
-          { level: 'debug' },
-        )
 
         const m: AssistantMessage = {
           message: {

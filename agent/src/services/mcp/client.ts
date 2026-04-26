@@ -2251,10 +2251,6 @@ export async function transformResultContent(
       )
     }
     case 'image': {
-      logForDebugging(
-        `[image-flow:L1-mcp-in] tool_result image from ${serverName}: dataLen=${String(resultContent.data ?? '').length} mimeType=${resultContent.mimeType ?? 'undef'}`,
-        { level: 'debug' },
-      )
       // Resize and compress image data, enforcing API dimension limits
       const imageBuffer = Buffer.from(String(resultContent.data), 'base64')
       const ext = resultContent.mimeType?.split('/')[1] || 'png'
@@ -2263,19 +2259,13 @@ export async function transformResultContent(
         imageBuffer.length,
         ext,
       )
-      const dataB64 = resized.buffer.toString('base64')
-      const mediaType =
-        `image/${resized.mediaType}` as Base64ImageSource['media_type']
-      logForDebugging(
-        `[image-flow:L1-mcp-out] converted: source.type=base64 mediaType=${mediaType} dataLen=${dataB64.length}`,
-        { level: 'debug' },
-      )
       return [
         {
           type: 'image',
           source: {
-            data: dataB64,
-            media_type: mediaType,
+            data: resized.buffer.toString('base64'),
+            media_type:
+              `image/${resized.mediaType}` as Base64ImageSource['media_type'],
             type: 'base64',
           },
         },

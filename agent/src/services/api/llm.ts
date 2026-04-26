@@ -666,44 +666,6 @@ async function* queryModel(
     API_MAX_MEDIA_PER_REQUEST,
   )
 
-  logForDebugging(
-    `[image-flow:L2-history] ${messagesForAPI.length} msgs: ${messagesForAPI
-      .map((m, i) => {
-        const role = m.message.role
-        const content = m.message.content
-        if (typeof content === 'string')
-          return `[${i}]${role}(str:${content.length}c)`
-        const types = (content as Array<{ type: string; content?: unknown; tool_use_id?: string; source?: { type?: string; data?: string } }>)
-          .map(b => {
-            if (b.type === 'tool_result') {
-              const inner =
-                typeof b.content === 'string'
-                  ? `str:${b.content.length}c`
-                  : Array.isArray(b.content)
-                    ? (b.content as Array<{ type: string; source?: { type?: string; data?: string } }>)
-                        .map(ib => {
-                          if (ib.type === 'image') {
-                            return `image(${ib.source?.type ?? 'unk'},${ib.source?.data?.length ?? 0}b)`
-                          }
-                          return ib.type
-                        })
-                        .join('+')
-                    : 'undef'
-              const tuid = b.tool_use_id ?? ''
-              return `tool_result[${tuid.slice(-8)}](${inner})`
-            }
-            if (b.type === 'image') {
-              return `image(${b.source?.type ?? 'unk'},${b.source?.data?.length ?? 0}b)`
-            }
-            return b.type
-          })
-          .join(',')
-        return `[${i}]${role}(${types})`
-      })
-      .join(' ')}`,
-    { level: 'debug' },
-  )
-
   // Instrumentation: Track message count after normalization
 
   if (useToolSearch) {

@@ -37,7 +37,6 @@ import {
 import { OpenAIStreamState, type OpenAIChatChunk } from '../adapters/openaiStreamAdapter.js'
 import { mapOpenAIUsage } from '../adapters/openaiUsageMapper.js'
 import { withRetry } from '../withRetry.js'
-import { logForDebugging } from '../../../utils/debug.js'
 
 // ---------------------------------------------------------------------------
 // Config
@@ -107,29 +106,6 @@ export class OpenAIProvider implements LLMProvider {
           : body
 
         try {
-          logForDebugging(
-            `[image-flow:L3-openai-req] ${(requestBody.messages as unknown[]).length} msgs → ${requestBody.model}: ${(requestBody.messages as Array<{ role: string; content: unknown; tool_calls?: Array<{ id?: string }>; tool_call_id?: string }>)
-              .map((m, i) => {
-                const role = m.role
-                const callIds = m.tool_calls?.map(t => t.id?.slice(-8) ?? '?').join(',')
-                const tcid = m.tool_call_id ? ` tcid=${m.tool_call_id.slice(-8)}` : ''
-                if (typeof m.content === 'string')
-                  return `[${i}]${role}(str:${m.content.length}c${callIds ? ` tc=${callIds}` : ''}${tcid})`
-                if (m.content === null || m.content === undefined)
-                  return `[${i}]${role}(null${callIds ? ` tc=${callIds}` : ''}${tcid})`
-                const parts = (m.content as Array<{ type: string; text?: string; image_url?: { url?: string } }>)
-                  .map(p =>
-                    p.type === 'image_url'
-                      ? `image_url(len=${p.image_url?.url?.length ?? 0})`
-                      : `${p.type}(${p.text?.length ?? 0}c)`,
-                  )
-                  .join(',')
-                return `[${i}]${role}(${parts}${tcid})`
-              })
-              .join(' ')}`,
-            { level: 'debug' },
-          )
-
           const stream = await client.chat.completions.create(
             { ...requestBody, stream: true as const } as OpenAI.ChatCompletionCreateParamsStreaming,
             { signal },
@@ -147,7 +123,6 @@ export class OpenAIProvider implements LLMProvider {
               const iter = sdkStream[Symbol.asyncIterator]()
               const buffer: StreamEvent[] = []
               let bufferIdx = 0
-              let firstChunkLogged = false
 
               return {
                 async next(): Promise<IteratorResult<StreamEvent>> {
@@ -163,13 +138,6 @@ export class OpenAIProvider implements LLMProvider {
                           break
                         }
                         return { done: true, value: undefined }
-                      }
-                      if (!firstChunkLogged) {
-                        firstChunkLogged = true
-                        logForDebugging(
-                          `[image-flow:L4-openai-resp] first chunk: ${JSON.stringify(chunk.value).slice(0, 800)}`,
-                          { level: 'debug' },
-                        )
                       }
                       buffer.push(...state.mapChunk(chunk.value))
                     }
