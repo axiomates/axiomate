@@ -73,6 +73,7 @@ function main() {
 
     if (options.native) {
       buildNativeWorkspaces()
+      smokeTestNapiBindings()
     } else {
       note('Skipping native NAPI builds (--no-native).')
     }
@@ -496,6 +497,83 @@ function buildNativeWorkspaces() {
 
   for (const [workspace, script] of builds) {
     run('pnpm', ['--filter', workspace, 'run', script])
+  }
+}
+
+/**
+ * Verify each freshly-built NAPI binding actually loads. Catches the class
+ * of "build succeeded but the .node file isn't loadable" bug that hid for
+ * months previously: silent loader filename mismatches, arch mismatches,
+ * dyld errors, ABI drift, etc. Hard-fails bootstrap if any binding probes
+ * to false, so the user sees the issue at install time, not weeks later
+ * when a feature silently no-ops.
+ *
+ * Each entry is { workspace, fn, platform? }:
+ *   - fn: name of an exported function that returns true iff native loaded
+ *   - platform: when set, smoke-test only runs on that process.platform
+ *     (mac-only NAPI packages skip on win/linux); cross-platform packages
+ *     omit it
+ */
+function smokeTestNapiBindings() {
+  const targets = [
+    { workspace: 'audio-capture-axiomate', fn: 'isNativeAudioAvailable' },
+    { workspace: 'clipboard-axiomate', fn: 'isAvailable', platform: 'darwin' },
+    { workspace: 'modifiers-mac-napi-axiomate', fn: 'isAvailable', platform: 'darwin' },
+    { workspace: 'url-handler-mac-napi-axiomate', fn: 'isAvailable', platform: 'darwin' },
+    { workspace: 'computer-use-mac-napi-axiomate', fn: 'isAvailable', platform: 'darwin' },
+  ]
+
+  for (const t of targets) {
+    if (t.platform && process.platform !== t.platform) {
+      note(`Skipping NAPI smoke-test for ${t.workspace} on ${process.platform} (${t.platform}-only)`)
+      continue
+    }
+    smokeTestSingleBinding(t.workspace, t.fn)
+  }
+}
+
+function smokeTestSingleBinding(workspace, fnName) {
+  // Probe child node process: require the package, call its
+  // is-native-loaded fn, print a single JSON line. This isolates failures
+  // (e.g. dyld crash) from the bootstrap process itself.
+  const indexPath = join(rootDir, workspace, 'index.js')
+  const probe = `(()=>{
+    try {
+      const m = require(${JSON.stringify(indexPath)});
+      const fn = m[${JSON.stringify(fnName)}];
+      const ok = typeof fn === 'function' ? !!fn() : false;
+      const err = (typeof m.getLoadError === 'function') ? m.getLoadError() : null;
+      console.log(JSON.stringify({ ok, error: err }));
+    } catch (e) {
+      console.log(JSON.stringify({ ok: false, error: 'require threw: ' + (e && e.message ? e.message : String(e)) }));
+    }
+  })()`
+
+  const result = spawnSync('node', ['-e', probe], {
+    cwd: rootDir,
+    env: envWithToolPaths(),
+    encoding: 'utf8',
+    shell: false,
+  })
+
+  if (result.error) {
+    fail(`NAPI smoke-test for ${workspace} could not spawn node: ${result.error.message}`)
+    return
+  }
+
+  const out = (result.stdout || '').trim()
+  let parsed
+  try {
+    parsed = JSON.parse(out)
+  } catch {
+    fail(`NAPI smoke-test for ${workspace} produced unparseable output: ${out || '(empty)'}`)
+    return
+  }
+
+  if (parsed.ok) {
+    ok(`NAPI smoke-test passed for ${workspace}`)
+  } else {
+    fail(`NAPI smoke-test failed for ${workspace}: ${parsed.error ?? 'isAvailable() returned false'}`)
   }
 }
 

@@ -1,26 +1,21 @@
+const { loadNapiBinding } = require('../scripts/load-napi.js')
+
 let nativeModule = null
 let loadAttempted = false
+let loadError = null
 
 function loadNative() {
   if (loadAttempted) return nativeModule
   loadAttempted = true
+  // audio-capture is cross-platform native (mac/win/linux) — no platform gate
+  const result = loadNapiBinding(__dirname, 'audio-capture-axiomate')
+  nativeModule = result.mod
+  loadError = result.error
+  return nativeModule
+}
 
-  const platform = process.platform
-  const arch = process.arch
-  const candidates = [
-    './audio-capture-axiomate.node',
-    `./audio-capture-axiomate.${platform}-${arch}.node`,
-  ]
-
-  for (const candidate of candidates) {
-    try {
-      nativeModule = require(candidate)
-      return nativeModule
-    } catch {
-      // try next
-    }
-  }
-  return null
+module.exports.getLoadError = function getLoadError() {
+  return loadError
 }
 
 module.exports.isNativeAudioAvailable = function isNativeAudioAvailable() {

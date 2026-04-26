@@ -1,29 +1,34 @@
 // JS entry point: Rust NAPI on macOS (sync fast path), fallback for all platforms (async).
 
+const { loadNapiBinding } = require('../scripts/load-napi.js')
+
 let nativeModule = null
 let loadAttempted = false
+let loadError = null
 
 function loadNative() {
   if (loadAttempted) return nativeModule
   loadAttempted = true
-
-  if (process.platform !== 'darwin') return null
-
-  const candidates = [
-    './clipboard-axiomate.darwin-arm64.node',
-    './clipboard-axiomate.darwin-x64.node',
-    `./clipboard-axiomate.darwin-${process.arch}.node`,
-  ]
-
-  for (const candidate of candidates) {
-    try {
-      nativeModule = require(candidate)
-      return nativeModule
-    } catch {
-      // try next
-    }
+  // mac NAPI is the fast sync path; non-darwin uses the JS fallback
+  // (PowerShell on Windows, xclip/wl-paste on Linux). No NAPI build
+  // for those platforms today, so short-circuit here keeps loadError
+  // semantically accurate ("not darwin" vs an actual load failure).
+  if (process.platform !== 'darwin') {
+    loadError = `not darwin (process.platform=${process.platform})`
+    return null
   }
-  return null
+  const result = loadNapiBinding(__dirname, 'clipboard-axiomate')
+  nativeModule = result.mod
+  loadError = result.error
+  return nativeModule
+}
+
+module.exports.isAvailable = function isAvailable() {
+  return loadNative() !== null
+}
+
+module.exports.getLoadError = function getLoadError() {
+  return loadError
 }
 
 // Lazy-load fallback module

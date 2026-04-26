@@ -1,27 +1,29 @@
+const { loadNapiBinding } = require('../scripts/load-napi.js')
+
 let nativeModule = null
 let loadAttempted = false
+let loadError = null
 
 function loadNative() {
   if (loadAttempted) return nativeModule
   loadAttempted = true
-
-  if (process.platform !== 'darwin') return null
-
-  const candidates = [
-    './modifiers-mac-napi-axiomate.darwin-arm64.node',
-    './modifiers-mac-napi-axiomate.darwin-x64.node',
-    `./modifiers-mac-napi-axiomate.darwin-${process.arch}.node`,
-  ]
-
-  for (const candidate of candidates) {
-    try {
-      nativeModule = require(candidate)
-      return nativeModule
-    } catch {
-      // try next
-    }
+  // mac-only by design (package name encodes this).
+  if (process.platform !== 'darwin') {
+    loadError = `not darwin (process.platform=${process.platform})`
+    return null
   }
-  return null
+  const result = loadNapiBinding(__dirname, 'modifiers-mac-napi-axiomate')
+  nativeModule = result.mod
+  loadError = result.error
+  return nativeModule
+}
+
+module.exports.isAvailable = function isAvailable() {
+  return loadNative() !== null
+}
+
+module.exports.getLoadError = function getLoadError() {
+  return loadError
 }
 
 module.exports.getModifiers = function getModifiers() {

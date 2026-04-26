@@ -1,3 +1,5 @@
+const { loadNapiBinding } = require('../scripts/load-napi.js')
+
 let nativeModule = null
 let loadAttempted = false
 // Captures *why* loadNative() returned null. Surfaced via getLoadError() so
@@ -9,29 +11,17 @@ let loadError = null
 function loadNative() {
   if (loadAttempted) return nativeModule
   loadAttempted = true
-
+  // mac-only by design (the package name encodes this). Cross-platform
+  // dispatch lives in computer-use-mcp-axiomate, which only routes here
+  // on darwin.
   if (process.platform !== 'darwin') {
     loadError = `not darwin (process.platform=${process.platform})`
     return null
   }
-
-  const candidates = [
-    './computer-use-mac-napi-axiomate.darwin-arm64.node',
-    './computer-use-mac-napi-axiomate.darwin-x64.node',
-    `./computer-use-mac-napi-axiomate.darwin-${process.arch}.node`,
-  ]
-
-  const errors = []
-  for (const candidate of candidates) {
-    try {
-      nativeModule = require(candidate)
-      return nativeModule
-    } catch (e) {
-      errors.push(`${candidate}: ${e && e.message ? e.message : String(e)}`)
-    }
-  }
-  loadError = `tried ${candidates.length} candidate(s): ${errors.join(' | ')}`
-  return null
+  const result = loadNapiBinding(__dirname, 'computer-use-mac-napi-axiomate')
+  nativeModule = result.mod
+  loadError = result.error
+  return nativeModule
 }
 
 module.exports.getLoadError = function getLoadError() {
