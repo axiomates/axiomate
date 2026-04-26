@@ -78,11 +78,13 @@ buildTscWorkspace('computer-use-mcp-axiomate')
 buildTscWorkspace('image-processor-axiomate')
 buildTscWorkspace('computer-use-native-axiomate')
 
-// audio-capture-axiomate: Rust NAPI build for Windows
+// audio-capture-axiomate: Rust NAPI build for Windows.
+// `--dts .napi-generated.d.ts` redirects the auto-generated d.ts away from
+// the hand-written `index.d.ts` so napi build doesn't clobber it.
 const audioDir = join(root, 'audio-capture-axiomate')
 runBuildStep(
   'audio-capture-axiomate (napi build)',
-  ['npx', 'napi', 'build', '--release', '--target', 'x86_64-pc-windows-msvc'],
+  ['npx', 'napi', 'build', '--release', '--target', 'x86_64-pc-windows-msvc', '--dts', '.napi-generated.d.ts'],
   audioDir,
 )
 

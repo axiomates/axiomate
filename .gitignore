@@ -2,6 +2,11 @@ node_modules
 dist
 coverage
 target
+# napi-rs build's auto-generated d.ts. Each NAPI workspace has a
+# hand-written `index.d.ts`; we redirect napi's auto-generation here
+# (via `--dts .napi-generated.d.ts`) so the hand-written one isn't
+# clobbered.
+.napi-generated.d.ts
 # Integration test real API keys — NEVER commit. Copy example.json to local.json.
 agent/src/__tests__/integration/config/local.json
 # Runtime fixture snapshots written by compactConversation during tests

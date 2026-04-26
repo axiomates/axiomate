@@ -6,8 +6,8 @@
   "types": "index.d.ts",
   "files": ["index.js", "index.d.ts", "*.node"],
   "scripts": {
-    "build": "napi build --release",
-    "build:debug": "napi build",
+    "build": "napi build --release --dts .napi-generated.d.ts",
+    "build:debug": "napi build --dts .napi-generated.d.ts",
     "test": "vitest run --passWithNoTests"
   },
   "napi": {
