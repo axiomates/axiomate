@@ -449,7 +449,12 @@ function getRemoteMcpServerConnectionBatchSize(): number {
 }
 
 function isLocalMcpServer(config: ScopedMcpServerConfig): boolean {
-  return !config.type || config.type === 'stdio' || config.type === 'sdk'
+  return (
+    !config.type ||
+    config.type === 'stdio' ||
+    config.type === 'sdk' ||
+    config.type === 'in-process'
+  )
 }
 
 // For the IDE MCP servers, we only include specific tools

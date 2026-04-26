@@ -1147,38 +1147,37 @@ export async function getAxiomateMcpConfigs(
     filtered[name] = serverConfig as ScopedMcpServerConfig
   }
 
-  return { servers: filtered, errors: mcpErrors }
-}
-
-/**
- * @returns All server configurations with appropriate scopes.
- *
- * `ScopedMcpServerConfig` is a wider union than the JSON-only configs from
- * `getAxiomateMcpConfigs()` — it also includes the in-process computer-use
- * server. Downstream code paths that only handle JSON configs use type
- * guards (`config.type === 'in-process'` short-circuits) to skip in-process.
- */
-export async function getAllMcpConfigs(): Promise<{
-  servers: Record<string, ScopedMcpServerConfig>
-  errors: PluginError[]
-}> {
-  const base = await getAxiomateMcpConfigs()
-  const servers: Record<string, ScopedMcpServerConfig> = { ...base.servers }
   // Built-in in-process MCP server for the computer-use suite (mac only).
   // The bunPluginComputerUseStub plugin replaces this import with a no-op
-  // returning undefined on windows / linux builds, so this is a true
+  // returning `undefined` on windows / linux builds, so this is a true
   // workspace-graph DCE on those platforms.
+  // User-configured servers of the same name win — don't override.
   const { setupComputerUseMCP } = await import(
     '../../utils/computerUse/setup.js'
   )
   const computerUseServers = setupComputerUseMCP()
   if (computerUseServers) {
     for (const [name, config] of Object.entries(computerUseServers)) {
-      // Don't override a user-configured server of the same name.
-      if (!servers[name]) servers[name] = config
+      if (!filtered[name]) filtered[name] = config
     }
   }
-  return { servers, errors: base.errors }
+
+  return { servers: filtered, errors: mcpErrors }
+}
+
+/**
+ * Thin alias for `getAxiomateMcpConfigs()`. Retained for back-compat with
+ * existing callers (cli/handlers/mcp.tsx, cli/print.ts -p mode,
+ * client.ts:getMcpToolsCommandsAndResources). Both names now return the
+ * full set of servers — JSON-configured (enterprise / project / user /
+ * local / plugin) plus the built-in in-process computer-use server on
+ * darwin.
+ */
+export async function getAllMcpConfigs(): Promise<{
+  servers: Record<string, ScopedMcpServerConfig>
+  errors: PluginError[]
+}> {
+  return getAxiomateMcpConfigs()
 }
 
 /**
