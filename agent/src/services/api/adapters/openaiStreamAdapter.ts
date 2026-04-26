@@ -227,6 +227,16 @@ export class OpenAIStreamState {
           { level: 'debug' },
         )
 
+        // Clear the tool index map after emitting block_stops, mirroring
+        // the thinking/text flag pattern above. Without this, flush() (which
+        // runs when the SDK iterator returns done=true after [DONE]) iterates
+        // the still-populated map and emits a SECOND block_stop per tool
+        // block. The streamAccumulator turns each block_stop into its own
+        // AssistantMessage, and normalizeMessagesForAPI merges by message.id
+        // — collapsing the two into one assistant message with the same
+        // tool_use entry repeated, which dispatch then executes twice.
+        this.toolBlockIndices.clear()
+
         // Extract usage if present in this chunk (SiliconFlow sends it with finish_reason)
         if (chunk.usage) {
           this.usage = mapOpenAIUsage(chunk, this.usageMapping)
