@@ -209,3 +209,121 @@ describe('messagesToOpenAI — tool_result with image (the fix)', () => {
     expect(out[1]!.role).toBe('user')
   })
 })
+
+// ---------------------------------------------------------------------------
+// reasoning_content round-trip (DeepSeek thinking mode)
+//
+// DeepSeek V4 Pro requires the assistant's chain-of-thought (delivered to us
+// in streaming as `reasoning_content` and stored internally as `thinking`
+// blocks) to be echoed back on subsequent turns when tool calls were involved
+// — server returns 400 otherwise. Other providers either don't need it
+// (OpenAI uses Responses API) or use a different mechanism (Qwen's
+// `preserve_thinking` extra_body flag), so this is opt-in via the new
+// `roundTripReasoningContent` config flag, threaded as an option to
+// messagesToOpenAI alongside `supportsImages`.
+//
+// Default-off behavior must be preserved: thinking blocks are dropped (the
+// pre-flag baseline) when the flag is absent or false.
+// ---------------------------------------------------------------------------
+
+describe('messagesToOpenAI — reasoning_content round-trip (opt-in)', () => {
+  it('flag on + thinking + tool_use: emits reasoning_content alongside tool_calls', () => {
+    const messages: MessageParam[] = [
+      {
+        role: 'assistant',
+        content: [
+          { type: 'thinking', thinking: 'Let me capture the screen.', signature: '' },
+          { type: 'tool_use', id: 'call_r1', name: 'screenshot', input: {} },
+        ],
+      },
+    ]
+    const out = messagesToOpenAI(messages, undefined, {
+      roundTripReasoningContent: true,
+    })
+    expect(out).toHaveLength(1)
+    const m = out[0]! as { role: string; content: unknown; tool_calls?: unknown[]; reasoning_content?: string }
+    expect(m.role).toBe('assistant')
+    expect(m.content).toBeNull()
+    expect(m.tool_calls).toHaveLength(1)
+    expect(m.reasoning_content).toBe('Let me capture the screen.')
+  })
+
+  it('flag on + thinking + text: emits reasoning_content alongside content', () => {
+    const messages: MessageParam[] = [
+      {
+        role: 'assistant',
+        content: [
+          { type: 'thinking', thinking: 'Reasoning step', signature: '' },
+          { type: 'text', text: 'Here is the answer' },
+        ],
+      },
+    ]
+    const out = messagesToOpenAI(messages, undefined, {
+      roundTripReasoningContent: true,
+    })
+    expect(out).toHaveLength(1)
+    const m = out[0]! as { role: string; content: unknown; reasoning_content?: string }
+    expect(m.role).toBe('assistant')
+    expect(m.content).toBe('Here is the answer')
+    expect(m.reasoning_content).toBe('Reasoning step')
+  })
+
+  it('flag on + multiple thinking blocks: joined into single reasoning_content', () => {
+    const messages: MessageParam[] = [
+      {
+        role: 'assistant',
+        content: [
+          { type: 'thinking', thinking: 'First. ', signature: '' },
+          { type: 'thinking', thinking: 'Second. ', signature: '' },
+          { type: 'tool_use', id: 'call_r2', name: 'tool', input: {} },
+        ],
+      },
+    ]
+    const out = messagesToOpenAI(messages, undefined, {
+      roundTripReasoningContent: true,
+    })
+    const m = out[0]! as { reasoning_content?: string }
+    expect(m.reasoning_content).toBe('First. Second. ')
+  })
+
+  it('flag off (default): thinking dropped, no reasoning_content field — regression baseline', () => {
+    const messages: MessageParam[] = [
+      {
+        role: 'assistant',
+        content: [
+          { type: 'thinking', thinking: 'Should be dropped', signature: '' },
+          { type: 'tool_use', id: 'call_r3', name: 'screenshot', input: {} },
+        ],
+      },
+    ]
+    // Default — no options object (matches every existing call site that
+    // doesn't opt in). Must NOT include reasoning_content.
+    const out = messagesToOpenAI(messages)
+    expect(out).toHaveLength(1)
+    const m = out[0]! as { role: string; tool_calls?: unknown[]; reasoning_content?: string }
+    expect(m.role).toBe('assistant')
+    expect(m.tool_calls).toHaveLength(1)
+    expect(m.reasoning_content).toBeUndefined()
+
+    // Same when explicitly false.
+    const outExplicit = messagesToOpenAI(messages, undefined, {
+      roundTripReasoningContent: false,
+    })
+    const mExplicit = outExplicit[0]! as { reasoning_content?: string }
+    expect(mExplicit.reasoning_content).toBeUndefined()
+  })
+
+  it('flag on + assistant without thinking blocks: no reasoning_content field', () => {
+    const messages: MessageParam[] = [
+      {
+        role: 'assistant',
+        content: [{ type: 'tool_use', id: 'call_r4', name: 'screenshot', input: {} }],
+      },
+    ]
+    const out = messagesToOpenAI(messages, undefined, {
+      roundTripReasoningContent: true,
+    })
+    const m = out[0]! as { reasoning_content?: string }
+    expect(m.reasoning_content).toBeUndefined()
+  })
+})

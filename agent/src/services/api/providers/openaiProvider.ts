@@ -362,6 +362,8 @@ export class OpenAIProvider implements LLMProvider {
     const rawMessages = (intent.messages as Array<{ message: import('../streamTypes.js').MessageParam }>).map(m => m.message)
     const messages = messagesToOpenAI(rawMessages, systemText, {
       supportsImages: this.config.modelConfig?.supportsImages ?? true,
+      roundTripReasoningContent:
+        this.config.modelConfig?.roundTripReasoningContent ?? false,
     })
 
     const body: Record<string, unknown> = {

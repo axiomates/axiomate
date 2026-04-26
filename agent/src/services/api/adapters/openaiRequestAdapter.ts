@@ -20,6 +20,14 @@ export type OpenAIMessage = {
   content: string | OpenAIContentPart[] | null
   tool_calls?: OpenAIToolCall[]
   tool_call_id?: string
+  /**
+   * DeepSeek V4 Pro thinking-mode chain-of-thought, echoed back from a prior
+   * assistant turn. Required by DeepSeek when the prior turn made tool calls
+   * (server returns 400 otherwise). Other OpenAI-compat providers ignore the
+   * field. Only emitted when the model's config opts in via
+   * `roundTripReasoningContent`.
+   */
+  reasoning_content?: string
 }
 
 type OpenAIContentPart =
@@ -45,9 +53,10 @@ type OpenAIToolCall = {
 export function messagesToOpenAI(
   messages: MessageParam[],
   systemPrompt?: string | ContentBlockParam[],
-  options?: { supportsImages?: boolean },
+  options?: { supportsImages?: boolean; roundTripReasoningContent?: boolean },
 ): OpenAIMessage[] {
   const supportsImages = options?.supportsImages ?? true
+  const roundTripReasoning = options?.roundTripReasoningContent ?? false
   const result: OpenAIMessage[] = []
 
   // System prompt
@@ -77,6 +86,9 @@ export function messagesToOpenAI(
     // role:'tool' message can't carry image content; deferred and emitted
     // as a follow-up role:'user' message after all tool replies.
     const pendingToolResultImages: OpenAIContentPart[] = []
+    // Accumulated thinking text for this assistant msg, attached as
+    // `reasoning_content` only when roundTripReasoning is enabled.
+    let reasoningText = ''
 
     for (const block of msg.content) {
       switch (block.type) {
@@ -176,9 +188,18 @@ export function messagesToOpenAI(
           })
           break
         }
-        case 'thinking':
+        case 'thinking': {
+          // Default behavior: strip (OpenAI Chat Completions / vanilla doesn't
+          // accept thinking in history). Opt-in: accumulate as reasoning_content
+          // for DeepSeek V4 Pro thinking-mode multi-turn requirement.
+          if (roundTripReasoning) {
+            const t = (block as { thinking?: string }).thinking
+            if (t) reasoningText += t
+          }
+          break
+        }
         case 'redacted_thinking':
-          // Strip thinking blocks — OpenAI doesn't support them in conversation history
+          // Anthropic-specific encrypted thinking; never sent through OpenAI path
           break
         case 'document':
           // Documents: extract text content if available
@@ -193,6 +214,9 @@ export function messagesToOpenAI(
         role: 'assistant',
         content: textParts.length > 0 ? textParts : null,
         tool_calls: toolCalls,
+        ...(reasoningText.length > 0
+          ? { reasoning_content: reasoningText }
+          : {}),
       })
     } else if (textParts.length > 0) {
       result.push({
@@ -200,6 +224,19 @@ export function messagesToOpenAI(
         content: textParts.length === 1 && textParts[0]!.type === 'text'
           ? textParts[0]!.text
           : textParts,
+        ...(msg.role === 'assistant' && reasoningText.length > 0
+          ? { reasoning_content: reasoningText }
+          : {}),
+      })
+    } else if (msg.role === 'assistant' && reasoningText.length > 0) {
+      // Edge case: assistant message with thinking only (no text, no tool_use).
+      // Emit a stub assistant message so DeepSeek's reasoning chain stays
+      // attached to the right turn. Using empty string content (OpenAI accepts
+      // empty content on assistant role; null content is for tool_calls path).
+      result.push({
+        role: 'assistant',
+        content: '',
+        reasoning_content: reasoningText,
       })
     }
 

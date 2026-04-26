@@ -278,6 +278,19 @@ export type ModelProviderConfig = {
   thinkingParams?: Record<string, unknown>
   /** Extra params sent on every request (passthrough to API body) */
   extraParams?: Record<string, unknown>
+  /**
+   * Round-trip the assistant's `reasoning_content` (chain-of-thought) back
+   * to the API on subsequent turns. Required for DeepSeek V4 Pro's thinking
+   * mode when tool calls are involved (server returns 400 otherwise). Other
+   * providers either don't need it (OpenAI uses Responses API for reasoning
+   * round-trip) or use a different mechanism (Qwen's `preserve_thinking`
+   * extra_body flag). Default off to avoid sending a non-standard field to
+   * providers that may reject unknown keys.
+   *
+   * Set to `true` for any model whose API docs explicitly require echoing
+   * `reasoning_content` in assistant message history.
+   */
+  roundTripReasoningContent?: boolean
   /** Provider-specific response paths for OpenAI-compatible usage details. */
   usageMapping?: ModelProviderUsageMapping
   /**
