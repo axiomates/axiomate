@@ -56,5 +56,21 @@ export function captureExcluding(
   opts: CaptureExcludingOpts,
 ): Promise<CaptureExcludingResult | null>
 
+export interface CaptureWindowResult {
+  /** Base64-encoded JPEG of the targeted window only. */
+  base64: string
+  /** Image pixel dimensions (matches the captured window's pixel bounds). */
+  width: number
+  height: number
+}
+
+/** Per-window screenshot via CGWindowListCreateImage. Resolves the bundle
+ *  id to a running app's pid, picks its frontmost on-screen normal-layer
+ *  window, captures it, and returns JPEG base64. Returns null when the app
+ *  isn't running, has no eligible window, or capture is denied. macOS-only. */
+export function captureWindow(
+  bundleId: string,
+): Promise<CaptureWindowResult | null>
+
 /** Force-load the .node binary. No-op if already loaded. */
 export function prewarm(): void

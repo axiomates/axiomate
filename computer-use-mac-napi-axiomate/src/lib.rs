@@ -1,6 +1,6 @@
 //! macOS native bindings for axiomate's computer-use suite.
 //!
-//! Exposes three feature groups via napi-rs:
+//! Exposes four feature groups via napi-rs:
 //!
 //! 1. NSRunningApplication.hide / unhide / activate — used by
 //!    `cu.apps.prepareDisplay` to clear non-allowlisted windows before a
@@ -11,7 +11,10 @@
 //!    presses (via `key("escape")`) don't abort the turn.
 //! 3. SCContentFilter screenshot — capture a display with non-allowlisted
 //!    apps excluded at the compositor level (privacy + agent focus).
-//!    macOS 12.3+ ScreenCaptureKit.
+//!    macOS 12.3+ ScreenCaptureKit. SKELETON — returns None pending impl.
+//! 4. CGWindowListCreateImage per-window screenshot — capture the frontmost
+//!    window of a specific bundle id. Backs the `screenshot_window` MCP
+//!    tool. Resolves bundle id → pid → CGWindowID → JPEG.
 //!
 //! Non-macOS builds compile to a stub that returns false / null for every
 //! function so the JS side's existing fallbacks engage automatically.
@@ -126,6 +129,32 @@ pub async fn capture_excluding(
 }
 
 // ───────────────────────────────────────────────────────────────────────────
+// Per-window screenshot via CGWindowListCreateImage
+// ───────────────────────────────────────────────────────────────────────────
+
+#[napi(object)]
+pub struct CaptureWindowResult {
+    pub base64: String,
+    pub width: i64,
+    pub height: i64,
+}
+
+#[napi]
+pub async fn capture_window(
+    bundle_id: String,
+) -> napi::Result<Option<CaptureWindowResult>> {
+    #[cfg(target_os = "macos")]
+    {
+        macos::cg_window_capture::capture_window(bundle_id).await
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = bundle_id;
+        Ok(None)
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────────────
 // macOS-specific implementations
 // ───────────────────────────────────────────────────────────────────────────
 
@@ -197,6 +226,27 @@ mod macos {
                 // prepareDisplay's "bring forward" use).
                 let _: () = msg_send![app, activateWithOptions: 0usize];
             }) }
+        }
+
+        /// Returns the OS pid (i32 / pid_t) for the first running app whose
+        /// bundle id matches, or None if no instance is running. Used by
+        /// `cg_window_capture` to map bundle id → pid for window enumeration.
+        pub unsafe fn find_pid_for_bundle(bundle_id: &str) -> Option<i32> {
+            let workspace = NSWorkspace::sharedWorkspace();
+            let running = workspace.runningApplications();
+            let count = running.count();
+            for i in 0..count {
+                let app: &NSRunningApplication = &running[i];
+                let bid: Option<Retained<NSString>> = app.bundleIdentifier();
+                if let Some(bid) = bid {
+                    if bid.to_string() == bundle_id {
+                        // NSRunningApplication.processIdentifier returns pid_t (i32).
+                        let pid: i32 = msg_send![app, processIdentifier];
+                        return Some(pid);
+                    }
+                }
+            }
+            None
         }
     }
 
@@ -473,6 +523,303 @@ mod macos {
             // SCStream pipeline. Returning None lets the JS layer fall back
             // to the existing node-screenshots full-screen capture.
             Ok(None)
+        }
+    }
+
+    pub mod cg_window_capture {
+        //! Per-window screenshot via the legacy CGWindowList APIs.
+        //!
+        //! macOS 14 deprecated CGWindowListCreateImage in favor of
+        //! ScreenCaptureKit, but the function still works and avoids the
+        //! ~200 lines of SCK plumbing needed for sc_capture. We use it for
+        //! the `screenshot_window` tool: bundle id → pid → frontmost
+        //! on-screen window id → CGImage → JPEG → base64.
+        //!
+        //! The same TCC permission (Screen Recording) gates this path as
+        //! gates full-screen capture, so no extra prompts are needed.
+
+        use super::running_app;
+        use crate::CaptureWindowResult;
+        use base64::Engine;
+        use std::os::raw::{c_double, c_void};
+
+        type CFArrayRef = *const c_void;
+        type CFDictionaryRef = *const c_void;
+        type CFStringRef = *const c_void;
+        type CFNumberRef = *const c_void;
+        type CFDataRef = *const c_void;
+        type CGImageRef = *mut c_void;
+        type CGDataProviderRef = *mut c_void;
+
+        type CGWindowID = u32;
+        type CGWindowListOption = u32;
+        type CGWindowImageOption = u32;
+
+        // Window list options
+        const KCG_WINDOW_LIST_ON_SCREEN_ONLY: CGWindowListOption = 1 << 0;
+        const KCG_WINDOW_LIST_INCLUDING_WINDOW: CGWindowListOption = 1 << 3;
+        const KCG_WINDOW_LIST_EXCLUDE_DESKTOP: CGWindowListOption = 1 << 4;
+        const KCG_NULL_WINDOW_ID: CGWindowID = 0;
+
+        // Image options
+        const KCG_WINDOW_IMAGE_BOUNDS_IGNORE_FRAMING: CGWindowImageOption = 1 << 0;
+
+        // CFNumber types
+        const KCF_NUMBER_SINT32_TYPE: i32 = 3;
+
+        #[repr(C)]
+        struct CGPoint {
+            x: c_double,
+            y: c_double,
+        }
+        #[repr(C)]
+        struct CGSize {
+            width: c_double,
+            height: c_double,
+        }
+        #[repr(C)]
+        struct CGRect {
+            origin: CGPoint,
+            size: CGSize,
+        }
+
+        // CGRectNull represents the empty rect; CGWindowListCreateImage
+        // treats it as "use the bounds of the targeted window itself".
+        const CG_RECT_NULL: CGRect = CGRect {
+            origin: CGPoint { x: 0.0, y: 0.0 },
+            size: CGSize { width: 0.0, height: 0.0 },
+        };
+
+        extern "C" {
+            fn CGWindowListCopyWindowInfo(
+                option: CGWindowListOption,
+                relative_to: CGWindowID,
+            ) -> CFArrayRef;
+            fn CGWindowListCreateImage(
+                screen_bounds: CGRect,
+                list_option: CGWindowListOption,
+                window_id: CGWindowID,
+                image_option: CGWindowImageOption,
+            ) -> CGImageRef;
+
+            fn CFArrayGetCount(arr: CFArrayRef) -> isize;
+            fn CFArrayGetValueAtIndex(arr: CFArrayRef, idx: isize) -> *const c_void;
+            fn CFRelease(cf: *const c_void);
+
+            fn CFDictionaryGetValue(d: CFDictionaryRef, key: *const c_void) -> *const c_void;
+            fn CFNumberGetValue(num: CFNumberRef, ty: i32, value: *mut c_void) -> bool;
+
+            fn CGImageGetWidth(image: CGImageRef) -> usize;
+            fn CGImageGetHeight(image: CGImageRef) -> usize;
+            fn CGImageGetBitsPerComponent(image: CGImageRef) -> usize;
+            fn CGImageGetBytesPerRow(image: CGImageRef) -> usize;
+            fn CGImageGetDataProvider(image: CGImageRef) -> CGDataProviderRef;
+            fn CGImageRelease(image: CGImageRef);
+            fn CGDataProviderCopyData(provider: CGDataProviderRef) -> CFDataRef;
+            fn CFDataGetBytePtr(data: CFDataRef) -> *const u8;
+            fn CFDataGetLength(data: CFDataRef) -> isize;
+
+            // Window dict keys (CFStringRef constants exported by CG framework).
+            static kCGWindowNumber: CFStringRef;
+            static kCGWindowOwnerPID: CFStringRef;
+            static kCGWindowLayer: CFStringRef;
+        }
+
+        pub async fn capture_window(
+            bundle_id: String,
+        ) -> napi::Result<Option<CaptureWindowResult>> {
+            // Step 1: bundle id → pid. Skip if app isn't running.
+            let pid = unsafe { running_app::find_pid_for_bundle(&bundle_id) };
+            let Some(pid) = pid else { return Ok(None) };
+
+            // Step 2: enumerate on-screen windows owned by that pid; pick
+            // the frontmost one at layer 0 (normal app windows). The
+            // CGWindowListCopyWindowInfo array is ordered front-to-back,
+            // so the first match wins.
+            let window_id = unsafe { find_frontmost_window_id_for_pid(pid) };
+            let Some(window_id) = window_id else { return Ok(None) };
+
+            // Step 3: capture. CGRectNull + listOption=IncludingWindow tells
+            // CG to use the window's own bounds. Returns CGImageRef on
+            // success, null otherwise (typically: TCC denied).
+            let cg_image = unsafe {
+                CGWindowListCreateImage(
+                    CG_RECT_NULL,
+                    KCG_WINDOW_LIST_INCLUDING_WINDOW,
+                    window_id,
+                    KCG_WINDOW_IMAGE_BOUNDS_IGNORE_FRAMING,
+                )
+            };
+            if cg_image.is_null() {
+                return Ok(None);
+            }
+
+            // Step 4: encode + clean up. Defer release through a guard so
+            // the early-return path on encode error doesn't leak.
+            let result = unsafe { cg_image_to_jpeg_base64(cg_image) };
+            unsafe { CGImageRelease(cg_image) };
+            result.map(Some)
+        }
+
+        /// Walk the on-screen window list, return the first windowID owned
+        /// by `pid` at layer 0. Front-to-back iteration order means "first
+        /// match" == "frontmost".
+        unsafe fn find_frontmost_window_id_for_pid(pid: i32) -> Option<CGWindowID> {
+            let arr = CGWindowListCopyWindowInfo(
+                KCG_WINDOW_LIST_ON_SCREEN_ONLY | KCG_WINDOW_LIST_EXCLUDE_DESKTOP,
+                KCG_NULL_WINDOW_ID,
+            );
+            if arr.is_null() {
+                return None;
+            }
+
+            let count = CFArrayGetCount(arr);
+            let mut found: Option<CGWindowID> = None;
+            for i in 0..count {
+                let dict = CFArrayGetValueAtIndex(arr, i) as CFDictionaryRef;
+                if dict.is_null() {
+                    continue;
+                }
+
+                // Owner PID
+                let pid_num = CFDictionaryGetValue(dict, kCGWindowOwnerPID as *const c_void)
+                    as CFNumberRef;
+                if pid_num.is_null() {
+                    continue;
+                }
+                let mut win_pid: i32 = 0;
+                let ok = CFNumberGetValue(
+                    pid_num,
+                    KCF_NUMBER_SINT32_TYPE,
+                    &mut win_pid as *mut _ as *mut c_void,
+                );
+                if !ok || win_pid != pid {
+                    continue;
+                }
+
+                // Layer 0 = normal app window. Skip menu bars, dock items,
+                // system overlays, etc. (those have nonzero layers).
+                let layer_num = CFDictionaryGetValue(dict, kCGWindowLayer as *const c_void)
+                    as CFNumberRef;
+                if !layer_num.is_null() {
+                    let mut layer: i32 = 0;
+                    let layer_ok = CFNumberGetValue(
+                        layer_num,
+                        KCF_NUMBER_SINT32_TYPE,
+                        &mut layer as *mut _ as *mut c_void,
+                    );
+                    if layer_ok && layer != 0 {
+                        continue;
+                    }
+                }
+
+                // Window number
+                let id_num = CFDictionaryGetValue(dict, kCGWindowNumber as *const c_void)
+                    as CFNumberRef;
+                if id_num.is_null() {
+                    continue;
+                }
+                let mut win_id: i32 = 0;
+                let id_ok = CFNumberGetValue(
+                    id_num,
+                    KCF_NUMBER_SINT32_TYPE,
+                    &mut win_id as *mut _ as *mut c_void,
+                );
+                if !id_ok {
+                    continue;
+                }
+
+                found = Some(win_id as u32);
+                break;
+            }
+
+            CFRelease(arr);
+            found
+        }
+
+        /// Convert a CGImageRef to a JPEG base64 string. Assumes the standard
+        /// 32-bit BGRA pixel format CG returns for window/screen captures
+        /// (bits_per_component=8, 4 bytes per pixel).
+        unsafe fn cg_image_to_jpeg_base64(cg_image: CGImageRef) -> napi::Result<CaptureWindowResult> {
+            let width = CGImageGetWidth(cg_image);
+            let height = CGImageGetHeight(cg_image);
+            let bpc = CGImageGetBitsPerComponent(cg_image);
+            let bpr = CGImageGetBytesPerRow(cg_image);
+
+            if bpc != 8 {
+                return Err(napi::Error::from_reason(format!(
+                    "capture_window: unexpected bits_per_component {bpc}"
+                )));
+            }
+            if width == 0 || height == 0 {
+                return Err(napi::Error::from_reason(
+                    "capture_window: zero-sized window image".to_string(),
+                ));
+            }
+            // bpr/width can be > 4 due to row padding; require >= 4.
+            if bpr < width * 4 {
+                return Err(napi::Error::from_reason(format!(
+                    "capture_window: bytes_per_row {bpr} too small for width {width}"
+                )));
+            }
+
+            let provider = CGImageGetDataProvider(cg_image);
+            if provider.is_null() {
+                return Err(napi::Error::from_reason(
+                    "capture_window: CGImage has no data provider".to_string(),
+                ));
+            }
+            let data = CGDataProviderCopyData(provider);
+            if data.is_null() {
+                return Err(napi::Error::from_reason(
+                    "capture_window: CGDataProviderCopyData returned null".to_string(),
+                ));
+            }
+            let ptr = CFDataGetBytePtr(data);
+            let len = CFDataGetLength(data) as usize;
+            if ptr.is_null() || len < bpr * height {
+                CFRelease(data);
+                return Err(napi::Error::from_reason(
+                    "capture_window: CFData payload too small".to_string(),
+                ));
+            }
+            let bytes = std::slice::from_raw_parts(ptr, len);
+
+            // CG returns BGRA premultiplied (default for window captures).
+            // Strip alpha to RGB for JPEG (no transparency in JPEG anyway).
+            // Walk row-by-row to skip any padding past width*4.
+            let mut rgb = Vec::with_capacity(width * height * 3);
+            for y in 0..height {
+                let row = &bytes[y * bpr..y * bpr + width * 4];
+                for px in row.chunks_exact(4) {
+                    // BGRA → RGB
+                    rgb.push(px[2]); // R
+                    rgb.push(px[1]); // G
+                    rgb.push(px[0]); // B
+                }
+            }
+            CFRelease(data);
+
+            // Encode JPEG at quality 85 (matches node-screenshots default).
+            let mut jpeg = Vec::new();
+            let mut encoder =
+                image::codecs::jpeg::JpegEncoder::new_with_quality(&mut jpeg, 85);
+            encoder
+                .encode(
+                    &rgb,
+                    width as u32,
+                    height as u32,
+                    image::ExtendedColorType::Rgb8,
+                )
+                .map_err(|e| napi::Error::from_reason(format!("jpeg encode failed: {e}")))?;
+
+            let base64 = base64::engine::general_purpose::STANDARD.encode(&jpeg);
+
+            Ok(CaptureWindowResult {
+                base64,
+                width: width as i64,
+                height: height as i64,
+            })
         }
     }
 }

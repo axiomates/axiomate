@@ -2308,8 +2308,8 @@ async function handleScreenshotWindow(
   const result = await adapter.executor.screenshotWindow(bundleId);
   if (!result) {
     return errorResult(
-      `Per-window capture is not yet implemented on this platform. Use \`screenshot\` (full-screen) instead.`,
-      "feature_unavailable",
+      `Could not capture a window for "${bundleId}". The app may not be running, may not have an on-screen window at the normal layer, or the bundle id may not match a running app. Call \`screenshot\` (full-screen) to see what's currently open, then either retry with the right bundle id or use the full-screen image directly.`,
+      "capture_failed",
     );
   }
 

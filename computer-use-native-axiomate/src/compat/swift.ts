@@ -49,6 +49,9 @@ type MacNativeBinding = {
     width?: number
     height?: number
   }) => Promise<{ base64: string; width: number; height: number } | null>
+  captureWindow: (
+    bundleId: string,
+  ) => Promise<{ base64: string; width: number; height: number } | null>
 }
 
 let macNativeCached: MacNativeBinding | null | undefined
@@ -286,14 +289,14 @@ export function createComputerUseSwift(): ComputerUseAPI {
       return captureRegion(x, y, w, h)
     },
     async captureWindow(bundleId: string): Promise<CaptureResult | null> {
-      // Native per-window capture not yet implemented. The earlier shell-based
-      // (osascript + `screencapture -l`) impl was unreliable and reverted.
-      // When a Rust NAPI binding (CGWindowListCreateImage in
-      // computer-use-mac-napi-axiomate) is wired, route through it here.
-      // Until then, return null so dispatch surfaces a clean
-      // "not yet supported" error and the LLM falls back to full-screen.
-      void bundleId
-      return null
+      // Per-window capture via the mac NAPI binding's CGWindowListCreateImage
+      // path. Returns null when the binding isn't loaded (non-darwin, missing
+      // .node), when the app isn't running, or when no eligible window
+      // exists — dispatch turns null into a clean error message so the LLM
+      // falls back to full-screen.
+      const native = loadMacNative()
+      if (!native) return null
+      return native.captureWindow(bundleId)
     },
     async resolvePrepareCapture(...args: any[]): Promise<any> {
       // Atomic resolve→prepare→capture path used by dispatch's autoTargetDisplay

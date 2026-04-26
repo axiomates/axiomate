@@ -209,11 +209,31 @@ export function buildComputerUseTools(
           ? " If the session allowlist is empty, the dispatch layer auto-throws a PermissionRequest (not a hard error) and the host application surfaces an interactive dialog where the user picks apps to allow; the screenshot then resumes automatically. "
           : " No allowlist setup is required — just call this tool directly with no arguments. ") +
         "**Do NOT pre-call request_access for the screenshot itself, and do NOT fall back to shell commands like `screencapture` if you see a permission-related result. Retry once if the call appears interrupted.** " +
-        "The returned image is what subsequent click coordinates are relative to.",
+        "The returned image is what subsequent click coordinates are relative to. " +
+        "If the user names a specific application (e.g. \"截 Slack\", \"show me Chrome\"), prefer `screenshot_window` to capture only that app's frontmost window.",
       inputSchema: {
         type: "object" as const,
         properties: {},
         required: [],
+      },
+    },
+
+    {
+      name: "screenshot_window",
+      description:
+        "Capture only the frontmost window of a specific application. The returned frame contains that app's window pixels and nothing else — other apps and the desktop are not visible. macOS-only currently (uses CGWindowListCreateImage); other platforms return a clean error and the LLM should fall back to `screenshot`. " +
+        "Use this when the user names a specific app — e.g. \"show me Slack\", \"截 Chrome\", \"capture iTerm\" — and you do not need surrounding context. Use plain `screenshot` for full-screen / multi-app context, or when you need to click afterward. " +
+        "IMPORTANT: This tool is for inspection only. Coordinates in any subsequent click call refer to the FULL screen, never the window-cropped image — the cursor lives at screen coords. If you intend to click afterward, take a full `screenshot` to read coordinates from.",
+      inputSchema: {
+        type: "object" as const,
+        properties: {
+          bundle_id: {
+            type: "string",
+            description:
+              'Bundle id of the target app, e.g. "com.tinyspeck.slackmacgap" for Slack or "com.google.Chrome" for Chrome. If you only know the user-facing name, look it up via `request_access` (its app picker shows bundle ids) or call `screenshot` first to identify what is on screen.',
+          },
+        },
+        required: ["bundle_id"],
       },
     },
 

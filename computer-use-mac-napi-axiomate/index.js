@@ -76,6 +76,12 @@ module.exports.captureExcluding = async function captureExcluding(opts) {
   return mod.captureExcluding(opts)
 }
 
+module.exports.captureWindow = async function captureWindow(bundleId) {
+  const mod = loadNative()
+  if (!mod) return null
+  return mod.captureWindow(bundleId)
+}
+
 module.exports.prewarm = function prewarm() {
   loadNative()
 }
