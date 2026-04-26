@@ -7,7 +7,7 @@
     "build": "pnpm run build:workspaces && pnpm run build:agent",
     "build:agent": "pnpm --filter ./agent run build",
     "build:agent:dev": "pnpm --filter ./agent run build:dev",
-    "build:workspaces": "node scripts/bootstrap.mjs --skip-tools --skip-install --no-native --no-agent-build",
+    "build:workspaces": "node scripts/bootstrap.mjs --skip-tools --skip-install --no-agent-build",
     "build:types": "pnpm --filter ./agent run build:types",
     "package:mac": "pnpm --filter ./agent run package:mac",
     "package:mac:dev": "pnpm --filter ./agent run package:mac:dev",
