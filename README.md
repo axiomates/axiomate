@@ -12,8 +12,30 @@ Use any model from any provider — SiliconFlow, OpenRouter, local ollama, vLLM,
   npm install -g pnpm
   ```
 - Git
+- [ripgrep](https://github.com/BurntSushi/ripgrep) (`rg`) — required when running from source. Search/grep/glob/`AXIOMATE.md` discovery/context-budget code paths shell out to it.
 
 The bootstrap script will auto-install Bun and Rust when missing (you don't need to install them by hand), but pnpm itself you do need to bring up first because the `pnpm` command has to exist before any `pnpm run bootstrap` invocation. Alternative: `npm run bootstrap` or `node scripts/bootstrap.mjs` — those entry points also work and bootstrap will install pnpm itself the first time.
+
+### Installing ripgrep
+
+The packaged `axiomate.exe` / `axiomate` binaries ship `rg` bundled inside the Bun runtime, so end users of a release build don't need to install anything. Running from source (`pnpm run start`) requires `rg` on `PATH`:
+
+```bash
+# macOS
+brew install ripgrep
+
+# Windows (pick one)
+winget install BurntSushi.ripgrep.MSVC
+scoop install ripgrep
+choco install ripgrep
+
+# Linux
+sudo apt install ripgrep        # Debian / Ubuntu
+sudo dnf install ripgrep        # Fedora / RHEL
+sudo pacman -S ripgrep          # Arch
+```
+
+Verify with `rg --version`.
 
 The repo uses pnpm workspaces. Bun is used by the build/runtime scripts, not as the primary installer.
 

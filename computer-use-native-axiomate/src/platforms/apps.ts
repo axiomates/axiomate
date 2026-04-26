@@ -6,7 +6,7 @@
  * Linux: wmctrl / xdotool / desktop files
  */
 
-import { execSync, execFile } from 'node:child_process'
+import { execSync, execFile, execFileSync } from 'node:child_process'
 import { promisify } from 'node:util'
 
 const execFileP = promisify(execFile)
@@ -69,10 +69,30 @@ if ($fw) { $fw.ProcessName }
 export async function listRunningApps(): Promise<AppInfo[]> {
   try {
     if (process.platform === 'darwin') {
-      const script =
-        'tell application "System Events" to get {bundle identifier, name} of every application process whose background only is false'
-      const out = execSync(`osascript -e '${script}'`, { encoding: 'utf-8' }).trim()
-      // AppleScript returns two lists concatenated: "id1, id2, ..., name1, name2, ..."
+      // Iterate explicitly with try/end-try so processes with `missing value`
+      // background-only / bundle-identifier (kernel helpers, some XPC services)
+      // don't blow up the whole script with -1728 error.
+      const scriptLines = [
+        'tell application "System Events"',
+        '  set ids to {}',
+        '  set ns to {}',
+        '  repeat with proc in (every application process)',
+        '    try',
+        '      if background only of proc is false then',
+        '        set end of ids to bundle identifier of proc',
+        '        set end of ns to name of proc',
+        '      end if',
+        '    end try',
+        '  end repeat',
+        '  return {ids, ns}',
+        'end tell',
+      ]
+      const args: string[] = []
+      for (const line of scriptLines) {
+        args.push('-e', line)
+      }
+      const out = execFileSync('osascript', args, { encoding: 'utf-8' }).trim()
+      // AppleScript flattens {ids, ns} → "id1, id2, ..., name1, name2, ..."
       const parts = out.split(', ')
       const half = Math.floor(parts.length / 2)
       const ids = parts.slice(0, half)
