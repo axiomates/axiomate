@@ -206,6 +206,34 @@ pub fn hide_app(bundle_id: String) -> napi::Result<bool> {
     }
 }
 
+/// Walk the parent process chain starting from the current process and
+/// return the exe paths of every ancestor up to a hop limit. Used by
+/// winExecutor.prepareForAction to add ALL ancestor exes to the
+/// no-hide allowlist — covering the actual visible terminal window
+/// owner, which may be several hops up (e.g. axiomate runs in node →
+/// node spawned by bash → bash hosted by mintty → mintty has the
+/// visible window). The shell itself (bash / pwsh / cmd) often runs
+/// console-only and isn't in listRunningApps; the visible terminal
+/// is up-chain.
+///
+/// Analogous to mac's `surrogateHost` but broader — instead of
+/// guessing one terminal, we exempt every ancestor and let the
+/// system-process deny-list inside hide_app filter out the truly
+/// system-critical ancestors (services.exe, svchost.exe, etc).
+///
+/// Returns empty Vec when no ancestors can be walked.
+#[napi]
+pub fn get_host_ancestor_paths() -> napi::Result<Vec<String>> {
+    #[cfg(target_os = "windows")]
+    {
+        Ok(windows_impl::get_host_ancestor_paths())
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        Ok(Vec::new())
+    }
+}
+
 /// Inverse of `hide_app` — shows all currently-invisible top-level
 /// windows owned by the given app. Used by cleanup.ts at turn-end to
 /// restore the apps that prepareForAction hid. SW_SHOWNOACTIVATE so we
@@ -347,9 +375,14 @@ mod windows_impl {
         HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, KEY_READ, KEY_WOW64_32KEY, KEY_WOW64_64KEY,
         REG_VALUE_TYPE,
     };
+    use windows::Win32::System::Diagnostics::ToolHelp::{
+        CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W,
+        TH32CS_SNAPPROCESS,
+    };
     use windows::Win32::System::Threading::{
-        GetCurrentProcess, OpenProcess, OpenProcessToken, QueryFullProcessImageNameW,
-        PROCESS_NAME_FORMAT, PROCESS_QUERY_LIMITED_INFORMATION,
+        GetCurrentProcess, GetCurrentProcessId, OpenProcess, OpenProcessToken,
+        QueryFullProcessImageNameW, PROCESS_NAME_FORMAT,
+        PROCESS_QUERY_LIMITED_INFORMATION,
     };
     use windows::Win32::UI::WindowsAndMessaging::{
         EnumWindows, GetForegroundWindow, GetWindowRect, GetWindowThreadProcessId,
@@ -916,17 +949,64 @@ mod windows_impl {
         pid_to_path: BTreeMap<u32, String>,
     }
 
+    /// System processes that must NEVER be hidden, even if the caller
+    /// passes them in. Hiding `explorer.exe` takes the taskbar + desktop
+    /// offline (user reports "screen goes black, must restart explorer");
+    /// hiding `dwm.exe` / `sihost.exe` / Win11 shell hosts likewise
+    /// destabilizes the UI. unhide is also gated symmetrically — we
+    /// never hid them, so we shouldn't synthesize SW_SHOWNOACTIVATE on
+    /// them either.
+    ///
+    /// Match by exe basename (case-insensitive) — same field across all
+    /// versions of Windows. Path varies by install location / SystemApps
+    /// nesting / WoW64 / etc.
+    const SYSTEM_HIDE_DENY_LIST: &[&str] = &[
+        "explorer.exe",                  // Taskbar, desktop, File Explorer
+        "dwm.exe",                       // Desktop Window Manager (compositor)
+        "sihost.exe",                    // Shell Infrastructure Host
+        "ctfmon.exe",                    // Text services framework
+        "csrss.exe",                     // Client Server Runtime (kernel-adjacent)
+        "winlogon.exe",                  // Logon manager
+        "logonui.exe",                   // Lock screen / login UI
+        "lockapp.exe",                   // Win11 lock screen
+        "searchhost.exe",                // Win11 search overlay
+        "startmenuexperiencehost.exe",   // Win11 Start menu
+        "shellexperiencehost.exe",       // Win10/11 shell experience
+        "textinputhost.exe",             // Win11 IME / handwriting
+        "applicationframehost.exe",      // UWP frame host
+        "systemsettings.exe",            // Windows Settings (UWP)
+        "fontdrvhost.exe",               // Font driver host
+        "wininit.exe",                   // Boot init
+        "smss.exe",                      // Session Manager
+        "services.exe",                  // SCM (won't have windows but defensive)
+    ];
+
+    fn is_protected_system_process(path: &str) -> bool {
+        let lower = path.to_lowercase();
+        let basename = lower.rsplit(['\\', '/']).next().unwrap_or(&lower);
+        SYSTEM_HIDE_DENY_LIST.iter().any(|p| *p == basename)
+    }
+
     /// Set visibility of every top-level window owned by `bundle_id` to
     /// either hidden (false) or shown (true). Walks EnumWindows once; for
     /// each window resolves owner pid → exe path (cached per call) and
     /// matches against bundle_id. Returns true iff at least one window's
     /// visibility was changed.
     ///
+    /// **Hard-blocks system processes via `is_protected_system_process`** —
+    /// any input matching a deny-listed exe basename returns false
+    /// immediately without touching the window list. This is the safety
+    /// net that prevents prepareForAction allowlist gaps from accidentally
+    /// hiding explorer.exe / dwm.exe / Win11 shell hosts.
+    ///
     /// We filter by current visibility matching the change direction: hide
     /// only acts on visible windows; show only on hidden ones. This keeps
     /// the operation idempotent and avoids re-showing windows the app had
     /// explicitly hidden for its own reasons.
     pub fn set_app_visibility(bundle_id: &str, show: bool) -> bool {
+        if is_protected_system_process(bundle_id) {
+            return false;
+        }
         let mut state = VisState {
             target_path: bundle_id.to_string(),
             show,
@@ -1194,6 +1274,56 @@ mod windows_impl {
     }
 
     // ────────────── 4. is_running_elevated ──────────────
+
+    /// Walk the parent process chain via ToolHelp32 snapshot. Returns
+    /// every ancestor's exe path up to a hop limit. Caller (winExecutor)
+    /// adds all of them to the prepareForAction allowlist — the actual
+    /// visible terminal window owner is somewhere in this chain
+    /// (axiomate ← node ← bash ← mintty ← ... etc), and we don't want
+    /// to guess which exe basename it has. The system-process deny-list
+    /// inside `set_app_visibility` filters out ancestors that ARE
+    /// system processes (services.exe, svchost.exe, ...) so adding them
+    /// to the allowlist is harmless.
+    pub fn get_host_ancestor_paths() -> Vec<String> {
+        let snapshot = match unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) }
+        {
+            Ok(s) => s,
+            Err(_) => return Vec::new(),
+        };
+        // pid→ppid map from snapshot.
+        let mut ppid_of: BTreeMap<u32, u32> = BTreeMap::new();
+        unsafe {
+            let mut entry = PROCESSENTRY32W::default();
+            entry.dwSize = std::mem::size_of::<PROCESSENTRY32W>() as u32;
+            if Process32FirstW(snapshot, &mut entry).is_ok() {
+                loop {
+                    ppid_of.insert(entry.th32ProcessID, entry.th32ParentProcessID);
+                    entry = PROCESSENTRY32W::default();
+                    entry.dwSize = std::mem::size_of::<PROCESSENTRY32W>() as u32;
+                    if Process32NextW(snapshot, &mut entry).is_err() {
+                        break;
+                    }
+                }
+            }
+            let _ = CloseHandle(snapshot);
+        }
+        // Walk up at most 16 hops — 99.99% of process trees are <8 deep.
+        // Guards against ppid cycles (shouldn't happen on modern Windows
+        // but defensive against corrupted process state).
+        let mut paths: Vec<String> = Vec::new();
+        let mut pid = unsafe { GetCurrentProcessId() };
+        for _ in 0..16 {
+            let ppid = match ppid_of.get(&pid) {
+                Some(p) if *p != 0 && *p != pid => *p,
+                _ => break,
+            };
+            if let Some(path) = exe_path_for_pid(ppid) {
+                paths.push(path);
+            }
+            pid = ppid;
+        }
+        paths
+    }
 
     pub fn is_running_elevated() -> bool {
         unsafe {

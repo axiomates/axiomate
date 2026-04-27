@@ -75,6 +75,12 @@ module.exports.isRunningElevated = function isRunningElevated() {
   return mod.isRunningElevated()
 }
 
+module.exports.getHostAncestorPaths = function getHostAncestorPaths() {
+  const mod = loadNative()
+  if (!mod) return []
+  return mod.getHostAncestorPaths()
+}
+
 // ── Foreground window (Win32 fast path) ────────────────────────────────────
 
 module.exports.getForegroundWindow = function getForegroundWindow() {

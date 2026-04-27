@@ -23,6 +23,10 @@ windows = { version = "0.58", features = [
   "Win32_Security",                   # TOKEN_QUERY, TokenElevation
   "Win32_System_Threading",           # OpenProcess, OpenProcessToken,
                                       # QueryFullProcessImageName, GetCurrentProcess
+  "Win32_System_Diagnostics_ToolHelp", # CreateToolhelp32Snapshot,
+                                      # Process32FirstW / Process32NextW —
+                                      # parent-process walk for host terminal
+                                      # detection (Stage 2 host-protection)
   "Win32_System_Registry",            # RegOpenKeyExW, RegEnumKeyExW,
                                       # RegQueryValueExW
   "Win32_UI_WindowsAndMessaging",     # WindowFromPoint, EnumWindows,

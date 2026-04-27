@@ -59,6 +59,27 @@ export function createWinExecutor(opts: {
   const base = createExecutor()
   const napiAvailable = winNapi.isAvailable()
 
+  // Host-ancestor detection — exe paths of every parent process up to
+  // a depth limit. The actual visible terminal window owner is somewhere
+  // in this chain and we don't want to guess: axiomate ← node ← bash ←
+  // mintty ← ... etc. Resolved once at construction. prepareForAction
+  // adds all of these to the allowlist so the hide loop never tries
+  // to hide the user's terminal out from under axiomate. The
+  // system-process deny-list inside Rust set_app_visibility filters
+  // out ancestors that ARE deny-listed system processes (so adding
+  // services.exe / svchost.exe to the allowlist is harmless).
+  //
+  // Mac uses a single surrogateHost (CFBundleIdentifier of the
+  // detected terminal); on Windows there's no equivalent stable
+  // identifier so we go broad — exempting the whole ancestor chain.
+  const hostAncestorPaths = napiAvailable ? winNapi.getHostAncestorPaths() : []
+  if (hostAncestorPaths.length > 0) {
+    logForDebugging(
+      `[computer-use] host ancestor chain (win, hide-exempt): ${hostAncestorPaths.join(' ← ')}`,
+      { level: 'debug' },
+    )
+  }
+
   return {
     ...base,
     capabilities: {
@@ -192,12 +213,24 @@ export function createWinExecutor(opts: {
     ): Promise<string[]> {
       // Hide every running app whose exe path is NOT in the allowlist
       // before taking screenshot / clicks. Mirrors mac's prepareDisplay
-      // hide loop. Tracking returned by mac's executor is by bundleId
-      // (CFBundleIdentifier); on win we use exe path which is what the
-      // rest of the win surface uses.
+      // hide loop. Two layers of protection prevent accidentally hiding
+      // critical UI:
+      //
+      //   1. host-terminal exemption (this function) — adds the parent
+      //      terminal exe (cmd.exe / pwsh.exe / Windows Terminal /
+      //      Git Bash / VS Code integrated terminal / etc) to the
+      //      allowlist so we never hide our own TTY out from under
+      //      ourselves
+      //   2. system-process deny-list (Rust hide_app) — even if a
+      //      bundle id sneaks past the allowlist, the Rust binding
+      //      hard-blocks explorer.exe / dwm.exe / sihost.exe / Win11
+      //      shell hosts and returns false. This is the safety net
+      //      that fixed "screen goes black, must restart explorer"
+      //      reports
       if (!napiAvailable) return base.prepareForAction(allowlistBundleIds, _displayId)
       if (!getHideBeforeActionEnabled()) return []
       const allowSet = new Set(allowlistBundleIds)
+      for (const ancestor of hostAncestorPaths) allowSet.add(ancestor)
       const running = winNapi.listRunningApps()
       const hidden: string[] = []
       for (const app of running) {
@@ -215,7 +248,7 @@ export function createWinExecutor(opts: {
       }
       if (hidden.length > 0) {
         logForDebugging(
-          `[computer-use] prepareForAction (win): hidden=${hidden.length} apps`,
+          `[computer-use] prepareForAction (win): hidden=${hidden.length} apps (deny-list system processes auto-skipped)`,
           { level: 'debug' },
         )
       }
