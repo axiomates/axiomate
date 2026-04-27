@@ -1611,7 +1611,7 @@ export const fetchToolsForClient = memoizeWithLRU(
               // `sendOSNotification` through wrapper.tsx's per-call ref.
               // Setting it here, before the server-side CallTool runs,
               // lets dialog/escape/notification callbacks see the right
-              // ToolUseContext. macOS-only — DCE'd on windows / linux.
+              // ToolUseContext. macOS + Windows — DCE'd on linux.
               if (
                 (client.config as { type?: string }).type === 'in-process' &&
                 client.name === 'computer-use'

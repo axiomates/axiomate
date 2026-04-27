@@ -15,13 +15,14 @@
  *
  * Identification is two-layered:
  *   1. Bundle ID match (macOS-only; `InstalledApp.bundleId` is a
- *      CFBundleIdentifier and meaningless on Windows). Fast, exact, the
- *      primary mechanism while CU is darwin-gated.
- *   2. Display-name substring match (cross-platform fallback). Catches
- *      unresolved requests ("Chrome" when Chrome isn't installed) AND will
- *      be the primary mechanism on Windows/Linux where there's no bundle ID.
- *      Windows-relevant names (PowerShell, cmd, Windows Terminal) are
- *      included now so they activate the moment the darwin gate lifts.
+ *      CFBundleIdentifier on mac; on Windows the win NAPI uses the
+ *      registry sub-key as bundleId, so this layer is mac-specific).
+ *      Fast, exact, the primary mechanism on mac.
+ *   2. Display-name substring match (cross-platform). On Windows this
+ *      is the primary mechanism since Windows registry keys are GUIDs
+ *      with no symbolic identity. Windows-relevant names (PowerShell,
+ *      cmd, Windows Terminal, Edge, Firefox) are included so the
+ *      Windows path catches the same denied categories.
  *
  * Keep this file **import-free** (like sentinelApps.ts) — the renderer may
  * import it via a package.json subpath export, and pulling in
@@ -49,7 +50,7 @@ export function categoryToTier(
   return "full";
 }
 
-// ─── Bundle-ID deny sets (macOS) ─────────────────────────────────────────
+// ─── Bundle-ID deny sets (macOS only; names below are cross-platform) ───
 
 const BROWSER_BUNDLE_IDS: ReadonlySet<string> = new Set([
   // Apple

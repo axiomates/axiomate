@@ -25,10 +25,11 @@ const DENY_ALL_RESPONSE: CuPermissionResponse = {
 }
 
 /**
- * Two-panel dispatcher. When `request.tccState` is present, macOS permissions
- * (Accessibility / Screen Recording) are missing and the app list is
- * irrelevant — show a TCC panel that opens System Settings. Otherwise show the
- * app allowlist + grant-flags panel.
+ * Two-panel dispatcher. When `request.tccState` is present (macOS only —
+ * Windows has no per-app TCC equivalent), macOS Accessibility / Screen
+ * Recording permissions are missing and the app list is irrelevant; show
+ * a TCC panel that opens System Settings. Otherwise (mac with TCC granted,
+ * or Windows always) show the app allowlist + grant-flags panel.
  */
 export function ComputerUseApproval({
   request,

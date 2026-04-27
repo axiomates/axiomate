@@ -1147,10 +1147,11 @@ export async function getAxiomateMcpConfigs(
     filtered[name] = serverConfig as ScopedMcpServerConfig
   }
 
-  // Built-in in-process MCP server for the computer-use suite (mac only).
-  // The bunPluginComputerUseStub plugin replaces this import with a no-op
-  // returning `undefined` on windows / linux builds, so this is a true
-  // workspace-graph DCE on those platforms.
+  // Built-in in-process MCP server for the computer-use suite (macOS +
+  // Windows). The bunPluginComputerUseStub plugin replaces this import
+  // with a no-op returning `undefined` on linux builds, so this is a
+  // true workspace-graph DCE on linux. mac and win each have a native
+  // peer (computer-use-{mac,win}-napi-axiomate) backing the executor.
   // User-configured servers of the same name win — don't override.
   const { setupComputerUseMCP } = await import(
     '../../utils/computerUse/setup.js'
@@ -1171,7 +1172,7 @@ export async function getAxiomateMcpConfigs(
  * client.ts:getMcpToolsCommandsAndResources). Both names now return the
  * full set of servers — JSON-configured (enterprise / project / user /
  * local / plugin) plus the built-in in-process computer-use server on
- * darwin.
+ * darwin and win32.
  */
 export async function getAllMcpConfigs(): Promise<{
   servers: Record<string, ScopedMcpServerConfig>
