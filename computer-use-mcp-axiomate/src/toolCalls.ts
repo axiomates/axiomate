@@ -539,13 +539,24 @@ async function runInputActionGates(
   if (!frontmost) {
     // No frontmost app (rare — login window?). Let it through; the click
     // will land somewhere and PixelCompare catches staleness.
+    adapter.logger.warn(
+      `[CU-GATE] runInputActionGates PASS: no frontmost app (lock screen / UAC / nothing focused) — letting click through`,
+    );
     return null;
   }
 
   const { hostBundleId } = adapter.executor.capabilities;
 
   if (frontmostTier !== undefined) {
-    if (tierSatisfies(frontmostTier, actionKind)) return null;
+    if (tierSatisfies(frontmostTier, actionKind)) {
+      adapter.logger.warn(
+        `[CU-GATE] runInputActionGates PASS: frontmost="${frontmost.displayName}" (${frontmost.bundleId}) tier="${frontmostTier}" satisfies actionKind="${actionKind}"`,
+      );
+      return null;
+    }
+    adapter.logger.warn(
+      `[CU-GATE] runInputActionGates BLOCK: frontmost="${frontmost.displayName}" (${frontmost.bundleId}) tier="${frontmostTier}" insufficient for actionKind="${actionKind}" — returning tier_insufficient error`,
+    );
     // In the allowlist but tier doesn't cover this action. Tailor the
     // guidance to the actual tier — at "read", suggesting left_click or Bash
     // is wrong (nothing is allowed; use Chrome MCP). At "click", the
@@ -582,12 +593,20 @@ async function runInputActionGates(
     );
   }
   // Finder is never-hide, always allowed.
-  if (frontmost.bundleId === FINDER_BUNDLE_ID) return null;
+  if (frontmost.bundleId === FINDER_BUNDLE_ID) {
+    adapter.logger.warn(
+      `[CU-GATE] runInputActionGates PASS: frontmost is Finder (always allowed)`,
+    );
+    return null;
+  }
 
   if (frontmost.bundleId === hostBundleId) {
     if (actionKind !== "keyboard") {
       // mouse and mouse_full are both click events — click-through works.
       // We're click-through (executor's withClickThrough). Pass.
+      adapter.logger.warn(
+        `[CU-GATE] runInputActionGates PASS: frontmost is host (axiomate itself), actionKind="${actionKind}" — click-through allowed`,
+      );
       return null;
     }
     // Keyboard safety net — defocus (prepareForAction step B) should have
@@ -601,6 +620,11 @@ async function runInputActionGates(
 
   // Non-allowlisted, non-us, non-Finder. RARE after the hide loop — means
   // something popped up between prepare and action, or the 5-try loop gave up.
+  const allowlistList = overrides.allowedApps.map(a => a.bundleId).join(',') || '<empty>';
+  adapter.logger.warn(
+    `[CU-GATE] runInputActionGates BLOCK: frontmost="${frontmost.displayName}" (${frontmost.bundleId}) NOT in allowedApps={${allowlistList}} — returning app_not_granted error to AI. ` +
+      `If you want this action to proceed, either grant access to that app via request_access, or set $env:AXIOMATE_CU_BYPASS_ALLOWLIST="1" to skip the gate.`,
+  );
   return errorResult(
     `"${frontmost.displayName}" is not in the allowed applications and is ` +
       `currently in front. Take a new screenshot — it may have appeared ` +
@@ -638,21 +662,30 @@ async function runHitTestGate(
   );
   if (bypassed) return null;
   const target = await adapter.executor.appUnderPoint(x, y);
+  adapter.logger.warn(
+    `[CU-GATE] runHitTestGate appUnderPoint(${x},${y}) → ${target ? `bundleId="${target.bundleId}" displayName="${target.displayName}"` : 'null (desktop / nothing under point / platform no-op)'}`,
+  );
   if (!target) return null; // desktop / nothing under point / platform no-op
 
   // Finder (desktop, file dialogs) is always clickable — same exemption as
   // runInputActionGates. Our own overlay is filtered by Swift (pid != self).
-  if (target.bundleId === FINDER_BUNDLE_ID) return null;
+  if (target.bundleId === FINDER_BUNDLE_ID) {
+    adapter.logger.warn(
+      `[CU-GATE] runHitTestGate PASS: target is Finder (always allowed)`,
+    );
+    return null;
+  }
 
   const tierByBundleId = new Map(
     overrides.allowedApps.map((a) => [a.bundleId, a.tier] as const),
   );
 
   if (!tierByBundleId.has(target.bundleId)) {
-    // Not in the allowlist at all. The frontmost check would catch this if
-    // the target were frontmost, but here a different app is in front. This
-    // is the "something popped up" edge case — a new window appeared between
-    // screenshot and click, or a background app's window overlaps the target.
+    // Not in the allowlist at all.
+    const allowlistList = overrides.allowedApps.map(a => a.bundleId).join(',') || '<empty>';
+    adapter.logger.warn(
+      `[CU-GATE] runHitTestGate BLOCK: target="${target.displayName}" (${target.bundleId}) NOT in allowedApps={${allowlistList}} — returning app_not_granted error`,
+    );
     return errorResult(
       `Click at these coordinates would land on "${target.displayName}", ` +
         `which is not in the allowed applications. Take a fresh screenshot ` +
@@ -671,8 +704,16 @@ async function runHitTestGate(
     await syncClipboardStash(adapter, overrides, true);
   }
 
-  if (tierSatisfies(targetTier, actionKind)) return null;
+  if (tierSatisfies(targetTier, actionKind)) {
+    adapter.logger.warn(
+      `[CU-GATE] runHitTestGate PASS: target="${target.displayName}" tier="${targetTier}" satisfies actionKind="${actionKind}"`,
+    );
+    return null;
+  }
 
+  adapter.logger.warn(
+    `[CU-GATE] runHitTestGate BLOCK: target="${target.displayName}" tier="${targetTier}" insufficient for actionKind="${actionKind}" — returning tier_insufficient error`,
+  );
   // Target is in the allowlist but tier doesn't cover this action.
   // runHitTestGate is only called with mouse/mouse_full (keyboard routes to
   // frontmost, not window-under-cursor). The branch above catches
@@ -3056,11 +3097,19 @@ async function handleOpenApplication(
   }
 
   if (!targetBundleId || !allowed.has(targetBundleId)) {
+    const allowlistList = overrides.allowedApps.map(a => a.bundleId).join(',') || '<empty>';
+    adapter.logger.warn(
+      `[CU-GATE] handleOpenApplication BLOCK: app="${app}" not in allowedApps={${allowlistList}} — returning app_not_granted error to AI ` +
+        `(set $env:AXIOMATE_CU_BYPASS_ALLOWLIST="1" to skip, or call request_access first)`,
+    );
     return errorResult(
       `"${app}" is not granted for this session. Call request_access first.`,
       "app_not_granted",
     );
   }
+  adapter.logger.warn(
+    `[CU-GATE] handleOpenApplication PASS: app="${app}" → bundleId="${targetBundleId}", launching`,
+  );
 
   // open_application works at any tier — bringing an app forward is exactly
   // what tier "read" enables (you need it on screen to screenshot it). The
