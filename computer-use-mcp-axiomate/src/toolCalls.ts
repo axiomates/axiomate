@@ -264,7 +264,7 @@ function scaleCoord(
     // ComputerTool.swift:70-80 — two independent convergent impls.
     // Uses the display geometry stashed AT CAPTURE TIME, not fresh.
     // Origin from the same snapshot keeps clicks coherent with the captured display.
-    return {
+    const result = {
       x:
         Math.round(
           rawX * (lastScreenshot.displayWidth / lastScreenshot.width),
@@ -274,6 +274,14 @@ function scaleCoord(
           rawY * (lastScreenshot.displayHeight / lastScreenshot.height),
         ) + lastScreenshot.originY,
     };
+    logger.warn(
+      `[CU-COORD] scaleCoord: in=(${rawX},${rawY}) ` +
+        `screenshot=${lastScreenshot.width}x${lastScreenshot.height} (image px) ` +
+        `display=${lastScreenshot.displayWidth}x${lastScreenshot.displayHeight} (logical pt) ` +
+        `origin=(${lastScreenshot.originX},${lastScreenshot.originY}) ` +
+        `→ out=(${result.x},${result.y}) (logical screen coords)`,
+    );
+    return result;
   }
 
   // Cold start: model sent pixel coords without having taken a screenshot.
@@ -2234,6 +2242,12 @@ async function handleScreenshot(
       originX: result.originX,
       originY: result.originY,
     };
+    adapter.logger.warn(
+      `[CU-COORD] handleScreenshot atomic stash: image=${shot.width}x${shot.height} (px) ` +
+        `displayLogical=${shot.displayWidth}x${shot.displayHeight} (pt) ` +
+        `origin=(${shot.originX},${shot.originY}) displayId=${shot.displayId} ` +
+        `(these are the dims AI's clicks will be scaled against)`,
+    );
 
     const monitorNote = await buildMonitorNote(
       adapter,
@@ -2304,6 +2318,12 @@ async function handleScreenshot(
   );
   adapter.logger.debug(
     `[computer-use] handleScreenshot non-atomic: takeScreenshotWithRetry returned base64Len=${shot.base64?.length ?? "undef"} width=${shot.width} height=${shot.height} displayId=${shot.displayId}`,
+  );
+  adapter.logger.warn(
+    `[CU-COORD] handleScreenshot non-atomic stash: image=${shot.width}x${shot.height} (px) ` +
+      `displayLogical=${shot.displayWidth}x${shot.displayHeight} (pt) ` +
+      `origin=(${shot.originX},${shot.originY}) displayId=${shot.displayId} ` +
+      `(these are the dims AI's clicks will be scaled against)`,
   );
 
   const hiddenNote = await buildHiddenNote(adapter, hiddenSinceLastSeen);
