@@ -1,17 +1,26 @@
 /**
- * CLI `ComputerExecutor` for Windows. Thin wrapper over the cross-platform
- * `createExecutor` from computer-use-native-axiomate (nut-js for input,
- * node-screenshots for capture, apps.ts PowerShell for app management),
- * with three methods overridden to call into the Windows NAPI binding:
+ * Win32 `ComputerExecutor`. Thin wrapper over the cross-platform
+ * `createExecutor` from computer-use-native-axiomate (node-screenshots
+ * for displays, apps.ts PowerShell for some app management), with
+ * Windows-specific overrides via `computer-use-win-napi-axiomate`:
  *
- *   - `listInstalledApps` — registry walk via `computer-use-win-napi-axiomate`
- *     (cross-platform branch in apps.ts returns []; this surfaces the real
- *     installed-app list to `request_access`)
- *   - `appUnderPoint` — `WindowFromPoint` hit-test (click safety gate)
+ *   - `listInstalledApps` — registry walk
+ *   - `appUnderPoint` — `WindowFromPoint` hit-test
  *   - `findWindowDisplays` — `EnumWindows` + `MonitorFromWindow` mapping
+ *   - `getFrontmostApp` — `GetForegroundWindow` fast path
+ *   - `screenshotWindow` — `PrintWindow` with `PW_RENDERFULLCONTENT`
+ *   - `screenshot` / `resolvePrepareCapture` — Win32 BitBlt + Lanczos
+ *     resize via `captureDisplayScaled`
+ *   - `moveMouse` / `click` / `getCursorPosition` — direct Win32
+ *     SetCursorPos / SendInput (replaces nut.js for mouse input)
  *
- * Stage 2 will add `screenshotWindow` (BitBlt), `prepareForAction` /
- * `previewHideSet` (`ShowWindow(SW_HIDE)`), and `getFrontmostApp` upgrade.
+ * **Does NOT implement `prepareForAction` / `previewHideSet`.** Win's
+ * model is "don't touch other apps; clicks deliver to wherever they
+ * land and Win11 shell handles target activation." The hide-before-
+ * action concept is macOS-specific (driven by SCContentFilter
+ * compositor allowlist). Both methods are optional in the
+ * `ComputerExecutor` interface — see
+ * computer-use-mcp-axiomate/src/executor.ts for the divergence note.
  *
  * No drainRunLoop / @MainActor concerns on Windows — Win32 APIs are
  * thread-safe and don't need CFRunLoop pumping.
@@ -29,20 +38,16 @@ import type {
 } from 'computer-use-mcp-axiomate'
 
 import { logForDebugging } from '../debug.js'
-import { errorMessage } from '../errors.js'
 import { CLI_CU_CAPABILITIES } from './common.js'
 
 let elevationWarned = false
 
-export function createWinExecutor(opts: {
-  getHideBeforeActionEnabled: () => boolean
-}): ComputerExecutor {
+export function createWinExecutor(): ComputerExecutor {
   if (process.platform !== 'win32') {
     throw new Error(
       `createWinExecutor called on ${process.platform}. Windows-only.`,
     )
   }
-  const { getHideBeforeActionEnabled } = opts
 
   // Elevation diagnostic — fired once per process. Doesn't block; admin
   // mode is a legitimate run mode (e.g. dev tooling that needs it), but
@@ -60,27 +65,6 @@ export function createWinExecutor(opts: {
 
   const base = createExecutor()
   const napiAvailable = winNapi.isAvailable()
-
-  // Host-ancestor detection — exe paths of every parent process up to
-  // a depth limit. The actual visible terminal window owner is somewhere
-  // in this chain and we don't want to guess: axiomate ← node ← bash ←
-  // mintty ← ... etc. Resolved once at construction. prepareForAction
-  // adds all of these to the allowlist so the hide loop never tries
-  // to hide the user's terminal out from under axiomate. The
-  // system-process deny-list inside Rust set_app_visibility filters
-  // out ancestors that ARE deny-listed system processes (so adding
-  // services.exe / svchost.exe to the allowlist is harmless).
-  //
-  // Mac uses a single surrogateHost (CFBundleIdentifier of the
-  // detected terminal); on Windows there's no equivalent stable
-  // identifier so we go broad — exempting the whole ancestor chain.
-  const hostAncestorPaths = napiAvailable ? winNapi.getHostAncestorPaths() : []
-  if (hostAncestorPaths.length > 0) {
-    logForDebugging(
-      `[computer-use] host ancestor chain (win, hide-exempt): ${hostAncestorPaths.join(' ← ')}`,
-      { level: 'debug' },
-    )
-  }
 
   // 1080p-ish screenshot ceiling. Long edge ≤ 1920 covers 16:9 (1920×1080),
   // 16:10 (1920×1200 — slightly over short edge but cap is on long), 21:9
@@ -153,49 +137,6 @@ export function createWinExecutor(opts: {
       x: Math.round(x * display.scaleFactor),
       y: Math.round(y * display.scaleFactor),
     }
-  }
-
-  // Hide every running app whose exe path isn't in the allowlist.
-  // Shared between `prepareForAction` (non-atomic path) and
-  // `resolvePrepareCapture` (atomic path). Caller decides whether to
-  // call this (i.e. checks getHideBeforeActionEnabled).
-  function runHideLoop(allowlistBundleIds: string[]): string[] {
-    const allowSet = new Set(allowlistBundleIds)
-    for (const ancestor of hostAncestorPaths) allowSet.add(ancestor)
-    const running = winNapi.listRunningApps()
-    logForDebugging(
-      `[CU-HIDE] pre-hide visible apps: ${running.map(a => a.bundleId).join(', ')}`,
-      { level: 'warn' },
-    )
-    const hidden: string[] = []
-    for (const app of running) {
-      if (allowSet.has(app.bundleId)) {
-        logForDebugging(
-          `[CU-HIDE] win hideApp SKIP (in allowlist or host-ancestor): bundleId="${app.bundleId}" displayName="${app.displayName}"`,
-          { level: 'warn' },
-        )
-        continue
-      }
-      try {
-        const ok = winNapi.hideApp(app.bundleId)
-        logForDebugging(
-          `[CU-HIDE] win hideApp bundleId="${app.bundleId}" displayName="${app.displayName}" result=${ok}`,
-          { level: 'warn' },
-        )
-        if (ok) hidden.push(app.bundleId)
-      } catch (err) {
-        logForDebugging(
-          `[CU-HIDE] win hideApp THREW for "${app.bundleId}": ${errorMessage(err)}`,
-          { level: 'warn' },
-        )
-      }
-    }
-    const after = winNapi.listRunningApps()
-    logForDebugging(
-      `[CU-HIDE] post-hide visible apps: ${after.map(a => a.bundleId).join(', ')}`,
-      { level: 'warn' },
-    )
-    return hidden
   }
 
   return {
@@ -300,31 +241,21 @@ export function createWinExecutor(opts: {
       doHide?: boolean
     }): Promise<ResolvePrepareCaptureResult> {
       // Atomic path — toolCalls.ts handleScreenshot calls this when
-      // autoTargetDisplay sub-gate is ON (the common case). Combines the
-      // hide loop AND the capture in one logical call. The mac swift NAPI
-      // does this atomically inside a single CGScreen pump; on win we run
-      // them sequentially in TS, same observable effect.
-      //
-      // Critical for click correctness: this MUST do the same Lanczos
-      // resize the non-atomic screenshot does, otherwise the atomic-path
-      // user sees raw 3840×2160 dims while the API server resizes to 1568,
-      // and scaleCoord uses the wrong denominator. The original cross-
-      // platform impl in computer-use-native-axiomate skipped both the
-      // hide AND the resize, which is what was breaking win clicks.
-      const hidden = opts.doHide && getHideBeforeActionEnabled() && napiAvailable
-        ? runHideLoop(opts.allowedBundleIds)
-        : []
+      // autoTargetDisplay sub-gate is ON (the common case). On Win we
+      // deliberately do NOT honor the hide loop (mac semantics): Win's
+      // model is "don't touch other apps; clicks deliver to wherever they
+      // land and Win11 shell handles target activation". Empty `hidden`
+      // returned regardless of `opts.doHide`. See COORDINATES.md / the
+      // platform-divergence note in computer-use-mcp-axiomate/executor.ts.
       const r = await captureScaledDisplay(opts.preferredDisplayId)
       if (!r) {
-        const fallback = await base.resolvePrepareCapture(opts)
-        return { ...fallback, hidden }
+        return await base.resolvePrepareCapture(opts)
       }
       return {
         displayId: r.displayId ?? 0,
         base64: r.base64,
         width: r.width,
         height: r.height,
-        hidden,
         displayWidth: r.displayWidth,
         displayHeight: r.displayHeight,
         originX: r.originX,
@@ -420,24 +351,10 @@ export function createWinExecutor(opts: {
       }))
     },
 
-    async prepareForAction(
-      allowlistBundleIds,
-      _displayId,
-    ): Promise<string[]> {
-      // Hide every running app whose exe path is NOT in the allowlist
-      // before taking screenshot / clicks. Two layers of protection
-      // prevent accidentally hiding critical UI:
-      //
-      //   1. host-terminal exemption (runHideLoop) — adds the parent
-      //      terminal exe (cmd.exe / pwsh.exe / Windows Terminal /
-      //      Git Bash / VS Code integrated terminal / etc) to the
-      //      allowlist so we never hide our own TTY
-      //   2. system-process deny-list (Rust hide_app) — hard-blocks
-      //      explorer.exe / dwm.exe / sihost.exe / Win11 shell hosts.
-      //      Safety net for "screen goes black" mode.
-      if (!napiAvailable) return base.prepareForAction(allowlistBundleIds, _displayId)
-      if (!getHideBeforeActionEnabled()) return []
-      return runHideLoop(allowlistBundleIds)
-    },
+    // No `prepareForAction` / `previewHideSet` overrides — Win does not
+    // implement the hide-before-action model. Both methods are optional in
+    // ComputerExecutor (computer-use-mcp-axiomate/executor.ts); callers
+    // use `?.()` and treat undefined as "nothing to hide". Mac keeps its
+    // own implementation via the cross-platform base + swift NAPI.
   }
 }

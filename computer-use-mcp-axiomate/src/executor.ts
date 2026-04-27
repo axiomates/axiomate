@@ -54,7 +54,19 @@ export interface ResolvePrepareCaptureResult {
   base64: string;
   width: number;
   height: number;
-  hidden: string[];
+  /**
+   * Bundle IDs hidden as part of this atomic resolve+prepare+capture.
+   *
+   * macOS-only. The mac executor's `prepareForAction` (driven by SCContentFilter
+   * compositor allowlist) hides non-allowlisted apps before capture so the
+   * screenshot doesn't leak content the user didn't grant. Win does NOT do
+   * this — its model is "don't touch other apps; click delivers to wherever
+   * it lands and shell handles activation" — and returns this field as
+   * undefined (or `[]`). Callers must treat undefined as "no apps were
+   * hidden" (i.e., `?? []`). See COORDINATES.md / the platform-divergence
+   * note in the executor implementations.
+   */
+  hidden?: string[];
   captureError?: string;
   displayWidth?: number;
   displayHeight?: number;
@@ -104,9 +116,29 @@ export interface ComputerExecutor {
    */
   screenshotWindow(bundleId: string): Promise<ScreenshotResult | null>;
 
-  // ── Pre-action ───────────────────────────────────────────────────────
-  prepareForAction(allowlistBundleIds: string[], displayId?: number): Promise<string[]>;
-  previewHideSet(
+  // ── Pre-action (macOS-only) ──────────────────────────────────────────
+  /**
+   * Hide non-allowlisted apps before an action runs, return the hidden
+   * bundle IDs so the host can unhide at turn end.
+   *
+   * **macOS-only.** Mac's compositor (SCContentFilter) needs allowlisted
+   * apps to be the only visible top-level windows so the screenshot doesn't
+   * leak content. Hide loop is the mechanism. Win deliberately does NOT
+   * implement this — Win's model is "don't touch other apps; clicks deliver
+   * to wherever they land and Win11 shell handles target activation".
+   * Callers must use `?.()` and `?? []` so the undefined-on-Win case
+   * propagates as "nothing hidden".
+   */
+  prepareForAction?(allowlistBundleIds: string[], displayId?: number): Promise<string[]>;
+  /**
+   * Preview which apps WOULD be hidden by `prepareForAction` for the given
+   * allowlist. Used by approval UI to show "if you grant access to X, these
+   * 7 apps will be hidden during AI use".
+   *
+   * **macOS-only.** Same divergence as `prepareForAction` — Win has no hide
+   * model, so this is undefined there. Callers use `?.()` and `?? []`.
+   */
+  previewHideSet?(
     allowlistBundleIds: string[],
     displayId?: number,
   ): Promise<Array<{ bundleId: string; displayName: string }>>;

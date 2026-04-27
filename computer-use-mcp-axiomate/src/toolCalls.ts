@@ -500,12 +500,14 @@ async function runInputActionGates(
   // popped up between prepare and action) rather than a normal-path blocker.
   // ALL grant tiers stay visible — visibility is the baseline (tier "read").
   if (subGates.hideBeforeAction) {
-    const hidden = await adapter.executor.prepareForAction(
+    const hidden = (await adapter.executor.prepareForAction?.(
       overrides.allowedApps.map((a) => a.bundleId),
       overrides.selectedDisplayId,
-    );
+    )) ?? [];
     // Empty-check so we don't spam the callback on every action when nothing
-    // was hidden (the common case after the first action of a turn).
+    // was hidden (the common case after the first action of a turn). On
+    // platforms without a hide model (Win) prepareForAction is undefined
+    // and we fall through to [] — no callback fires.
     if (hidden.length > 0) {
       overrides.onAppsHidden?.(hidden);
     }
@@ -1255,10 +1257,10 @@ async function buildAccessRequest(
     ...allowedApps.map((a) => a.bundleId),
     ...surviving.filter((r) => r.resolved).map((r) => r.resolved!.bundleId),
   ];
-  const willHide = await adapter.executor.previewHideSet(
+  const willHide = (await adapter.executor.previewHideSet?.(
     exemptForPreview,
     selectedDisplayId,
-  );
+  )) ?? [];
 
   return {
     needDialog,
@@ -1734,10 +1736,10 @@ async function executeTeachStep(
   }
 
   if (subGates.hideBeforeAction) {
-    const hidden = await adapter.executor.prepareForAction(
+    const hidden = (await adapter.executor.prepareForAction?.(
       overrides.allowedApps.map((a) => a.bundleId),
       overrides.selectedDisplayId,
-    );
+    )) ?? [];
     if (hidden.length > 0) {
       overrides.onAppsHidden?.(hidden);
     }
@@ -2337,10 +2339,10 @@ async function handleScreenshot(
   // NOT what's actually there. Hiding first makes the screenshot TRUE.
   let hiddenSinceLastSeen: string[] = [];
   if (subGates.hideBeforeAction) {
-    const hidden = await adapter.executor.prepareForAction(
+    const hidden = (await adapter.executor.prepareForAction?.(
       overrides.allowedApps.map((a) => a.bundleId),
       overrides.selectedDisplayId,
-    );
+    )) ?? [];
     // "Something appeared since the model last looked." Report whenever:
     //   (a) prepare hid something AND
     //   (b) the model has ALREADY SEEN the screen (lastScreenshot is set).
@@ -3560,10 +3562,10 @@ async function handleComputerBatch(
   // prepareForAction ONCE. After this, inner dispatches skip it via
   // hideBeforeAction:false.
   if (subGates.hideBeforeAction) {
-    const hidden = await adapter.executor.prepareForAction(
+    const hidden = (await adapter.executor.prepareForAction?.(
       overrides.allowedApps.map((a) => a.bundleId),
       overrides.selectedDisplayId,
-    );
+    )) ?? [];
     if (hidden.length > 0) {
       overrides.onAppsHidden?.(hidden);
     }
