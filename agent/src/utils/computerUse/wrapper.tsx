@@ -51,6 +51,18 @@ export function buildSessionContext(): ComputerUseSessionContext {
     getGrantFlags: () => tuc().getAppState().computerUseMcpState?.grantFlags ?? DEFAULT_GRANT_FLAGS,
     // cc-2 has no Settings page for user-denied apps yet.
     getUserDeniedBundleIds: () => [],
+    // Mirror the tool-boundary `shouldBypassPermissions` check from
+    // utils/permissions/permissions.ts:694-697 into mcp's internal allowlist
+    // gates. With this, axiomate's bypassPermissions mode silences both the
+    // tool-boundary prompt AND mcp's runInputActionGates / runHitTestGate /
+    // empty-allowlist auto-trigger. Single switch covers everything.
+    getAllowlistBypassed: () => {
+      const { mode, prePlanMode } = tuc().getAppState().toolPermissionContext;
+      return (
+        mode === 'bypassPermissions' ||
+        (mode === 'plan' && prePlanMode === 'bypassPermissions')
+      );
+    },
     getSelectedDisplayId: () => tuc().getAppState().computerUseMcpState?.selectedDisplayId,
     getDisplayPinnedByModel: () => tuc().getAppState().computerUseMcpState?.displayPinnedByModel ?? false,
     getDisplayResolvedForApps: () => tuc().getAppState().computerUseMcpState?.displayResolvedForApps,

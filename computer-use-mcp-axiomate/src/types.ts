@@ -289,6 +289,18 @@ export interface ComputerUseSessionContext {
   getGrantFlags(): CuGrantFlags;
   /** Per-user auto-deny list (Settings page). Empty array = none. */
   getUserDeniedBundleIds(): readonly string[];
+  /**
+   * Whether host-level state should bypass mcp's internal allowlist gates
+   * (runInputActionGates / runHitTestGate / handleScreenshot empty-allowlist
+   * auto-throw / handleOpenApplication pre-launch check). The host returns
+   * true when the user is in a "trust the AI" mode (e.g. axiomate's
+   * `bypassPermissions` permission mode). Independent of the
+   * `AXIOMATE_CU_BYPASS_ALLOWLIST` env var — either path can flip it on.
+   *
+   * Read fresh per call via `bindSessionContext`, so flipping the host's
+   * mode mid-session takes effect on the next tool call.
+   */
+  getAllowlistBypassed?(): boolean;
   getSelectedDisplayId(): number | undefined;
   getDisplayPinnedByModel?(): boolean;
   getDisplayResolvedForApps?(): string | undefined;
@@ -362,6 +374,15 @@ export interface ComputerUseOverrides {
   allowedApps: AppGrant[];
   grantFlags: CuGrantFlags;
   coordinateMode: CoordinateMode;
+
+  /**
+   * Resolved value of `ComputerUseSessionContext.getAllowlistBypassed?.()`,
+   * captured fresh per tool call. When true, all internal allowlist gates
+   * early-return as bypassed (same effect as `AXIOMATE_CU_BYPASS_ALLOWLIST=1`
+   * env var). Either source flips it on; both are OR'd inside
+   * `isAllowlistBypassed`.
+   */
+  allowlistBypassed?: boolean;
 
   /**
    * User-configured auto-deny list (Settings → Desktop app → Computer Use).
