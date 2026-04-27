@@ -164,32 +164,19 @@ export function createWinExecutor(opts: {
     },
 
     async openApp(bundleIdOrName: string): Promise<void> {
-      // Three forms of input from upstream:
-      //   1. Full exe path (from app_under_point / list_running_apps —
-      //      Stage 2 convention). Pass straight through; Start-Process
-      //      handles it.
-      //   2. Registry sub-key from list_installed_apps (Stage 1 convention,
-      //      e.g. "Slack" or "{GUID}_is1"). Look up its DisplayIcon-as-
-      //      exe path via win NAPI; PowerShell Start-Process on the
-      //      sub-key alone wouldn't launch anything.
-      //   3. Anything else (display name) — fall through to PowerShell
-      //      App Paths registry resolution (chrome / firefox / etc. work).
-      if (!napiAvailable) return base.openApp(bundleIdOrName)
-      // Form 1: contains a path separator and an extension.
-      if (/[\\/].+\.\w+$/.test(bundleIdOrName)) {
-        return base.openApp(bundleIdOrName)
-      }
-      // Form 2: try installed-app lookup. list_installed_apps now puts
-      // an .exe in `path` when DisplayIcon points to one (Stage 2 fix).
-      const installed = winNapi.listInstalledApps()
-      const match = installed.find(a => a.bundleId === bundleIdOrName)
-      if (match && match.path && /\.exe$/i.test(match.path)) {
-        return base.openApp(match.path)
-      }
-      // Form 3 (or path is a folder we can't disambiguate): fall through
-      // to PowerShell Start-Process on the raw input. App Paths registry
-      // catches well-known apps; otherwise Start-Process throws and the
-      // error surfaces to the LLM.
+      // After the bundleId-unification (commit pending): list_installed_apps
+      // returns bundle_id = full exe path. So `bundleIdOrName` here is
+      // either:
+      //   1. A full exe path (from list_installed_apps / list_running_apps /
+      //      app_under_point / find_window_displays — single namespace) —
+      //      pass straight to Start-Process.
+      //   2. A bare display name (rare — can only happen if upstream
+      //      bypassed listInstalledApps and passed user text). Falls
+      //      through to PowerShell Start-Process which uses App Paths
+      //      registry resolution (chrome / firefox / etc work without
+      //      paths).
+      // No more registry sub-key lookup needed — that whole namespace
+      // is gone.
       return base.openApp(bundleIdOrName)
     },
 

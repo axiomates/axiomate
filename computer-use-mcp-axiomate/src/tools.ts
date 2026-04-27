@@ -134,10 +134,10 @@ export function buildComputerUseTools(
   // strings on Windows that resolve to nothing. We fork at runtime
   // here so each platform's LLM only sees its own examples.
   const bundleIdExample = isWin
-    ? '"C:\\\\Program Files\\\\Slack\\\\slack.exe" or just "Slack"'
+    ? '"C:\\\\Program Files\\\\Microsoft VS Code\\\\Code.exe" or "C:\\\\Program Files\\\\Slack\\\\slack.exe"'
     : '"com.tinyspeck.slackmacgap" for Slack or "com.google.Chrome" for Chrome';
   const bundleIdAcceptedNote = isWin
-    ? 'On Windows, bundle ids are full exe paths (returned from screenshot / app-under-point queries) or display names ("Slack", "Chrome") that resolve via the App Paths registry.'
+    ? 'On Windows, bundle ids are full exe paths — the same value returned by request_access, screenshot_window, list_installed_apps, and app-under-point queries. You generally do not type these by hand; pass values you received from another tool. As a fallback, display names like "Slack" / "Chrome" may launch via App Paths registry but won\'t round-trip the click safety gate, so prefer paths.'
     : 'Bundle identifiers (e.g. "com.tinyspeck.slackmacgap") are also accepted, but you don\'t need to guess them; display names always work.';
 
   // Shared hint suffix for BOTH request_access and request_teach_access —

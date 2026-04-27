@@ -411,11 +411,13 @@ mod windows_impl {
 
     pub fn list_installed_apps() -> Vec<InstalledApp> {
         let mut out: Vec<InstalledApp> = Vec::new();
-        // Dedupe by sub-key name + DisplayName — same app can appear in
-        // both 64-bit and 32-bit views (e.g. Office). Keep the first hit.
-        let mut seen: BTreeSet<String> = BTreeSet::new();
+        // Dedupe by exe path (lower-cased) — same app installed under
+        // multiple registry sub-keys (e.g. `Slack` + `{GUID}_is1`
+        // installer variant) collapses to one entry. Same app in
+        // 64-bit and 32-bit views also collapses.
+        let mut seen_paths: BTreeSet<String> = BTreeSet::new();
         for (root, view_flag) in UNINSTALL_ROOTS {
-            collect_from_root(*root, *view_flag, &mut out, &mut seen);
+            collect_from_root(*root, *view_flag, &mut out, &mut seen_paths);
         }
         out
     }
@@ -424,7 +426,7 @@ mod windows_impl {
         root: HKEY,
         view_flag: u32,
         out: &mut Vec<InstalledApp>,
-        seen: &mut BTreeSet<String>,
+        seen_paths: &mut BTreeSet<String>,
     ) {
         let access = windows::Win32::System::Registry::REG_SAM_FLAGS(KEY_READ.0 | view_flag);
         let subkey_w = to_wide(UNINSTALL_SUBKEY);
@@ -459,9 +461,6 @@ mod windows_impl {
             }
             idx += 1;
             let sub_name = String::from_utf16_lossy(&name_buf[..name_len as usize]);
-            if seen.contains(&sub_name) {
-                continue;
-            }
             // Open sub-key, read DisplayName / InstallLocation / DisplayIcon.
             let sub_path = format!("{}\\{}", UNINSTALL_SUBKEY, sub_name);
             let sub_w = to_wide(&sub_path);
@@ -473,7 +472,12 @@ mod windows_impl {
                 }
             }
             let display_name = read_string_value(sub_hkey, "DisplayName").unwrap_or_default();
-            let install_location =
+            // InstallLocation read but unused after the bundleId-unification:
+            // we now require a launchable .exe path, which only DisplayIcon
+            // reliably gives. InstallLocation is typically a folder.
+            // Kept here for future use (debug logs, "where is this app?"
+            // surface) — drop with `let _` to silence unused warn.
+            let _install_location =
                 read_string_value(sub_hkey, "InstallLocation").unwrap_or_default();
             let display_icon = read_string_value(sub_hkey, "DisplayIcon").unwrap_or_default();
             unsafe {
@@ -484,26 +488,76 @@ mod windows_impl {
             if display_name.is_empty() {
                 continue;
             }
-            // Resolve a path. **Prefer DisplayIcon when it points to an
-            // .exe** — it's directly launchable via Start-Process /
-            // ShellExecuteW. Fall back to InstallLocation (typically a
-            // folder; openApp won't be able to launch directly but the
-            // field is still useful as install-folder metadata). This
-            // ordering matters for `open_application` — Start-Process
-            // on a folder opens Explorer, not the app.
+            // Resolve an exe path. We REQUIRE one — entries without a
+            // launchable .exe path don't go into the list, because their
+            // bundle_id (= path, see below) wouldn't round-trip with
+            // app_under_point / list_running_apps which always return
+            // full exe paths. Filtering also drops ~700 noise entries
+            // (Windows Updates / runtime components / uninstall stubs).
             let icon_path = normalize_display_icon(&display_icon);
             let path = if !icon_path.is_empty() && icon_path.to_lowercase().ends_with(".exe") {
                 icon_path
-            } else if !install_location.is_empty() {
-                install_location
-            } else if !icon_path.is_empty() {
-                icon_path
             } else {
-                String::new()
+                continue;
             };
-            seen.insert(sub_name.clone());
+            // Reject paths that are bare basenames (e.g. "msiexec.exe")
+            // — those don't round-trip with app_under_point's full-path
+            // outputs and aren't launchable targets the user means.
+            if !path.contains('\\') && !path.contains('/') {
+                continue;
+            }
+            // Reject obvious uninstaller stubs. The Uninstall registry
+            // hive includes per-app uninstallers under the same DisplayIcon
+            // for some installers (Inno Setup / NSIS), even though
+            // DisplayName names the actual app. We don't want
+            // "open_application(MyApp)" to launch its uninstaller.
+            let lower_basename = path
+                .to_lowercase()
+                .rsplit(['\\', '/'])
+                .next()
+                .unwrap_or("")
+                .to_string();
+            const UNINSTALLER_BASENAMES: &[&str] = &[
+                "uninst.exe",
+                "uninstall.exe",
+                "unins000.exe",
+                "unins001.exe",
+                "unins002.exe",
+                "uninstaller.exe",
+                "setup.exe",       // sometimes installers self-register their setup as DisplayIcon
+            ];
+            if UNINSTALLER_BASENAMES.contains(&lower_basename.as_str()) {
+                continue;
+            }
+            // Reject MSI Windows Installer source-cache paths. The
+            // ProgramData\Package Cache\{GUID}\xxxSetup.exe pattern is
+            // the cached installer for the original MSI — used by
+            // Add/Remove Programs to do repair / uninstall — but it's
+            // NOT the actual app exe. Many drivers / SDKs / RGB-fan
+            // utilities show up under DisplayName for their installer
+            // there, which would launch the installer not the app.
+            if path
+                .to_lowercase()
+                .contains("\\package cache\\")
+            {
+                continue;
+            }
+            // Dedupe by exe path (case-insensitive). Same app can have
+            // multiple sub-keys (e.g. `Slack` + `{GUID}_is1` from the
+            // installer's record-keeping). Keep the first hit.
+            let path_key = path.to_lowercase();
+            if !seen_paths.insert(path_key) {
+                continue;
+            }
+            // bundle_id = path. **Critical**: this is the SAME identifier
+            // shape used by app_under_point / list_running_apps / hide_app
+            // / find_window_displays — so request_access → click chain
+            // round-trips correctly. Pre-fix, list_installed_apps used
+            // the registry sub-key name, which never matched what the
+            // running-window queries returned, breaking the allowlist
+            // safety gate end to end.
             out.push(InstalledApp {
-                bundle_id: sub_name,
+                bundle_id: path.clone(),
                 display_name,
                 path,
             });
