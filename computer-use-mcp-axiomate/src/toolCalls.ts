@@ -2667,6 +2667,18 @@ async function handleClickVariant(
   } catch {
     // getCursorPosition is best-effort diagnostic, don't break the click
   }
+  // Foreground-window probe: which app actually came to the front in
+  // response to this click? Disambiguates "click hit the right pixel
+  // but launched a different app than expected" from "the right app
+  // launched but appears wrong (rendering issue, anti-screenshot, etc)".
+  try {
+    const fg = await adapter.executor.getFrontmostApp();
+    adapter.logger.warn(
+      `[CU-FOREGROUND] after click: bundleId="${fg?.bundleId ?? "null"}" displayName="${fg?.displayName ?? "null"}"`,
+    );
+  } catch {
+    // best-effort
+  }
   return okText("Clicked.");
 }
 

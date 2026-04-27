@@ -719,9 +719,17 @@ export async function unhideComputerUseApps(
     }
     for (const bundleId of bundleIds) {
       try {
-        winNapi.unhideApp(bundleId)
-      } catch {
+        const ok = winNapi.unhideApp(bundleId)
+        logForDebugging(
+          `[CU-HIDE] win unhideApp bundleId="${bundleId}" result=${ok}`,
+          { level: 'warn' },
+        )
+      } catch (err) {
         // Best-effort — never let unhide failures wedge cleanup.
+        logForDebugging(
+          `[CU-HIDE] win unhideApp THREW for "${bundleId}": ${errorMessage(err)}`,
+          { level: 'warn' },
+        )
       }
     }
     return

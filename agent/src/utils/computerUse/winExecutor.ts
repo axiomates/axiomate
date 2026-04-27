@@ -163,26 +163,38 @@ export function createWinExecutor(opts: {
     const allowSet = new Set(allowlistBundleIds)
     for (const ancestor of hostAncestorPaths) allowSet.add(ancestor)
     const running = winNapi.listRunningApps()
+    logForDebugging(
+      `[CU-HIDE] pre-hide visible apps: ${running.map(a => a.bundleId).join(', ')}`,
+      { level: 'warn' },
+    )
     const hidden: string[] = []
     for (const app of running) {
-      if (allowSet.has(app.bundleId)) continue
+      if (allowSet.has(app.bundleId)) {
+        logForDebugging(
+          `[CU-HIDE] win hideApp SKIP (in allowlist or host-ancestor): bundleId="${app.bundleId}" displayName="${app.displayName}"`,
+          { level: 'warn' },
+        )
+        continue
+      }
       try {
-        if (winNapi.hideApp(app.bundleId)) {
-          hidden.push(app.bundleId)
-        }
+        const ok = winNapi.hideApp(app.bundleId)
+        logForDebugging(
+          `[CU-HIDE] win hideApp bundleId="${app.bundleId}" displayName="${app.displayName}" result=${ok}`,
+          { level: 'warn' },
+        )
+        if (ok) hidden.push(app.bundleId)
       } catch (err) {
         logForDebugging(
-          `[computer-use] hide_app failed for ${app.bundleId}: ${errorMessage(err)}`,
+          `[CU-HIDE] win hideApp THREW for "${app.bundleId}": ${errorMessage(err)}`,
           { level: 'warn' },
         )
       }
     }
-    if (hidden.length > 0) {
-      logForDebugging(
-        `[computer-use] runHideLoop (win): hidden=${hidden.length} apps (deny-list system processes auto-skipped)`,
-        { level: 'debug' },
-      )
-    }
+    const after = winNapi.listRunningApps()
+    logForDebugging(
+      `[CU-HIDE] post-hide visible apps: ${after.map(a => a.bundleId).join(', ')}`,
+      { level: 'warn' },
+    )
     return hidden
   }
 
