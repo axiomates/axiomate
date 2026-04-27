@@ -27,7 +27,6 @@ import type {
   RunningApp,
   ScreenshotResult,
 } from 'computer-use-mcp-axiomate'
-import { API_RESIZE_PARAMS, targetImageSize } from 'computer-use-mcp-axiomate'
 
 import { logForDebugging } from '../debug.js'
 import { errorMessage } from '../errors.js'
@@ -89,6 +88,21 @@ export function createWinExecutor(opts: {
   // matching trick, the only difference between them is whether they
   // also run the hide loop. Returns null on NAPI failure → caller
   // falls back to base.{screenshot, resolvePrepareCapture}.
+  //
+  // Resize target = display LOGICAL dims (1920×1080 for 4K @ 200%),
+  // not the API token-budget output of `targetImageSize`. Reason:
+  // observed Qwen-VL3.6 (and likely other non-Anthropic VLMs) emit
+  // click coords in *display logical pt* space regardless of the
+  // image dims they were shown — `(603, 986)` on a 1920×1080 screen
+  // is consistent across multiple click attempts even when the image
+  // was 1456×819. Making the image dim equal to display dim turns
+  // scaleCoord (image_px → display_pt via `displayWidth/imageWidth`)
+  // into an identity transform, so whichever coord convention the
+  // model uses (image-px OR display-pt — they coincide) clicks land
+  // correctly. Mac path keeps `targetImageSize` because the NAPI
+  // pipeline there has its own resize and Anthropic users on mac
+  // do follow the image-px convention; we don't flip mac until
+  // mac's behavior is verified with the same Qwen model.
   async function captureScaledDisplay(displayId?: number): Promise<ScreenshotResult | null> {
     if (!napiAvailable) return null
     const display = await base.getDisplaySize(displayId)
@@ -96,7 +110,8 @@ export function createWinExecutor(opts: {
     const physH = Math.round(display.height * display.scaleFactor)
     const physX = Math.round(display.originX * display.scaleFactor)
     const physY = Math.round(display.originY * display.scaleFactor)
-    const [tw, th] = targetImageSize(physW, physH, API_RESIZE_PARAMS)
+    const tw = display.width
+    const th = display.height
     const r = winNapi.captureDisplayScaled(physX, physY, physW, physH, tw, th, 75)
     if (!r) {
       logForDebugging(
