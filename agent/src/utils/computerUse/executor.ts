@@ -262,7 +262,10 @@ export function createCliExecutor(opts: {
 }): ComputerExecutor {
   if (process.platform !== 'darwin') {
     throw new Error(
-      `createCliExecutor called on ${process.platform}. Computer control is macOS-only.`,
+      `createCliExecutor is the mac-only factory and was called on ${process.platform}. ` +
+        `This is a routing bug — hostAdapter.ts should dispatch win32 to createWinExecutor. ` +
+        `Computer-use itself works on Windows via the win32 native peer ` +
+        `(computer-use-win-napi-axiomate); this throw means a code path skipped the platform dispatch.`,
     )
   }
 
