@@ -92,6 +92,22 @@ pub struct CaptureWindowOutcome {
     pub diagnostic: String,
 }
 
+/// Resized full-screen JPEG returned by capture_display_scaled. The
+/// width/height fields are the post-resize dims (= target_w/target_h
+/// the caller passed in, unless equal-to-source short-circuit fires).
+/// scaleCoord on the agent side divides raw model coords by these
+/// dims, so they MUST be the dims of the actual JPEG bytes the model
+/// will see — which is why we resize in native code instead of letting
+/// the API server do it (server-side resize would leave dims field
+/// stale and break click coords; that bug was exactly what motivated
+/// this binding — see plan file).
+#[napi(object)]
+pub struct DisplayCaptureResult {
+    pub base64: String,
+    pub width: i64,
+    pub height: i64,
+}
+
 // ───────────────────────────────────────────────────────────────────────────
 // Public NAPI functions
 // ───────────────────────────────────────────────────────────────────────────
@@ -279,6 +295,60 @@ pub fn capture_window(bundle_id: String) -> napi::Result<CaptureWindowOutcome> {
     }
 }
 
+/// Full-screen capture of a single display, BitBlt'd from the desktop
+/// DC and resized natively to (target_w, target_h) before JPEG encode.
+///
+/// This is the win counterpart to mac's `cu.screenshot.captureExcluding`
+/// (the swift NAPI does the resize before returning). Pre-resizing here
+/// — instead of letting the API server's image transcoder do it — keeps
+/// `ScreenshotResult.width/height` aligned with the actual JPEG bytes
+/// the model sees, which `scaleCoord` divides by to convert model coords
+/// to logical screen pt. Without this, the client said "image is 3840"
+/// but the server-resized version the model saw was 1568, and clicks
+/// landed at 0.4× the right position. See COORDINATES.md.
+///
+/// Source coords (`physical_x/y`) and source size (`physical_w/h`) are
+/// in Win32 physical-pixel virtual-screen space — same coord system as
+/// `node-screenshots` Monitor.x()/y()/width()/height(). Caller multiplies
+/// the logical DisplayGeometry by scaleFactor to get these. Source rect
+/// can lie at any virtual-screen offset for multi-monitor setups
+/// (negative x for monitors left of the primary).
+///
+/// Returns `None` on failure (BitBlt 0 / GetDIBits 0 lines / encode
+/// fails) — agent layer falls back to `base.screenshot` (unfiltered,
+/// unresized; click coords will be off but better than no screenshot).
+/// `jpeg_quality` is 0–100 (75 to match mac path's 0.75 default).
+#[napi]
+pub fn capture_display_scaled(
+    physical_x: i32,
+    physical_y: i32,
+    physical_w: u32,
+    physical_h: u32,
+    target_w: u32,
+    target_h: u32,
+    jpeg_quality: u32,
+) -> napi::Result<Option<DisplayCaptureResult>> {
+    #[cfg(target_os = "windows")]
+    {
+        Ok(windows_impl::capture_display_scaled(
+            physical_x,
+            physical_y,
+            physical_w,
+            physical_h,
+            target_w,
+            target_h,
+            jpeg_quality.min(100) as u8,
+        ))
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = (
+            physical_x, physical_y, physical_w, physical_h, target_w, target_h, jpeg_quality,
+        );
+        Ok(None)
+    }
+}
+
 /// Allowlist-filtered full-screen capture. Windows analog of mac's
 /// SCContentFilter (computer-use-mac-napi-axiomate's sc_capture). Both
 /// are skeletons today — they return None so the agent's screenshot
@@ -353,8 +423,8 @@ pub fn list_running_apps() -> napi::Result<Vec<AppHitInfo>> {
 #[cfg(target_os = "windows")]
 mod windows_impl {
     use super::{
-        AppHitInfo, CaptureWindowImage, CaptureWindowOutcome, InstalledApp,
-        WindowMonitorInfo, WindowMonitorRect,
+        AppHitInfo, CaptureWindowImage, CaptureWindowOutcome, DisplayCaptureResult,
+        InstalledApp, WindowMonitorInfo, WindowMonitorRect,
     };
     use base64::Engine;
     use std::collections::{BTreeMap, BTreeSet};
@@ -966,6 +1036,187 @@ mod windows_impl {
             base64,
             width: width as i64,
             height: height as i64,
+        })
+    }
+
+    // ────────────── capture_display_scaled ──────────────
+
+    /// Same BitBlt+GetDIBits+Lanczos+JPEG pipeline as capture_window_inner
+    /// but: (a) source rect is the desktop DC at (physical_x, physical_y)
+    /// instead of (0,0), (b) inserts a Lanczos resize step before encode
+    /// so the output JPEG matches what the API server would have resized
+    /// to anyway. None on any failure → agent falls back to base.screenshot.
+    pub fn capture_display_scaled(
+        physical_x: i32,
+        physical_y: i32,
+        physical_w: u32,
+        physical_h: u32,
+        target_w: u32,
+        target_h: u32,
+        jpeg_quality: u8,
+    ) -> Option<DisplayCaptureResult> {
+        if physical_w == 0 || physical_h == 0 || target_w == 0 || target_h == 0 {
+            return None;
+        }
+        let result = unsafe {
+            capture_display_scaled_inner(
+                physical_x,
+                physical_y,
+                physical_w as i32,
+                physical_h as i32,
+                target_w,
+                target_h,
+                jpeg_quality,
+            )
+        };
+        match result {
+            Ok(r) => Some(r),
+            Err(_e) => {
+                // Failure path stays silent (agent already logs the
+                // fallback); the inner Err string is for future
+                // diagnostic plumbing if we add an outcome wrapper
+                // like CaptureWindowOutcome later.
+                None
+            }
+        }
+    }
+
+    unsafe fn capture_display_scaled_inner(
+        src_x: i32,
+        src_y: i32,
+        src_w: i32,
+        src_h: i32,
+        target_w: u32,
+        target_h: u32,
+        jpeg_quality: u8,
+    ) -> Result<DisplayCaptureResult, String> {
+        // Same RAII guard pattern as capture_window_inner — windows-rs 0.58
+        // doesn't accept Option<HWND/HDC>; null via HWND::default() means
+        // "the entire (virtual) screen" per GetDC docs, which is what we
+        // want for desktop-DC capture across multi-monitor virtual-screen
+        // space.
+        let screen_dc = GetDC(HWND::default());
+        if screen_dc.0.is_null() {
+            return Err("GetDC(HWND::default()) returned null".to_string());
+        }
+        struct ScreenDcGuard(HDC);
+        impl Drop for ScreenDcGuard {
+            fn drop(&mut self) {
+                unsafe { ReleaseDC(HWND::default(), self.0) };
+            }
+        }
+        let _screen_dc_guard = ScreenDcGuard(screen_dc);
+
+        let mem_dc = CreateCompatibleDC(screen_dc);
+        if mem_dc.0.is_null() {
+            return Err("CreateCompatibleDC returned null".to_string());
+        }
+        struct MemDcGuard(HDC);
+        impl Drop for MemDcGuard {
+            fn drop(&mut self) {
+                unsafe { let _ = DeleteDC(self.0); };
+            }
+        }
+        let _mem_dc_guard = MemDcGuard(mem_dc);
+
+        let bitmap = CreateCompatibleBitmap(screen_dc, src_w, src_h);
+        if bitmap.0.is_null() {
+            return Err("CreateCompatibleBitmap returned null".to_string());
+        }
+        struct BitmapGuard(windows::Win32::Graphics::Gdi::HBITMAP);
+        impl Drop for BitmapGuard {
+            fn drop(&mut self) {
+                unsafe { let _ = DeleteObject(self.0); };
+            }
+        }
+        let _bitmap_guard = BitmapGuard(bitmap);
+
+        let prev = SelectObject(mem_dc, bitmap);
+        if prev.0.is_null() {
+            return Err("SelectObject returned null".to_string());
+        }
+
+        // Source coords (src_x, src_y) — that's what makes this differ
+        // from capture_window_inner. For the primary monitor it's (0,0);
+        // for a secondary monitor positioned to the left of primary it
+        // can be negative. Virtual-screen space.
+        let blt_ok = BitBlt(
+            mem_dc, 0, 0, src_w, src_h, screen_dc, src_x, src_y, SRCCOPY,
+        )
+        .is_ok();
+        if !blt_ok {
+            return Err("BitBlt failed".to_string());
+        }
+
+        // 32bpp top-down BGRA — same as capture_window_inner.
+        let row_size = (src_w as usize) * 4;
+        let buf_size = row_size * (src_h as usize);
+        let mut buf = vec![0u8; buf_size];
+        let mut bmi: BITMAPINFO = std::mem::zeroed();
+        bmi.bmiHeader.biSize = std::mem::size_of::<BITMAPINFOHEADER>() as u32;
+        bmi.bmiHeader.biWidth = src_w;
+        bmi.bmiHeader.biHeight = -src_h; // negative = top-down
+        bmi.bmiHeader.biPlanes = 1;
+        bmi.bmiHeader.biBitCount = 32;
+        bmi.bmiHeader.biCompression = BI_RGB.0;
+
+        let lines = GetDIBits(
+            mem_dc,
+            bitmap,
+            0,
+            src_h as u32,
+            Some(buf.as_mut_ptr() as *mut _),
+            &mut bmi,
+            DIB_RGB_COLORS,
+        );
+        if lines == 0 {
+            return Err("GetDIBits returned 0 lines".to_string());
+        }
+
+        // BGRA → RGB.
+        let mut rgb = Vec::with_capacity((src_w as usize) * (src_h as usize) * 3);
+        for px in buf.chunks_exact(4) {
+            rgb.push(px[2]);
+            rgb.push(px[1]);
+            rgb.push(px[0]);
+        }
+
+        // Resize step. Skipped when target == source (small monitors
+        // already inside the API's token budget). Lanczos3 — slightly
+        // sharper than Triangle/CatmullRom for screenshot text/icons.
+        let (final_rgb, final_w, final_h) = if target_w as i32 == src_w
+            && target_h as i32 == src_h
+        {
+            (rgb, src_w as u32, src_h as u32)
+        } else {
+            let src_img: image::ImageBuffer<image::Rgb<u8>, Vec<u8>> =
+                image::ImageBuffer::from_raw(src_w as u32, src_h as u32, rgb)
+                    .ok_or_else(|| "ImageBuffer::from_raw size mismatch".to_string())?;
+            let resized = image::imageops::resize(
+                &src_img,
+                target_w,
+                target_h,
+                image::imageops::FilterType::Lanczos3,
+            );
+            (resized.into_raw(), target_w, target_h)
+        };
+
+        let mut jpeg = Vec::new();
+        let mut encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut jpeg, jpeg_quality);
+        encoder
+            .encode(
+                &final_rgb,
+                final_w,
+                final_h,
+                image::ExtendedColorType::Rgb8,
+            )
+            .map_err(|e| format!("jpeg encode failed: {e}"))?;
+
+        let base64 = base64::engine::general_purpose::STANDARD.encode(&jpeg);
+        Ok(DisplayCaptureResult {
+            base64,
+            width: final_w as i64,
+            height: final_h as i64,
         })
     }
 

@@ -24,7 +24,9 @@ import type {
   ComputerExecutor,
   InstalledApp,
   RunningApp,
+  ScreenshotResult,
 } from 'computer-use-mcp-axiomate'
+import { API_RESIZE_PARAMS, targetImageSize } from 'computer-use-mcp-axiomate'
 
 import { logForDebugging } from '../debug.js'
 import { errorMessage } from '../errors.js'
@@ -160,6 +162,43 @@ export function createWinExecutor(opts: {
         displayId: 0,
         displayWidth: image.width,
         displayHeight: image.height,
+      }
+    },
+
+    async screenshot(opts: {
+      allowedBundleIds: string[]
+      displayId?: number
+    }): Promise<ScreenshotResult> {
+      // BitBlt + Lanczos resize + JPEG encode in one Rust call. Pre-resizes
+      // the image to ~1568×882 (or whatever fits the API token budget) so
+      // the API server doesn't do a second resize and break scaleCoord's
+      // dim assumption — same trick mac's swift NAPI does. See COORDINATES.md
+      // and the win NAPI capture_display_scaled doc for the failure mode
+      // this fixes (clicks landing at 0.4× the right position on 4K @ 200%).
+      if (!napiAvailable) return base.screenshot(opts)
+      const display = await base.getDisplaySize(opts.displayId)
+      const physW = Math.round(display.width * display.scaleFactor)
+      const physH = Math.round(display.height * display.scaleFactor)
+      const physX = Math.round(display.originX * display.scaleFactor)
+      const physY = Math.round(display.originY * display.scaleFactor)
+      const [tw, th] = targetImageSize(physW, physH, API_RESIZE_PARAMS)
+      const r = winNapi.captureDisplayScaled(physX, physY, physW, physH, tw, th, 75)
+      if (!r) {
+        logForDebugging(
+          `[computer-use] captureDisplayScaled returned null (physX=${physX} physY=${physY} physW=${physW} physH=${physH} tw=${tw} th=${th}) — falling back to base.screenshot`,
+          { level: 'warn' },
+        )
+        return base.screenshot(opts)
+      }
+      return {
+        base64: r.base64,
+        width: r.width,
+        height: r.height,
+        displayId: display.displayId,
+        displayWidth: display.width,
+        displayHeight: display.height,
+        originX: display.originX,
+        originY: display.originY,
       }
     },
 

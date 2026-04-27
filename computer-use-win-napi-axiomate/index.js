@@ -122,6 +122,30 @@ module.exports.captureWindow = function captureWindow(bundleId) {
   return mod.captureWindow(bundleId)
 }
 
+// ── Full-screen BitBlt + Lanczos resize + JPEG (mac-parity capture path) ───
+
+module.exports.captureDisplayScaled = function captureDisplayScaled(
+  physicalX,
+  physicalY,
+  physicalW,
+  physicalH,
+  targetW,
+  targetH,
+  jpegQuality,
+) {
+  const mod = loadNative()
+  if (!mod) return null
+  return mod.captureDisplayScaled(
+    physicalX,
+    physicalY,
+    physicalW,
+    physicalH,
+    targetW,
+    targetH,
+    jpegQuality,
+  )
+}
+
 // ── WGC allowlist-filtered capture (Stage 3 skeleton, returns None) ────────
 
 module.exports.captureExcluding = function captureExcluding(opts) {
