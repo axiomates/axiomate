@@ -192,15 +192,6 @@ export function createComputerUseSwift(): ComputerUseAPI {
         if (!native) return null
         return native.appUnderPoint(x, y)
       },
-      async iconDataUrl(_bundleId: string): Promise<string | null> {
-        // Intentionally null: ComputerUseAppListPanel renders apps with
-        // figures.circle / figures.tick text glyphs, not actual icons.
-        // dispatch awaits getAppIcon() per app when building the dialog
-        // payload — implementing this with `sips`/`qlmanage` would add
-        // ~100ms × N latency to dialog show with zero visual change.
-        // Keep null until the renderer actually paints icons.
-        return null
-      },
       async open(bundleId: string): Promise<void> {
         await openApp(bundleId)
       },

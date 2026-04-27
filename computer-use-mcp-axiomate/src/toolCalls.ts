@@ -1140,22 +1140,6 @@ async function buildAccessRequest(
   const skipDialog = surviving.filter((r) => r.alreadyGranted);
   const needDialog = surviving.filter((r) => !r.alreadyGranted);
 
-  // Populate icons only for what the dialog will actually show. Sequential
-  // awaits are fine — the Swift module is cached (listInstalledApps above
-  // loaded it), each N-API call is synchronous, and the darwin executor
-  // memoizes by path. Failures leave iconDataUrl undefined; renderer falls
-  // back to a grey box.
-  for (const r of needDialog) {
-    if (!r.resolved) continue;
-    try {
-      r.resolved.iconDataUrl = await adapter.executor.getAppIcon(
-        r.resolved.path,
-      );
-    } catch {
-      // leave undefined
-    }
-  }
-
   const now = Date.now();
   const skipDialogGrants: AppGrant[] = skipDialog
     .filter((r) => r.resolved)

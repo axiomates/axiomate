@@ -274,11 +274,6 @@ export function createExecutor(): ComputerExecutor {
       }))
     },
 
-    async getAppIcon(_path: string): Promise<string | undefined> {
-      // TODO: extract app icon per platform
-      return undefined
-    },
-
     async listRunningApps(): Promise<RunningApp[]> {
       const list = await apps.listRunningApps()
       return list.map(a => ({ bundleId: a.bundleId, displayName: a.displayName }))

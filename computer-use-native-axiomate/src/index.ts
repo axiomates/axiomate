@@ -49,7 +49,6 @@ export interface ComputerUseAPI {
     previewHideSet(...args: any[]): any
     findWindowDisplays(...args: any[]): any
     appUnderPoint(...args: any[]): any
-    iconDataUrl(...args: any[]): any
     open(...args: any[]): any
     unhide(...args: any[]): any
     [key: string]: any

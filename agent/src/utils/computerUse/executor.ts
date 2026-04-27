@@ -684,14 +684,7 @@ export function createCliExecutor(opts: {
     },
 
     async listInstalledApps(): Promise<InstalledApp[]> {
-      // `ComputerUseInstalledApp` is `{bundleId, displayName, path}`.
-      // `InstalledApp` adds optional `iconDataUrl` — left unpopulated;
-      // the approval dialog fetches lazily via getAppIcon() below.
       return drainRunLoop(() => cu.apps.listInstalled())
-    },
-
-    async getAppIcon(path: string): Promise<string | undefined> {
-      return cu.apps.iconDataUrl(path) ?? undefined
     },
 
     async listRunningApps(): Promise<RunningApp[]> {

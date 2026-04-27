@@ -42,7 +42,6 @@ export interface InstalledApp {
   bundleId: string;
   displayName: string;
   path: string;
-  iconDataUrl?: string;
 }
 
 export interface RunningApp {
@@ -136,7 +135,6 @@ export interface ComputerExecutor {
   getFrontmostApp(): Promise<FrontmostApp | null>;
   appUnderPoint(x: number, y: number): Promise<{ bundleId: string; displayName: string } | null>;
   listInstalledApps(): Promise<InstalledApp[]>;
-  getAppIcon(path: string): Promise<string | undefined>;
   listRunningApps(): Promise<RunningApp[]>;
   openApp(bundleId: string): Promise<void>;
 
