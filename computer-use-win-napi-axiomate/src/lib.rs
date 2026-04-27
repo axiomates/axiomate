@@ -135,6 +135,71 @@ pub fn get_foreground_window() -> napi::Result<Option<AppHitInfo>> {
     }
 }
 
+/// Hide all currently-visible top-level windows owned by the given app.
+/// `bundle_id` is the full exe path (e.g. `C:\\Program Files\\Slack\\Slack.exe`)
+/// — same value as `app_under_point().bundleId` and `find_window_displays`
+/// inputs. Returns true if at least one window was hidden.
+///
+/// Used by winExecutor's `prepareForAction` to clear non-allowlist apps
+/// before a screenshot or click action. Mirror of mac
+/// `NSRunningApplication.hide`. UIPI: non-elevated axiomate calling
+/// ShowWindow on an admin-owned window silently fails (returns false) —
+/// no UAC, no error. caller logs a warn but doesn't refuse the action.
+#[napi]
+pub fn hide_app(bundle_id: String) -> napi::Result<bool> {
+    #[cfg(target_os = "windows")]
+    {
+        Ok(windows_impl::set_app_visibility(&bundle_id, false))
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = bundle_id;
+        Ok(false)
+    }
+}
+
+/// Inverse of `hide_app` — shows all currently-invisible top-level
+/// windows owned by the given app. Used by cleanup.ts at turn-end to
+/// restore the apps that prepareForAction hid. SW_SHOWNOACTIVATE so we
+/// don't steal focus when restoring multiple apps.
+#[napi]
+pub fn unhide_app(bundle_id: String) -> napi::Result<bool> {
+    #[cfg(target_os = "windows")]
+    {
+        Ok(windows_impl::set_app_visibility(&bundle_id, true))
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = bundle_id;
+        Ok(false)
+    }
+}
+
+/// Enumerate currently-running apps that have at least one visible
+/// top-level window. Returns each unique app once with its full exe
+/// path as `bundle_id` (matching what `hide_app` / `find_window_displays`
+/// expect), and the exe basename as `display_name`.
+///
+/// Equivalent of mac's `NSWorkspace.runningApplications` filtered to
+/// `activationPolicy == .regular`, but exe-path-based instead of bundle-
+/// id-based since Windows has no formal bundle identifier.
+///
+/// winExecutor uses this to drive `prepareForAction`'s hide loop —
+/// PowerShell-based listRunningApps returns ProcessName ("chrome") which
+/// doesn't match the exe-path bundleId model the rest of the win NAPI
+/// uses. This binding keeps the bundleId space consistent.
+#[napi]
+pub fn list_running_apps() -> napi::Result<Vec<AppHitInfo>> {
+    #[cfg(target_os = "windows")]
+    {
+        Ok(windows_impl::list_running_apps())
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        Ok(Vec::new())
+    }
+}
+
 // ───────────────────────────────────────────────────────────────────────────
 // Windows-specific implementations
 // ───────────────────────────────────────────────────────────────────────────
@@ -164,7 +229,7 @@ mod windows_impl {
     };
     use windows::Win32::UI::WindowsAndMessaging::{
         EnumWindows, GetForegroundWindow, GetWindowThreadProcessId, IsWindowVisible,
-        WindowFromPoint,
+        ShowWindow, WindowFromPoint, SHOW_WINDOW_CMD, SW_HIDE, SW_SHOWNOACTIVATE,
     };
 
     // ────────────── 1. list_installed_apps ──────────────
@@ -358,6 +423,71 @@ mod windows_impl {
         })
     }
 
+    /// Module-level state for list_running_enum_proc. EnumWindows
+    /// callback can't reference fn-inner structs by name.
+    struct ListRunningState {
+        seen: BTreeSet<String>,
+        results: Vec<AppHitInfo>,
+        pid_to_path: BTreeMap<u32, String>,
+    }
+
+    /// Enumerate visible top-level windows, dedupe by owner exe path,
+    /// return one AppHitInfo per unique running app with a visible
+    /// window. Order is z-order from front to back (EnumWindows order).
+    pub fn list_running_apps() -> Vec<AppHitInfo> {
+        let mut state = ListRunningState {
+            seen: BTreeSet::new(),
+            results: Vec::new(),
+            pid_to_path: BTreeMap::new(),
+        };
+        unsafe {
+            let _ = EnumWindows(
+                Some(list_running_enum_proc),
+                LPARAM(&mut state as *mut _ as isize),
+            );
+        }
+        state.results
+    }
+
+    unsafe extern "system" fn list_running_enum_proc(hwnd: HWND, lparam: LPARAM) -> BOOL {
+        let state_ptr = lparam.0 as *mut ListRunningState;
+        let state = match state_ptr.as_mut() {
+            Some(s) => s,
+            None => return false.into(),
+        };
+        if !IsWindowVisible(hwnd).as_bool() {
+            return true.into();
+        }
+        let mut pid: u32 = 0;
+        GetWindowThreadProcessId(hwnd, Some(&mut pid));
+        if pid == 0 {
+            return true.into();
+        }
+        let path = match state.pid_to_path.get(&pid) {
+            Some(p) => p.clone(),
+            None => match exe_path_for_pid(pid) {
+                Some(p) => {
+                    state.pid_to_path.insert(pid, p.clone());
+                    p
+                }
+                None => {
+                    state.pid_to_path.insert(pid, String::new());
+                    return true.into();
+                }
+            },
+        };
+        if path.is_empty() {
+            return true.into();
+        }
+        if state.seen.insert(path.clone()) {
+            state.results.push(AppHitInfo {
+                display_name: basename(&path),
+                bundle_id: path,
+            });
+        }
+        true.into()
+    }
+
     pub fn get_foreground_window() -> Option<AppHitInfo> {
         let hwnd = unsafe { GetForegroundWindow() };
         if hwnd.0.is_null() {
@@ -375,6 +505,85 @@ mod windows_impl {
             display_name: basename(&path),
             bundle_id: path,
         })
+    }
+
+    /// Mutable accumulator passed via LPARAM through visibility_enum_proc.
+    /// Module-level so the extern "system" callback can reference it by
+    /// name (same pattern as Stage 1's WindowEnumState).
+    struct VisState {
+        /// Full exe path of the target app — windows owned by other
+        /// processes are skipped.
+        target_path: String,
+        /// true: SW_SHOWNOACTIVATE; false: SW_HIDE.
+        show: bool,
+        /// true once at least one ShowWindow call was issued.
+        changed: bool,
+        /// pid → exe path cache. "" sentinel = lookup failed once.
+        pid_to_path: BTreeMap<u32, String>,
+    }
+
+    /// Set visibility of every top-level window owned by `bundle_id` to
+    /// either hidden (false) or shown (true). Walks EnumWindows once; for
+    /// each window resolves owner pid → exe path (cached per call) and
+    /// matches against bundle_id. Returns true iff at least one window's
+    /// visibility was changed.
+    ///
+    /// We filter by current visibility matching the change direction: hide
+    /// only acts on visible windows; show only on hidden ones. This keeps
+    /// the operation idempotent and avoids re-showing windows the app had
+    /// explicitly hidden for its own reasons.
+    pub fn set_app_visibility(bundle_id: &str, show: bool) -> bool {
+        let mut state = VisState {
+            target_path: bundle_id.to_string(),
+            show,
+            changed: false,
+            pid_to_path: BTreeMap::new(),
+        };
+        unsafe {
+            let _ = EnumWindows(
+                Some(visibility_enum_proc),
+                LPARAM(&mut state as *mut _ as isize),
+            );
+        }
+        state.changed
+    }
+
+    unsafe extern "system" fn visibility_enum_proc(hwnd: HWND, lparam: LPARAM) -> BOOL {
+        let state_ptr = lparam.0 as *mut VisState;
+        let state = match state_ptr.as_mut() {
+            Some(s) => s,
+            None => return false.into(),
+        };
+        let currently_visible = IsWindowVisible(hwnd).as_bool();
+        // hide mode skips already-hidden; show mode skips already-visible.
+        if state.show == currently_visible {
+            return true.into();
+        }
+        let mut pid: u32 = 0;
+        GetWindowThreadProcessId(hwnd, Some(&mut pid));
+        if pid == 0 {
+            return true.into();
+        }
+        let path = match state.pid_to_path.get(&pid) {
+            Some(p) => p.clone(),
+            None => match exe_path_for_pid(pid) {
+                Some(p) => {
+                    state.pid_to_path.insert(pid, p.clone());
+                    p
+                }
+                None => {
+                    state.pid_to_path.insert(pid, String::new());
+                    return true.into();
+                }
+            },
+        };
+        if path.is_empty() || path != state.target_path {
+            return true.into();
+        }
+        let cmd: SHOW_WINDOW_CMD = if state.show { SW_SHOWNOACTIVATE } else { SW_HIDE };
+        let _ = ShowWindow(hwnd, cmd);
+        state.changed = true;
+        true.into()
     }
 
     /// Resolve `pid` → full exe path via PROCESS_QUERY_LIMITED_INFORMATION

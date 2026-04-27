@@ -47,7 +47,9 @@ export function getComputerUseHostAdapter(): ComputerUseHostAdapter {
           getMouseAnimationEnabled: () => getChicagoSubGates().mouseAnimation,
           getHideBeforeActionEnabled: () => getChicagoSubGates().hideBeforeAction,
         })
-      : createWinExecutor(),
+      : createWinExecutor({
+          getHideBeforeActionEnabled: () => getChicagoSubGates().hideBeforeAction,
+        }),
     ensureOsPermissions: async () => {
       // Windows has no per-app TCC permission model; UAC is the boundary
       // but we don't gate on it (the executor itself checks elevation

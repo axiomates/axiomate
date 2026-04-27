@@ -23,19 +23,24 @@ import * as winNapi from 'computer-use-win-napi-axiomate'
 import type {
   ComputerExecutor,
   InstalledApp,
+  RunningApp,
 } from 'computer-use-mcp-axiomate'
 
 import { logForDebugging } from '../debug.js'
+import { errorMessage } from '../errors.js'
 import { CLI_CU_CAPABILITIES } from './common.js'
 
 let elevationWarned = false
 
-export function createWinExecutor(): ComputerExecutor {
+export function createWinExecutor(opts: {
+  getHideBeforeActionEnabled: () => boolean
+}): ComputerExecutor {
   if (process.platform !== 'win32') {
     throw new Error(
       `createWinExecutor called on ${process.platform}. Windows-only.`,
     )
   }
+  const { getHideBeforeActionEnabled } = opts
 
   // Elevation diagnostic — fired once per process. Doesn't block; admin
   // mode is a legitimate run mode (e.g. dev tooling that needs it), but
@@ -91,6 +96,56 @@ export function createWinExecutor(): ComputerExecutor {
       // screen / UAC secure desktop / no foreground process.
       if (!napiAvailable) return base.getFrontmostApp()
       return winNapi.getForegroundWindow()
+    },
+
+    async listRunningApps(): Promise<RunningApp[]> {
+      // EnumWindows + dedupe by exe path — keeps the bundleId space
+      // consistent with the rest of the win NAPI (hideApp /
+      // findWindowDisplays expect full exe paths). Cross-platform
+      // base.listRunningApps falls through to apps.ts PowerShell which
+      // returns ProcessName ("chrome"), so it doesn't match what
+      // hideApp / findWindowDisplays compare against.
+      if (!napiAvailable) return base.listRunningApps()
+      return winNapi.listRunningApps().map(a => ({
+        bundleId: a.bundleId,
+        displayName: a.displayName,
+      }))
+    },
+
+    async prepareForAction(
+      allowlistBundleIds,
+      _displayId,
+    ): Promise<string[]> {
+      // Hide every running app whose exe path is NOT in the allowlist
+      // before taking screenshot / clicks. Mirrors mac's prepareDisplay
+      // hide loop. Tracking returned by mac's executor is by bundleId
+      // (CFBundleIdentifier); on win we use exe path which is what the
+      // rest of the win surface uses.
+      if (!napiAvailable) return base.prepareForAction(allowlistBundleIds, _displayId)
+      if (!getHideBeforeActionEnabled()) return []
+      const allowSet = new Set(allowlistBundleIds)
+      const running = winNapi.listRunningApps()
+      const hidden: string[] = []
+      for (const app of running) {
+        if (allowSet.has(app.bundleId)) continue
+        try {
+          if (winNapi.hideApp(app.bundleId)) {
+            hidden.push(app.bundleId)
+          }
+        } catch (err) {
+          logForDebugging(
+            `[computer-use] hide_app failed for ${app.bundleId}: ${errorMessage(err)}`,
+            { level: 'warn' },
+          )
+        }
+      }
+      if (hidden.length > 0) {
+        logForDebugging(
+          `[computer-use] prepareForAction (win): hidden=${hidden.length} apps`,
+          { level: 'debug' },
+        )
+      }
+      return hidden
     },
   }
 }

@@ -73,6 +73,26 @@ module.exports.getForegroundWindow = function getForegroundWindow() {
   return mod.getForegroundWindow()
 }
 
+// ── Hide / unhide app windows (ShowWindow) ─────────────────────────────────
+
+module.exports.hideApp = function hideApp(bundleId) {
+  const mod = loadNative()
+  if (!mod) return false
+  return mod.hideApp(bundleId)
+}
+
+module.exports.unhideApp = function unhideApp(bundleId) {
+  const mod = loadNative()
+  if (!mod) return false
+  return mod.unhideApp(bundleId)
+}
+
+module.exports.listRunningApps = function listRunningApps() {
+  const mod = loadNative()
+  if (!mod) return []
+  return mod.listRunningApps()
+}
+
 module.exports.prewarm = function prewarm() {
   loadNative()
 }

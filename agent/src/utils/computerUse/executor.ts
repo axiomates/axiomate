@@ -704,11 +704,28 @@ export function createCliExecutor(opts: {
  * Module-level export (not on the executor object) — called at turn-end from
  * `stopHooks.ts` / `query.ts`, outside the executor lifecycle. Fire-and-forget
  * at the call site; the caller `.catch()`es.
+ *
+ * Cross-platform dispatch: mac → mac NAPI cu.apps.unhide (NSRunningApplication
+ * unhide); win32 → win NAPI unhideApp per bundle (ShowWindow SW_SHOWNOACTIVATE).
  */
 export async function unhideComputerUseApps(
   bundleIds: readonly string[],
 ): Promise<void> {
   if (bundleIds.length === 0) return
+  if (process.platform === 'win32') {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const winNapi = require('computer-use-win-napi-axiomate') as {
+      unhideApp: (bundleId: string) => boolean
+    }
+    for (const bundleId of bundleIds) {
+      try {
+        winNapi.unhideApp(bundleId)
+      } catch {
+        // Best-effort — never let unhide failures wedge cleanup.
+      }
+    }
+    return
+  }
   const cu = requireComputerUseSwift()
   await cu.apps.unhide([...bundleIds])
 }
