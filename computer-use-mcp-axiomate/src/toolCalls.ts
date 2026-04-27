@@ -2275,12 +2275,15 @@ async function handleScreenshot(
     }
 
     // Report hidden apps only when the model has already seen the screen.
+    // `result.hidden` is mac-only (Win returns undefined since the hide
+    // loop is mac-only, see executor.ts ResolvePrepareCaptureResult).
+    const resultHidden = result.hidden ?? [];
     let hiddenSinceLastSeen: string[] = [];
     if (overrides.lastScreenshot !== undefined) {
-      hiddenSinceLastSeen = result.hidden;
+      hiddenSinceLastSeen = resultHidden;
     }
-    if (result.hidden.length > 0) {
-      overrides.onAppsHidden?.(result.hidden);
+    if (resultHidden.length > 0) {
+      overrides.onAppsHidden?.(resultHidden);
     }
 
     // Partial-success case: hide succeeded, capture failed (SCK perm
