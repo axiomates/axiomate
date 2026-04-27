@@ -100,7 +100,12 @@ export function createWinExecutor(): ComputerExecutor {
     const physX = Math.round(display.originX * display.scaleFactor)
     const physY = Math.round(display.originY * display.scaleFactor)
     const [tw, th] = computeImageDim(display.width, display.height)
-    const r = winNapi.captureDisplayScaled(physX, physY, physW, physH, tw, th, 75)
+    // JPEG quality 92 (was 75). At 75 the chroma subsampling + DCT
+    // quantization smudges 24×24-px task bar icons enough that VL
+    // models misidentify which icon is which. 92 keeps small UI
+    // elements crisp; size goes up ~2.5× (~150KB → ~370KB) which is
+    // still fine for token budgets.
+    const r = winNapi.captureDisplayScaled(physX, physY, physW, physH, tw, th, 92)
     if (!r) {
       logForDebugging(
         `[computer-use] captureDisplayScaled returned null (physX=${physX} physY=${physY} physW=${physW} physH=${physH} tw=${tw} th=${th})`,
