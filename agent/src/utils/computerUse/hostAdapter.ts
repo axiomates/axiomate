@@ -39,6 +39,19 @@ let cached: ComputerUseHostAdapter | undefined
 export function getComputerUseHostAdapter(): ComputerUseHostAdapter {
   if (cached) return cached
   const isMac = process.platform === 'darwin'
+  // One-time init diagnostic: echoes what the host process sees for the
+  // bypass env var and key capability flags. The most common confusion
+  // mode is "I set AXIOMATE_CU_BYPASS_ALLOWLIST in shell A but axiomate
+  // is running in shell B / Bun-compiled exe doesn't inherit env" —
+  // this surfaces it immediately at startup.
+  logForDebugging(
+    `[computer-use] init: AXIOMATE_CU_BYPASS_ALLOWLIST=${
+      process.env.AXIOMATE_CU_BYPASS_ALLOWLIST === undefined
+        ? '<unset>'
+        : JSON.stringify(process.env.AXIOMATE_CU_BYPASS_ALLOWLIST)
+    } platform=${process.platform} isMac=${isMac}`,
+    { level: 'warn' },
+  )
   cached = {
     serverName: COMPUTER_USE_MCP_SERVER_NAME,
     logger: new DebugLogger(),
