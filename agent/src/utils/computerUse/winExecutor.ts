@@ -98,6 +98,31 @@ export function createWinExecutor(opts: {
       return winNapi.getForegroundWindow()
     },
 
+    async screenshotWindow(bundleId: string) {
+      // PrintWindow + PW_RENDERFULLCONTENT in the win NAPI. Returns a
+      // structured outcome with diagnostic — same shape as mac NAPI's
+      // capture_window. Non-DWM fallback to BitBlt is internal to the
+      // NAPI binding. Click coordinates in subsequent tools still refer
+      // to the FULL screen, never the window-cropped image — same
+      // contract as mac.
+      if (!napiAvailable) return base.screenshotWindow(bundleId)
+      const outcome = winNapi.captureWindow(bundleId)
+      logForDebugging(
+        `[computer-use] capture_window outcome (win): bundleId=${bundleId} diagnostic=${outcome.diagnostic}`,
+        { level: 'debug' },
+      )
+      const image = outcome.image
+      if (!image) return null
+      return {
+        base64: image.base64,
+        width: image.width,
+        height: image.height,
+        displayId: 0,
+        displayWidth: image.width,
+        displayHeight: image.height,
+      }
+    },
+
     async listRunningApps(): Promise<RunningApp[]> {
       // EnumWindows + dedupe by exe path — keeps the bundleId space
       // consistent with the rest of the win NAPI (hideApp /

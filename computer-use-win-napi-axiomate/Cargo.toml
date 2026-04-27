@@ -26,10 +26,22 @@ windows = { version = "0.58", features = [
   "Win32_System_Registry",            # RegOpenKeyExW, RegEnumKeyExW,
                                       # RegQueryValueExW
   "Win32_UI_WindowsAndMessaging",     # WindowFromPoint, EnumWindows,
-                                      # GetWindowThreadProcessId, IsWindowVisible
+                                      # GetWindowThreadProcessId, IsWindowVisible,
+                                      # PrintWindow (Stage 2.3 capture_window)
   "Win32_Graphics_Gdi",               # MonitorFromWindow, EnumDisplayMonitors,
-                                      # GetMonitorInfoW
+                                      # GetMonitorInfoW, BitBlt / GetDIBits /
+                                      # CreateCompatibleDC for capture_window
+  "Win32_Storage_Xps",                # PrintWindow / PRINT_WINDOW_FLAGS / PW_*
+                                      # (windows-rs put PrintWindow under Xps,
+                                      # not WindowsAndMessaging, despite the
+                                      # MSDN docs putting it in user32)
 ] }
+# JPEG encoder for screenshot_window output. Matches mac NAPI's pipeline
+# (image::JpegEncoder at quality 85) so the {base64,width,height} payload
+# shape is identical across platforms — the agent layer doesn't branch on
+# encoding choice. base64 STANDARD encoding likewise mirrors mac.
+image = { version = "0.25", default-features = false, features = ["jpeg"] }
+base64 = "0.22"
 
 [build-dependencies]
 napi-build = "2"

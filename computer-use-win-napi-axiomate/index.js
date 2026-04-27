@@ -93,6 +93,27 @@ module.exports.listRunningApps = function listRunningApps() {
   return mod.listRunningApps()
 }
 
+// ── Per-window screenshot via PrintWindow (DWM-aware) ──────────────────────
+
+module.exports.captureWindow = function captureWindow(bundleId) {
+  const mod = loadNative()
+  if (!mod) {
+    return {
+      image: null,
+      diagnostic: `native binding load failed: ${loadError ?? 'unknown'}`,
+    }
+  }
+  return mod.captureWindow(bundleId)
+}
+
+// ── WGC allowlist-filtered capture (Stage 3 skeleton, returns None) ────────
+
+module.exports.captureExcluding = function captureExcluding(opts) {
+  const mod = loadNative()
+  if (!mod) return null
+  return mod.captureExcluding(opts)
+}
+
 module.exports.prewarm = function prewarm() {
   loadNative()
 }

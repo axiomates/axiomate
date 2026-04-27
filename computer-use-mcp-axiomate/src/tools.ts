@@ -221,7 +221,7 @@ export function buildComputerUseTools(
     {
       name: "screenshot_window",
       description:
-        "Capture only the frontmost window of a specific application. The returned frame contains that app's window pixels and nothing else — other apps and the desktop are not visible. macOS uses CGWindowListCreateImage and supports this fully; on Windows this currently returns null and the LLM should call full-screen `screenshot` instead (per-window capture on Windows is planned via Win32 BitBlt but not yet shipped — the rest of computer-use works on Windows). " +
+        "Capture only the frontmost window of a specific application. The returned frame contains that app's window pixels and nothing else — other apps and the desktop are not visible. macOS uses CGWindowListCreateImage; Windows uses PrintWindow with PW_RENDERFULLCONTENT (DWM-aware so Chrome / Electron / WebView2 capture cleanly, not black). On either platform if the named app has no visible top-level window the tool returns null with a diagnostic and the LLM should fall back to full-screen `screenshot`. " +
         "Use this when the user names a specific app — e.g. \"show me Slack\", \"截 Chrome\", \"capture iTerm\" — and you do not need surrounding context. Use plain `screenshot` for full-screen / multi-app context, or when you need to click afterward. " +
         "IMPORTANT: This tool is for inspection only. Coordinates in any subsequent click call refer to the FULL screen, never the window-cropped image — the cursor lives at screen coords. If you intend to click afterward, take a full `screenshot` to read coordinates from.",
       inputSchema: {
