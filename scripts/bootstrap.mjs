@@ -44,6 +44,12 @@ main()
 function main() {
   section('System')
   checkVersion('node', ['--version'], { required: true, minMajor: 20 })
+  // npm is required ONLY as the install path for pnpm (see ensurePnpm
+  // below — `npm install -g pnpm`). axiomate's runtime + workspace
+  // tooling is fully on pnpm; npm is never invoked after bootstrap.
+  // Alternative install paths (corepack, standalone installer, brew/
+  // winget/scoop) work too — if you have pnpm via any of those,
+  // ensurePnpm short-circuits and npm just sits unused.
   checkVersion('npm', ['--version'], { required: true })
   checkVersion('git', ['--version'], { required: true })
 
@@ -295,6 +301,11 @@ function ensurePnpm() {
     return
   }
 
+  // We use npm here as the bootstrap install path because every Node
+  // install ships npm — zero extra prereq. Other valid pnpm install
+  // paths (corepack enable pnpm; brew install pnpm; standalone
+  // installer at https://pnpm.io/installation) work fine — this
+  // function only fires when `pnpm --version` already failed.
   note('Installing pnpm globally via npm...')
   run('npm', ['install', '-g', 'pnpm'])
 
