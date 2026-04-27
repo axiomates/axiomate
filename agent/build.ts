@@ -22,9 +22,12 @@ try {
   // CHANGELOG.md not found — release notes will be empty
 }
 
-// Auto-include DARWIN feature on darwin host so dev builds (`bun run build`)
-// include the computer-use module. Non-darwin host runs strip it via DCE.
-const defaultFeatures = process.platform === 'darwin' ? ['DARWIN'] : []
+// Auto-include DARWIN / WIN32 feature on the matching host so dev builds
+// (`bun run build`) include the computer-use module. Other hosts strip it
+// via DCE. Linux dev builds get neither feature → computer-use stubbed.
+const defaultFeatures: string[] = []
+if (process.platform === 'darwin') defaultFeatures.push('DARWIN')
+if (process.platform === 'win32') defaultFeatures.push('WIN32')
 const features = parseFeatures(Bun.argv, process.env, defaultFeatures)
 printBuildFeatures('build', features)
 
@@ -94,12 +97,17 @@ const result = await Bun.build({
     'url-handler-mac-napi-axiomate',
   ],
 
-  // Stub the computer-use entry point unless the DARWIN feature is set,
-  // so the entire utils/computerUse/* source tree is excluded from non-mac
-  // bundles. Aligns with the auto-set default features above
-  // (DARWIN on darwin host, empty elsewhere) but also respects an explicit
-  // --features=DARWIN override when cross-building from a non-darwin host.
-  plugins: [makeComputerUseStubPlugin(!features.includes('DARWIN'))],
+  // Stub the computer-use entry point unless DARWIN or WIN32 feature is
+  // set, so the entire utils/computerUse/* source tree is excluded from
+  // linux bundles. Aligns with the auto-set default features above
+  // (DARWIN on darwin host, WIN32 on win32 host, empty elsewhere) but
+  // also respects an explicit --features=DARWIN / --features=WIN32
+  // override when cross-building.
+  plugins: [
+    makeComputerUseStubPlugin(
+      !features.includes('DARWIN') && !features.includes('WIN32'),
+    ),
+  ],
 })
 
 if (!result.success) {

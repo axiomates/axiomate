@@ -62,6 +62,7 @@
     "computer-use-mcp-axiomate": "workspace:*",
     "commander": "~12.1.0",
     "computer-use-mac-napi-axiomate": "workspace:*",
+    "computer-use-win-napi-axiomate": "workspace:*",
     "computer-use-native-axiomate": "workspace:*",
     "diff": "^5.0.0",
     "emoji-regex": "^10.6.0",

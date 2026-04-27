@@ -6,6 +6,7 @@ import { format } from 'util'
 import { logForDebugging } from '../debug.js'
 import { COMPUTER_USE_MCP_SERVER_NAME } from './common.js'
 import { createCliExecutor } from './executor.js'
+import { createWinExecutor } from './winExecutor.js'
 import { getChicagoEnabled, getChicagoSubGates } from './gates.js'
 import { requireComputerUseSwift } from './swiftLoader.js'
 
@@ -37,14 +38,23 @@ let cached: ComputerUseHostAdapter | undefined
  */
 export function getComputerUseHostAdapter(): ComputerUseHostAdapter {
   if (cached) return cached
+  const isMac = process.platform === 'darwin'
   cached = {
     serverName: COMPUTER_USE_MCP_SERVER_NAME,
     logger: new DebugLogger(),
-    executor: createCliExecutor({
-      getMouseAnimationEnabled: () => getChicagoSubGates().mouseAnimation,
-      getHideBeforeActionEnabled: () => getChicagoSubGates().hideBeforeAction,
-    }),
+    executor: isMac
+      ? createCliExecutor({
+          getMouseAnimationEnabled: () => getChicagoSubGates().mouseAnimation,
+          getHideBeforeActionEnabled: () => getChicagoSubGates().hideBeforeAction,
+        })
+      : createWinExecutor(),
     ensureOsPermissions: async () => {
+      // Windows has no per-app TCC permission model; UAC is the boundary
+      // but we don't gate on it (the executor itself checks elevation
+      // and warns). Mac path retains the existing TCC checks.
+      if (!isMac) {
+        return { granted: true }
+      }
       const cu = requireComputerUseSwift()
       const accessibility = cu.tcc.checkAccessibility()
       const screenRecording = cu.tcc.checkScreenRecording()

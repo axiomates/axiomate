@@ -19,13 +19,22 @@ import { COMPUTER_USE_MCP_SERVER_NAME } from './common.js'
  *
  * Build-time gating: the bunPluginComputerUseStub plugin replaces this
  * module's exports with a `setupComputerUseMCP() { return undefined }`
- * stub on windows / linux builds, so the entire `agent/src/utils/computerUse/`
- * + `computer-use-{mcp,native}-axiomate` workspace graph is DCE'd out.
+ * stub on linux builds, so the entire `agent/src/utils/computerUse/`
+ * + `computer-use-{mcp,native}-axiomate` workspace graph is DCE'd out
+ * for that platform. mac (DARWIN feature) and windows (WIN32 feature)
+ * both keep computer-use enabled.
  */
 export function setupComputerUseMCP():
   | Record<string, ScopedMcpServerConfig>
   | undefined {
-  if (!feature('DARWIN') || process.platform !== 'darwin') return undefined
+  // Gate on build feature AND runtime platform. `feature()` from
+  // bun:bundle is a compile-time macro that MUST sit directly in an
+  // if-condition or ternary — bun's compiler rewrites it inline; storing
+  // its result in a variable defeats the rewrite and the bundle errors.
+  if (!feature('DARWIN') && !feature('WIN32')) return undefined
+  if (process.platform !== 'darwin' && process.platform !== 'win32') {
+    return undefined
+  }
 
   const config: McpInProcessServerConfig = {
     type: 'in-process',

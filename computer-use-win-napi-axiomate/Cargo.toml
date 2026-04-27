@@ -1,0 +1,40 @@
+[package]
+name = "computer-use-win-napi-axiomate"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+# tokio_rt: napi-rs `#[napi] pub async fn` expansion needs this. Stage 1
+# bindings are all sync, but we keep parity with mac NAPI so future async
+# additions (e.g. WGC capture in Stage 3) drop in without re-flagging.
+napi = { version = "2", features = ["napi6", "tokio_rt"] }
+napi-derive = "2"
+
+[target.'cfg(target_os = "windows")'.dependencies]
+# Microsoft-official Win32 + WinRT bindings. Single crate covers everything
+# Stage 1 needs (registry walk, window enumeration, process queries,
+# monitor mapping, token elevation check) and is the future-proof path
+# for Stage 2 (BitBlt) + Stage 3 (Windows.Graphics.Capture).
+windows = { version = "0.58", features = [
+  "Win32_Foundation",
+  "Win32_Security",                   # TOKEN_QUERY, TokenElevation
+  "Win32_System_Threading",           # OpenProcess, OpenProcessToken,
+                                      # QueryFullProcessImageName, GetCurrentProcess
+  "Win32_System_Registry",            # RegOpenKeyExW, RegEnumKeyExW,
+                                      # RegQueryValueExW
+  "Win32_UI_WindowsAndMessaging",     # WindowFromPoint, EnumWindows,
+                                      # GetWindowThreadProcessId, IsWindowVisible
+  "Win32_Graphics_Gdi",               # MonitorFromWindow, EnumDisplayMonitors,
+                                      # GetMonitorInfoW
+] }
+
+[build-dependencies]
+napi-build = "2"
+
+[profile.release]
+lto = true
+strip = true
+opt-level = "z"

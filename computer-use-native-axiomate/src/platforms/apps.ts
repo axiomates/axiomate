@@ -149,9 +149,11 @@ export async function listInstalledApps(): Promise<Array<AppInfo & { path: strin
   if (process.platform === 'darwin') {
     return listInstalledMacOS()
   }
-  // Windows / Linux still TODO:
-  //   Windows: Get-ItemProperty HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*
-  //   Linux:   parse .desktop files in /usr/share/applications/
+  // Windows: implemented in agent/src/utils/computerUse/winExecutor.ts
+  // via computer-use-win-napi-axiomate (registry walk over the three
+  // Uninstall keys). This cross-platform `[]` is the loader-failed
+  // fallback — winExecutor's own NAPI-availability gate avoids it.
+  // Linux: not supported (parse .desktop files when scope expands).
   return []
 }
 

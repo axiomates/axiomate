@@ -92,7 +92,10 @@ runBuildStep(
 
 console.log('\nStep 1/4: Bundling all modules into dist/cli.js ...')
 
-const features = parseFeatures(Bun.argv, process.env, [])
+// Auto-include WIN32 feature so the packaged exe has the computer-use
+// suite enabled (Windows is now a real native target alongside mac).
+// Explicit --features can still override.
+const features = parseFeatures(Bun.argv, process.env, ['WIN32'])
 printBuildFeatures('package:win', features)
 
 const result = await Bun.build({
@@ -112,24 +115,31 @@ const result = await Bun.build({
 
   // Bundle as much as possible. Bun compiled binaries resolve from a virtual
   // path (B:/~BUN/root/) so external packages can't be found at runtime.
-  // Only macOS-only packages stay external (they're never loaded on Windows).
-  // The agent's call sites wrap computer-use loads in `feature('DARWIN')` —
-  // since DARWIN is absent here, the bundler DCEs the require chain. These
-  // externals are belt-and-suspenders if a require slipped through.
+  // mac-only packages stay external so the bundler DCEs them when the
+  // win build emits requires for them (gated by feature('DARWIN')).
+  // computer-use-{mcp,native,win-napi}-axiomate stay external (workspace
+  // packages with their own runtime native loaders).
   external: [
-    'modifiers-mac-napi-axiomate',  // macOS-only
-    'url-handler-mac-napi-axiomate', // macOS-only
-    'computer-use-mac-napi-axiomate', // macOS-only, gated by feature('DARWIN')
-    'computer-use-mcp-axiomate',  // macOS-only, gated by feature('DARWIN')
-    'computer-use-native-axiomate', // macOS-only, gated by feature('DARWIN')
+    'modifiers-mac-napi-axiomate',         // macOS-only
+    'url-handler-mac-napi-axiomate',       // macOS-only
+    'computer-use-mac-napi-axiomate',      // macOS-only (DARWIN-gated)
+    'computer-use-win-napi-axiomate',      // win-only NAPI workspace
+    'computer-use-mcp-axiomate',           // workspace pkg
+    'computer-use-native-axiomate',        // workspace pkg
   ],
 
   // Rewrite literal .node imports to load from <exeDir>/<basename>.node
   // at runtime (Bun's virtual-path resolver can't reach the real files).
-  // Computer-use stub: alias the four computerUse entry points (setup,
-  // wrapper, toolRendering, cleanup) to no-ops so the entire CU source
-  // graph is excluded from the windows bundle.
-  plugins: [nativeExeDirPlugin, makeComputerUseStubPlugin(true)],
+  // The computer-use stub plugin still fires when WIN32 feature is
+  // absent (e.g. when --features overrides). With WIN32 set (default
+  // for package:win), the plugin no-ops and the full computer-use tree
+  // is included.
+  plugins: [
+    nativeExeDirPlugin,
+    makeComputerUseStubPlugin(
+      !features.includes('DARWIN') && !features.includes('WIN32'),
+    ),
+  ],
 })
 
 if (!result.success) {

@@ -634,8 +634,11 @@ function buildNativeWorkspaces() {
       ['url-handler-mac-napi-axiomate', 'build'],
       ['computer-use-mac-napi-axiomate', 'build'],
     )
+  } else if (isWindows) {
+    builds.push(['computer-use-win-napi-axiomate', 'build'])
+    note('Skipping macOS-only clipboard/modifier/url-handler native packages on this platform.')
   } else {
-    note('Skipping macOS-only clipboard/modifier/url-handler/computer-use native packages on this platform.')
+    note('Skipping macOS-only and Windows-only native packages on this platform.')
   }
 
   for (const [workspace, script] of builds) {
@@ -664,6 +667,7 @@ function smokeTestNapiBindings() {
     { workspace: 'modifiers-mac-napi-axiomate', fn: 'isAvailable', platform: 'darwin' },
     { workspace: 'url-handler-mac-napi-axiomate', fn: 'isAvailable', platform: 'darwin' },
     { workspace: 'computer-use-mac-napi-axiomate', fn: 'isAvailable', platform: 'darwin' },
+    { workspace: 'computer-use-win-napi-axiomate', fn: 'isAvailable', platform: 'win32' },
   ]
 
   for (const t of targets) {

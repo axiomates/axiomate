@@ -9,5 +9,6 @@ packages:
   - 'computer-use-mcp-axiomate'
   - 'computer-use-native-axiomate'
   - 'computer-use-mac-napi-axiomate'
+  - 'computer-use-win-napi-axiomate'
   - 'mcpb-axiomate'
   - 'agent'
