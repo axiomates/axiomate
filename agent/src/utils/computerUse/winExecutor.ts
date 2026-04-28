@@ -267,7 +267,7 @@ export function createWinExecutor(): ComputerExecutor {
       const outcome = winNapi.captureWindow(bundleId)
       logForDebugging(
         `[CU-CAPTURE] capture_window: bundleId="${bundleId}" diagnostic=${outcome.diagnostic}`,
-        { level: 'warn' },
+        { level: 'debug' },
       )
       const image = outcome.image
       if (!image) return null

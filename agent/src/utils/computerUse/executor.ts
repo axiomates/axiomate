@@ -722,13 +722,13 @@ export async function unhideComputerUseApps(
         const ok = winNapi.unhideApp(bundleId)
         logForDebugging(
           `[CU-HIDE] win unhideApp bundleId="${bundleId}" result=${ok}`,
-          { level: 'warn' },
+          { level: 'debug' },
         )
       } catch (err) {
         // Best-effort — never let unhide failures wedge cleanup.
         logForDebugging(
           `[CU-HIDE] win unhideApp THREW for "${bundleId}": ${errorMessage(err)}`,
-          { level: 'warn' },
+          { level: 'debug' },
         )
       }
     }

@@ -47,14 +47,11 @@ import { getDefaultTierForApp, getDeniedCategoryForApp, isPolicyDenied } from ".
  * (runInputActionGates, runHitTestGate, handleOpenApplication pre-launch,
  * handleScreenshot empty-allowlist auto-trigger) early-return as bypassed.
  *
- * Helper retained as a single rename/log point so a future "strict mode" flag
+ * Helper retained as a single rename point so a future "strict mode" flag
  * (per-session opt-in) can re-enable enforcement without re-touching every
  * call site.
  */
-function isAllowlistBypassed(logger?: Logger, callSite?: string): boolean {
-  if (logger && callSite) {
-    logger.warn(`[CU-BYPASS] ${callSite}: bypassed=true (default-open mode)`);
-  }
+function isAllowlistBypassed(): boolean {
   return true;
 }
 import type {
@@ -266,7 +263,7 @@ function scaleCoord(
       x: Math.round(rawX) + originX,
       y: Math.round(rawY) + originY,
     };
-    logger.warn(
+    logger.debug(
       `[CU-COORD] scaleCoord (display_pt): in=(${rawX},${rawY}) origin=(${originX},${originY}) → out=(${result.x},${result.y})`,
     );
     return result;
@@ -288,7 +285,7 @@ function scaleCoord(
           rawY * (lastScreenshot.displayHeight / lastScreenshot.height),
         ) + lastScreenshot.originY,
     };
-    logger.warn(
+    logger.debug(
       `[CU-COORD] scaleCoord: in=(${rawX},${rawY}) ` +
         `screenshot=${lastScreenshot.width}x${lastScreenshot.height} (image px) ` +
         `display=${lastScreenshot.displayWidth}x${lastScreenshot.displayHeight} (logical pt) ` +
@@ -478,8 +475,8 @@ async function runInputActionGates(
   subGates: CuSubGates,
   actionKind: CuActionKind,
 ): Promise<CuCallToolResult | null> {
-  const bypassed = isAllowlistBypassed(adapter.logger, "runInputActionGates");
-  adapter.logger.warn(
+  const bypassed = isAllowlistBypassed();
+  adapter.logger.debug(
     `[CU-GATE] runInputActionGates entry: actionKind=${actionKind} bypass=${bypassed} ` +
       `allowedApps.length=${overrides.allowedApps.length} hideBeforeAction=${subGates.hideBeforeAction}`,
   );
@@ -533,7 +530,7 @@ async function runInputActionGates(
   if (!frontmost) {
     // No frontmost app (rare — login window?). Let it through; the click
     // will land somewhere and PixelCompare catches staleness.
-    adapter.logger.warn(
+    adapter.logger.debug(
       `[CU-GATE] runInputActionGates PASS: no frontmost app (lock screen / UAC / nothing focused) — letting click through`,
     );
     return null;
@@ -543,12 +540,12 @@ async function runInputActionGates(
 
   if (frontmostTier !== undefined) {
     if (tierSatisfies(frontmostTier, actionKind)) {
-      adapter.logger.warn(
+      adapter.logger.debug(
         `[CU-GATE] runInputActionGates PASS: frontmost="${frontmost.displayName}" (${frontmost.bundleId}) tier="${frontmostTier}" satisfies actionKind="${actionKind}"`,
       );
       return null;
     }
-    adapter.logger.warn(
+    adapter.logger.debug(
       `[CU-GATE] runInputActionGates BLOCK: frontmost="${frontmost.displayName}" (${frontmost.bundleId}) tier="${frontmostTier}" insufficient for actionKind="${actionKind}" — returning tier_insufficient error`,
     );
     // In the allowlist but tier doesn't cover this action. Tailor the
@@ -588,7 +585,7 @@ async function runInputActionGates(
   }
   // Finder is never-hide, always allowed.
   if (frontmost.bundleId === FINDER_BUNDLE_ID) {
-    adapter.logger.warn(
+    adapter.logger.debug(
       `[CU-GATE] runInputActionGates PASS: frontmost is Finder (always allowed)`,
     );
     return null;
@@ -598,7 +595,7 @@ async function runInputActionGates(
     if (actionKind !== "keyboard") {
       // mouse and mouse_full are both click events — click-through works.
       // We're click-through (executor's withClickThrough). Pass.
-      adapter.logger.warn(
+      adapter.logger.debug(
         `[CU-GATE] runInputActionGates PASS: frontmost is host (axiomate itself), actionKind="${actionKind}" — click-through allowed`,
       );
       return null;
@@ -615,7 +612,7 @@ async function runInputActionGates(
   // Non-allowlisted, non-us, non-Finder. RARE after the hide loop — means
   // something popped up between prepare and action, or the 5-try loop gave up.
   const allowlistList = overrides.allowedApps.map(a => a.bundleId).join(',') || '<empty>';
-  adapter.logger.warn(
+  adapter.logger.debug(
     `[CU-GATE] runInputActionGates BLOCK: frontmost="${frontmost.displayName}" (${frontmost.bundleId}) NOT in allowedApps={${allowlistList}} — returning app_not_granted error to AI. ` +
       `(Default-open mode means this branch is unreachable; if you see this log, isAllowlistBypassed() somehow returned false.)`,
   );
@@ -649,14 +646,14 @@ async function runHitTestGate(
   y: number,
   actionKind: CuActionKind,
 ): Promise<CuCallToolResult | null> {
-  const bypassed = isAllowlistBypassed(adapter.logger, "runHitTestGate");
-  adapter.logger.warn(
+  const bypassed = isAllowlistBypassed();
+  adapter.logger.debug(
     `[CU-GATE] runHitTestGate entry: x=${x} y=${y} actionKind=${actionKind} ` +
       `bypass=${bypassed} allowedApps.length=${overrides.allowedApps.length}`,
   );
   if (bypassed) return null;
   const target = await adapter.executor.appUnderPoint(x, y);
-  adapter.logger.warn(
+  adapter.logger.debug(
     `[CU-GATE] runHitTestGate appUnderPoint(${x},${y}) → ${target ? `bundleId="${target.bundleId}" displayName="${target.displayName}"` : 'null (desktop / nothing under point / platform no-op)'}`,
   );
   if (!target) return null; // desktop / nothing under point / platform no-op
@@ -664,7 +661,7 @@ async function runHitTestGate(
   // Finder (desktop, file dialogs) is always clickable — same exemption as
   // runInputActionGates. Our own overlay is filtered by Swift (pid != self).
   if (target.bundleId === FINDER_BUNDLE_ID) {
-    adapter.logger.warn(
+    adapter.logger.debug(
       `[CU-GATE] runHitTestGate PASS: target is Finder (always allowed)`,
     );
     return null;
@@ -677,7 +674,7 @@ async function runHitTestGate(
   if (!tierByBundleId.has(target.bundleId)) {
     // Not in the allowlist at all.
     const allowlistList = overrides.allowedApps.map(a => a.bundleId).join(',') || '<empty>';
-    adapter.logger.warn(
+    adapter.logger.debug(
       `[CU-GATE] runHitTestGate BLOCK: target="${target.displayName}" (${target.bundleId}) NOT in allowedApps={${allowlistList}} — returning app_not_granted error`,
     );
     return errorResult(
@@ -699,13 +696,13 @@ async function runHitTestGate(
   }
 
   if (tierSatisfies(targetTier, actionKind)) {
-    adapter.logger.warn(
+    adapter.logger.debug(
       `[CU-GATE] runHitTestGate PASS: target="${target.displayName}" tier="${targetTier}" satisfies actionKind="${actionKind}"`,
     );
     return null;
   }
 
-  adapter.logger.warn(
+  adapter.logger.debug(
     `[CU-GATE] runHitTestGate BLOCK: target="${target.displayName}" tier="${targetTier}" insufficient for actionKind="${actionKind}" — returning tier_insufficient error`,
   );
   // Target is in the allowlist but tier doesn't cover this action.
@@ -932,7 +929,7 @@ async function handleRequestAccess(
   overrides: ComputerUseOverrides,
   tccState: { accessibility: boolean; screenRecording: boolean } | undefined,
 ): Promise<CuCallToolResult> {
-  adapter.logger.warn(
+  adapter.logger.debug(
     `[CU-GATE] handleRequestAccess called: apps=${JSON.stringify(args.apps)} ` +
       `bypass=${isAllowlistBypassed()} ` +
       `(bypass mode does NOT auto-skip request_access — AI is the one calling it. ` +
@@ -2225,8 +2222,8 @@ async function handleScreenshot(
     adapter.executor.capabilities.screenshotFiltering === "native" &&
     overrides.allowedApps.length === 0
   ) {
-    const bypassed = isAllowlistBypassed(adapter.logger, "handleScreenshot:autoTrigger");
-    adapter.logger.warn(
+    const bypassed = isAllowlistBypassed();
+    adapter.logger.debug(
       `[CU-GATE] handleScreenshot empty-allowlist + native-filter: ` +
         `bypass=${bypassed} → ${bypassed ? "SKIP autoTrigger, capture full-screen unfiltered" : "auto-trigger PermissionRequest dialog"}`,
     );
@@ -2341,7 +2338,7 @@ async function handleScreenshot(
       originX: result.originX,
       originY: result.originY,
     };
-    adapter.logger.warn(
+    adapter.logger.debug(
       `[CU-COORD] handleScreenshot atomic stash: image=${shot.width}x${shot.height} (px) ` +
         `displayLogical=${shot.displayWidth}x${shot.displayHeight} (pt) ` +
         `origin=(${shot.originX},${shot.originY}) displayId=${shot.displayId} ` +
@@ -2420,7 +2417,7 @@ async function handleScreenshot(
   adapter.logger.debug(
     `[computer-use] handleScreenshot non-atomic: takeScreenshotWithRetry returned base64Len=${shot.base64?.length ?? "undef"} width=${shot.width} height=${shot.height} displayId=${shot.displayId}`,
   );
-  adapter.logger.warn(
+  adapter.logger.debug(
     `[CU-COORD] handleScreenshot non-atomic stash: image=${shot.width}x${shot.height} (px) ` +
       `displayLogical=${shot.displayWidth}x${shot.displayHeight} (pt) ` +
       `origin=(${shot.originX},${shot.originY}) displayId=${shot.displayId} ` +
@@ -2720,7 +2717,7 @@ async function handleClickVariant(
   // pixel but model misidentified the target" (model bug).
   try {
     const actual = await adapter.executor.getCursorPosition();
-    adapter.logger.warn(
+    adapter.logger.debug(
       `[CU-COORD] post-click cursor: requested=(${x},${y}) actual=(${actual.x},${actual.y}) delta=(${actual.x - x},${actual.y - y})`,
     );
   } catch {
@@ -2732,7 +2729,7 @@ async function handleClickVariant(
   // launched but appears wrong (rendering issue, anti-screenshot, etc)".
   try {
     const fg = await adapter.executor.getFrontmostApp();
-    adapter.logger.warn(
+    adapter.logger.debug(
       `[CU-FOREGROUND] after click: bundleId="${fg?.bundleId ?? "null"}" displayName="${fg?.displayName ?? "null"}"`,
     );
   } catch {
@@ -3078,8 +3075,8 @@ async function handleOpenApplication(
   const app = requireString(args, "app");
   if (app instanceof Error) return errorResult(app.message, "bad_args");
 
-  const bypassed = isAllowlistBypassed(adapter.logger, "handleOpenApplication");
-  adapter.logger.warn(
+  const bypassed = isAllowlistBypassed();
+  adapter.logger.debug(
     `[CU-GATE] handleOpenApplication entry: app=${JSON.stringify(app)} bypass=${bypassed} ` +
       `allowedApps=${JSON.stringify(overrides.allowedApps.map((a) => a.bundleId))}`,
   );
@@ -3111,7 +3108,7 @@ async function handleOpenApplication(
 
   if (!targetBundleId || !allowed.has(targetBundleId)) {
     const allowlistList = overrides.allowedApps.map(a => a.bundleId).join(',') || '<empty>';
-    adapter.logger.warn(
+    adapter.logger.debug(
       `[CU-GATE] handleOpenApplication BLOCK: app="${app}" not in allowedApps={${allowlistList}} — returning app_not_granted error to AI ` +
         `(default-open mode means this branch is unreachable; if you see this log, isAllowlistBypassed() somehow returned false)`,
     );
@@ -3120,7 +3117,7 @@ async function handleOpenApplication(
       "app_not_granted",
     );
   }
-  adapter.logger.warn(
+  adapter.logger.debug(
     `[CU-GATE] handleOpenApplication PASS: app="${app}" → bundleId="${targetBundleId}", launching`,
   );
 
@@ -3838,7 +3835,7 @@ export async function handleToolCall(
 ): Promise<CuCallToolResult> {
   const { logger, serverName } = adapter;
 
-  logger.warn(
+  logger.debug(
     `[CU-DISPATCH] tool=${name} bypass=${isAllowlistBypassed()} ` +
       `allowedApps.length=${rawOverrides.allowedApps.length} ` +
       `args=${JSON.stringify(args ?? {}).slice(0, 200)}`,
