@@ -623,14 +623,16 @@ mod windows_impl {
         TH32CS_SNAPPROCESS,
     };
     use windows::Win32::System::Threading::{
-        GetCurrentProcess, GetCurrentProcessId, OpenProcess, OpenProcessToken,
+        AttachThreadInput, GetCurrentProcess, GetCurrentProcessId,
+        GetCurrentThreadId, OpenProcess, OpenProcessToken,
         QueryFullProcessImageNameW, PROCESS_NAME_FORMAT,
         PROCESS_QUERY_LIMITED_INFORMATION,
     };
     use windows::Win32::UI::WindowsAndMessaging::{
-        EnumWindows, GetCursorPos, GetForegroundWindow, GetWindowRect,
-        GetWindowThreadProcessId, IsIconic, IsWindowVisible, SetCursorPos,
-        ShowWindow, WindowFromPoint, SHOW_WINDOW_CMD, SW_HIDE, SW_SHOWNOACTIVATE,
+        BringWindowToTop, EnumWindows, GetCursorPos, GetForegroundWindow,
+        GetWindowRect, GetWindowThreadProcessId, IsIconic, IsWindowVisible,
+        SetCursorPos, SetForegroundWindow, ShowWindow, WindowFromPoint,
+        SHOW_WINDOW_CMD, SW_HIDE, SW_SHOWNOACTIVATE,
     };
     use windows::Win32::UI::Input::KeyboardAndMouse::{
         SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, INPUT_MOUSE, KEYBDINPUT,
@@ -1185,6 +1187,68 @@ mod windows_impl {
             ),
         };
 
+        // Bring target to foreground if it's visible-but-bg. PrintWindow
+        // captures the offscreen buffer regardless of z-order so the JPEG
+        // is fine either way, but the user expects screenshot_window to
+        // surface the window — they're going to interact next, and a
+        // click while the target is occluded would land on whatever's
+        // covering it. Per user-defined contract:
+        //   - target visible + already foreground → don't touch
+        //   - target visible + background         → bring to foreground
+        //   - target not visible                  → already returned None
+        //                                            above (find_*'s
+        //                                            IsWindowVisible filter)
+        //
+        // Plain SetForegroundWindow gets blocked by Win32's foreground-
+        // stealing rules unless our process is itself the foreground
+        // process or has the foreground lock. The canonical workaround is
+        // AttachThreadInput: temporarily share an input queue with the
+        // target's UI thread, which makes the system treat us as part of
+        // the same "input session" so SetForegroundWindow proceeds.
+        // Plus BringWindowToTop for z-order even when SetForegroundWindow
+        // ultimately fails — z-order alone is enough for the screenshot
+        // case, and the click-after path uses absolute coords anyway.
+        let fg_note = unsafe {
+            let current_fg = GetForegroundWindow();
+            if current_fg.0 == hwnd.0 {
+                "already-foreground".to_string()
+            } else {
+                let our_tid = GetCurrentThreadId();
+                let mut target_pid: u32 = 0;
+                let target_tid = GetWindowThreadProcessId(hwnd, Some(&mut target_pid));
+                let attached = if target_tid != 0 && target_tid != our_tid {
+                    AttachThreadInput(our_tid, target_tid, true).as_bool()
+                } else {
+                    false
+                };
+
+                let _ = BringWindowToTop(hwnd);
+                let fg_ok = SetForegroundWindow(hwnd).as_bool();
+
+                if attached {
+                    let _ = AttachThreadInput(our_tid, target_tid, false);
+                }
+
+                // Give DWM a frame to compose the new state. Without this
+                // PrintWindow can capture the pre-foreground frame.
+                std::thread::sleep(std::time::Duration::from_millis(50));
+
+                if fg_ok {
+                    if attached {
+                        "brought-to-foreground (attached-thread-input)".to_string()
+                    } else {
+                        "brought-to-foreground".to_string()
+                    }
+                } else {
+                    // SetForegroundWindow refused — most likely WS_EX_NOACTIVATE
+                    // window or some shell-level protected app. BringWindowToTop
+                    // already ran above so z-order is corrected even without
+                    // proper foreground transfer. PrintWindow proceeds.
+                    "set-foreground-failed (z-order-bumped)".to_string()
+                }
+            }
+        };
+
         // Get window rect (full window including chrome — matches mac
         // CGWindowListCreateImage behavior, which captures the whole
         // window including title/resize borders).
@@ -1219,11 +1283,11 @@ mod windows_impl {
         match result {
             Ok(image) => CaptureWindowOutcome {
                 image: Some(image),
-                diagnostic: format!("ok ({match_note})"),
+                diagnostic: format!("ok ({match_note}; {fg_note})"),
             },
             Err(diag) => CaptureWindowOutcome {
                 image: None,
-                diagnostic: format!("bundle '{bundle_id}': {diag} ({match_note})"),
+                diagnostic: format!("bundle '{bundle_id}': {diag} ({match_note}; {fg_note})"),
             },
         }
     }
