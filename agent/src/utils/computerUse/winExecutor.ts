@@ -59,6 +59,7 @@ import {
   winFallbackWriteClipboard,
   winFallbackZoom,
   winInlineOpenApp,
+  winListStartMenuApps,
 } from './winFallbacks.js'
 
 function inputUnavailable(method: string): never {
@@ -273,12 +274,35 @@ export function createWinExecutor(): ComputerExecutor {
         // currently-running app stays accessible via screenshot + click.
         return []
       }
-      const list = winNapi.listInstalledApps()
-      return list.map(a => ({
+      // Classic apps via Uninstall registry walk (full exe paths).
+      const classic: InstalledApp[] = winNapi.listInstalledApps().map(a => ({
         bundleId: a.bundleId,
         displayName: a.displayName,
         path: a.path,
       }))
+      // UWP / Microsoft Store apps via Get-StartApps. Classic apps don't
+      // include UWP (Calculator, Photos, Settings, modern Notepad, Paint, …)
+      // because UWP ships via AppX packages, not Uninstall registry. UWP
+      // entries get bundleId = `shell:AppsFolder\<AppID>` — directly
+      // launchable by openApp's shell: branch and (post-G2) usable as a
+      // stable identifier for screenshot_window via AUMID matching.
+      const uwp: InstalledApp[] = winListStartMenuApps().map(a => ({
+        bundleId: `shell:AppsFolder\\${a.appId}`,
+        displayName: a.name,
+        path: '',
+      }))
+      // Dedupe by displayName lower-case. A classic registry entry for
+      // "Microsoft Notepad" can shadow the UWP "Notepad" — keep the first
+      // occurrence (classic preferred since it has a real path).
+      const seen = new Set<string>()
+      const merged: InstalledApp[] = []
+      for (const a of [...classic, ...uwp]) {
+        const key = a.displayName.toLowerCase()
+        if (seen.has(key)) continue
+        seen.add(key)
+        merged.push(a)
+      }
+      return merged
     },
 
     async appUnderPoint(x, y) {
@@ -568,16 +592,25 @@ export function createWinExecutor(): ComputerExecutor {
 
     async openApp(bundleIdOrName: string): Promise<void> {
       // Resolution chain:
-      //   1. Looks like a path (contains \, /, or .exe suffix) → direct
+      //   1. shell:AppsFolder\<AppID> (or any shell:URI) → Start-Process
+      //      handles the URI scheme natively. This is what list_installed_apps
+      //      returns for UWP / Microsoft Store apps.
+      //   2. Looks like a path (contains \, /, or .exe suffix) → direct
       //      Start-Process. AI passed list_installed_apps output verbatim.
-      //   2. Display-name match against winNapi.listInstalledApps registry
+      //   3. Display-name match against winNapi.listInstalledApps registry
       //      walk → use the resolved full path. Catches the common case
       //      where AI passes a friendly name like "Chrome" without first
       //      calling list_installed_apps.
-      //   3. Pass-through to PowerShell Start-Process. App Paths registry
-      //      resolves a few canonical names ("chrome", "firefox", "notepad"),
-      //      but UWP apps (Calculator, Photos, Settings) won't be found —
-      //      winInlineOpenApp surfaces a clean error in that case.
+      //   4. Display-name match against Get-StartApps (UWP) → launch via
+      //      `shell:AppsFolder\<AppID>`. Catches AI passing "Calculator" /
+      //      "Photos" / "Settings" without prior list_installed_apps.
+      //   5. Pass-through to PowerShell Start-Process. App Paths registry
+      //      resolves a few canonical names ("chrome", "firefox", "calc",
+      //      "notepad" via WindowsApps alias). On failure, winInlineOpenApp
+      //      surfaces a clean error pointing AI at list_installed_apps.
+      if (bundleIdOrName.startsWith('shell:')) {
+        return winInlineOpenApp(bundleIdOrName)
+      }
       const looksLikePath =
         bundleIdOrName.includes('\\') ||
         bundleIdOrName.includes('/') ||
@@ -585,9 +618,9 @@ export function createWinExecutor(): ComputerExecutor {
       if (looksLikePath) {
         return winInlineOpenApp(bundleIdOrName)
       }
+      const lower = bundleIdOrName.toLowerCase()
       if (napiAvailable) {
         const installed = winNapi.listInstalledApps()
-        const lower = bundleIdOrName.toLowerCase()
         const match = installed.find(
           a => a.displayName.toLowerCase() === lower,
         )
@@ -598,6 +631,16 @@ export function createWinExecutor(): ComputerExecutor {
           )
           return winInlineOpenApp(match.path)
         }
+      }
+      const startApps = winListStartMenuApps()
+      const sm = startApps.find(a => a.name.toLowerCase() === lower)
+      if (sm) {
+        const launcher = `shell:AppsFolder\\${sm.appId}`
+        logForDebugging(
+          `[computer-use] openApp (win): resolved "${bundleIdOrName}" → "${launcher}" via Get-StartApps (UWP)`,
+          { level: 'debug' },
+        )
+        return winInlineOpenApp(launcher)
       }
       return winInlineOpenApp(bundleIdOrName)
     },

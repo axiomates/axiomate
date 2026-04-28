@@ -250,9 +250,11 @@ export function winInlineOpenApp(bundleIdOrName: string): void {
     const raw = err instanceof Error ? err.message : String(err)
     if (/cannot find the file/i.test(raw)) {
       throw new Error(
-        `Could not launch "${bundleIdOrName}" — Start-Process didn't find a matching executable. ` +
-          `Modern Windows Calculator / Photos / Settings are UWP apps and aren't in the App Paths registry — ` +
-          `call list_installed_apps to see what's available, or pass a full executable path.`,
+        `Could not launch "${bundleIdOrName}" — neither registry walk, Get-StartApps, nor PATH/App-Paths resolved it. ` +
+          `Try the app's friendly name (e.g. "Calculator", "Chrome"), the full executable path ` +
+          `(e.g. "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"), or a UWP launcher URI ` +
+          `("shell:AppsFolder\\<AppID>"). For not-yet-running apps with unknown ids, open the Start menu ` +
+          `via key("win") and type the name.`,
       )
     }
     // Other failures: keep the first meaningful line of the raw output,
@@ -261,6 +263,79 @@ export function winInlineOpenApp(bundleIdOrName: string): void {
     throw new Error(
       `Start-Process failed for "${bundleIdOrName}": ${firstLine}`,
     )
+  }
+}
+
+// ─── Start menu / UWP enumeration ────────────────────────────────────────
+//
+// `Get-StartApps` is the canonical way to enumerate everything in the Start
+// menu — both classic shortcuts and UWP / Microsoft Store apps — with stable
+// AppIDs. UWP entries have an AppID like
+//     Microsoft.WindowsCalculator_8wekyb3d8bbwe!App
+// (PackageFamilyName + ! + ApplicationId from the manifest). Those can be
+// launched via `Start-Process "shell:AppsFolder\<AppID>"`.
+//
+// Classic Start menu shortcuts have AppIDs like
+//     {GUID}\Some Shortcut.lnk
+// which we filter out — `winNapi.listInstalledApps` already covers classic
+// apps via the Uninstall registry walk, with full exe paths.
+//
+// Special protocol entries (`MSEdge`, `MicrosoftEdge`, `RealEnvironments` …)
+// are also filtered out — they're protocol stubs, not real launchable apps.
+
+export interface StartMenuApp {
+  /** Friendly display name from the Start menu. */
+  name: string
+  /** AppID — for UWP this is `<PackageFamilyName>!<AppID>` and the canonical
+   *  launcher form is `shell:AppsFolder\<AppID>`. */
+  appId: string
+  /** Whether this is a UWP / Microsoft Store app (AppID contains `!`). */
+  isUwp: boolean
+}
+
+/**
+ * Enumerate Start menu entries via PowerShell Get-StartApps.
+ * Cost: ~200-500ms first call (powershell startup); cached for the process
+ * lifetime since installed apps don't change mid-CU-session.
+ *
+ * Returns only UWP entries (filters out classic .lnk shortcuts and protocol
+ * stubs). Classic apps are already enumerated via winNapi.listInstalledApps.
+ */
+let _startMenuCache: StartMenuApp[] | null = null
+
+export function winListStartMenuApps(): StartMenuApp[] {
+  if (_startMenuCache !== null) return _startMenuCache
+  try {
+    const out = runPs(`Get-StartApps | ConvertTo-Json -Compress`)
+    if (!out) {
+      _startMenuCache = []
+      return _startMenuCache
+    }
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(out)
+    } catch {
+      _startMenuCache = []
+      return _startMenuCache
+    }
+    const arr = Array.isArray(parsed) ? parsed : [parsed]
+    const apps: StartMenuApp[] = []
+    for (const x of arr) {
+      if (!x || typeof x !== 'object') continue
+      const rec = x as Record<string, unknown>
+      const name = rec.Name
+      const appId = rec.AppID
+      if (typeof name !== 'string' || typeof appId !== 'string') continue
+      // Filter to only UWP entries — `!` is the PackageFamilyName separator.
+      // Classic shortcuts (`.lnk`) and protocol stubs lack it.
+      if (!appId.includes('!')) continue
+      apps.push({ name, appId, isUwp: true })
+    }
+    _startMenuCache = apps
+    return apps
+  } catch {
+    _startMenuCache = []
+    return _startMenuCache
   }
 }
 

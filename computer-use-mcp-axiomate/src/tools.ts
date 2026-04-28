@@ -152,10 +152,10 @@ export function buildComputerUseTools(
   // strings on Windows that resolve to nothing. We fork at runtime
   // here so each platform's LLM only sees its own examples.
   const bundleIdExample = isWin
-    ? '"C:\\\\Program Files\\\\Microsoft VS Code\\\\Code.exe" or "C:\\\\Program Files\\\\Slack\\\\slack.exe"'
+    ? '"C:\\\\Program Files\\\\Microsoft VS Code\\\\Code.exe" (classic .exe) or "shell:AppsFolder\\\\Microsoft.WindowsCalculator_8wekyb3d8bbwe!App" (UWP / Microsoft Store)'
     : '"com.tinyspeck.slackmacgap" for Slack or "com.google.Chrome" for Chrome';
   const bundleIdAcceptedNote = isWin
-    ? 'On Windows, bundle ids are full exe paths — the same value returned by list_running_apps, screenshot_window, and app-under-point queries. You generally do not type these by hand; pass values you received from another tool. Display names like "Slack" / "Chrome" may also work as a fallback via App Paths registry resolution.'
+    ? 'On Windows, bundle ids come in two forms: classic .exe full paths (Chrome / Slack / VS Code, returned by list_running_apps for currently-running classic apps) and UWP / Microsoft Store launcher URIs of the form `shell:AppsFolder\\\\<AppID>` (Calculator / Photos / Settings / modern Notepad — auto-resolved when you pass the friendly name). You generally do not type these by hand; pass values you received from list_running_apps / screenshot_window output. Friendly display names like "Slack" / "Calculator" / "Photos" also work — open_application resolves them against the registry walk + Get-StartApps automatically.'
     : 'Bundle identifiers (e.g. "com.tinyspeck.slackmacgap") are also accepted, but you don\'t need to guess them; display names always work.';
 
   // Shared hint suffix for BOTH request_access and request_teach_access —
