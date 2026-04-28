@@ -737,11 +737,67 @@ mod windows_impl {
         MOUSEINPUT, MOUSE_EVENT_FLAGS, VIRTUAL_KEY,
     };
     use windows::Win32::Storage::Xps::{PrintWindow, PRINT_WINDOW_FLAGS};
+    use windows::core::{GUID, PROPVARIANT};
+    use windows::Win32::System::Com::{
+        CoInitializeEx, CoTaskMemFree, COINIT_APARTMENTTHREADED,
+    };
+    use windows::Win32::System::Com::StructuredStorage::PropVariantToStringAlloc;
+    use windows::Win32::UI::Shell::PropertiesSystem::{
+        SHGetPropertyStoreForWindow, IPropertyStore, PROPERTYKEY,
+    };
+    use std::sync::OnceLock;
 
     /// PW_RENDERFULLCONTENT — render DWM-composited content (Chrome, Electron,
     /// WebView2). Without this, modern Windows apps capture as a black bitmap.
     /// 0x2 per Win32 docs (windows crate's PRINT_WINDOW_FLAGS is open enum).
     const PW_RENDERFULLCONTENT: PRINT_WINDOW_FLAGS = PRINT_WINDOW_FLAGS(0x2);
+
+    /// PKEY_AppUserModel_ID — UWP windows have this property set to their
+    /// AUMID (e.g. `Microsoft.WindowsCalculator_8wekyb3d8bbwe!App`). Lets us
+    /// match a UWP-form bundleId against the visible HWND owned by
+    /// ApplicationFrameHost.exe (the actual UWP-app process has no
+    /// top-level visible HWND). Classic Win32 windows return VT_EMPTY.
+    /// Format: SDK propkey.h — fmtid {9F4C2855-9F79-4B39-A8D0-E1D42DE1D5F3}, pid 5.
+    const PKEY_APPUSERMODEL_ID: PROPERTYKEY = PROPERTYKEY {
+        fmtid: GUID::from_u128(0x9F4C2855_9F79_4B39_A8D0_E1D42DE1D5F3),
+        pid: 5,
+    };
+
+    /// Lazy COM init for `SHGetPropertyStoreForWindow`. The napi worker
+    /// thread that runs `capture_window` doesn't have a COM apartment by
+    /// default — first SHGetPropertyStoreForWindow call would fail with
+    /// CO_E_NOTINITIALIZED. STA is fine for property store reads.
+    /// `CoInitializeEx` returning S_FALSE means already-initialized which
+    /// is also OK; we ignore the return value either way.
+    static COM_INITIALIZED: OnceLock<()> = OnceLock::new();
+    fn init_com_once() {
+        COM_INITIALIZED.get_or_init(|| unsafe {
+            let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
+        });
+    }
+
+    /// Read PKEY_AppUserModel_ID off `hwnd`'s shell property store. UWP
+    /// hosts (ApplicationFrameWindow / Windows.UI.Core.CoreWindow) have it
+    /// set; classic Win32 windows return VT_EMPTY → PropVariantToStringAlloc
+    /// fails with E_INVALIDARG → we surface None.
+    fn get_aumid_for_window(hwnd: HWND) -> Option<String> {
+        init_com_once();
+        unsafe {
+            let store: IPropertyStore = SHGetPropertyStoreForWindow(hwnd).ok()?;
+            let value: PROPVARIANT = store.GetValue(&PKEY_APPUSERMODEL_ID).ok()?;
+            // PropVariantToStringAlloc returns a CoTaskMemAlloc'd PWSTR.
+            // Caller must CoTaskMemFree. windows-rs wraps the raw alloc as
+            // PWSTR; .to_string() decodes UTF-16 to a Rust String, then we
+            // free.
+            let pwstr = PropVariantToStringAlloc(&value).ok()?;
+            if pwstr.0.is_null() {
+                return None;
+            }
+            let result = pwstr.to_string().ok();
+            CoTaskMemFree(Some(pwstr.0 as _));
+            result
+        }
+    }
 
     // ────────────── 1. list_installed_apps ──────────────
 
@@ -1068,6 +1124,11 @@ mod windows_impl {
     pub enum BundleMatchKind {
         Exact,
         Basename,
+        /// UWP / Microsoft Store app — matched via PKEY_AppUserModel_ID on
+        /// the visible HWND (which is owned by ApplicationFrameHost.exe,
+        /// not the UWP app's own process). Triggered when bundle_id is
+        /// `shell:AppsFolder\<AUMID>` or contains `!`.
+        Aumid,
     }
 
     /// Result of `find_first_visible_window_for_bundle`. `matched_path` is
@@ -1122,17 +1183,45 @@ mod windows_impl {
     }
 
     /// Find the first visible top-level window owned by the app at
-    /// `bundle_id`. Two-step match:
+    /// `bundle_id`. Dispatch by bundle_id form:
     ///
-    ///   1. exact: process exe path equals `bundle_id` string-for-string
-    ///   2. basename: lowercased basename of process exe path equals
-    ///      lowercased basename of `bundle_id` (with `.exe` auto-appended)
+    ///   - UWP form (`shell:AppsFolder\<AUMID>` or contains `!`):
+    ///     PKEY_AppUserModel_ID property match on each visible HWND.
+    ///     Required because UWP visible windows belong to
+    ///     ApplicationFrameHost.exe, not the UWP app's own process — so
+    ///     process-exe-path matching can't find them.
     ///
-    /// Exact wins. If only basename matches, returns the first basename
-    /// match in EnumWindows z-order. Returns None when neither matches.
-    /// `WindowMatch.matched_path` is the actual process path we matched
-    /// against (= input on Exact; = winning process's path on Basename).
+    ///   - Classic form (full exe path or basename): two-step match —
+    ///     1. exact: process exe path equals `bundle_id` string-for-string
+    ///     2. basename: lowercased basename of process exe path equals
+    ///        lowercased basename of `bundle_id` (with `.exe` auto-appended)
+    ///     Exact wins; basename is fallback.
+    ///
+    /// Returns None when no match. `WindowMatch.matched_path` is the actual
+    /// path we matched (process exe for Classic, AUMID for Aumid).
     fn find_first_visible_window_for_bundle(
+        bundle_id: &str,
+    ) -> (Option<WindowMatch>, Vec<(String, String)>) {
+        // Detect UWP form: AI passed `shell:AppsFolder\<AUMID>` (from
+        // listInstalledApps merged output) or a bare AUMID (contains `!`).
+        let aumid_target: Option<String> = if let Some(s) =
+            bundle_id.strip_prefix("shell:AppsFolder\\")
+        {
+            Some(s.to_string())
+        } else if bundle_id.contains('!') {
+            Some(bundle_id.to_string())
+        } else {
+            None
+        };
+
+        if let Some(aumid) = aumid_target {
+            return find_window_by_aumid(&aumid);
+        }
+        find_window_by_exe_path(bundle_id)
+    }
+
+    /// Classic exe-path / basename matcher (the original implementation).
+    fn find_window_by_exe_path(
         bundle_id: &str,
     ) -> (Option<WindowMatch>, Vec<(String, String)>) {
         let mut state = FindState {
@@ -1165,6 +1254,81 @@ mod windows_impl {
             None
         };
         (result, state.visible_seen)
+    }
+
+    /// AUMID matcher for UWP / Microsoft Store apps. Walks visible
+    /// top-level windows, reads PKEY_AppUserModel_ID off each, returns
+    /// the first whose AUMID matches `target` (case-insensitive). The
+    /// HWND returned is the ApplicationFrameWindow — PrintWindow on it
+    /// captures the composited UWP content correctly (PW_RENDERFULLCONTENT).
+    fn find_window_by_aumid(
+        target: &str,
+    ) -> (Option<WindowMatch>, Vec<(String, String)>) {
+        let mut state = AumidFindState {
+            target_lower: target.to_lowercase(),
+            matched: None,
+            visible_seen: Vec::new(),
+        };
+        unsafe {
+            let _ = EnumWindows(
+                Some(aumid_find_enum_proc),
+                LPARAM(&mut state as *mut _ as isize),
+            );
+        }
+        let result = if let Some((hwnd_isize, aumid)) = state.matched {
+            Some(WindowMatch {
+                hwnd: HWND(hwnd_isize as *mut std::ffi::c_void),
+                kind: BundleMatchKind::Aumid,
+                matched_path: aumid,
+            })
+        } else {
+            None
+        };
+        (result, state.visible_seen)
+    }
+
+    struct AumidFindState {
+        target_lower: String,
+        /// First matched HWND (raw isize for Send across enum-proc lifetime)
+        /// + the actual AUMID string we matched.
+        matched: Option<(isize, String)>,
+        /// Visible UWP HWNDs we saw, for the no-match diagnostic. Tuple
+        /// is (aumid, "<uwp>") to match the existing visible_seen shape.
+        visible_seen: Vec<(String, String)>,
+    }
+
+    unsafe extern "system" fn aumid_find_enum_proc(
+        hwnd: HWND,
+        lparam: LPARAM,
+    ) -> BOOL {
+        let state_ptr = lparam.0 as *mut AumidFindState;
+        let state = match state_ptr.as_mut() {
+            Some(s) => s,
+            None => return false.into(),
+        };
+        if state.matched.is_some() {
+            return false.into();
+        }
+        if !IsWindowVisible(hwnd).as_bool() {
+            return true.into();
+        }
+        if IsIconic(hwnd).as_bool() {
+            return true.into();
+        }
+        let aumid = match get_aumid_for_window(hwnd) {
+            Some(a) => a,
+            None => return true.into(), // classic Win32 window, skip
+        };
+        // Bound the visible_seen list so a long EnumWindows pass with
+        // many UWP windows doesn't blow up the diagnostic string.
+        if state.visible_seen.len() < 24 {
+            state.visible_seen.push((aumid.clone(), "<uwp>".to_string()));
+        }
+        if aumid.to_lowercase() == state.target_lower {
+            state.matched = Some((hwnd.0 as isize, aumid));
+            return false.into();
+        }
+        true.into()
     }
 
     unsafe extern "system" fn find_window_enum_proc(hwnd: HWND, lparam: LPARAM) -> BOOL {
@@ -1246,8 +1410,6 @@ mod windows_impl {
         let m = match matched {
             Some(m) => m,
             None => {
-                let basename_needle = make_basename_needle(bundle_id)
-                    .unwrap_or_else(|| "<no basename>".to_string());
                 let visible_summary = if visible_seen.is_empty() {
                     "<none>".to_string()
                 } else {
@@ -1257,15 +1419,31 @@ mod windows_impl {
                         .collect::<Vec<_>>()
                         .join(", ")
                 };
-                return CaptureWindowOutcome {
-                    image: None,
-                    diagnostic: format!(
+                let is_uwp_form = bundle_id.starts_with("shell:AppsFolder\\")
+                    || bundle_id.contains('!');
+                let diagnostic = if is_uwp_form {
+                    format!(
+                        "no visible UWP window with AUMID matching bundle \
+                         '{bundle_id}'. The app may not be running, or its \
+                         AUMID differs from what was passed. Currently-visible \
+                         UWP AUMIDs: [{visible_summary}]. Try opening the app \
+                         first via open_application, or use the friendly name \
+                         (open_application resolves it via Get-StartApps)."
+                    )
+                } else {
+                    let basename_needle = make_basename_needle(bundle_id)
+                        .unwrap_or_else(|| "<no basename>".to_string());
+                    format!(
                         "no visible top-level window for bundle '{bundle_id}' \
                          (exact failed; basename needle '{basename_needle}' \
                          also no match). Currently-visible exe basenames: \
                          [{visible_summary}]. Use list_running_apps to \
                          confirm the bundle id you expect to be active."
-                    ),
+                    )
+                };
+                return CaptureWindowOutcome {
+                    image: None,
+                    diagnostic,
                 };
             }
         };
@@ -1278,6 +1456,11 @@ mod windows_impl {
                 m.matched_path,
                 make_basename_needle(bundle_id)
                     .unwrap_or_else(|| "<n/a>".to_string()),
+            ),
+            BundleMatchKind::Aumid => format!(
+                "aumid-match: input='{bundle_id}' → matched AUMID='{}' \
+                 (UWP / Microsoft Store, HWND owned by ApplicationFrameHost.exe)",
+                m.matched_path,
             ),
         };
 

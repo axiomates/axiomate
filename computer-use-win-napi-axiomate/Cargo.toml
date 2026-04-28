@@ -47,6 +47,25 @@ windows = { version = "0.58", features = [
                                       # actually move the cursor in
                                       # Bun-compiled exes; standalone Node
                                       # works)
+  "Win32_UI_Shell",                   # SHGetPropertyStoreForWindow — needed
+                                      # to read PKEY_AppUserModel_ID off
+                                      # UWP windows for AUMID-based
+                                      # find_first_visible_window_for_bundle.
+                                      # UWP visible HWNDs are owned by
+                                      # ApplicationFrameHost.exe so process-
+                                      # exe-path matching can't find them.
+  "Win32_UI_Shell_PropertiesSystem",  # IPropertyStore, PROPERTYKEY,
+                                      # PropVariantToStringAlloc — read AUMID
+                                      # off the property store
+  "Win32_System_Com",                 # CoInitializeEx, CoTaskMemFree —
+                                      # SHGetPropertyStoreForWindow needs
+                                      # COM apartment, the napi worker
+                                      # thread doesn't have one without us
+                                      # initing once.
+  "Win32_System_Com_StructuredStorage", # PROPVARIANT — AUMID property value
+                                        # comes back wrapped in this.
+  "Win32_System_Variant",             # VT_LPWSTR / variant types referenced
+                                      # by PROPVARIANT.
 ] }
 # JPEG encoder for screenshot_window output. Matches mac NAPI's pipeline
 # (image::JpegEncoder at quality 85) so the {base64,width,height} payload
