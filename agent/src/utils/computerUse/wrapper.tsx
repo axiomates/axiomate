@@ -211,10 +211,16 @@ export function buildSessionContext(): ComputerUseSessionContext {
         // injection can't dismiss dialogs with Escape). The CGEventTap's
         // CFRunLoopSource is processed by the drainRunLoop pump, so this
         // holds a pump retain until unregisterEscHotkey() in cleanup.ts.
-        const escRegistered = registerEscHotkey(() => {
-          logForDebugging('[cu-esc] user escape, aborting turn');
-          tuc().abortController.abort();
-        });
+        //
+        // mac-only: CGEvent.tapCreate is Quartz-specific. Win has no equivalent
+        // implemented yet (would need WH_KEYBOARD_LL hook), so we don't even
+        // attempt to register — Ctrl+C is the user's stop signal there.
+        const escRegistered = process.platform === 'darwin'
+          ? registerEscHotkey(() => {
+              logForDebugging('[cu-esc] user escape, aborting turn');
+              tuc().abortController.abort();
+            })
+          : false;
         tuc().sendOSNotification?.({
           message: escRegistered ? 'Axiomate is using your computer · press Esc to stop' : 'Axiomate is using your computer · press Ctrl+C to stop',
           notificationType: 'computer_use_enter'

@@ -266,7 +266,7 @@ export function buildComputerUseTools(
           bundle_id: {
             type: "string",
             description:
-              `Bundle id of the target app, e.g. ${bundleIdExample}. ${bundleIdAcceptedNote} If you only know the user-facing name, **call \`list_running_apps\` first** — it returns the exact bundle id for every currently-running app with a visible window. Do not guess install paths from common conventions; many apps live at non-standard paths (Weixin vs WeChat, scoop installs, custom directories).`,
+              `Identifier for the target app — ${isWin ? "a full executable path on Windows" : "a CFBundleIdentifier (reverse-DNS string) on macOS"}, e.g. ${bundleIdExample}. ${bundleIdAcceptedNote} If you only know the user-facing name, **call \`list_running_apps\` first** — it returns the exact identifier for every currently-running app with a visible window. Do not guess install paths from common conventions; many apps live at non-standard paths (Weixin vs WeChat, scoop installs, custom directories).`,
           },
         },
         required: ["bundle_id"],

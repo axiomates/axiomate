@@ -22,7 +22,14 @@ import { requireComputerUseSwift } from './swiftLoader.js'
 
 let registered = false
 
+// mac-only feature. Caller (wrapper.tsx) is expected to branch on platform
+// and not call us on win. These guards are defense in depth: a future caller
+// that forgets the platform check still gets a silent no-op instead of a
+// `[cu-esc] registerEscape returned false` warn-log per CU action.
+const IS_MAC = process.platform === 'darwin'
+
 export function registerEscHotkey(onEscape: () => void): boolean {
+  if (!IS_MAC) return false
   if (registered) return true
   const cu = requireComputerUseSwift()
   if (!cu.hotkey.registerEscape(onEscape)) {
@@ -38,6 +45,7 @@ export function registerEscHotkey(onEscape: () => void): boolean {
 }
 
 export function unregisterEscHotkey(): void {
+  if (!IS_MAC) return
   if (!registered) return
   try {
     requireComputerUseSwift().hotkey.unregister()
@@ -49,6 +57,7 @@ export function unregisterEscHotkey(): void {
 }
 
 export function notifyExpectedEscape(): void {
+  if (!IS_MAC) return
   if (!registered) return
   requireComputerUseSwift().hotkey.notifyExpectedEscape()
 }
