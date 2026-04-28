@@ -644,6 +644,45 @@ pub fn notify_expected_escape() {
     }
 }
 
+/// Keyboard-input foreground guard. SendInput INPUT_KEYBOARD events route to
+/// whichever window has the keyboard focus at SendInput time. When the user
+/// types a prompt in axiomate's terminal and submits, axiomate IS the
+/// foreground window — so a model-synthesized `key("escape")` / `type(...)`
+/// directly after submission would land in axiomate's terminal (cancelling
+/// its own turn or typing nonsense into the input box).
+///
+/// macOS sidesteps this via `prepareForAction`: hide axiomate, bring
+/// allowlisted apps forward. Windows has no such allowlist model, so we
+/// take a lighter approach: if axiomate is currently foreground, walk the
+/// Z-order via EnumWindows (which iterates top-to-bottom in Z-order on
+/// Win 8+) and SetForegroundWindow to the first visible non-our-PID
+/// window above a minimum size threshold (skipping toolbars / IME
+/// indicators / system overlays). That's "the app the user was using
+/// right before clicking into axiomate".
+///
+/// Returns true iff a switch happened. False means either:
+///   - axiomate wasn't foreground (AI already clicked target → key flows
+///     to the right place; nothing to do), or
+///   - no suitable Z-order target found (only axiomate windows visible).
+///
+/// SetForegroundWindow's UIPI restrictions don't apply when switching AWAY
+/// from ourselves — the calling process owns the current foreground.
+///
+/// Caller (winExecutor.ts) sleeps ~20ms after a true return to let the OS
+/// process the focus change before SendInput fires; otherwise the keyboard
+/// input can race the focus-change message and still land in axiomate.
+#[napi]
+pub fn defocus_self_to_previous_foreground() -> bool {
+    #[cfg(target_os = "windows")]
+    {
+        windows_impl::defocus_self_to_previous_foreground()
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        false
+    }
+}
+
 // ───────────────────────────────────────────────────────────────────────────
 // Windows-specific implementations
 // ───────────────────────────────────────────────────────────────────────────
@@ -1833,6 +1872,103 @@ mod windows_impl {
             display_name: basename(&path),
             bundle_id: path,
         })
+    }
+
+    // ────────────── defocus_self_to_previous_foreground ──────────────
+    //
+    // EnumWindows iterates top-level windows in Z-order from front to back
+    // (documented behavior, Win 8+). The first non-our-PID visible window
+    // above the size threshold is the "previous foreground" we want.
+
+    /// Smallest dimension (px) for a window to be considered a real
+    /// keyboard-input target. Filters: toolbars, IME indicators, tray
+    /// helpers, hidden zero-size root windows.
+    const MIN_TARGET_DIMENSION: i32 = 100;
+
+    struct DefocusFinderState {
+        our_pid: u32,
+        /// Result HWND.0 — null pointer means "not found yet". We use the
+        /// null-check rather than Option<HWND> because HWND isn't Send and
+        /// we can't store it through extern "system" callbacks cleanly.
+        target: HWND,
+    }
+
+    extern "system" fn defocus_finder_enum_proc(hwnd: HWND, lparam: LPARAM) -> BOOL {
+        // SAFETY: lparam is the &mut DefocusFinderState we passed into
+        // EnumWindows. Lifetime is the EnumWindows call duration.
+        let state = unsafe { &mut *(lparam.0 as *mut DefocusFinderState) };
+
+        if !unsafe { IsWindowVisible(hwnd).as_bool() } {
+            return BOOL(1); // continue
+        }
+
+        let mut pid: u32 = 0;
+        unsafe {
+            GetWindowThreadProcessId(hwnd, Some(&mut pid));
+        }
+        // Skip our own process (axiomate's own windows including tray
+        // helpers, child dialogs) and unowned windows (pid==0 shouldn't
+        // happen for top-level windows but defend anyway).
+        if pid == 0 || pid == state.our_pid {
+            return BOOL(1);
+        }
+
+        // Skip tiny windows: tray icon owners, IME UI, system overlays.
+        let mut rect = RECT::default();
+        if unsafe { GetWindowRect(hwnd, &mut rect).is_err() } {
+            return BOOL(1);
+        }
+        let w = rect.right - rect.left;
+        let h = rect.bottom - rect.top;
+        if w < MIN_TARGET_DIMENSION || h < MIN_TARGET_DIMENSION {
+            return BOOL(1);
+        }
+
+        // Hit. Stop enumeration.
+        state.target = hwnd;
+        BOOL(0)
+    }
+
+    pub fn defocus_self_to_previous_foreground() -> bool {
+        let current_fg = unsafe { GetForegroundWindow() };
+        if current_fg.0.is_null() {
+            return false;
+        }
+
+        let our_pid = unsafe { GetCurrentProcessId() };
+
+        // Cheap check first: is the current foreground actually ours? If
+        // not (AI already clicked a target window), don't switch — the
+        // keys would already flow to the right place.
+        let mut fg_pid: u32 = 0;
+        unsafe {
+            GetWindowThreadProcessId(current_fg, Some(&mut fg_pid));
+        }
+        if fg_pid != our_pid {
+            return false;
+        }
+
+        // Walk Z-order, find first visible non-our-PID window over the
+        // size threshold. EnumWindows order is documented top-to-bottom.
+        let mut state = DefocusFinderState {
+            our_pid,
+            target: HWND(std::ptr::null_mut()),
+        };
+        unsafe {
+            let _ = EnumWindows(
+                Some(defocus_finder_enum_proc),
+                LPARAM(&mut state as *mut _ as isize),
+            );
+        }
+
+        if state.target.0.is_null() {
+            return false; // no suitable target — bail; behavior degrades to current
+        }
+
+        // SetForegroundWindow's UIPI restrictions are about *acquiring*
+        // foreground from an unrelated process. We're the current
+        // foreground, so the calling process is allowed to hand off.
+        unsafe { SetForegroundWindow(state.target).as_bool() }
     }
 
     /// Mutable accumulator passed via LPARAM through visibility_enum_proc.

@@ -234,3 +234,19 @@ module.exports.notifyExpectedEscape = function notifyExpectedEscape() {
   if (!mod) return
   mod.notifyExpectedEscape()
 }
+
+/**
+ * If axiomate is the current foreground window, hand foreground off to the
+ * Z-order #2 visible window (the user's previous app). Used by winExecutor
+ * before keyboard input (key / holdKey / type) so SendInput INPUT_KEYBOARD
+ * doesn't land in axiomate's own terminal — see Rust doc for details.
+ *
+ * Returns true if a switch happened (caller should sleep ~20ms before
+ * SendInput); false if axiomate wasn't foreground (no-op needed) or no
+ * suitable target was found in Z-order.
+ */
+module.exports.defocusSelfToPreviousForeground = function defocusSelfToPreviousForeground() {
+  const mod = loadNative()
+  if (!mod) return false
+  return mod.defocusSelfToPreviousForeground()
+}

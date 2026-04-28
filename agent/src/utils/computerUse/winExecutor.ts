@@ -199,6 +199,29 @@ export function createWinExecutor(): ComputerExecutor {
     return new Promise(r => setTimeout(r, ms))
   }
 
+  /**
+   * Keyboard-input foreground guard. SendInput INPUT_KEYBOARD events route
+   * to whichever window has keyboard focus at SendInput time. If axiomate
+   * itself is foreground (common right after the user submits a prompt),
+   * the key would land in axiomate's terminal instead of the AI's intended
+   * target. The Rust impl walks Z-order to the first non-our-PID visible
+   * window and SetForegroundWindows to it — that's "the app the user was
+   * using before clicking into axiomate". Mouse / scroll do NOT need this
+   * because INPUT_MOUSE events route by coordinate, not by focus.
+   *
+   * 20ms sleep after the switch lets the OS dispatch the focus-change
+   * message before SendInput fires; otherwise the keys can race the
+   * focus change and still hit axiomate.
+   */
+  async function defocusBeforeKeyboardInput(): Promise<void> {
+    if (!napiAvailable) return
+    const switched = winNapi.defocusSelfToPreviousForeground()
+    if (switched) {
+      logForDebugging('[computer-use] defocused axiomate before keyboard input', { level: 'debug' })
+      await sleep(20)
+    }
+  }
+
   return {
     ...base,
     capabilities: {
@@ -436,6 +459,7 @@ export function createWinExecutor(): ComputerExecutor {
         `[computer-use] key (win): seq="${keySequence}" mods=[${mods.map(v => '0x' + v.toString(16)).join(',')}] key=0x${key.toString(16)}${keyExtended ? ' (ext)' : ''} repeat=${n}`,
         { level: 'debug' },
       )
+      await defocusBeforeKeyboardInput()
       for (let i = 0; i < n; i++) {
         for (const m of mods) winNapi.keyEvent(m, true, false)
         try {
@@ -455,6 +479,7 @@ export function createWinExecutor(): ComputerExecutor {
         `[computer-use] holdKey (win): keys=[${keyNames.join(',')}] durationMs=${durationMs}`,
         { level: 'debug' },
       )
+      await defocusBeforeKeyboardInput()
       for (const info of infos) {
         // Same bare-ESC hole-punch as key() — our hook would otherwise
         // see the keydown and abort the turn.
@@ -470,6 +495,7 @@ export function createWinExecutor(): ComputerExecutor {
 
     async type(text: string, opts: { viaClipboard: boolean }): Promise<void> {
       if (!napiAvailable) return base.type(text, opts)
+      await defocusBeforeKeyboardInput()
       if (opts.viaClipboard) {
         // viaClipboard expects a system clipboard write. Cross-platform
         // base writes via writeToClipboard, then issues ctrl+v. We need
