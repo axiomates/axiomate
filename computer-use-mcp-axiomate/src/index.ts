@@ -22,6 +22,7 @@ export type {
   CuSubGates,
   CuTeachPermissionRequest,
   Logger,
+  OsPermissionState,
   ResolvedAppRequest,
   ScreenshotDims,
   TeachStepRequest,

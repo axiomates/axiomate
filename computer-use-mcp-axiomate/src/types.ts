@@ -215,6 +215,22 @@ export interface CuPermissionResponse {
  * tool call. Built once by the host's `hostAdapter.ts`.
  * No Electron imports in this package — the host injects everything.
  */
+/**
+ * Platform-discriminated OS permission state. macOS has TCC (Accessibility +
+ * Screen Recording); Windows has no per-app permission model that we gate on
+ * (UAC is the boundary, but we don't observe it here). Discriminated by
+ * `platform` so consumers TS-narrow correctly and the win32 variant can't
+ * accidentally read mac-only fields.
+ */
+export type OsPermissionState =
+  | {
+      platform: "darwin";
+      granted: boolean;
+      accessibility: boolean;
+      screenRecording: boolean;
+    }
+  | { platform: "win32"; granted: true };
+
 export interface ComputerUseHostAdapter {
   serverName: string;
   logger: Logger;
@@ -224,13 +240,11 @@ export interface ComputerUseHostAdapter {
    * TCC state check — Accessibility + Screen Recording on macOS. Pure check,
    * no dialog, no relaunch. When either is missing, `request_access` threads
    * the state through to the renderer which shows a toggle panel; all other
-   * tools return a tool error.
+   * tools return a tool error. On Windows always returns
+   * `{ platform: 'win32', granted: true }` — UAC is the boundary, not a
+   * per-app permission this layer observes.
    */
-  ensureOsPermissions(): Promise<{
-    granted: boolean;
-    accessibility?: boolean;
-    screenRecording?: boolean;
-  }>;
+  ensureOsPermissions(): Promise<OsPermissionState>;
 
   /** The Settings-page kill switch (`chicagoEnabled` app preference). */
   isDisabled(): boolean;

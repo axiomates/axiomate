@@ -988,6 +988,11 @@ async function handleRequestAccess(
           "the app selection list.",
       );
     }
+    // request_access is mac-only (filtered out of Win tool list); recheck
+    // on win would have hit `granted: true` above. Narrow for TS.
+    if (recheck.platform !== "darwin") {
+      return errorResult("OS permissions unexpectedly ungranted on non-darwin platform.");
+    }
 
     const missing: string[] = [];
     if (!recheck.accessibility) missing.push("Accessibility");
@@ -1487,6 +1492,10 @@ async function handleRequestTeachAccess(
           "Call request_teach_access again immediately — the next call will " +
           "show the app selection list.",
       );
+    }
+    // request_teach_access is mac-only (filtered out of Win tool list).
+    if (recheck.platform !== "darwin") {
+      return errorResult("OS permissions unexpectedly ungranted on non-darwin platform.");
     }
 
     const missing: string[] = [];
@@ -3898,7 +3907,10 @@ export async function handleToolCall(
   let tccState:
     | { accessibility: boolean; screenRecording: boolean }
     | undefined;
-  if (!osPerms.granted) {
+  // win32 variant is statically `granted: true`, so this branch is reachable
+  // only on darwin — TS narrows osPerms to the darwin variant after the
+  // platform check, giving us typed access to accessibility/screenRecording.
+  if (osPerms.platform === "darwin" && !osPerms.granted) {
     // Both request_* tools thread tccState through to the renderer's
     // TCC toggle panel. Every other tool short-circuits.
     if (name !== "request_access" && name !== "request_teach_access") {

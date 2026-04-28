@@ -53,14 +53,17 @@ export function getComputerUseHostAdapter(): ComputerUseHostAdapter {
       // but we don't gate on it (the executor itself checks elevation
       // and warns). Mac path retains the existing TCC checks.
       if (!isMac) {
-        return { granted: true }
+        return { platform: 'win32', granted: true }
       }
       const cu = requireComputerUseSwift()
       const accessibility = cu.tcc.checkAccessibility()
       const screenRecording = cu.tcc.checkScreenRecording()
-      return accessibility && screenRecording
-        ? { granted: true }
-        : { granted: false, accessibility, screenRecording }
+      return {
+        platform: 'darwin',
+        granted: accessibility && screenRecording,
+        accessibility,
+        screenRecording,
+      }
     },
     isDisabled: () => !getChicagoEnabled(),
     getSubGates: getChicagoSubGates,
