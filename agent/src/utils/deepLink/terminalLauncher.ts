@@ -27,17 +27,17 @@ export type TerminalInfo = {
 // Each entry: [display name, app bundle name or CLI command, detection method]
 const MACOS_TERMINALS: Array<{
   name: string
-  bundleId: string
+  appIdentifier: string
   app: string
 }> = [
-  { name: 'iTerm2', bundleId: 'com.googlecode.iterm2', app: 'iTerm' },
-  { name: 'Ghostty', bundleId: 'com.mitchellh.ghostty', app: 'Ghostty' },
-  { name: 'Kitty', bundleId: 'net.kovidgoyal.kitty', app: 'kitty' },
-  { name: 'Alacritty', bundleId: 'org.alacritty', app: 'Alacritty' },
-  { name: 'WezTerm', bundleId: 'com.github.wez.wezterm', app: 'WezTerm' },
+  { name: 'iTerm2', appIdentifier: 'com.googlecode.iterm2', app: 'iTerm' },
+  { name: 'Ghostty', appIdentifier: 'com.mitchellh.ghostty', app: 'Ghostty' },
+  { name: 'Kitty', appIdentifier: 'net.kovidgoyal.kitty', app: 'kitty' },
+  { name: 'Alacritty', appIdentifier: 'org.alacritty', app: 'Alacritty' },
+  { name: 'WezTerm', appIdentifier: 'com.github.wez.wezterm', app: 'WezTerm' },
   {
     name: 'Terminal.app',
-    bundleId: 'com.apple.Terminal',
+    appIdentifier: 'com.apple.Terminal',
     app: 'Terminal',
   },
 ]
@@ -95,7 +95,7 @@ async function detectMacosTerminal(): Promise<TerminalInfo> {
   for (const terminal of MACOS_TERMINALS) {
     const { code, stdout } = await execFileNoThrow(
       'mdfind',
-      [`kMDItemCFBundleIdentifier == "${terminal.bundleId}"`],
+      [`kMDItemCFBundleIdentifier == "${terminal.appIdentifier}"`],
       { timeout: 5000, useCwd: false },
     )
     if (code === 0 && stdout.trim().length > 0) {

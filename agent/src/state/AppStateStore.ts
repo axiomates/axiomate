@@ -208,7 +208,7 @@ export type AppState = DeepImmutable<{
   computerUseMcpState?: {
     // Session-scoped app allowlist. NOT persisted across resume.
     allowedApps?: readonly {
-      bundleId: string
+      appIdentifier: string
       displayName: string
       grantedAt: number
     }[]

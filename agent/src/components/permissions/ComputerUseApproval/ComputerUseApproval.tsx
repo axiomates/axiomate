@@ -155,7 +155,7 @@ function ComputerUseAppListPanel({
     () =>
       new Set(
         request.apps.flatMap(a =>
-          a.resolved && !a.alreadyGranted ? [a.resolved.bundleId] : [],
+          a.resolved && !a.alreadyGranted ? [a.resolved.appIdentifier] : [],
         ),
       ),
   )
@@ -196,10 +196,10 @@ function ComputerUseAppListPanel({
     }
     const now = Date.now()
     const granted = request.apps.flatMap(a =>
-      a.resolved && checked.has(a.resolved.bundleId)
+      a.resolved && checked.has(a.resolved.appIdentifier)
         ? [
             {
-              bundleId: a.resolved.bundleId,
+              appIdentifier: a.resolved.appIdentifier,
               displayName: a.resolved.displayName,
               grantedAt: now,
             },
@@ -207,9 +207,9 @@ function ComputerUseAppListPanel({
         : [],
     )
     const denied = request.apps
-      .filter(a => !a.resolved || !checked.has(a.resolved.bundleId))
+      .filter(a => !a.resolved || !checked.has(a.resolved.appIdentifier))
       .map(a => ({
-        bundleId: a.resolved?.bundleId ?? a.requestedName,
+        appIdentifier: a.resolved?.appIdentifier ?? a.requestedName,
         reason: a.resolved
           ? ('user_denied' as const)
           : ('not_installed' as const),
@@ -244,17 +244,17 @@ function ComputerUseAppListPanel({
             }
             if (a.alreadyGranted) {
               return (
-                <Text key={resolved.bundleId} dimColor>
+                <Text key={resolved.appIdentifier} dimColor>
                   {'  '}
                   {figures.tick} {resolved.displayName}{' '}
                   <Text dimColor>(already granted)</Text>
                 </Text>
               )
             }
-            const sentinel = getSentinelCategory(resolved.bundleId)
-            const isChecked = checked.has(resolved.bundleId)
+            const sentinel = getSentinelCategory(resolved.appIdentifier)
+            const isChecked = checked.has(resolved.appIdentifier)
             return (
-              <Box key={resolved.bundleId} flexDirection="column">
+              <Box key={resolved.appIdentifier} flexDirection="column">
                 <Text>
                   {'  '}
                   {isChecked ? figures.circleFilled : figures.circle}{' '}

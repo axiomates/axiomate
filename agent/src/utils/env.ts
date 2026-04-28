@@ -143,14 +143,14 @@ function detectTerminal(): string | null {
   if (process.env.VSCODE_GIT_ASKPASS_MAIN?.includes('antigravity')) {
     return 'antigravity'
   }
-  const bundleId = process.env.__CFBundleIdentifier?.toLowerCase()
-  if (bundleId?.includes('vscodium')) return 'codium'
-  if (bundleId?.includes('windsurf')) return 'windsurf'
-  if (bundleId?.includes('com.google.android.studio')) return 'androidstudio'
-  // Check for JetBrains IDEs in bundle ID
-  if (bundleId) {
+  const cfBundleId = process.env.__CFBundleIdentifier?.toLowerCase()
+  if (cfBundleId?.includes('vscodium')) return 'codium'
+  if (cfBundleId?.includes('windsurf')) return 'windsurf'
+  if (cfBundleId?.includes('com.google.android.studio')) return 'androidstudio'
+  // Check for JetBrains IDEs in CFBundleIdentifier
+  if (cfBundleId) {
     for (const ide of JETBRAINS_IDES) {
-      if (bundleId.includes(ide)) return ide
+      if (cfBundleId.includes(ide)) return ide
     }
   }
 
