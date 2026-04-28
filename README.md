@@ -480,6 +480,10 @@ axiomate/
   computer-use-mac-napi-axiomate/        mac-only Rust NAPI: hide/unhide/activate, Esc CGEventTap,
                                          CGWindowList window capture, SCContentFilter (skeleton),
                                          find_window_displays, app_under_point
+  computer-use-win-napi-axiomate/        win-only Rust NAPI: registry walk, WindowFromPoint hit-test,
+                                         GetForegroundWindow / SetForegroundWindow, BitBlt screenshot,
+                                         PrintWindow capture_window, SendInput mouse/keyboard,
+                                         WH_KEYBOARD_LL ESC hotkey, defocus_self_to_previous_foreground
   modifiers-mac-napi-axiomate/           mac-only Rust NAPI: keyboard modifier state polling
   url-handler-mac-napi-axiomate/         mac-only Rust NAPI: URL scheme registration
   image-processor-axiomate/              Image processing (sharp wrapper)

@@ -17,7 +17,6 @@ import {
   scroll,
 } from './nutInput.js'
 import { getFrontmostApp, type AppInfo } from './osascriptApps.js'
-import { isNativeDisplayAvailable } from './detectDisplay.js'
 import type { ComputerUseInputAPI } from './types.js'
 
 const inputAPI: ComputerUseInputAPI = {
@@ -90,12 +89,10 @@ const inputAPI: ComputerUseInputAPI = {
 
 /**
  * Creates a ComputerUseInput object (discriminated union).
- * Returns { isSupported: true, ...methods } if display is available,
- * or { isSupported: false } otherwise.
+ * On macOS the underlying nut.js is always available; the discriminator
+ * stays in the public type for symmetry with the legacy mac-NAPI input
+ * binding API, but the false branch is unreachable here.
  */
 export function createComputerUseInput(): { isSupported: true } & ComputerUseInputAPI | { isSupported: false } {
-  if (!isNativeDisplayAvailable()) {
-    return { isSupported: false }
-  }
   return { isSupported: true, ...inputAPI }
 }

@@ -18,11 +18,9 @@
  *     Win path uses Win NAPI SendInput direct, doesn't touch this)
  *   - `osascriptApps.ts` — AppleScript / mdfind / plutil snippets for app
  *     enumeration on mac
- *   - `detectDisplay.ts` — display-server probe (always true on darwin)
  *   - `types.ts` — `ComputerUseAPI` / `ComputerUseInputAPI` interface defs
  */
 
 export { createComputerUseSwift } from './swiftShim.js'
 export { createComputerUseInput } from './inputShim.js'
-export { isNativeDisplayAvailable } from './detectDisplay.js'
 export type { ComputerUseAPI, ComputerUseInput, ComputerUseInputAPI } from './types.js'

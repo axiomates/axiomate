@@ -1,13 +1,14 @@
 /**
- * Screenshot implementation using node-screenshots.
- * Cross-platform: macOS, Windows, Linux.
+ * Screenshot implementation using node-screenshots — macOS only.
  *
- * node-screenshots is loaded lazily because it panics on import in environments
- * without a display server (WSL without WSLg, headless Linux).
+ * Phase D2 moved this from `computer-use-native-axiomate/src/screenshot.ts`
+ * (cross-platform). Phase E stripped the Windows branch (Win uses
+ * winFallbacks.ts directly) and the headless-display guard (mac always has
+ * a display server; if `node-screenshots` ever fails to load, the require()
+ * throw surfaces directly instead of going through a wrapper).
  */
 
 import { createRequire } from 'node:module'
-import { isNativeDisplayAvailable } from './detectDisplay.js'
 
 type MonitorType = import('node-screenshots').Monitor
 type MonitorClass = typeof import('node-screenshots').Monitor
@@ -18,13 +19,6 @@ let _loadError: string | null = null
 function getMonitorClass(): MonitorClass {
   if (_loadError) throw new Error(_loadError)
   if (_MonitorClass) return _MonitorClass
-
-  // Guard: subprocess probe determines if native module can load safely.
-  // node-screenshots panics (abort) on incompatible Wayland or headless — uncatchable.
-  if (!isNativeDisplayAvailable()) {
-    _loadError = 'node-screenshots unavailable: no compatible display server detected'
-    throw new Error(_loadError)
-  }
 
   try {
     // Use createRequire for ESM compatibility; native .node files can't be import()'d
@@ -64,41 +58,19 @@ export interface CaptureResult {
 }
 
 /**
- * node-screenshots returns different coordinate systems per platform:
- *   - Windows: width()/height()/x()/y() are physical pixels
- *   - macOS/Linux: width()/height()/x()/y() are logical (point) coordinates
- *
- * We normalize to always have both logical and physical values.
+ * On macOS, node-screenshots' Monitor.width() / .height() / .x() / .y()
+ * return LOGICAL (point) coordinates. We compute physical pixels by
+ * multiplying by the scale factor. (On Win the convention is reversed —
+ * physical pixels — but Win uses winFallbacks.ts, not this module.)
  */
-const IS_MACOS_OR_LINUX = process.platform === 'darwin' || process.platform === 'linux'
-
 function monitorToDisplayInfo(m: MonitorType): DisplayInfo {
   const scale = m.scaleFactor()
-  const rawW = m.width()
-  const rawH = m.height()
-  const rawX = m.x()
-  const rawY = m.y()
-
-  let logW: number, logH: number, physW: number, physH: number
-  let logOriginX: number, logOriginY: number
-
-  if (IS_MACOS_OR_LINUX) {
-    // macOS/Linux: width()/height() are already logical
-    logW = rawW
-    logH = rawH
-    physW = Math.round(rawW * scale)
-    physH = Math.round(rawH * scale)
-    logOriginX = rawX
-    logOriginY = rawY
-  } else {
-    // Windows: width()/height() are physical pixels
-    logW = Math.round(rawW / scale)
-    logH = Math.round(rawH / scale)
-    physW = rawW
-    physH = rawH
-    logOriginX = Math.round(rawX / scale)
-    logOriginY = Math.round(rawY / scale)
-  }
+  const logW = m.width()
+  const logH = m.height()
+  const logOriginX = m.x()
+  const logOriginY = m.y()
+  const physW = Math.round(logW * scale)
+  const physH = Math.round(logH * scale)
 
   return {
     displayId: m.id(),

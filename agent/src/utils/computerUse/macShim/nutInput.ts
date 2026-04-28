@@ -1,12 +1,14 @@
 /**
- * Keyboard and mouse input using @nut-tree/nut-js.
- * Cross-platform: macOS, Windows, Linux.
+ * Keyboard and mouse input using @nut-tree-fork/nut-js — macOS only.
  *
- * Lazily loaded to avoid crashes in headless environments (WSL without WSLg).
+ * Phase D2 moved this from `computer-use-native-axiomate/src/input.ts`
+ * (cross-platform). Phase E stripped the headless-display guard — Win uses
+ * Win NAPI SendInput direct (not nut.js, which silent-failed in Bun-compiled
+ * exes). Mac always has a display, so loading nut.js is unconditional;
+ * any load failure surfaces as a normal require() throw.
  */
 
 import { createRequire } from 'node:module'
-import { isNativeDisplayAvailable } from './detectDisplay.js'
 
 type NutJS = typeof import('@nut-tree-fork/nut-js')
 
@@ -14,9 +16,6 @@ let _nut: NutJS | null = null
 
 function nut(): NutJS {
   if (_nut) return _nut
-  if (!isNativeDisplayAvailable()) {
-    throw new Error('nut.js unavailable: no compatible display server detected')
-  }
   const req = createRequire(import.meta.url)
   _nut = req('@nut-tree-fork/nut-js')
   return _nut!
