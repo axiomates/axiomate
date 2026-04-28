@@ -239,7 +239,29 @@ export function winInlineOpenApp(bundleIdOrName: string): void {
   // registry resolves "chrome" → real path). Start-Process handles both.
   // The PowerShell string interpolation here is safe because runPs uses
   // -EncodedCommand which doesn't go through cmd.exe quoting.
-  runPs(`Start-Process "${bundleIdOrName.replace(/"/g, '`"')}"`)
+  try {
+    runPs(`Start-Process "${bundleIdOrName.replace(/"/g, '`"')}"`)
+  } catch (err) {
+    // PowerShell's stderr comes back as CLIXML — a `<Objs>...</Objs>` blob
+    // with the actual error string buried in `<S S="Error">...</S>` tags.
+    // Bubbling that up to the AI as a tool error gives it ~2KB of XML it
+    // can't parse. Translate to plain prose with an actionable hint so
+    // the model can self-correct (re-call list_installed_apps, etc).
+    const raw = err instanceof Error ? err.message : String(err)
+    if (/cannot find the file/i.test(raw)) {
+      throw new Error(
+        `Could not launch "${bundleIdOrName}" — Start-Process didn't find a matching executable. ` +
+          `Modern Windows Calculator / Photos / Settings are UWP apps and aren't in the App Paths registry — ` +
+          `call list_installed_apps to see what's available, or pass a full executable path.`,
+      )
+    }
+    // Other failures: keep the first meaningful line of the raw output,
+    // drop the CLIXML noise.
+    const firstLine = raw.split(/\r?\n/).find(l => l.trim()) ?? 'unknown error'
+    throw new Error(
+      `Start-Process failed for "${bundleIdOrName}": ${firstLine}`,
+    )
+  }
 }
 
 // ─── Clipboard ────────────────────────────────────────────────────────────

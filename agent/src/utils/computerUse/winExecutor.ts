@@ -567,18 +567,39 @@ export function createWinExecutor(): ComputerExecutor {
     },
 
     async openApp(bundleIdOrName: string): Promise<void> {
-      // After the bundleId-unification (commit pending): list_installed_apps
-      // returns bundle_id = full exe path. So `bundleIdOrName` here is
-      // either:
-      //   1. A full exe path (from list_installed_apps / list_running_apps /
-      //      app_under_point / find_window_displays — single namespace) —
-      //      pass straight to Start-Process.
-      //   2. A bare display name (rare — can only happen if upstream
-      //      bypassed listInstalledApps and passed user text). Falls
-      //      through to PowerShell Start-Process which uses App Paths
-      //      registry resolution (chrome / firefox / etc work without
-      //      paths).
-      winInlineOpenApp(bundleIdOrName)
+      // Resolution chain:
+      //   1. Looks like a path (contains \, /, or .exe suffix) → direct
+      //      Start-Process. AI passed list_installed_apps output verbatim.
+      //   2. Display-name match against winNapi.listInstalledApps registry
+      //      walk → use the resolved full path. Catches the common case
+      //      where AI passes a friendly name like "Chrome" without first
+      //      calling list_installed_apps.
+      //   3. Pass-through to PowerShell Start-Process. App Paths registry
+      //      resolves a few canonical names ("chrome", "firefox", "notepad"),
+      //      but UWP apps (Calculator, Photos, Settings) won't be found —
+      //      winInlineOpenApp surfaces a clean error in that case.
+      const looksLikePath =
+        bundleIdOrName.includes('\\') ||
+        bundleIdOrName.includes('/') ||
+        bundleIdOrName.toLowerCase().endsWith('.exe')
+      if (looksLikePath) {
+        return winInlineOpenApp(bundleIdOrName)
+      }
+      if (napiAvailable) {
+        const installed = winNapi.listInstalledApps()
+        const lower = bundleIdOrName.toLowerCase()
+        const match = installed.find(
+          a => a.displayName.toLowerCase() === lower,
+        )
+        if (match?.path) {
+          logForDebugging(
+            `[computer-use] openApp (win): resolved "${bundleIdOrName}" → "${match.path}" via listInstalledApps`,
+            { level: 'debug' },
+          )
+          return winInlineOpenApp(match.path)
+        }
+      }
+      return winInlineOpenApp(bundleIdOrName)
     },
 
     async listRunningApps(): Promise<RunningApp[]> {
