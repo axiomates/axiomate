@@ -50,7 +50,7 @@ const DEFAULT_LOCK_HELD_MESSAGE =
   "session to finish, or find a non-computer-use approach.";
 
 /**
- * Dedupe `granted` into `existing` on bundleId, spread truthy-only flags over
+ * Dedupe `granted` into `existing` on appIdentifier, spread truthy-only flags over
  * defaults+existing. Truthy-only: a subsequent `request_access` that doesn't
  * request clipboard can't revoke an earlier clipboard grant — revocation lives
  * in a Settings page, not here.
@@ -62,10 +62,10 @@ function mergePermissionResponse(
   existingFlags: CuGrantFlags,
   response: CuPermissionResponse,
 ): { apps: AppGrant[]; flags: CuGrantFlags } {
-  const seen = new Set(existing.map((a) => a.bundleId));
+  const seen = new Set(existing.map((a) => a.appIdentifier));
   const apps = [
     ...existing,
-    ...response.granted.filter((g) => !seen.has(g.bundleId)),
+    ...response.granted.filter((g) => !seen.has(g.appIdentifier)),
   ];
   const truthyFlags = Object.fromEntries(
     Object.entries(response.flags).filter(([, v]) => v === true),
@@ -199,7 +199,7 @@ export function bindSessionContext(
     const dialogAbort = new AbortController();
 
     // Platform discriminator (B1): mac variant carries allowedApps +
-    // userDeniedBundleIds; win variant has neither. The executor's
+    // userDeniedAppIdentifiers; win variant has neither. The executor's
     // capabilities.platform is the source of truth — mac/win/etc — and
     // we trust it (the host built the executor for this exact platform).
     const isMacAdapter = adapter.executor.capabilities.platform === "darwin";
@@ -239,7 +239,7 @@ export function bindSessionContext(
       ? {
           platform: "darwin",
           allowedApps: [...ctx.getAllowedApps()],
-          userDeniedBundleIds: ctx.getUserDeniedBundleIds(),
+          userDeniedAppIdentifiers: ctx.getUserDeniedAppIdentifiers(),
           ...baseOverrides,
         }
       : { platform: "win32", ...baseOverrides };

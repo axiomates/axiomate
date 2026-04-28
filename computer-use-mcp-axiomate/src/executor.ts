@@ -34,18 +34,18 @@ export interface ScreenshotResult {
 }
 
 export interface FrontmostApp {
-  bundleId: string;
+  appIdentifier: string;
   displayName: string;
 }
 
 export interface InstalledApp {
-  bundleId: string;
+  appIdentifier: string;
   displayName: string;
   path: string;
 }
 
 export interface RunningApp {
-  bundleId: string;
+  appIdentifier: string;
   displayName: string;
 }
 
@@ -55,7 +55,7 @@ export interface ResolvePrepareCaptureResult {
   width: number;
   height: number;
   /**
-   * Bundle IDs hidden as part of this atomic resolve+prepare+capture.
+   * App identifiers hidden as part of this atomic resolve+prepare+capture.
    *
    * macOS-only. The mac executor's `prepareForAction` (driven by SCContentFilter
    * compositor allowlist) hides non-allowlisted apps before capture so the
@@ -77,8 +77,8 @@ export interface ResolvePrepareCaptureResult {
 export interface ComputerExecutorCapabilities {
   /** Platform identifier (darwin, win32, linux, etc). */
   platform: string;
-  /** Host app bundle ID (sentinel). */
-  hostBundleId?: string;
+  /** Host app identifier (sentinel). */
+  hostAppIdentifier?: string;
   /** Whether screenshot filtering (exclude apps) is supported. */
   screenshotFiltering: "native" | "none";
   /** Whether teach mode is available. */
@@ -91,17 +91,17 @@ export interface ComputerExecutor {
   // ── Display ──────────────────────────────────────────────────────────
   getDisplaySize(displayId?: number): Promise<DisplayGeometry>;
   listDisplays(): Promise<DisplayGeometry[]>;
-  findWindowDisplays(bundleIds: string[]): Promise<Array<{ bundleId: string; displayIds: number[] }>>;
+  findWindowDisplays(appIdentifiers: string[]): Promise<Array<{ appIdentifier: string; displayIds: number[] }>>;
 
   // ── Screenshots ──────────────────────────────────────────────────────
-  screenshot(opts: { allowedBundleIds: string[]; displayId?: number }): Promise<ScreenshotResult>;
+  screenshot(opts: { allowedAppIdentifiers: string[]; displayId?: number }): Promise<ScreenshotResult>;
   zoom(
     region: { x: number; y: number; w: number; h: number },
-    allowedBundleIds: string[],
+    allowedAppIdentifiers: string[],
     displayId?: number,
   ): Promise<{ base64: string; width: number; height: number }>;
   resolvePrepareCapture(opts: {
-    allowedBundleIds: string[];
+    allowedAppIdentifiers: string[];
     preferredDisplayId?: number;
     autoResolve: boolean;
     doHide?: boolean;
@@ -110,16 +110,16 @@ export interface ComputerExecutor {
    * Capture the frontmost window of the given app. macOS uses
    * `screencapture -l <windowID>` (CGWindowID resolved via osascript).
    * Returns null when no window can be found (app not running, no windows,
-   * unknown bundle id, platform without per-window capture support).
+   * unknown app identifier, platform without per-window capture support).
    * Coordinates in subsequent click calls still refer to the FULL screen
    * — this is for inspection, not click-target setup.
    */
-  screenshotWindow(bundleId: string): Promise<ScreenshotResult | null>;
+  screenshotWindow(appIdentifier: string): Promise<ScreenshotResult | null>;
 
   // ── Pre-action (macOS-only) ──────────────────────────────────────────
   /**
    * Hide non-allowlisted apps before an action runs, return the hidden
-   * bundle IDs so the host can unhide at turn end.
+   * app identifiers so the host can unhide at turn end.
    *
    * **macOS-only.** Mac's compositor (SCContentFilter) needs allowlisted
    * apps to be the only visible top-level windows so the screenshot doesn't
@@ -129,7 +129,7 @@ export interface ComputerExecutor {
    * Callers must use `?.()` and `?? []` so the undefined-on-Win case
    * propagates as "nothing hidden".
    */
-  prepareForAction?(allowlistBundleIds: string[], displayId?: number): Promise<string[]>;
+  prepareForAction?(allowlistAppIdentifiers: string[], displayId?: number): Promise<string[]>;
   /**
    * Preview which apps WOULD be hidden by `prepareForAction` for the given
    * allowlist. Used by approval UI to show "if you grant access to X, these
@@ -139,9 +139,9 @@ export interface ComputerExecutor {
    * model, so this is undefined there. Callers use `?.()` and `?? []`.
    */
   previewHideSet?(
-    allowlistBundleIds: string[],
+    allowlistAppIdentifiers: string[],
     displayId?: number,
-  ): Promise<Array<{ bundleId: string; displayName: string }>>;
+  ): Promise<Array<{ appIdentifier: string; displayName: string }>>;
 
   // ── Keyboard ─────────────────────────────────────────────────────────
   key(keySequence: string, repeat?: number): Promise<void>;
@@ -165,10 +165,10 @@ export interface ComputerExecutor {
 
   // ── App management ───────────────────────────────────────────────────
   getFrontmostApp(): Promise<FrontmostApp | null>;
-  appUnderPoint(x: number, y: number): Promise<{ bundleId: string; displayName: string } | null>;
+  appUnderPoint(x: number, y: number): Promise<{ appIdentifier: string; displayName: string } | null>;
   listInstalledApps(): Promise<InstalledApp[]>;
   listRunningApps(): Promise<RunningApp[]>;
-  openApp(bundleId: string): Promise<void>;
+  openApp(appIdentifier: string): Promise<void>;
 
   // ── Clipboard ────────────────────────────────────────────────────────
   readClipboard(): Promise<string>;

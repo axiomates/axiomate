@@ -1,5 +1,5 @@
 /**
- * Bundle IDs that are escalations-in-disguise. The approval UI shows a warning
+ * App identifiers that are escalations-in-disguise. The approval UI shows a warning
  * badge for these; they are NOT blocked. Power users may legitimately want the
  * model controlling a terminal.
  *
@@ -10,7 +10,7 @@
  */
 
 /** These apps can execute arbitrary shell commands. */
-const SHELL_ACCESS_BUNDLE_IDS = new Set([
+const SHELL_ACCESS_APP_IDENTIFIERS = new Set([
   "com.apple.Terminal",
   "com.googlecode.iterm2",
   "com.microsoft.VSCode",
@@ -23,21 +23,21 @@ const SHELL_ACCESS_BUNDLE_IDS = new Set([
 ]);
 
 /** Finder in the allowlist ≈ browse + open-any-file. */
-const FILESYSTEM_ACCESS_BUNDLE_IDS = new Set(["com.apple.finder"]);
+const FILESYSTEM_ACCESS_APP_IDENTIFIERS = new Set(["com.apple.finder"]);
 
-const SYSTEM_SETTINGS_BUNDLE_IDS = new Set(["com.apple.systempreferences"]);
+const SYSTEM_SETTINGS_APP_IDENTIFIERS = new Set(["com.apple.systempreferences"]);
 
-export const SENTINEL_BUNDLE_IDS: ReadonlySet<string> = new Set([
-  ...SHELL_ACCESS_BUNDLE_IDS,
-  ...FILESYSTEM_ACCESS_BUNDLE_IDS,
-  ...SYSTEM_SETTINGS_BUNDLE_IDS,
+export const SENTINEL_APP_IDENTIFIERS: ReadonlySet<string> = new Set([
+  ...SHELL_ACCESS_APP_IDENTIFIERS,
+  ...FILESYSTEM_ACCESS_APP_IDENTIFIERS,
+  ...SYSTEM_SETTINGS_APP_IDENTIFIERS,
 ]);
 
 export type SentinelCategory = "shell" | "filesystem" | "system_settings";
 
-export function getSentinelCategory(bundleId: string): SentinelCategory | null {
-  if (SHELL_ACCESS_BUNDLE_IDS.has(bundleId)) return "shell";
-  if (FILESYSTEM_ACCESS_BUNDLE_IDS.has(bundleId)) return "filesystem";
-  if (SYSTEM_SETTINGS_BUNDLE_IDS.has(bundleId)) return "system_settings";
+export function getSentinelCategory(appIdentifier: string): SentinelCategory | null {
+  if (SHELL_ACCESS_APP_IDENTIFIERS.has(appIdentifier)) return "shell";
+  if (FILESYSTEM_ACCESS_APP_IDENTIFIERS.has(appIdentifier)) return "filesystem";
+  if (SYSTEM_SETTINGS_APP_IDENTIFIERS.has(appIdentifier)) return "system_settings";
   return null;
 }

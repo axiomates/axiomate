@@ -29,10 +29,10 @@ export type {
   TeachStepResult,
 } from "./types.js";
 
-export { DEFAULT_GRANT_FLAGS, allowedAppsOf, userDeniedBundleIdsOf } from "./types.js";
+export { DEFAULT_GRANT_FLAGS, allowedAppsOf, userDeniedAppIdentifiersOf } from "./types.js";
 
 export {
-  SENTINEL_BUNDLE_IDS,
+  SENTINEL_APP_IDENTIFIERS,
   getSentinelCategory,
 } from "./sentinelApps.js";
 export type { SentinelCategory } from "./sentinelApps.js";

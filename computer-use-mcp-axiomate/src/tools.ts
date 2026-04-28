@@ -128,7 +128,7 @@ const BATCH_ACTION_ITEM_SCHEMA = {
  * enumerate in the `request_access` description. The caller is responsible
  * for sanitization (length cap, character allowlist, sort, count cap) —
  * this function just splices the list into the description verbatim. Omit
- * to fall back to the generic "display names or bundle IDs" wording.
+ * to fall back to the generic "display names or app identifiers" wording.
  */
 export function buildComputerUseTools(
   caps: {
@@ -144,19 +144,19 @@ export function buildComputerUseTools(
   const isWin = caps.platform === "win32";
   const frontmostHint = frontmostHintFor(caps.platform);
 
-  // Platform-divergent bundle-id surfaces. The two platforms genuinely
-  // disagree on what a "bundle id" is — mac uses CFBundleIdentifier
+  // Platform-divergent app-identifier surfaces. The two platforms genuinely
+  // disagree on what an "app identifier" is — mac uses CFBundleIdentifier
   // (reverse-DNS), Windows uses full exe path or display name. Showing
   // mac examples to a Windows user (or vice versa) gives the LLM a
   // confusing mental model and it tries to guess "com.example.app"
   // strings on Windows that resolve to nothing. We fork at runtime
   // here so each platform's LLM only sees its own examples.
-  const bundleIdExample = isWin
+  const appIdentifierExample = isWin
     ? '"C:\\\\Program Files\\\\Microsoft VS Code\\\\Code.exe" (classic .exe) or "shell:AppsFolder\\\\Microsoft.WindowsCalculator_8wekyb3d8bbwe!App" (UWP / Microsoft Store)'
     : '"com.tinyspeck.slackmacgap" for Slack or "com.google.Chrome" for Chrome';
-  const bundleIdAcceptedNote = isWin
-    ? 'On Windows, bundle ids come in two forms: classic .exe full paths (Chrome / Slack / VS Code, returned by list_running_apps for currently-running classic apps) and UWP / Microsoft Store launcher URIs of the form `shell:AppsFolder\\\\<AppID>` (Calculator / Photos / Settings / modern Notepad — auto-resolved when you pass the friendly name). You generally do not type these by hand; pass values you received from list_running_apps / screenshot_window output. Friendly display names like "Slack" / "Calculator" / "Photos" also work — open_application resolves them against the registry walk + Get-StartApps automatically.'
-    : 'Bundle identifiers (e.g. "com.tinyspeck.slackmacgap") are also accepted, but you don\'t need to guess them; display names always work.';
+  const appIdentifierAcceptedNote = isWin
+    ? 'On Windows, app identifiers come in two forms: classic .exe full paths (Chrome / Slack / VS Code, returned by list_running_apps for currently-running classic apps) and UWP / Microsoft Store launcher URIs of the form `shell:AppsFolder\\\\<AppID>` (Calculator / Photos / Settings / modern Notepad — auto-resolved when you pass the friendly name). You generally do not type these by hand; pass values you received from list_running_apps / screenshot_window output. Friendly display names like "Slack" / "Calculator" / "Photos" also work — open_application resolves them against the registry walk + Get-StartApps automatically.'
+    : 'CFBundleIdentifier strings (e.g. "com.tinyspeck.slackmacgap") are also accepted, but you don\'t need to guess them; display names always work.';
 
   // Shared hint suffix for BOTH request_access and request_teach_access —
   // they use the same resolveRequestedApps path, so the model should get
@@ -207,7 +207,7 @@ export function buildComputerUseTools(
             items: { type: "string" },
             description:
               "Application display names (e.g. \"Slack\", \"Calendar\") are the recommended input — resolved case-insensitively against installed apps. " +
-              bundleIdAcceptedNote +
+              appIdentifierAcceptedNote +
               installedAppsHint,
           },
           reason: {
@@ -258,18 +258,18 @@ export function buildComputerUseTools(
       description:
         "Capture only the frontmost window of a specific application. The returned frame contains that app's window pixels and nothing else — other apps and the desktop are not visible. macOS uses CGWindowListCreateImage; Windows uses PrintWindow with PW_RENDERFULLCONTENT (DWM-aware so Chrome / Electron / WebView2 capture cleanly, not black). On either platform if the named app has no visible top-level window the tool returns null with a diagnostic and the LLM should fall back to full-screen `screenshot`. " +
         "Use this when the user names a specific app — e.g. \"show me Slack\", \"截 Chrome\", \"capture iTerm\" — and you do not need surrounding context. Use plain `screenshot` for full-screen / multi-app context, or when you need to click afterward. " +
-        "**Before calling this with a bundle id you only know by user-facing name (e.g. \"WeChat\", \"QQ\"), call `list_running_apps` first to get the exact id.** The bare display name is often wrong: \"WeChat\" is now `Weixin.exe`, \"Visual Studio Code\" is `Code.exe`, etc. Do NOT guess installation paths from memory. " +
+        "**Before calling this with an app identifier you only know by user-facing name (e.g. \"WeChat\", \"QQ\"), call `list_running_apps` first to get the exact id.** The bare display name is often wrong: \"WeChat\" is now `Weixin.exe`, \"Visual Studio Code\" is `Code.exe`, etc. Do NOT guess installation paths from memory. " +
         "IMPORTANT: This tool is for inspection only. Coordinates in any subsequent click call refer to the FULL screen, never the window-cropped image — the cursor lives at screen coords. If you intend to click afterward, take a full `screenshot` to read coordinates from.",
       inputSchema: {
         type: "object" as const,
         properties: {
-          bundle_id: {
+          app_identifier: {
             type: "string",
             description:
-              `Identifier for the target app — ${isWin ? "a full executable path on Windows" : "a CFBundleIdentifier (reverse-DNS string) on macOS"}, e.g. ${bundleIdExample}. ${bundleIdAcceptedNote} If you only know the user-facing name, **call \`list_running_apps\` first** — it returns the exact identifier for every currently-running app with a visible window. Do not guess install paths from common conventions; many apps live at non-standard paths (Weixin vs WeChat, scoop installs, custom directories).`,
+              `Identifier for the target app — ${isWin ? "a full executable path on Windows" : "a CFBundleIdentifier (reverse-DNS string) on macOS"}, e.g. ${appIdentifierExample}. ${appIdentifierAcceptedNote} If you only know the user-facing name, **call \`list_running_apps\` first** — it returns the exact identifier for every currently-running app with a visible window. Do not guess install paths from common conventions; many apps live at non-standard paths (Weixin vs WeChat, scoop installs, custom directories).`,
           },
         },
-        required: ["bundle_id"],
+        required: ["app_identifier"],
       },
     },
 
@@ -454,7 +454,7 @@ export function buildComputerUseTools(
     {
       name: "open_application",
       description: isWin
-        ? "Bring an application to the front, launching it if necessary. Pass the bundle id (full exe path) or display name (e.g. \"Chrome\"). Use `list_running_apps` to find currently-running app paths. Display names also work as a fallback via App Paths registry resolution."
+        ? "Bring an application to the front, launching it if necessary. Pass the app identifier (full exe path) or display name (e.g. \"Chrome\"). Use `list_running_apps` to find currently-running app paths. Display names also work as a fallback via App Paths registry resolution."
         : "Bring an application to the front, launching it if necessary. The target application must already be in the session allowlist — call request_access first.",
       inputSchema: {
         type: "object" as const,
@@ -462,7 +462,7 @@ export function buildComputerUseTools(
           app: {
             type: "string",
             description:
-              `Display name (e.g. "Slack") is preferred. ${bundleIdAcceptedNote}`,
+              `Display name (e.g. "Slack") is preferred. ${appIdentifierAcceptedNote}`,
           },
         },
         required: ["app"],
@@ -495,7 +495,7 @@ export function buildComputerUseTools(
     {
       name: "list_running_apps",
       description:
-        "List currently running applications that have at least one visible top-level window. Returns each unique app's bundle_id (full exe path on Windows; CFBundleIdentifier on macOS) and display_name. Use this to find the bundle_id when you only know the user-facing name — common before `screenshot_window` or `open_application`. No side effects.",
+        "List currently running applications that have at least one visible top-level window. Returns each unique app's app_identifier (full exe path on Windows; CFBundleIdentifier on macOS) and display_name. Use this to find the app_identifier when you only know the user-facing name — common before `screenshot_window` or `open_application`. No side effects.",
       inputSchema: {
         type: "object" as const,
         properties: {},
@@ -637,7 +637,7 @@ export function buildComputerUseTools(
       },
     },
 
-    ...(caps.teachMode ? buildTeachTools(coord, installedAppsHint, bundleIdAcceptedNote) : []),
+    ...(caps.teachMode ? buildTeachTools(coord, installedAppsHint, appIdentifierAcceptedNote) : []),
   ];
 
   // On Windows the allowlist concept does nothing — all gates are bypassed
@@ -668,7 +668,7 @@ export function buildComputerUseTools(
 function buildTeachTools(
   coord: { x: string; y: string },
   installedAppsHint: string,
-  bundleIdAcceptedNote: string,
+  appIdentifierAcceptedNote: string,
 ): Tool[] {
   // Shared between teach_step (top-level) and teach_batch (inside steps[]
   // items). Depends on coord, so it lives inside this factory.
@@ -724,7 +724,7 @@ function buildTeachTools(
             items: { type: "string" },
             description:
               'Application display names (e.g. "Slack", "Calendar") are the recommended input — resolved case-insensitively against installed apps. ' +
-              bundleIdAcceptedNote +
+              appIdentifierAcceptedNote +
               installedAppsHint,
           },
           reason: {

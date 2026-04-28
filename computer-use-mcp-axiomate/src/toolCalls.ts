@@ -19,11 +19,11 @@
  *      TRUE (what the
  *      model sees IS what's at each pixel) and we are not keyboard-focused.
  *   b. Frontmost gate — branched by actionKind:
- *        mouse:    frontmost ∈ allowlist ∪ {hostBundleId, Finder} → pass.
- *                  hostBundleId passes because the executor's
+ *        mouse:    frontmost ∈ allowlist ∪ {hostAppIdentifier, Finder} → pass.
+ *                  hostAppIdentifier passes because the executor's
  *                  `withClickThrough` bracket makes us click-through.
  *        keyboard: frontmost ∈ allowlist ∪ {Finder} → pass.
- *                  hostBundleId → ERROR (safety net — defocus should have
+ *                  hostAppIdentifier → ERROR (safety net — defocus should have
  *                  moved us off; if it didn't, typing would go into our
  *                  own chat box).
  *      After step (a) this gate fires RARELY — only when something popped
@@ -62,7 +62,7 @@ import type {
 } from "./executor.js";
 import { isSystemKeyCombo } from "./keyBlocklist.js";
 import { validateClickTarget } from "./pixelCompare.js";
-import { SENTINEL_BUNDLE_IDS } from "./sentinelApps.js";
+import { SENTINEL_APP_IDENTIFIERS } from "./sentinelApps.js";
 import type {
   AppGrant,
   ComputerUseHostAdapter,
@@ -77,13 +77,13 @@ import type {
   ResolvedAppRequest,
   TeachStepRequest,
 } from "./types.js";
-import { allowedAppsOf, userDeniedBundleIdsOf } from "./types.js";
+import { allowedAppsOf, userDeniedAppIdentifiersOf } from "./types.js";
 
 /**
  * Finder is never hidden by the hide loop (hiding Finder kills the Desktop),
  * so it's always a valid frontmost.
  */
-const FINDER_BUNDLE_ID = "com.apple.finder";
+const FINDER_APP_IDENTIFIER = "com.apple.finder";
 
 /**
  * Categorical error classes for the cu_tool_call telemetry event. Never
@@ -502,7 +502,7 @@ async function runInputActionGates(
   // ALL grant tiers stay visible — visibility is the baseline (tier "read").
   if (subGates.hideBeforeAction) {
     const hidden = (await adapter.executor.prepareForAction?.(
-      overrides.allowedApps.map((a) => a.bundleId),
+      overrides.allowedApps.map((a) => a.appIdentifier),
       overrides.selectedDisplayId,
     )) ?? [];
     // Empty-check so we don't spam the callback on every action when nothing
@@ -517,14 +517,14 @@ async function runInputActionGates(
   // Frontmost gate. Check FRESH on every call.
   const frontmost = await adapter.executor.getFrontmostApp();
 
-  const tierByBundleId = new Map(
-    overrides.allowedApps.map((a) => [a.bundleId, a.tier] as const),
+  const tierByAppIdentifier = new Map(
+    overrides.allowedApps.map((a) => [a.appIdentifier, a.tier] as const),
   );
 
   // After handleToolCall's tier backfill, every grant has a concrete tier —
   // .get() returning undefined means the app is not in the allowlist at all.
   const frontmostTier = frontmost
-    ? tierByBundleId.get(frontmost.bundleId)
+    ? tierByAppIdentifier.get(frontmost.appIdentifier)
     : undefined;
 
   // Clipboard guard. Per-action, not per-tool-call — runs for every sub-action
@@ -546,17 +546,17 @@ async function runInputActionGates(
     return null;
   }
 
-  const { hostBundleId } = adapter.executor.capabilities;
+  const { hostAppIdentifier } = adapter.executor.capabilities;
 
   if (frontmostTier !== undefined) {
     if (tierSatisfies(frontmostTier, actionKind)) {
       adapter.logger.debug(
-        `[CU-GATE] runInputActionGates PASS: frontmost="${frontmost.displayName}" (${frontmost.bundleId}) tier="${frontmostTier}" satisfies actionKind="${actionKind}"`,
+        `[CU-GATE] runInputActionGates PASS: frontmost="${frontmost.displayName}" (${frontmost.appIdentifier}) tier="${frontmostTier}" satisfies actionKind="${actionKind}"`,
       );
       return null;
     }
     adapter.logger.debug(
-      `[CU-GATE] runInputActionGates BLOCK: frontmost="${frontmost.displayName}" (${frontmost.bundleId}) tier="${frontmostTier}" insufficient for actionKind="${actionKind}" — returning tier_insufficient error`,
+      `[CU-GATE] runInputActionGates BLOCK: frontmost="${frontmost.displayName}" (${frontmost.appIdentifier}) tier="${frontmostTier}" insufficient for actionKind="${actionKind}" — returning tier_insufficient error`,
     );
     // In the allowlist but tier doesn't cover this action. Tailor the
     // guidance to the actual tier — at "read", suggesting left_click or Bash
@@ -594,14 +594,14 @@ async function runInputActionGates(
     );
   }
   // Finder is never-hide, always allowed.
-  if (frontmost.bundleId === FINDER_BUNDLE_ID) {
+  if (frontmost.appIdentifier === FINDER_APP_IDENTIFIER) {
     adapter.logger.debug(
       `[CU-GATE] runInputActionGates PASS: frontmost is Finder (always allowed)`,
     );
     return null;
   }
 
-  if (frontmost.bundleId === hostBundleId) {
+  if (frontmost.appIdentifier === hostAppIdentifier) {
     if (actionKind !== "keyboard") {
       // mouse and mouse_full are both click events — click-through works.
       // We're click-through (executor's withClickThrough). Pass.
@@ -621,9 +621,9 @@ async function runInputActionGates(
 
   // Non-allowlisted, non-us, non-Finder. RARE after the hide loop — means
   // something popped up between prepare and action, or the 5-try loop gave up.
-  const allowlistList = overrides.allowedApps.map(a => a.bundleId).join(',') || '<empty>';
+  const allowlistList = overrides.allowedApps.map(a => a.appIdentifier).join(',') || '<empty>';
   adapter.logger.debug(
-    `[CU-GATE] runInputActionGates BLOCK: frontmost="${frontmost.displayName}" (${frontmost.bundleId}) NOT in allowedApps={${allowlistList}} — returning app_not_granted error to AI. ` +
+    `[CU-GATE] runInputActionGates BLOCK: frontmost="${frontmost.displayName}" (${frontmost.appIdentifier}) NOT in allowedApps={${allowlistList}} — returning app_not_granted error to AI. ` +
       `(Default-open mode means this branch is unreachable; if you see this log, isAllowlistBypassed() somehow returned false.)`,
   );
   return errorResult(
@@ -670,28 +670,28 @@ async function runHitTestGate(
   if (bypassed) return null;
   const target = await adapter.executor.appUnderPoint(x, y);
   adapter.logger.debug(
-    `[CU-GATE] runHitTestGate appUnderPoint(${x},${y}) → ${target ? `bundleId="${target.bundleId}" displayName="${target.displayName}"` : 'null (desktop / nothing under point / platform no-op)'}`,
+    `[CU-GATE] runHitTestGate appUnderPoint(${x},${y}) → ${target ? `appIdentifier="${target.appIdentifier}" displayName="${target.displayName}"` : 'null (desktop / nothing under point / platform no-op)'}`,
   );
   if (!target) return null; // desktop / nothing under point / platform no-op
 
   // Finder (desktop, file dialogs) is always clickable — same exemption as
   // runInputActionGates. Our own overlay is filtered by Swift (pid != self).
-  if (target.bundleId === FINDER_BUNDLE_ID) {
+  if (target.appIdentifier === FINDER_APP_IDENTIFIER) {
     adapter.logger.debug(
       `[CU-GATE] runHitTestGate PASS: target is Finder (always allowed)`,
     );
     return null;
   }
 
-  const tierByBundleId = new Map(
-    overrides.allowedApps.map((a) => [a.bundleId, a.tier] as const),
+  const tierByAppIdentifier = new Map(
+    overrides.allowedApps.map((a) => [a.appIdentifier, a.tier] as const),
   );
 
-  if (!tierByBundleId.has(target.bundleId)) {
+  if (!tierByAppIdentifier.has(target.appIdentifier)) {
     // Not in the allowlist at all.
-    const allowlistList = overrides.allowedApps.map(a => a.bundleId).join(',') || '<empty>';
+    const allowlistList = overrides.allowedApps.map(a => a.appIdentifier).join(',') || '<empty>';
     adapter.logger.debug(
-      `[CU-GATE] runHitTestGate BLOCK: target="${target.displayName}" (${target.bundleId}) NOT in allowedApps={${allowlistList}} — returning app_not_granted error`,
+      `[CU-GATE] runHitTestGate BLOCK: target="${target.displayName}" (${target.appIdentifier}) NOT in allowedApps={${allowlistList}} — returning app_not_granted error`,
     );
     return errorResult(
       `Click at these coordinates would land on "${target.displayName}", ` +
@@ -701,7 +701,7 @@ async function runHitTestGate(
     );
   }
 
-  const targetTier = tierByBundleId.get(target.bundleId);
+  const targetTier = tierByAppIdentifier.get(target.appIdentifier);
 
   // Frontmost-based sync (runInputActionGates) misses the case where
   // the click lands on a NON-FRONTMOST click-tier window. Re-sync by
@@ -762,16 +762,16 @@ function decodedByteLength(base64: string): number {
 
 async function takeScreenshotWithRetry(
   executor: ComputerExecutor,
-  allowedBundleIds: string[],
+  allowedAppIdentifiers: string[],
   logger: ComputerUseHostAdapter["logger"],
   displayId?: number,
 ): Promise<ScreenshotResult> {
-  let shot = await executor.screenshot({ allowedBundleIds, displayId });
+  let shot = await executor.screenshot({ allowedAppIdentifiers, displayId });
   if (decodedByteLength(shot.base64) < MIN_SCREENSHOT_BYTES) {
     logger.warn(
       `[computer-use] screenshot implausibly small (${decodedByteLength(shot.base64)} bytes decoded), retrying once`,
     );
-    shot = await executor.screenshot({ allowedBundleIds, displayId });
+    shot = await executor.screenshot({ allowedAppIdentifiers, displayId });
   }
   return shot;
 }
@@ -888,19 +888,19 @@ export function defersLockAcquire(toolName: string): boolean {
  * raw bundle IDs pass through resolution. */
 const REVERSE_DNS_RE = /^[A-Za-z0-9][\w.-]*\.[A-Za-z0-9][\w.-]*$/;
 
-function looksLikeBundleId(s: string): boolean {
+function looksLikeAppIdentifier(s: string): boolean {
   return REVERSE_DNS_RE.test(s) && !s.includes(" ");
 }
 
 function resolveRequestedApps(
   requestedNames: string[],
   installed: InstalledApp[],
-  alreadyGrantedBundleIds: ReadonlySet<string>,
+  alreadyGrantedAppIdentifiers: ReadonlySet<string>,
 ): ResolvedAppRequest[] {
   const byLowerDisplayName = new Map<string, InstalledApp>();
-  const byBundleId = new Map<string, InstalledApp>();
+  const byAppIdentifier = new Map<string, InstalledApp>();
   for (const app of installed) {
-    byBundleId.set(app.bundleId, app);
+    byAppIdentifier.set(app.appIdentifier, app);
     // Last write wins on collisions. Ambiguous-name handling (multiple
     // candidates in the dialog) is plan-documented but deferred — the
     // InstalledApps enumerator dedupes by bundle ID, so true display-name
@@ -910,25 +910,25 @@ function resolveRequestedApps(
 
   return requestedNames.map((requested): ResolvedAppRequest => {
     let resolved: InstalledApp | undefined;
-    if (looksLikeBundleId(requested)) {
-      resolved = byBundleId.get(requested);
+    if (looksLikeAppIdentifier(requested)) {
+      resolved = byAppIdentifier.get(requested);
     }
     if (!resolved) {
       resolved = byLowerDisplayName.get(requested.toLowerCase());
     }
-    const bundleId = resolved?.bundleId;
+    const appIdentifier = resolved?.appIdentifier;
     // When unresolved AND the requested string looks like a bundle ID, use it
     // directly for tier lookup (e.g. "company.thebrowser.Browser" with Arc not
     // installed — the reverse-DNS string won't match any display-name substring).
-    const bundleIdCandidate =
-      bundleId ?? (looksLikeBundleId(requested) ? requested : undefined);
+    const appIdentifierCandidate =
+      appIdentifier ?? (looksLikeAppIdentifier(requested) ? requested : undefined);
     return {
       requestedName: requested,
       resolved,
-      isSentinel: bundleId ? SENTINEL_BUNDLE_IDS.has(bundleId) : false,
-      alreadyGranted: bundleId ? alreadyGrantedBundleIds.has(bundleId) : false,
+      isSentinel: appIdentifier ? SENTINEL_APP_IDENTIFIERS.has(appIdentifier) : false,
+      alreadyGranted: appIdentifier ? alreadyGrantedAppIdentifiers.has(appIdentifier) : false,
       proposedTier: getDefaultTierForApp(
-        bundleIdCandidate,
+        appIdentifierCandidate,
         resolved?.displayName ?? requested,
       ),
     };
@@ -947,7 +947,7 @@ async function handleRequestAccess(
 ): Promise<CuCallToolResult> {
   // request_access is mac-only — the tool is filtered out of the Win tool
   // list (see tools.ts). Narrow `overrides` to the darwin variant so reads
-  // of allowedApps / userDeniedBundleIds typecheck.
+  // of allowedApps / userDeniedAppIdentifiers typecheck.
   if (overrides.platform !== "darwin") {
     return errorResult(
       "request_access is mac-only — Windows has no allowlist permission model.",
@@ -1058,13 +1058,13 @@ async function handleRequestAccess(
     adapter,
     apps,
     overrides.allowedApps,
-    new Set(overrides.userDeniedBundleIds),
+    new Set(overrides.userDeniedAppIdentifiers),
     overrides.selectedDisplayId,
   );
 
   let dialogGranted: AppGrant[] = [];
   let dialogDenied: Array<{
-    bundleId: string;
+    appIdentifier: string;
     reason: "user_denied" | "not_installed";
   }> = [];
   let dialogFlags: CuGrantFlags = overrides.grantFlags;
@@ -1095,9 +1095,9 @@ async function handleRequestAccess(
   const allGranted = [...skipDialogGrants, ...dialogGranted];
   // Filter tieredApps to what was actually granted — if the user unchecked
   // Chrome in the dialog, don't explain Chrome's tier.
-  const grantedBundleIds = new Set(allGranted.map((g) => g.bundleId));
+  const grantedAppIdentifiers = new Set(allGranted.map((g) => g.appIdentifier));
   const grantedTieredApps = tieredApps.filter((t) =>
-    grantedBundleIds.has(t.bundleId),
+    grantedAppIdentifiers.has(t.appIdentifier),
   );
   // Best-effort — grants are already persisted by wrappedPermissionHandler;
   // a listDisplays/findWindowDisplays failure (monitor hot-unplug, NAPI
@@ -1162,7 +1162,7 @@ async function buildWindowLocations(
   granted: AppGrant[],
 ): Promise<
   Array<{
-    bundleId: string;
+    appIdentifier: string;
     displayName: string;
     displays: Array<{ id: number; label?: string; isPrimary?: boolean }>;
   }>
@@ -1172,17 +1172,17 @@ async function buildWindowLocations(
   const displays = await adapter.executor.listDisplays();
   if (displays.length <= 1) return [];
 
-  const grantedBundleIds = granted.map((g) => g.bundleId);
-  const windowLocs = await adapter.executor.findWindowDisplays(grantedBundleIds);
+  const grantedAppIdentifiers = granted.map((g) => g.appIdentifier);
+  const windowLocs = await adapter.executor.findWindowDisplays(grantedAppIdentifiers);
   const displayById = new Map(displays.map((d) => [d.displayId, d]));
-  const idsByBundle = new Map(windowLocs.map((w) => [w.bundleId, w.displayIds]));
+  const idsByAppIdentifier = new Map(windowLocs.map((w) => [w.appIdentifier, w.displayIds]));
 
   const out = [];
   for (const g of granted) {
-    const displayIds = idsByBundle.get(g.bundleId);
+    const displayIds = idsByAppIdentifier.get(g.appIdentifier);
     if (!displayIds || displayIds.length === 0) continue;
     out.push({
-      bundleId: g.bundleId,
+      appIdentifier: g.appIdentifier,
       displayName: g.displayName,
       displays: displayIds.map((id) => {
         const d = displayById.get(id);
@@ -1207,7 +1207,7 @@ async function buildWindowLocations(
 /** An app assigned a restricted tier (not `"full"`). Used to build the
  *  guidance message telling the model what it can/can't do. */
 interface TieredApp {
-  bundleId: string;
+  appIdentifier: string;
   displayName: string;
   /** Never `"full"` — only restricted tiers are collected. */
   tier: "read" | "click";
@@ -1216,7 +1216,7 @@ interface TieredApp {
 interface AccessRequestParts {
   needDialog: ResolvedAppRequest[];
   skipDialogGrants: AppGrant[];
-  willHide: Array<{ bundleId: string; displayName: string }>;
+  willHide: Array<{ appIdentifier: string; displayName: string }>;
   /** Resolved apps with `proposedTier !== "full"` — for the guidance text.
    *  Unresolved apps are omitted (they go to `denied` with `not_installed`).  */
   tieredApps: TieredApp[];
@@ -1232,10 +1232,10 @@ async function buildAccessRequest(
   adapter: ComputerUseHostAdapter,
   apps: string[],
   allowedApps: AppGrant[],
-  userDeniedBundleIds: ReadonlySet<string>,
+  userDeniedAppIdentifiers: ReadonlySet<string>,
   selectedDisplayId?: number,
 ): Promise<AccessRequestParts> {
-  const alreadyGranted = new Set(allowedApps.map((g) => g.bundleId));
+  const alreadyGranted = new Set(allowedApps.map((g) => g.appIdentifier));
   const installed = await adapter.executor.listInstalledApps();
   const resolved = resolveRequestedApps(apps, installed, alreadyGranted);
 
@@ -1247,7 +1247,7 @@ async function buildAccessRequest(
   const afterPolicy: typeof resolved = [];
   for (const r of resolved) {
     const displayName = r.resolved?.displayName ?? r.requestedName;
-    if (isPolicyDenied(r.resolved?.bundleId, displayName)) {
+    if (isPolicyDenied(r.resolved?.appIdentifier, displayName)) {
       policyDenied.push({ requestedName: r.requestedName, displayName });
     } else {
       afterPolicy.push(r);
@@ -1263,7 +1263,7 @@ async function buildAccessRequest(
   const userDenied: Array<{ requestedName: string; displayName: string }> = [];
   const surviving: typeof afterPolicy = [];
   for (const r of afterPolicy) {
-    if (r.resolved && userDeniedBundleIds.has(r.resolved.bundleId)) {
+    if (r.resolved && userDeniedAppIdentifiers.has(r.resolved.appIdentifier)) {
       userDenied.push({
         requestedName: r.requestedName,
         displayName: r.resolved.displayName,
@@ -1281,7 +1281,7 @@ async function buildAccessRequest(
   for (const r of surviving) {
     if (r.proposedTier === "full" || !r.resolved) continue;
     tieredApps.push({
-      bundleId: r.resolved.bundleId,
+      appIdentifier: r.resolved.appIdentifier,
       displayName: r.resolved.displayName,
       tier: r.proposedTier,
     });
@@ -1300,11 +1300,11 @@ async function buildAccessRequest(
       // Reuse the existing grant (preserving grantedAt + tier) rather than
       // synthesizing a new one — keeps Settings-page "Granted 3m ago" honest.
       const existing = allowedApps.find(
-        (g) => g.bundleId === r.resolved!.bundleId,
+        (g) => g.appIdentifier === r.resolved!.appIdentifier,
       );
       return (
         existing ?? {
-          bundleId: r.resolved!.bundleId,
+          appIdentifier: r.resolved!.appIdentifier,
           displayName: r.resolved!.displayName,
           grantedAt: now,
           tier: r.proposedTier,
@@ -1316,8 +1316,8 @@ async function buildAccessRequest(
   // set plus what they already have. All tiers are visible, so everything
   // resolved goes in the exempt set.
   const exemptForPreview = [
-    ...allowedApps.map((a) => a.bundleId),
-    ...surviving.filter((r) => r.resolved).map((r) => r.resolved!.bundleId),
+    ...allowedApps.map((a) => a.appIdentifier),
+    ...surviving.filter((r) => r.resolved).map((r) => r.resolved!.appIdentifier),
   ];
   const willHide = (await adapter.executor.previewHideSet?.(
     exemptForPreview,
@@ -1345,12 +1345,12 @@ function buildTierGuidanceMessage(tiered: TieredApp[]): string {
   const readBrowsers = tiered.filter(
     (t) =>
       t.tier === "read" &&
-      getDeniedCategoryForApp(t.bundleId, t.displayName) === "browser",
+      getDeniedCategoryForApp(t.appIdentifier, t.displayName) === "browser",
   );
   const readOther = tiered.filter(
     (t) =>
       t.tier === "read" &&
-      getDeniedCategoryForApp(t.bundleId, t.displayName) !== "browser",
+      getDeniedCategoryForApp(t.appIdentifier, t.displayName) !== "browser",
   );
   const clickTier = tiered.filter((t) => t.tier === "click");
 
@@ -1558,7 +1558,7 @@ async function handleRequestTeachAccess(
     adapter,
     apps,
     overrides.allowedApps,
-    new Set(overrides.userDeniedBundleIds),
+    new Set(overrides.userDeniedAppIdentifiers),
     overrides.selectedDisplayId,
   );
 
@@ -1617,9 +1617,9 @@ async function handleRequestTeachAccess(
     overrides.onTeachModeActivated?.();
   }
 
-  const grantedBundleIds = new Set(granted.map((g) => g.bundleId));
+  const grantedAppIdentifiers = new Set(granted.map((g) => g.appIdentifier));
   const grantedTieredApps = tieredApps.filter((t) =>
-    grantedBundleIds.has(t.bundleId),
+    grantedAppIdentifiers.has(t.appIdentifier),
   );
 
   return okJson(
@@ -1815,7 +1815,7 @@ async function executeTeachStep(
 
   if (subGates.hideBeforeAction) {
     const hidden = (await adapter.executor.prepareForAction?.(
-      overrides.allowedApps.map((a) => a.bundleId),
+      overrides.allowedApps.map((a) => a.appIdentifier),
       overrides.selectedDisplayId,
     )) ?? [];
     if (hidden.length > 0) {
@@ -2060,7 +2060,7 @@ async function buildHiddenNote(
 ): Promise<string | undefined> {
   if (hiddenSinceLastSeen.length === 0) return undefined;
   const running = await adapter.executor.listRunningApps();
-  const nameOf = new Map(running.map((a) => [a.bundleId, a.displayName]));
+  const nameOf = new Map(running.map((a) => [a.appIdentifier, a.displayName]));
   const names = hiddenSinceLastSeen.map((id) => nameOf.get(id) ?? id);
   const list = names.map((n) => `"${n}"`).join(", ");
   const one = names.length === 1;
@@ -2184,21 +2184,21 @@ async function autoTriggerEmptyAllowlistDialog(
   }
 
   const running = await adapter.executor.listRunningApps();
-  const userDeniedSet = new Set(overrides.userDeniedBundleIds);
+  const userDeniedSet = new Set(overrides.userDeniedAppIdentifiers);
   const apps: ResolvedAppRequest[] = [];
   for (const r of running) {
-    if (userDeniedSet.has(r.bundleId)) continue;
-    if (isPolicyDenied(r.bundleId, r.displayName)) continue;
+    if (userDeniedSet.has(r.appIdentifier)) continue;
+    if (isPolicyDenied(r.appIdentifier, r.displayName)) continue;
     apps.push({
       requestedName: r.displayName,
       resolved: {
-        bundleId: r.bundleId,
+        appIdentifier: r.appIdentifier,
         displayName: r.displayName,
         path: "",
       },
-      isSentinel: SENTINEL_BUNDLE_IDS.has(r.bundleId),
+      isSentinel: SENTINEL_APP_IDENTIFIERS.has(r.appIdentifier),
       alreadyGranted: false,
-      proposedTier: getDefaultTierForApp(r.bundleId, r.displayName),
+      proposedTier: getDefaultTierForApp(r.appIdentifier, r.displayName),
     });
   }
 
@@ -2304,17 +2304,17 @@ async function handleScreenshot(
     // Otherwise sticky display: only auto-resolve when the allowed-app
     // set has changed since the display was last resolved. Prevents the
     // resolver yanking the display on every screenshot.
-    const allowedBundleIds = allowedApps.map((a) => a.bundleId);
-    const currentAppSetKey = allowedBundleIds.slice().sort().join(",");
+    const allowedAppIdentifiers = allowedApps.map((a) => a.appIdentifier);
+    const currentAppSetKey = allowedAppIdentifiers.slice().sort().join(",");
     const appSetChanged = currentAppSetKey !== overrides.displayResolvedForApps;
     const autoResolve = !overrides.displayPinnedByModel && appSetChanged;
 
     adapter.logger.debug(
-      `[computer-use] handleScreenshot atomic: calling resolvePrepareCapture allowedBundleIds=[${allowedBundleIds.join(",")}] preferredDisplayId=${overrides.selectedDisplayId ?? "undef"} autoResolve=${autoResolve} doHide=${subGates.hideBeforeAction}`,
+      `[computer-use] handleScreenshot atomic: calling resolvePrepareCapture allowedAppIdentifiers=[${allowedAppIdentifiers.join(",")}] preferredDisplayId=${overrides.selectedDisplayId ?? "undef"} autoResolve=${autoResolve} doHide=${subGates.hideBeforeAction}`,
     );
 
     const result = await adapter.executor.resolvePrepareCapture({
-      allowedBundleIds,
+      allowedAppIdentifiers,
       preferredDisplayId: overrides.selectedDisplayId,
       autoResolve,
       // Keep the hideBeforeAction sub-gate independently rollable —
@@ -2428,7 +2428,7 @@ async function handleScreenshot(
   let hiddenSinceLastSeen: string[] = [];
   if (subGates.hideBeforeAction) {
     const hidden = (await adapter.executor.prepareForAction?.(
-      allowedApps.map((a) => a.bundleId),
+      allowedApps.map((a) => a.appIdentifier),
       overrides.selectedDisplayId,
     )) ?? [];
     // "Something appeared since the model last looked." Report whenever:
@@ -2457,13 +2457,13 @@ async function handleScreenshot(
     }
   }
 
-  const allowedBundleIds = allowedApps.map((g) => g.bundleId);
+  const allowedAppIdentifiers = allowedApps.map((g) => g.appIdentifier);
   adapter.logger.debug(
-    `[computer-use] handleScreenshot non-atomic: calling takeScreenshotWithRetry allowedBundleIds=[${allowedBundleIds.join(",")}] selectedDisplayId=${overrides.selectedDisplayId ?? "undef"}`,
+    `[computer-use] handleScreenshot non-atomic: calling takeScreenshotWithRetry allowedAppIdentifiers=[${allowedAppIdentifiers.join(",")}] selectedDisplayId=${overrides.selectedDisplayId ?? "undef"}`,
   );
   const shot = await takeScreenshotWithRetry(
     adapter.executor,
-    allowedBundleIds,
+    allowedAppIdentifiers,
     adapter.logger,
     overrides.selectedDisplayId,
   );
@@ -2517,11 +2517,11 @@ async function handleScreenshotWindow(
   adapter: ComputerUseHostAdapter,
   args: Record<string, unknown>,
 ): Promise<CuCallToolResult> {
-  const bundleId = requireString(args, "bundle_id");
-  if (bundleId instanceof Error)
-    return errorResult(bundleId.message, "bad_args");
+  const appIdentifier = requireString(args, "app_identifier");
+  if (appIdentifier instanceof Error)
+    return errorResult(appIdentifier.message, "bad_args");
 
-  const result = await adapter.executor.screenshotWindow(bundleId);
+  const result = await adapter.executor.screenshotWindow(appIdentifier);
   if (!result) {
     // Inline list of currently-running apps in the error so the model can
     // immediately see what the correct bundle id is — without having to
@@ -2536,14 +2536,14 @@ async function handleScreenshotWindow(
       if (running.length > 0) {
         runningHint =
           ` Currently running apps with visible windows: ${running
-            .map((a) => `"${a.bundleId}"`)
+            .map((a) => `"${a.appIdentifier}"`)
             .join(", ")}.`;
       }
     } catch {
       // best-effort; fall through with empty hint
     }
     return errorResult(
-      `Could not capture a window for "${bundleId}". The app may not be running, may not have an on-screen window at the normal layer, or the bundle id may not match a running app.${runningHint} Pick the correct bundle id from the list above, or call \`screenshot\` (full-screen) to see what's currently open.`,
+      `Could not capture a window for "${appIdentifier}". The app may not be running, may not have an on-screen window at the normal layer, or the app identifier may not match a running app.${runningHint} Pick the correct app identifier from the list above, or call \`screenshot\` (full-screen) to see what's currently open.`,
       "capture_failed",
     );
   }
@@ -2619,7 +2619,7 @@ async function handleZoom(
     h: (y1 - y0) * ratioY,
   };
 
-  const allowedIds = allowedAppsOf(overrides).map((g) => g.bundleId);
+  const allowedIds = allowedAppsOf(overrides).map((g) => g.appIdentifier);
   // Crop from the same display as lastScreenshot so the zoom region
   // matches the image the model is reading coords from.
   const zoomed = await adapter.executor.zoom(
@@ -2723,12 +2723,12 @@ async function handleClickVariant(
       async () => {
         // The fresh screenshot for validation uses the SAME allow-set as
         // the model's last screenshot did, so we compare like with like.
-        const allowedIds = allowedAppsOf(overrides).map((g) => g.bundleId);
+        const allowedIds = allowedAppsOf(overrides).map((g) => g.appIdentifier);
         try {
           // Fresh shot must match lastScreenshot's display, not the current
           // selection — pixel-compare is against the model's last image.
           return await adapter.executor.screenshot({
-            allowedBundleIds: allowedIds,
+            allowedAppIdentifiers: allowedIds,
             displayId: overrides.lastScreenshot?.displayId,
           });
         } catch {
@@ -2783,7 +2783,7 @@ async function handleClickVariant(
   try {
     const fg = await adapter.executor.getFrontmostApp();
     adapter.logger.debug(
-      `[CU-FOREGROUND] after click: bundleId="${fg?.bundleId ?? "null"}" displayName="${fg?.displayName ?? "null"}"`,
+      `[CU-FOREGROUND] after click: appIdentifier="${fg?.appIdentifier ?? "null"}" displayName="${fg?.displayName ?? "null"}"`,
     );
   } catch {
     // best-effort
@@ -3132,7 +3132,7 @@ async function handleOpenApplication(
   const allowedApps = allowedAppsOf(overrides);
   adapter.logger.debug(
     `[CU-GATE] handleOpenApplication entry: app=${JSON.stringify(app)} bypass=${bypassed} ` +
-      `allowedApps=${JSON.stringify(allowedApps.map((a) => a.bundleId))}`,
+      `allowedApps=${JSON.stringify(allowedApps.map((a) => a.appIdentifier))}`,
   );
   // Bypass: skip the allowlist pre-launch check entirely; pass the input
   // straight to the executor. executor.openApp tolerates raw exe paths
@@ -3144,11 +3144,11 @@ async function handleOpenApplication(
   }
 
   // Resolve display-name → bundle ID. Same logic as request_access.
-  const allowed = new Set(allowedApps.map((g) => g.bundleId));
-  let targetBundleId: string | undefined;
+  const allowed = new Set(allowedApps.map((g) => g.appIdentifier));
+  let targetAppIdentifier: string | undefined;
 
-  if (looksLikeBundleId(app) && allowed.has(app)) {
-    targetBundleId = app;
+  if (looksLikeAppIdentifier(app) && allowed.has(app)) {
+    targetAppIdentifier = app;
   } else {
     // Try display name → bundle ID, but ONLY against the allowlist itself.
     // Avoids paying the listInstalledApps() cost on the hot path and is
@@ -3157,11 +3157,11 @@ async function handleOpenApplication(
     const match = allowedApps.find(
       (g) => g.displayName.toLowerCase() === app.toLowerCase(),
     );
-    targetBundleId = match?.bundleId;
+    targetAppIdentifier = match?.appIdentifier;
   }
 
-  if (!targetBundleId || !allowed.has(targetBundleId)) {
-    const allowlistList = allowedApps.map(a => a.bundleId).join(',') || '<empty>';
+  if (!targetAppIdentifier || !allowed.has(targetAppIdentifier)) {
+    const allowlistList = allowedApps.map(a => a.appIdentifier).join(',') || '<empty>';
     adapter.logger.debug(
       `[CU-GATE] handleOpenApplication BLOCK: app="${app}" not in allowedApps={${allowlistList}} — returning app_not_granted error to AI ` +
         `(default-open mode means this branch is unreachable; if you see this log, isAllowlistBypassed() somehow returned false)`,
@@ -3172,14 +3172,14 @@ async function handleOpenApplication(
     );
   }
   adapter.logger.debug(
-    `[CU-GATE] handleOpenApplication PASS: app="${app}" → bundleId="${targetBundleId}", launching`,
+    `[CU-GATE] handleOpenApplication PASS: app="${app}" → appIdentifier="${targetAppIdentifier}", launching`,
   );
 
   // open_application works at any tier — bringing an app forward is exactly
   // what tier "read" enables (you need it on screen to screenshot it). The
   // tier gates on click/type catch any follow-up interaction.
 
-  await adapter.executor.openApp(targetBundleId);
+  await adapter.executor.openApp(targetAppIdentifier);
 
   // On multi-monitor setups, macOS may place the opened window on a monitor
   // the resolver won't pick (e.g. Axiomate + another allowed app are co-located
@@ -3306,11 +3306,11 @@ async function handleReadClipboard(
   // (same as what the app's own Paste would see).
   if (subGates.clipboardGuard) {
     const frontmost = await adapter.executor.getFrontmostApp();
-    const tierByBundleId = new Map(
-      allowedAppsOf(overrides).map((a) => [a.bundleId, a.tier] as const),
+    const tierByAppIdentifier = new Map(
+      allowedAppsOf(overrides).map((a) => [a.appIdentifier, a.tier] as const),
     );
     const frontmostTier = frontmost
-      ? tierByBundleId.get(frontmost.bundleId)
+      ? tierByAppIdentifier.get(frontmost.appIdentifier)
       : undefined;
     await syncClipboardStash(adapter, overrides, frontmostTier === "click");
   }
@@ -3338,11 +3338,11 @@ async function handleWriteClipboard(
 
   if (subGates.clipboardGuard) {
     const frontmost = await adapter.executor.getFrontmostApp();
-    const tierByBundleId = new Map(
-      allowedAppsOf(overrides).map((a) => [a.bundleId, a.tier] as const),
+    const tierByAppIdentifier = new Map(
+      allowedAppsOf(overrides).map((a) => [a.appIdentifier, a.tier] as const),
     );
     const frontmostTier = frontmost
-      ? tierByBundleId.get(frontmost.bundleId)
+      ? tierByAppIdentifier.get(frontmost.appIdentifier)
       : undefined;
 
     // Defense-in-depth for the clipboardGuard bypass: write_clipboard +
@@ -3706,7 +3706,7 @@ async function handleComputerBatch(
   // hideBeforeAction:false.
   if (subGates.hideBeforeAction) {
     const hidden = (await adapter.executor.prepareForAction?.(
-      allowedAppsOf(overrides).map((a) => a.bundleId),
+      allowedAppsOf(overrides).map((a) => a.appIdentifier),
       overrides.selectedDisplayId,
     )) ?? [];
     if (hidden.length > 0) {
@@ -3920,23 +3920,23 @@ export async function handleToolCall(
   // zero-alloc.
   const overrides: ComputerUseOverrides = (() => {
     if (rawOverrides.platform !== "darwin") return rawOverrides;
-    const userDeniedSet = new Set(rawOverrides.userDeniedBundleIds);
+    const userDeniedSet = new Set(rawOverrides.userDeniedAppIdentifiers);
     const needsNormalize = rawOverrides.allowedApps.some(
       (a) =>
         a.tier === undefined ||
-        userDeniedSet.has(a.bundleId) ||
-        isPolicyDenied(a.bundleId, a.displayName),
+        userDeniedSet.has(a.appIdentifier) ||
+        isPolicyDenied(a.appIdentifier, a.displayName),
     );
     if (!needsNormalize) return rawOverrides;
     return {
       ...rawOverrides,
       allowedApps: rawOverrides.allowedApps
-        .filter((a) => !userDeniedSet.has(a.bundleId))
-        .filter((a) => !isPolicyDenied(a.bundleId, a.displayName))
+        .filter((a) => !userDeniedSet.has(a.appIdentifier))
+        .filter((a) => !isPolicyDenied(a.appIdentifier, a.displayName))
         .map((a) =>
           a.tier !== undefined
             ? a
-            : { ...a, tier: getDefaultTierForApp(a.bundleId, a.displayName) },
+            : { ...a, tier: getDefaultTierForApp(a.appIdentifier, a.displayName) },
         ),
     };
   })();
@@ -4089,7 +4089,7 @@ export const _test = {
   buildTierGuidanceMessage,
   buildUserDeniedGuidance,
   tierSatisfies,
-  looksLikeBundleId,
+  looksLikeAppIdentifier,
   extractCoordinate,
   parseKeyChord,
   buildMonitorNote,

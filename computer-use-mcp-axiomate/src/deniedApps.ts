@@ -14,9 +14,9 @@
  * Uncategorized apps default to `"full"`. See `getDefaultTierForApp`.
  *
  * Identification is two-layered:
- *   1. Bundle ID match (macOS-only; `InstalledApp.bundleId` is a
+ *   1. Bundle ID match (macOS-only; `InstalledApp.appIdentifier` is a
  *      CFBundleIdentifier on mac; on Windows the win NAPI uses the
- *      registry sub-key as bundleId, so this layer is mac-specific).
+ *      registry sub-key as appIdentifier, so this layer is mac-specific).
  *      Fast, exact, the primary mechanism on mac.
  *   2. Display-name substring match (cross-platform). On Windows this
  *      is the primary mechanism since Windows registry keys are GUIDs
@@ -52,7 +52,7 @@ export function categoryToTier(
 
 // ─── Bundle-ID deny sets (macOS only; names below are cross-platform) ───
 
-const BROWSER_BUNDLE_IDS: ReadonlySet<string> = new Set([
+const BROWSER_APP_IDENTIFIERS: ReadonlySet<string> = new Set([
   // Apple
   "com.apple.Safari",
   "com.apple.SafariTechnologyPreview",
@@ -95,11 +95,11 @@ const BROWSER_BUNDLE_IDS: ReadonlySet<string> = new Set([
 
 /**
  * Terminals + IDEs with integrated terminals. Supersets
- * `SHELL_ACCESS_BUNDLE_IDS` from sentinelApps.ts — terminals proceed to the
+ * `SHELL_ACCESS_APP_IDENTIFIERS` from sentinelApps.ts — terminals proceed to the
  * approval dialog at tier "click", and the sentinel warning renders
  * alongside the tier badge.
  */
-const TERMINAL_BUNDLE_IDS: ReadonlySet<string> = new Set([
+const TERMINAL_APP_IDENTIFIERS: ReadonlySet<string> = new Set([
   // Dedicated terminals
   "com.apple.Terminal",
   "com.googlecode.iterm2",
@@ -175,7 +175,7 @@ const TERMINAL_BUNDLE_IDS: ReadonlySet<string> = new Set([
  * host's system prompt carries the soft instruction to never execute trades
  * or transfer money on the user's behalf.
  */
-const TRADING_BUNDLE_IDS: ReadonlySet<string> = new Set([
+const TRADING_APP_IDENTIFIERS: ReadonlySet<string> = new Set([
   // Verified via Homebrew quit/zap stanzas + mdls + electron-builder source.
   //   Trading
   "com.webull.desktop.v1", // Webull (direct download, Qt)
@@ -212,7 +212,7 @@ const TRADING_BUNDLE_IDS: ReadonlySet<string> = new Set([
 // Sourced from the ACP CU-apps blocklist xlsx ("Full block" tab). See
 // /tmp/extract_cu_blocklist.py for the extraction script.
 
-const POLICY_DENIED_BUNDLE_IDS: ReadonlySet<string> = new Set([
+const POLICY_DENIED_APP_IDENTIFIERS: ReadonlySet<string> = new Set([
   // Verified via Homebrew quit/zap + mdls /System/Applications + IntuneBrew.
   //   Apple built-ins
   "com.apple.TV",
@@ -289,16 +289,16 @@ const POLICY_DENIED_NAME_SUBSTRINGS: readonly string[] = [
 ];
 
 /**
- * Policy-level auto-deny. Unlike `userDeniedBundleIds` (per-user Settings
+ * Policy-level auto-deny. Unlike `userDeniedAppIdentifiers` (per-user Settings
  * page), this is baked into the build. `buildAccessRequest` strips these
  * before the approval dialog with "blocked by policy" guidance; the agent
  * is told to not retry.
  */
 export function isPolicyDenied(
-  bundleId: string | undefined,
+  appIdentifier: string | undefined,
   displayName: string,
 ): boolean {
-  if (bundleId && POLICY_DENIED_BUNDLE_IDS.has(bundleId)) return true;
+  if (appIdentifier && POLICY_DENIED_APP_IDENTIFIERS.has(appIdentifier)) return true;
   const lower = displayName.toLowerCase();
   for (const sub of POLICY_DENIED_NAME_SUBSTRINGS) {
     if (lower.includes(sub)) return true;
@@ -306,10 +306,10 @@ export function isPolicyDenied(
   return false;
 }
 
-export function getDeniedCategory(bundleId: string): DeniedCategory | null {
-  if (BROWSER_BUNDLE_IDS.has(bundleId)) return "browser";
-  if (TERMINAL_BUNDLE_IDS.has(bundleId)) return "terminal";
-  if (TRADING_BUNDLE_IDS.has(bundleId)) return "trading";
+export function getDeniedCategory(appIdentifier: string): DeniedCategory | null {
+  if (BROWSER_APP_IDENTIFIERS.has(appIdentifier)) return "browser";
+  if (TERMINAL_APP_IDENTIFIERS.has(appIdentifier)) return "terminal";
+  if (TRADING_APP_IDENTIFIERS.has(appIdentifier)) return "trading";
   return null;
 }
 
@@ -318,7 +318,7 @@ export function getDeniedCategory(bundleId: string): DeniedCategory | null {
 /**
  * Lowercase substrings checked against the requested display name. Catches:
  *   - Unresolved requests (app not installed, Spotlight miss)
- *   - Future Windows/Linux support where bundleId is meaningless
+ *   - Future Windows/Linux support where appIdentifier is meaningless
  *
  * Matched via `.includes()` on `name.toLowerCase()`. Entries are ordered
  * by specificity (more-specific first is irrelevant since we return on
@@ -511,16 +511,16 @@ export function getDeniedCategoryByDisplayName(
  * Combined check — bundle ID first (exact, fast), then display-name
  * fallback. This is the function tool-call handlers should use.
  *
- * `bundleId` may be undefined (unresolved request — model asked for an app
+ * `appIdentifier` may be undefined (unresolved request — model asked for an app
  * that isn't installed or Spotlight didn't find). In that case only the
  * display-name check runs.
  */
 export function getDeniedCategoryForApp(
-  bundleId: string | undefined,
+  appIdentifier: string | undefined,
   displayName: string,
 ): DeniedCategory | null {
-  if (bundleId) {
-    const byId = getDeniedCategory(bundleId);
+  if (appIdentifier) {
+    const byId = getDeniedCategory(appIdentifier);
     if (byId) return byId;
   }
   return getDeniedCategoryByDisplayName(displayName);
@@ -535,17 +535,17 @@ export function getDeniedCategoryForApp(
  * before the approval dialog shows.
  */
 export function getDefaultTierForApp(
-  bundleId: string | undefined,
+  appIdentifier: string | undefined,
   displayName: string,
 ): "read" | "click" | "full" {
-  return categoryToTier(getDeniedCategoryForApp(bundleId, displayName));
+  return categoryToTier(getDeniedCategoryForApp(appIdentifier, displayName));
 }
 
 export const _test = {
-  BROWSER_BUNDLE_IDS,
-  TERMINAL_BUNDLE_IDS,
-  TRADING_BUNDLE_IDS,
-  POLICY_DENIED_BUNDLE_IDS,
+  BROWSER_APP_IDENTIFIERS,
+  TERMINAL_APP_IDENTIFIERS,
+  TRADING_APP_IDENTIFIERS,
+  POLICY_DENIED_APP_IDENTIFIERS,
   BROWSER_NAME_SUBSTRINGS,
   TERMINAL_NAME_SUBSTRINGS,
   TRADING_NAME_SUBSTRINGS,

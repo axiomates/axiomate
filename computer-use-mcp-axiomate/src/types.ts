@@ -43,7 +43,7 @@ export type CuAppPermTier = "read" | "click" | "full";
  * scope.
  */
 export interface AppGrant {
-  bundleId: string;
+  appIdentifier: string;
   displayName: string;
   /** Epoch ms. For Settings-page display ("Granted 3m ago"). */
   grantedAt: number;
@@ -124,13 +124,13 @@ export interface CuSubGates {
 // Permission request/response (mirror of BridgePermissionRequest, types.ts:77-94)
 // ----------------------------------------------------------------------------
 
-/** One entry per app the model asked for, after name → bundle ID resolution. */
+/** One entry per app the model asked for, after name → app identifier resolution. */
 export interface ResolvedAppRequest {
   /** What the model asked for (e.g. "Slack", "com.tinyspeck.slackmacgap"). */
   requestedName: string;
   /** The resolved InstalledApp if found, else undefined (shown greyed in the UI). */
   resolved?: InstalledApp;
-  /** Shell-access-equivalent bundle IDs get a UI warning. See sentinelApps.ts. */
+  /** Shell-access-equivalent app identifiers get a UI warning. See sentinelApps.ts. */
   isSentinel: boolean;
   /** Already in the allowlist → skip the checkbox, return in `granted` immediately. */
   alreadyGranted: boolean;
@@ -178,7 +178,7 @@ export interface CuPermissionRequest {
    * user clicks Allow, but it's a preview, not a contract. Absent when
    * empty so the renderer can skip the section cleanly.
    */
-  willHide?: Array<{ bundleId: string; displayName: string }>;
+  willHide?: Array<{ appIdentifier: string; displayName: string }>;
   /**
    * `chicagoAutoUnhide` app preference at request time. The renderer picks
    * between "...then restored when Axiomate is done" and "...will be hidden"
@@ -194,8 +194,8 @@ export interface CuPermissionRequest {
  */
 export interface CuPermissionResponse {
   granted: AppGrant[];
-  /** Bundle IDs the user unchecked, or apps that weren't installed. */
-  denied: Array<{ bundleId: string; reason: "user_denied" | "not_installed" }>;
+  /** App identifiers the user unchecked, or apps that weren't installed. */
+  denied: Array<{ appIdentifier: string; reason: "user_denied" | "not_installed" }>;
   flags: CuGrantFlags;
   /**
    * Whether the user clicked Allow in THIS dialog. Only set by the
@@ -302,7 +302,7 @@ export interface ComputerUseSessionContext {
   getAllowedApps(): readonly AppGrant[];
   getGrantFlags(): CuGrantFlags;
   /** Per-user auto-deny list (Settings page). Empty array = none. */
-  getUserDeniedBundleIds(): readonly string[];
+  getUserDeniedAppIdentifiers(): readonly string[];
   getSelectedDisplayId(): number | undefined;
   getDisplayPinnedByModel?(): boolean;
   getDisplayResolvedForApps?(): string | undefined;
@@ -327,17 +327,17 @@ export interface ComputerUseSessionContext {
     signal: AbortSignal,
   ): Promise<CuPermissionResponse>;
   /** Called by `bindSessionContext` after merging a permission response into
-   *  the allowlist (dedupe on bundleId, truthy-only flag spread). Host
+   *  the allowlist (dedupe on appIdentifier, truthy-only flag spread). Host
    *  persists for resume survival. */
   onAllowedAppsChanged?(apps: readonly AppGrant[], flags: CuGrantFlags): void;
-  onAppsHidden?(bundleIds: string[]): void;
+  onAppsHidden?(appIdentifiers: string[]): void;
   /** Reads the session's clipboardGuard stash. undefined → no stash held. */
   getClipboardStash?(): string | undefined;
   /** Writes the clipboardGuard stash. undefined clears it. */
   onClipboardStashChanged?(stash: string | undefined): void;
   onResolvedDisplayUpdated?(displayId: number): void;
   onDisplayPinned?(displayId: number | undefined): void;
-  onDisplayResolvedForApps?(sortedBundleIdsKey: string): void;
+  onDisplayResolvedForApps?(sortedAppIdentifiersKey: string): void;
   /** Called after each screenshot. Host persists for respawn survival. */
   onScreenshotCaptured?(dims: ScreenshotDims): void;
   onTeachModeActivated?(): void;
@@ -373,7 +373,7 @@ export interface ComputerUseSessionContext {
  * store, not the server.
  *
  * Discriminated by `platform` (Phase B1): `allowedApps` and
- * `userDeniedBundleIds` are SCContentFilter-shaped concepts that only
+ * `userDeniedAppIdentifiers` are SCContentFilter-shaped concepts that only
  * carry meaning on macOS. On Windows the type system literally doesn't
  * have those fields — read them via the helpers below to get `[]`
  * cross-platform without a narrow at every call site.
@@ -409,7 +409,7 @@ interface BaseComputerUseOverrides {
   lastScreenshot?: ScreenshotResult;
 
   /**
-   * Fired after every `prepareForAction` with the bundle IDs it just hid.
+   * Fired after every `prepareForAction` with the app identifiers it just hid.
    * The wrapper closure in serverDef.ts accumulates these into
    * `Session.cuHiddenDuringTurn` via a write-through callback (same pattern
    * as `onCuPermissionUpdated`). At turn end (`sdkMessage.type === "result"`),
@@ -420,7 +420,7 @@ interface BaseComputerUseOverrides {
    * Undefined when the session wasn't wired with a tracker — unhide just
    * doesn't happen.
    */
-  onAppsHidden?: (bundleIds: string[]) => void;
+  onAppsHidden?: (appIdentifiers: string[]) => void;
 
   /**
    * Reads the clipboardGuard stash from session state. `undefined` means no
@@ -468,7 +468,7 @@ interface BaseComputerUseOverrides {
   onDisplayPinned?: (displayId: number | undefined) => void;
 
   /**
-   * Sorted comma-joined bundle-ID set the display was last auto-resolved
+   * Sorted comma-joined app-identifier set the display was last auto-resolved
    * for. `handleScreenshot` compares this to the current allowed set and
    * only passes `autoResolve: true` when they differ — so the resolver
    * doesn't yank the display on every screenshot, only when the app set
@@ -481,7 +481,7 @@ interface BaseComputerUseOverrides {
    * alongside `onResolvedDisplayUpdated` when the resolver picks, so the next
    * screenshot sees a matching set and skips auto-resolve.
    */
-  onDisplayResolvedForApps?: (sortedBundleIdsKey: string) => void;
+  onDisplayResolvedForApps?: (sortedAppIdentifiersKey: string) => void;
 
   /**
    * Global CU lock — at most one session actively uses CU at a time. Checked
@@ -582,9 +582,9 @@ interface BaseComputerUseOverrides {
  * Per-call overrides — platform-discriminated union (Phase B1).
  *
  * Mac variant carries `allowedApps` (SCContentFilter compositor allowlist) and
- * `userDeniedBundleIds` (Settings auto-deny). Win variant has neither — those
+ * `userDeniedAppIdentifiers` (Settings auto-deny). Win variant has neither — those
  * concepts have no Windows analog. Use the `allowedAppsOf()` /
- * `userDeniedBundleIdsOf()` helpers for cross-platform reads that should
+ * `userDeniedAppIdentifiersOf()` helpers for cross-platform reads that should
  * see empty arrays on Win.
  */
 export type ComputerUseOverrides =
@@ -593,7 +593,7 @@ export type ComputerUseOverrides =
       allowedApps: AppGrant[];
       /**
        * User-configured auto-deny list (Settings → Desktop app → Computer
-       * Use). Bundle IDs here are stripped from request_access BEFORE the
+       * Use). App identifiers here are stripped from request_access BEFORE the
        * approval dialog — they never reach the user for approval regardless
        * of tier. The response tells the agent to ask the user to remove the
        * app from their deny list in Settings if access is genuinely needed.
@@ -602,7 +602,7 @@ export type ComputerUseOverrides =
        * call, not session state). Contrast with `allowedApps` which is
        * per-session. Empty array = no user-configured denies.
        */
-      userDeniedBundleIds: readonly string[];
+      userDeniedAppIdentifiers: readonly string[];
     })
   | (BaseComputerUseOverrides & {
       platform: "win32";
@@ -620,14 +620,14 @@ export function allowedAppsOf(o: ComputerUseOverrides): AppGrant[] {
 }
 
 /**
- * Cross-platform reader for `userDeniedBundleIds`. Returns `[]` on Win.
+ * Cross-platform reader for `userDeniedAppIdentifiers`. Returns `[]` on Win.
  * Used by the request_access flow (mac-only tool) — present in shared
  * helpers for completeness.
  */
-export function userDeniedBundleIdsOf(
+export function userDeniedAppIdentifiersOf(
   o: ComputerUseOverrides,
 ): readonly string[] {
-  return o.platform === "darwin" ? o.userDeniedBundleIds : [];
+  return o.platform === "darwin" ? o.userDeniedAppIdentifiers : [];
 }
 
 // ----------------------------------------------------------------------------
@@ -672,7 +672,7 @@ export interface CuTeachPermissionRequest {
     accessibility: boolean;
     screenRecording: boolean;
   };
-  willHide?: Array<{ bundleId: string; displayName: string }>;
+  willHide?: Array<{ appIdentifier: string; displayName: string }>;
   /** Same semantics as `CuPermissionRequest.autoUnhideEnabled`. */
   autoUnhideEnabled?: boolean;
 }
