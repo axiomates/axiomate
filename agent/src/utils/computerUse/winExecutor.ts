@@ -229,6 +229,52 @@ export function createWinExecutor(): ComputerExecutor {
   }
 
   /**
+   * Resolve a `screenshot_window` input to the form the win NAPI expects.
+   * Inputs that already look like a path or a shell URI pass through
+   * unchanged — those are exactly what the NAPI's classic exe-path matcher
+   * and AUMID matcher consume directly. Inputs that look like a friendly
+   * name (e.g. `"Calculator"` from a zh-CN agent that hasn't seen the
+   * AUMID yet) get the same Get-StartApps + substring-scoring fallback
+   * `open_application` uses, so AI can use the same vocabulary across
+   * both tools.
+   *
+   * On Get-StartApps miss / NAPI unavailable we return the original input
+   * unchanged so the NAPI's diagnostic surfaces the exact string the AI
+   * passed (helps debug "why didn't this match anything").
+   */
+  function resolveWinAppIdentifierForCapture(input: string): string {
+    if (input.startsWith('shell:') || input.includes('\\') || input.includes('/')) {
+      return input
+    }
+    if (!napiAvailable) return input
+    const lower = input.toLowerCase()
+    const startApps = winListStartMenuApps()
+    if (startApps.length === 0) return input
+    // Exact friendly-name match wins.
+    const exact = startApps.find(a => a.name.toLowerCase() === lower)
+    if (exact) {
+      const launcher = `shell:AppsFolder\\${exact.appId}`
+      logForDebugging(
+        `[computer-use] screenshotWindow (win): resolved "${input}" → "${launcher}" via Get-StartApps (name-exact, name="${exact.name}")`,
+        { level: 'debug' },
+      )
+      return launcher
+    }
+    // AppID PackageName substring scoring — same logic as openApp.
+    const scored = scoreAppIdSubstringMatch(input, startApps)
+    const best = scored[0]?.app
+    if (best) {
+      const launcher = `shell:AppsFolder\\${best.appId}`
+      logForDebugging(
+        `[computer-use] screenshotWindow (win): resolved "${input}" → "${launcher}" via Get-StartApps (appid-substring, name="${best.name}", score=${scored[0]!.score}, candidates=${scored.length})`,
+        { level: 'debug' },
+      )
+      return launcher
+    }
+    return input
+  }
+
+  /**
    * Keyboard-input foreground guard. SendInput INPUT_KEYBOARD events route
    * to whichever window has keyboard focus at SendInput time. If axiomate
    * itself is foreground (common right after the user submits a prompt),
@@ -355,10 +401,20 @@ export function createWinExecutor(): ComputerExecutor {
       // NAPI binding. Click coordinates in subsequent tools still refer
       // to the FULL screen, never the window-cropped image — same
       // contract as mac.
+      //
+      // Friendly-name resolution: if the AI passes "Calculator" instead
+      // of the full AUMID launcher URI, mirror the openApp fallback —
+      // exact display-name match against Get-StartApps, then AppID
+      // PackageName substring scoring (cross-locale: zh-CN where the
+      // friendly name comes back as "计算器" but the AppID is always
+      // English). This lets `screenshot_window` accept the same input
+      // shape as `open_application`. Inputs that look like a path or
+      // a shell URI are passed through untouched.
       if (!napiAvailable) return null
-      const outcome = winNapi.captureWindow(appIdentifier)
+      const resolved = resolveWinAppIdentifierForCapture(appIdentifier)
+      const outcome = winNapi.captureWindow(resolved)
       logForDebugging(
-        `[CU-CAPTURE] capture_window: appIdentifier="${appIdentifier}" diagnostic=${outcome.diagnostic}`,
+        `[CU-CAPTURE] capture_window: input="${appIdentifier}" resolved="${resolved}" diagnostic=${outcome.diagnostic}`,
         { level: 'debug' },
       )
       const image = outcome.image

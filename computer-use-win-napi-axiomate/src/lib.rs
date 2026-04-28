@@ -1167,17 +1167,29 @@ mod windows_impl {
         // / Photos / Settings / etc. Dedupe by AUMID — multi-window UWP apps
         // (Edge, Photos) collapse into one entry. Friendly name via Shell
         // IShellItem (locale-correct, same string Start menu shows).
+        //
+        // **Must contain `!`** — UWP launcher AUMIDs are always
+        // `<PackageFamilyName>!<ApplicationId>`. Classic Win32 apps (Chrome,
+        // Office, Hyper terminal) frequently call SetCurrentProcessExplicit-
+        // AppUserModelID to set a voluntary AUMID (e.g. `Chrome`,
+        // `HYP-<guid>`) for taskbar grouping; those are NOT launchable via
+        // `shell:AppsFolder\` and must fall through to the classic exe-path
+        // branch. Empty AUMIDs (rare, defensive) also fall through.
         if let Some(aumid) = get_aumid_for_window(hwnd) {
-            let app_identifier = format!("shell:AppsFolder\\{}", aumid);
-            if state.seen.insert(app_identifier.clone()) {
-                let display_name = get_shell_display_name(&app_identifier)
-                    .unwrap_or_else(|| aumid.clone());
-                state.results.push(AppHitInfo {
-                    display_name,
-                    app_identifier,
-                });
+            if !aumid.is_empty() && aumid.contains('!') {
+                let app_identifier = format!("shell:AppsFolder\\{}", aumid);
+                if state.seen.insert(app_identifier.clone()) {
+                    let display_name = get_shell_display_name(&app_identifier)
+                        .unwrap_or_else(|| aumid.clone());
+                    state.results.push(AppHitInfo {
+                        display_name,
+                        app_identifier,
+                    });
+                }
+                return true.into();
             }
-            return true.into();
+            // else: voluntary AUMID set by classic Win32 app; fall through
+            // to exe-path branch below.
         }
 
         // Classic Win32 fallthrough — pid → exe path.
@@ -1413,8 +1425,12 @@ mod windows_impl {
             return true.into(); // on another virtual desktop, skip
         }
         let aumid = match get_aumid_for_window(hwnd) {
-            Some(a) => a,
-            None => return true.into(), // classic Win32 window, skip
+            Some(a) if !a.is_empty() && a.contains('!') => a,
+            // None / empty / no `!` → classic Win32 window with at most a
+            // voluntary AUMID set for taskbar grouping (e.g. Chrome's
+            // "Chrome", Hyper's GUID). Not a UWP launcher; skip — the
+            // caller's classic exe-path branch handles these.
+            _ => return true.into(),
         };
         // Bound the visible_seen list so a long EnumWindows pass with
         // many UWP windows doesn't blow up the diagnostic string.
