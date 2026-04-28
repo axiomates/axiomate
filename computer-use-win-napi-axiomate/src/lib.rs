@@ -2736,4 +2736,130 @@ mod windows_impl {
         v.push(0);
         v
     }
+
+    // ────────────── unit tests ──────────────
+    //
+    // Run with `cargo test` from the crate root. These tests exercise the
+    // helpers in this module directly (no NAPI / no JS) so coverage stays
+    // deterministic and quick. GUI-state-sensitive paths (real UWP capture,
+    // multi-virtual-desktop cloaking) are deliberately left to manual
+    // smoke; what we cover here is the helpers a regression would silently
+    // break (last-error formatting, IShellItem name resolution, AUMID
+    // lookup negative path, registry walk, EnumWindows enumeration).
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+        use windows::Win32::Foundation::{SetLastError, WIN32_ERROR};
+
+        /// ERROR_ACCESS_DENIED — known-good code for the last-error helper.
+        const ERROR_ACCESS_DENIED: WIN32_ERROR = WIN32_ERROR(5);
+
+        #[test]
+        fn last_win_error_translates_known_code() {
+            unsafe { SetLastError(ERROR_ACCESS_DENIED) };
+            let msg = last_win_error();
+            assert!(!msg.is_empty(), "last_win_error returned empty string");
+            // Locale-tolerant: en-US "Access is denied", zh-CN "拒绝访问",
+            // and the HRESULT hex form is always present.
+            assert!(
+                msg.contains("0x")
+                    || msg.to_lowercase().contains("access")
+                    || msg.contains("拒绝"),
+                "last_win_error missing expected token: {}",
+                msg
+            );
+        }
+
+        #[test]
+        fn last_win_error_no_error_returns_sentinel() {
+            unsafe { SetLastError(WIN32_ERROR(0)) };
+            let msg = last_win_error();
+            assert_eq!(msg, "no last error set");
+        }
+
+        #[test]
+        fn is_window_cloaked_returns_false_for_foreground_window() {
+            // The foreground window (e.g. test runner / shell) is never
+            // cloaked. Skip if there's no foreground (locked desktop / no
+            // session) — `cargo test` typically has a session.
+            let hwnd = unsafe { GetForegroundWindow() };
+            if hwnd.0.is_null() {
+                return;
+            }
+            assert!(!is_window_cloaked(hwnd));
+        }
+
+        #[test]
+        fn list_running_apps_returns_nonempty_with_valid_entries() {
+            let apps = list_running_apps();
+            assert!(
+                !apps.is_empty(),
+                "list_running_apps empty — desktop session required"
+            );
+            for app in &apps {
+                assert!(
+                    !app.app_identifier.is_empty(),
+                    "empty app_identifier in entry display_name={:?}",
+                    app.display_name
+                );
+            }
+        }
+
+        #[test]
+        fn list_installed_apps_returns_nonempty_with_valid_display_name() {
+            let apps = list_installed_apps();
+            assert!(!apps.is_empty(), "list_installed_apps empty");
+            assert!(
+                apps.iter().any(|a| !a.display_name.is_empty()),
+                "no installed app had non-empty display_name"
+            );
+        }
+
+        #[test]
+        fn get_shell_display_name_resolves_calculator_aumid() {
+            // Calculator's AUMID is stable across Win 10/11 installs.
+            let aumid =
+                "shell:AppsFolder\\Microsoft.WindowsCalculator_8wekyb3d8bbwe!App";
+            let name = get_shell_display_name(aumid);
+            match name {
+                Some(n) => {
+                    assert!(!n.is_empty());
+                    // Locale-tolerant friendly-name check. Negative
+                    // assertion: resolved name must NOT contain the
+                    // PublisherHash chunk (which would mean we got the
+                    // AUMID back rather than a friendly name).
+                    assert!(
+                        !n.contains("8wekyb3d8bbwe"),
+                        "expected friendly name, got AUMID-like: {}",
+                        n
+                    );
+                }
+                None => {
+                    eprintln!(
+                        "Calculator AUMID did not resolve; treating as env-skip"
+                    );
+                }
+            }
+        }
+
+        #[test]
+        fn get_shell_display_name_invalid_aumid_returns_none() {
+            let name = get_shell_display_name(
+                "shell:AppsFolder\\Definitely.NotAReal_NoSuchHash!Nope",
+            );
+            assert!(
+                name.is_none(),
+                "invalid AUMID should resolve to None, got {:?}",
+                name
+            );
+        }
+
+        #[test]
+        fn find_window_by_aumid_no_match_for_fake_aumid() {
+            let (m, _visible) = find_window_by_aumid(
+                "DefinitelyFake.NotARealApp_xxxxxxxxxxxxx!Nope",
+            );
+            assert!(m.is_none(), "fake AUMID should not match any window");
+        }
+    }
 }

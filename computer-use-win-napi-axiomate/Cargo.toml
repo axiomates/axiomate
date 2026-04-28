@@ -4,7 +4,11 @@ version = "0.1.0"
 edition = "2021"
 
 [lib]
-crate-type = ["cdylib"]
+# `cdylib` builds the .node NAPI module. `rlib` is added so `cargo test`
+# has a Rust-native lib target to link against — without it cargo test
+# on a pure cdylib crate has nothing to compile tests into. Production
+# .node output is unaffected (cdylib still produced).
+crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 # tokio_rt: napi-rs `#[napi] pub async fn` expansion needs this. Stage 1
