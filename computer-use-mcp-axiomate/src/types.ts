@@ -371,25 +371,16 @@ export interface ComputerUseSessionContext {
  * `ComputerUseSessionContext` getters. This is what lets a singleton MCP
  * server carry per-session state — the state lives on the host's session
  * store, not the server.
+ *
+ * Discriminated by `platform` (Phase B1): `allowedApps` and
+ * `userDeniedBundleIds` are SCContentFilter-shaped concepts that only
+ * carry meaning on macOS. On Windows the type system literally doesn't
+ * have those fields — read them via the helpers below to get `[]`
+ * cross-platform without a narrow at every call site.
  */
-export interface ComputerUseOverrides {
-  allowedApps: AppGrant[];
+interface BaseComputerUseOverrides {
   grantFlags: CuGrantFlags;
   coordinateMode: CoordinateMode;
-
-  /**
-   * User-configured auto-deny list (Settings → Desktop app → Computer Use).
-   * Bundle IDs
-   * here are stripped from request_access BEFORE the approval dialog — they
-   * never reach the user for approval regardless of tier. The response tells
-   * the agent to ask the user to remove the app from their deny list in
-   * Settings if access is genuinely needed.
-   *
-   * Per-USER, persists across restarts (read from appPreferences per call,
-   * not session state). Contrast with `allowedApps` which is per-session.
-   * Empty array = no user-configured denies (the default).
-   */
-  userDeniedBundleIds: readonly string[];
 
   /**
    * Display CU operates on; read fresh per call. `scaleCoord` uses the
@@ -585,6 +576,58 @@ export interface ComputerUseOverrides {
    * tooltip content.
    */
   onTeachWorking?: () => void;
+}
+
+/**
+ * Per-call overrides — platform-discriminated union (Phase B1).
+ *
+ * Mac variant carries `allowedApps` (SCContentFilter compositor allowlist) and
+ * `userDeniedBundleIds` (Settings auto-deny). Win variant has neither — those
+ * concepts have no Windows analog. Use the `allowedAppsOf()` /
+ * `userDeniedBundleIdsOf()` helpers for cross-platform reads that should
+ * see empty arrays on Win.
+ */
+export type ComputerUseOverrides =
+  | (BaseComputerUseOverrides & {
+      platform: "darwin";
+      allowedApps: AppGrant[];
+      /**
+       * User-configured auto-deny list (Settings → Desktop app → Computer
+       * Use). Bundle IDs here are stripped from request_access BEFORE the
+       * approval dialog — they never reach the user for approval regardless
+       * of tier. The response tells the agent to ask the user to remove the
+       * app from their deny list in Settings if access is genuinely needed.
+       *
+       * Per-USER, persists across restarts (read from appPreferences per
+       * call, not session state). Contrast with `allowedApps` which is
+       * per-session. Empty array = no user-configured denies.
+       */
+      userDeniedBundleIds: readonly string[];
+    })
+  | (BaseComputerUseOverrides & {
+      platform: "win32";
+    });
+
+/**
+ * Cross-platform reader for `allowedApps`. Returns `[]` on Win since the
+ * concept has no analog there. Lets handlers running on both platforms
+ * iterate uniformly — the empty-array semantics yield the same "no
+ * allowlist set" code path Win was already taking at runtime before B1
+ * type-narrowed the field.
+ */
+export function allowedAppsOf(o: ComputerUseOverrides): AppGrant[] {
+  return o.platform === "darwin" ? o.allowedApps : [];
+}
+
+/**
+ * Cross-platform reader for `userDeniedBundleIds`. Returns `[]` on Win.
+ * Used by the request_access flow (mac-only tool) — present in shared
+ * helpers for completeness.
+ */
+export function userDeniedBundleIdsOf(
+  o: ComputerUseOverrides,
+): readonly string[] {
+  return o.platform === "darwin" ? o.userDeniedBundleIds : [];
 }
 
 // ----------------------------------------------------------------------------

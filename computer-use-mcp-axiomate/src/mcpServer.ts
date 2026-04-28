@@ -39,9 +39,11 @@ import type {
   ComputerUseSessionContext,
   CoordinateMode,
   CuGrantFlags,
+  CuPermissionRequest,
   CuPermissionResponse,
+  CuTeachPermissionRequest,
 } from "./types.js";
-import { DEFAULT_GRANT_FLAGS } from "./types.js";
+import { allowedAppsOf, DEFAULT_GRANT_FLAGS } from "./types.js";
 
 const DEFAULT_LOCK_HELD_MESSAGE =
   "Another Axiomate session is currently using the computer. Wait for that " +
@@ -196,10 +198,13 @@ export function bindSessionContext(
     // answers, the host's dialog handler sees the abort and tears down.
     const dialogAbort = new AbortController();
 
-    const overrides: ComputerUseOverrides = {
-      allowedApps: [...ctx.getAllowedApps()],
+    // Platform discriminator (B1): mac variant carries allowedApps +
+    // userDeniedBundleIds; win variant has neither. The executor's
+    // capabilities.platform is the source of truth — mac/win/etc — and
+    // we trust it (the host built the executor for this exact platform).
+    const isMacAdapter = adapter.executor.capabilities.platform === "darwin";
+    const baseOverrides = {
       grantFlags: ctx.getGrantFlags(),
-      userDeniedBundleIds: ctx.getUserDeniedBundleIds(),
       coordinateMode,
       selectedDisplayId: ctx.getSelectedDisplayId(),
       displayPinnedByModel: ctx.getDisplayPinnedByModel?.(),
@@ -208,10 +213,11 @@ export function bindSessionContext(
         lastScreenshot ??
         (dimsFallback ? { ...dimsFallback, base64: "" } : undefined),
       onPermissionRequest: wrapPermission
-        ? (req) => wrapPermission(req, dialogAbort.signal)
+        ? (req: CuPermissionRequest) => wrapPermission(req, dialogAbort.signal)
         : undefined,
       onTeachPermissionRequest: wrapTeachPermission
-        ? (req) => wrapTeachPermission(req, dialogAbort.signal)
+        ? (req: CuTeachPermissionRequest) =>
+            wrapTeachPermission(req, dialogAbort.signal)
         : undefined,
       onAppsHidden: ctx.onAppsHidden,
       getClipboardStash: ctx.getClipboardStash,
@@ -229,9 +235,17 @@ export function bindSessionContext(
       acquireCuLock: undefined,
       isAborted: ctx.isAborted,
     };
+    const overrides: ComputerUseOverrides = isMacAdapter
+      ? {
+          platform: "darwin",
+          allowedApps: [...ctx.getAllowedApps()],
+          userDeniedBundleIds: ctx.getUserDeniedBundleIds(),
+          ...baseOverrides,
+        }
+      : { platform: "win32", ...baseOverrides };
 
     logger.debug(
-      `[${serverName}] tool=${name} allowedApps=${overrides.allowedApps.length} coordMode=${coordinateMode}`,
+      `[${serverName}] tool=${name} allowedApps=${allowedAppsOf(overrides).length} coordMode=${coordinateMode}`,
     );
 
     // ─── Dispatch ────────────────────────────────────────────────────────

@@ -29,7 +29,7 @@ export type {
   TeachStepResult,
 } from "./types.js";
 
-export { DEFAULT_GRANT_FLAGS } from "./types.js";
+export { DEFAULT_GRANT_FLAGS, allowedAppsOf, userDeniedBundleIdsOf } from "./types.js";
 
 export {
   SENTINEL_BUNDLE_IDS,

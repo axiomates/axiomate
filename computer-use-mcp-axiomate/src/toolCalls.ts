@@ -77,6 +77,7 @@ import type {
   ResolvedAppRequest,
   TeachStepRequest,
 } from "./types.js";
+import { allowedAppsOf, userDeniedBundleIdsOf } from "./types.js";
 
 /**
  * Finder is never hidden by the hide loop (hiding Finder kills the Desktop),
@@ -481,7 +482,9 @@ async function runInputActionGates(
   subGates: CuSubGates,
   actionKind: CuActionKind,
 ): Promise<CuCallToolResult | null> {
-  if (adapter.executor.capabilities.platform !== "darwin") return null;
+  if (overrides.platform !== "darwin") return null;
+  // After this guard, TypeScript narrows `overrides` to the darwin variant
+  // and `overrides.allowedApps` is typed as AppGrant[] (not optional).
   const bypassed = isAllowlistBypassed();
   adapter.logger.debug(
     `[CU-GATE] runInputActionGates entry: actionKind=${actionKind} bypass=${bypassed} ` +
@@ -657,7 +660,8 @@ async function runHitTestGate(
   y: number,
   actionKind: CuActionKind,
 ): Promise<CuCallToolResult | null> {
-  if (adapter.executor.capabilities.platform !== "darwin") return null;
+  if (overrides.platform !== "darwin") return null;
+  // After this guard, TypeScript narrows `overrides` to the darwin variant.
   const bypassed = isAllowlistBypassed();
   adapter.logger.debug(
     `[CU-GATE] runHitTestGate entry: x=${x} y=${y} actionKind=${actionKind} ` +
@@ -941,6 +945,15 @@ async function handleRequestAccess(
   overrides: ComputerUseOverrides,
   tccState: { accessibility: boolean; screenRecording: boolean } | undefined,
 ): Promise<CuCallToolResult> {
+  // request_access is mac-only — the tool is filtered out of the Win tool
+  // list (see tools.ts). Narrow `overrides` to the darwin variant so reads
+  // of allowedApps / userDeniedBundleIds typecheck.
+  if (overrides.platform !== "darwin") {
+    return errorResult(
+      "request_access is mac-only — Windows has no allowlist permission model.",
+      "bad_args",
+    );
+  }
   adapter.logger.debug(
     `[CU-GATE] handleRequestAccess called: apps=${JSON.stringify(args.apps)} ` +
       `bypass=${isAllowlistBypassed()} ` +
@@ -1462,6 +1475,13 @@ async function handleRequestTeachAccess(
   overrides: ComputerUseOverrides,
   tccState: { accessibility: boolean; screenRecording: boolean } | undefined,
 ): Promise<CuCallToolResult> {
+  // Mac-only flow (teach mode is mac-only by design — no Win analog).
+  if (overrides.platform !== "darwin") {
+    return errorResult(
+      "request_teach_access is mac-only.",
+      "feature_unavailable",
+    );
+  }
   if (!overrides.onTeachPermissionRequest) {
     return errorResult(
       "Teach mode is not available in this session.",
@@ -1764,6 +1784,11 @@ async function executeTeachStep(
   overrides: ComputerUseOverrides,
   subGates: CuSubGates,
 ): Promise<TeachStepOutcome> {
+  // Teach mode is mac-only — caller (handleTeachStep) is gated on the same.
+  // Re-narrow here so overrides.allowedApps reads typecheck.
+  if (overrides.platform !== "darwin") {
+    return { kind: "exit" };
+  }
   // Block until Next or Exit. Same pending-promise pattern as
   // onPermissionRequest — host stores the resolver, overlay IPC fires it.
   // `!` is safe: both callers guard on overrides.onTeachStep before reaching here.
@@ -2145,6 +2170,12 @@ async function autoTriggerEmptyAllowlistDialog(
   overrides: ComputerUseOverrides,
   reason: string,
 ): Promise<CuCallToolResult | undefined> {
+  // Auto-trigger fires only when CLI_CU_CAPABILITIES.screenshotFiltering ===
+  // 'native' (caller-checked). That's mac-only — Win uses 'none' and never
+  // reaches here. Narrow `overrides` for typesafe allowedApps mutation.
+  if (overrides.platform !== "darwin") {
+    return undefined;
+  }
   if (!overrides.onPermissionRequest) {
     return errorResult(
       "No applications are granted for this session and the session has no permission handler. Computer control is unavailable here.",
@@ -2230,8 +2261,9 @@ async function handleScreenshot(
   overrides: ComputerUseOverrides,
   subGates: CuSubGates,
 ): Promise<CuCallToolResult> {
+  const allowedApps = allowedAppsOf(overrides);
   adapter.logger.debug(
-    `[computer-use] handleScreenshot enter: screenshotFiltering=${adapter.executor.capabilities.screenshotFiltering} allowedApps=${overrides.allowedApps.length} autoTargetDisplay=${subGates.autoTargetDisplay} hideBeforeAction=${subGates.hideBeforeAction} selectedDisplayId=${overrides.selectedDisplayId ?? "undef"}`,
+    `[computer-use] handleScreenshot enter: screenshotFiltering=${adapter.executor.capabilities.screenshotFiltering} allowedApps=${allowedApps.length} autoTargetDisplay=${subGates.autoTargetDisplay} hideBeforeAction=${subGates.hideBeforeAction} selectedDisplayId=${overrides.selectedDisplayId ?? "undef"}`,
   );
   // The allowlist gate only matters when the platform actually filters
   // screenshots by allowlist (compositor-level). On platforms where
@@ -2241,7 +2273,7 @@ async function handleScreenshot(
   // Skip the auto-trigger entirely; capture full-screen.
   if (
     adapter.executor.capabilities.screenshotFiltering === "native" &&
-    overrides.allowedApps.length === 0
+    allowedApps.length === 0
   ) {
     const bypassed = isAllowlistBypassed();
     adapter.logger.debug(
@@ -2272,7 +2304,7 @@ async function handleScreenshot(
     // Otherwise sticky display: only auto-resolve when the allowed-app
     // set has changed since the display was last resolved. Prevents the
     // resolver yanking the display on every screenshot.
-    const allowedBundleIds = overrides.allowedApps.map((a) => a.bundleId);
+    const allowedBundleIds = allowedApps.map((a) => a.bundleId);
     const currentAppSetKey = allowedBundleIds.slice().sort().join(",");
     const appSetChanged = currentAppSetKey !== overrides.displayResolvedForApps;
     const autoResolve = !overrides.displayPinnedByModel && appSetChanged;
@@ -2396,7 +2428,7 @@ async function handleScreenshot(
   let hiddenSinceLastSeen: string[] = [];
   if (subGates.hideBeforeAction) {
     const hidden = (await adapter.executor.prepareForAction?.(
-      overrides.allowedApps.map((a) => a.bundleId),
+      allowedApps.map((a) => a.bundleId),
       overrides.selectedDisplayId,
     )) ?? [];
     // "Something appeared since the model last looked." Report whenever:
@@ -2425,7 +2457,7 @@ async function handleScreenshot(
     }
   }
 
-  const allowedBundleIds = overrides.allowedApps.map((g) => g.bundleId);
+  const allowedBundleIds = allowedApps.map((g) => g.bundleId);
   adapter.logger.debug(
     `[computer-use] handleScreenshot non-atomic: calling takeScreenshotWithRetry allowedBundleIds=[${allowedBundleIds.join(",")}] selectedDisplayId=${overrides.selectedDisplayId ?? "undef"}`,
   );
@@ -2587,7 +2619,7 @@ async function handleZoom(
     h: (y1 - y0) * ratioY,
   };
 
-  const allowedIds = overrides.allowedApps.map((g) => g.bundleId);
+  const allowedIds = allowedAppsOf(overrides).map((g) => g.bundleId);
   // Crop from the same display as lastScreenshot so the zoom region
   // matches the image the model is reading coords from.
   const zoomed = await adapter.executor.zoom(
@@ -2691,7 +2723,7 @@ async function handleClickVariant(
       async () => {
         // The fresh screenshot for validation uses the SAME allow-set as
         // the model's last screenshot did, so we compare like with like.
-        const allowedIds = overrides.allowedApps.map((g) => g.bundleId);
+        const allowedIds = allowedAppsOf(overrides).map((g) => g.bundleId);
         try {
           // Fresh shot must match lastScreenshot's display, not the current
           // selection — pixel-compare is against the model's last image.
@@ -3097,9 +3129,10 @@ async function handleOpenApplication(
   if (app instanceof Error) return errorResult(app.message, "bad_args");
 
   const bypassed = isAllowlistBypassed();
+  const allowedApps = allowedAppsOf(overrides);
   adapter.logger.debug(
     `[CU-GATE] handleOpenApplication entry: app=${JSON.stringify(app)} bypass=${bypassed} ` +
-      `allowedApps=${JSON.stringify(overrides.allowedApps.map((a) => a.bundleId))}`,
+      `allowedApps=${JSON.stringify(allowedApps.map((a) => a.bundleId))}`,
   );
   // Bypass: skip the allowlist pre-launch check entirely; pass the input
   // straight to the executor. executor.openApp tolerates raw exe paths
@@ -3111,7 +3144,7 @@ async function handleOpenApplication(
   }
 
   // Resolve display-name → bundle ID. Same logic as request_access.
-  const allowed = new Set(overrides.allowedApps.map((g) => g.bundleId));
+  const allowed = new Set(allowedApps.map((g) => g.bundleId));
   let targetBundleId: string | undefined;
 
   if (looksLikeBundleId(app) && allowed.has(app)) {
@@ -3121,14 +3154,14 @@ async function handleOpenApplication(
     // Avoids paying the listInstalledApps() cost on the hot path and is
     // arguably more correct: if the user granted "Slack", the model asking
     // to open "Slack" should match THAT grant.
-    const match = overrides.allowedApps.find(
+    const match = allowedApps.find(
       (g) => g.displayName.toLowerCase() === app.toLowerCase(),
     );
     targetBundleId = match?.bundleId;
   }
 
   if (!targetBundleId || !allowed.has(targetBundleId)) {
-    const allowlistList = overrides.allowedApps.map(a => a.bundleId).join(',') || '<empty>';
+    const allowlistList = allowedApps.map(a => a.bundleId).join(',') || '<empty>';
     adapter.logger.debug(
       `[CU-GATE] handleOpenApplication BLOCK: app="${app}" not in allowedApps={${allowlistList}} — returning app_not_granted error to AI ` +
         `(default-open mode means this branch is unreachable; if you see this log, isAllowlistBypassed() somehow returned false)`,
@@ -3236,8 +3269,9 @@ async function handleSwitchDisplay(
 function handleListGrantedApplications(
   overrides: ComputerUseOverrides,
 ): CuCallToolResult {
+  // list_granted_applications is mac-only (filtered out of Win tool list).
   return okJson({
-    allowedApps: overrides.allowedApps,
+    allowedApps: allowedAppsOf(overrides),
     grantFlags: overrides.grantFlags,
   });
 }
@@ -3273,7 +3307,7 @@ async function handleReadClipboard(
   if (subGates.clipboardGuard) {
     const frontmost = await adapter.executor.getFrontmostApp();
     const tierByBundleId = new Map(
-      overrides.allowedApps.map((a) => [a.bundleId, a.tier] as const),
+      allowedAppsOf(overrides).map((a) => [a.bundleId, a.tier] as const),
     );
     const frontmostTier = frontmost
       ? tierByBundleId.get(frontmost.bundleId)
@@ -3305,7 +3339,7 @@ async function handleWriteClipboard(
   if (subGates.clipboardGuard) {
     const frontmost = await adapter.executor.getFrontmostApp();
     const tierByBundleId = new Map(
-      overrides.allowedApps.map((a) => [a.bundleId, a.tier] as const),
+      allowedAppsOf(overrides).map((a) => [a.bundleId, a.tier] as const),
     );
     const frontmostTier = frontmost
       ? tierByBundleId.get(frontmost.bundleId)
@@ -3672,7 +3706,7 @@ async function handleComputerBatch(
   // hideBeforeAction:false.
   if (subGates.hideBeforeAction) {
     const hidden = (await adapter.executor.prepareForAction?.(
-      overrides.allowedApps.map((a) => a.bundleId),
+      allowedAppsOf(overrides).map((a) => a.bundleId),
       overrides.selectedDisplayId,
     )) ?? [];
     if (hidden.length > 0) {
@@ -3858,11 +3892,13 @@ export async function handleToolCall(
 
   logger.debug(
     `[CU-DISPATCH] tool=${name} bypass=${isAllowlistBypassed()} ` +
-      `allowedApps.length=${rawOverrides.allowedApps.length} ` +
+      `allowedApps.length=${allowedAppsOf(rawOverrides).length} ` +
       `args=${JSON.stringify(args ?? {}).slice(0, 200)}`,
   );
 
-  // Normalize the allowlist before any gate runs:
+  // Normalize the allowlist before any gate runs (mac-only — Win has no
+  // allowlist concept, the type system says rawOverrides.allowedApps doesn't
+  // exist on the win32 variant):
   //
   // (a) Strip user-denied. A grant from a previous session (before the user
   //     added the app to Settings → Desktop app → Computer Use → Denied apps)
@@ -3882,25 +3918,28 @@ export async function handleToolCall(
   //
   // `.some()` guard keeps the hot path (empty deny list, no legacy grants)
   // zero-alloc.
-  const userDeniedSet = new Set(rawOverrides.userDeniedBundleIds);
-  const overrides: ComputerUseOverrides = rawOverrides.allowedApps.some(
-    (a) =>
-      a.tier === undefined ||
-      userDeniedSet.has(a.bundleId) ||
-      isPolicyDenied(a.bundleId, a.displayName),
-  )
-    ? {
-        ...rawOverrides,
-        allowedApps: rawOverrides.allowedApps
-          .filter((a) => !userDeniedSet.has(a.bundleId))
-          .filter((a) => !isPolicyDenied(a.bundleId, a.displayName))
-          .map((a) =>
-            a.tier !== undefined
-              ? a
-              : { ...a, tier: getDefaultTierForApp(a.bundleId, a.displayName) },
-          ),
-      }
-    : rawOverrides;
+  const overrides: ComputerUseOverrides = (() => {
+    if (rawOverrides.platform !== "darwin") return rawOverrides;
+    const userDeniedSet = new Set(rawOverrides.userDeniedBundleIds);
+    const needsNormalize = rawOverrides.allowedApps.some(
+      (a) =>
+        a.tier === undefined ||
+        userDeniedSet.has(a.bundleId) ||
+        isPolicyDenied(a.bundleId, a.displayName),
+    );
+    if (!needsNormalize) return rawOverrides;
+    return {
+      ...rawOverrides,
+      allowedApps: rawOverrides.allowedApps
+        .filter((a) => !userDeniedSet.has(a.bundleId))
+        .filter((a) => !isPolicyDenied(a.bundleId, a.displayName))
+        .map((a) =>
+          a.tier !== undefined
+            ? a
+            : { ...a, tier: getDefaultTierForApp(a.bundleId, a.displayName) },
+        ),
+    };
+  })();
 
   // ─── Gate 1: kill switch ─────────────────────────────────────────────
   if (adapter.isDisabled()) {
