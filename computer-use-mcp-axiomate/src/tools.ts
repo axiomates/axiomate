@@ -245,8 +245,13 @@ export function buildComputerUseTools(
         (coordinateMode === "display_pt"
           ? "The image is a scaled-down view of the full screen for token economy. The screen's actual pixel resolution is included as a text caption alongside the image; click coordinates must be in that ORIGINAL screen resolution, not the smaller image dimensions. "
           : "The returned image is what subsequent click coordinates are relative to. ") +
-        "**The mouse cursor is rendered in the image** — use it as ground truth for where input will land. Before any click, verify the cursor is on the intended target (see `left_click` for the procedure).\n\n" +
+        "**The mouse cursor IS rendered in the image** — use it as ground truth for where input will land.\n\n" +
         "**Coordinate system: x increases LEFT→RIGHT, y increases TOP→BOTTOM.** (0, 0) is the top-left pixel; (width-1, height-1) is the bottom-right.\n\n" +
+        "**Before any click, verify the cursor is on the intended target:**\n" +
+        "1. `mouse_move` to your best-estimate coords.\n" +
+        "2. `screenshot` (this tool) — locate the cursor in the image.\n" +
+        "3. If the cursor is NOT on the target, `mouse_move` again to refined coords and `screenshot` again. Repeat until cursor is on target.\n" +
+        "4. `left_click` (or other click) with NO arguments — commits at the verified cursor position.\n\n" +
         "If the user names a specific application (e.g. \"截 Slack\", \"show me Chrome\"), prefer `screenshot_window` to capture only that app's frontmost window.",
       inputSchema: {
         type: "object" as const,
@@ -301,7 +306,11 @@ export function buildComputerUseTools(
       name: "left_click",
       description:
         `Left-click at \`coordinate\`, OR at the current cursor position if \`coordinate\` is omitted.\n\n` +
-        `**DO NOT guess coordinates.** You're a VL model — you cannot measure pixel positions precisely from an image, only estimate them. Always verify before clicking via this procedure: \`mouse_move\` to your estimate → \`screenshot\` (the cursor IS rendered in the image) → if cursor is not on the intended target, \`mouse_move\` to refined coords and screenshot again → repeat until cursor is on target → \`left_click\` with NO arguments to commit at the verified cursor position.` +
+        `**DO NOT guess coordinates.** You're a VL model — you can only estimate pixel positions from an image, not measure them precisely. Always follow this procedure:\n\n` +
+        `1. \`mouse_move\` to your best-estimate coords.\n` +
+        `2. \`screenshot\` — the cursor IS rendered in the image; locate it.\n` +
+        `3. If the cursor is NOT on the intended target, \`mouse_move\` to refined coords and \`screenshot\` again. Repeat until the cursor sits on the target.\n` +
+        `4. \`left_click\` with NO arguments — commits the click at the verified cursor position.` +
         frontmostHint,
       inputSchema: {
         type: "object" as const,
@@ -455,8 +464,12 @@ export function buildComputerUseTools(
     {
       name: "mouse_move",
       description:
-        `Move the mouse cursor to \`coordinate\` (no click). Primary use: closed-loop visual targeting — call \`mouse_move\` then \`screenshot\` and check where the cursor landed (it's rendered in the image) vs your target; refine and repeat until on target, then commit via \`left_click\` (no args).\n\n` +
-        `If you push the cursor near a screen edge it may become invisible (off-screen, body cropped); the response text warns when this happens and tells you which edge.${frontmostHint}`,
+        `Move the mouse cursor to \`coordinate\` (no click). Primary use is step 1 of the click-verify procedure (see \`left_click\`):\n\n` +
+        `1. \`mouse_move\` here to your estimated coords.\n` +
+        `2. \`screenshot\` — the cursor IS rendered in the image.\n` +
+        `3. If the cursor is NOT on the target, \`mouse_move\` again to refined coords and \`screenshot\` again. Repeat until on target.\n` +
+        `4. \`left_click\` (or other click) with NO arguments — commits at the verified cursor position.\n\n` +
+        `If the cursor is pushed at/past a screen edge it may become invisible (off-screen / body cropped); the response text warns which edge so you can correct.${frontmostHint}`,
       inputSchema: {
         type: "object" as const,
         properties: {
