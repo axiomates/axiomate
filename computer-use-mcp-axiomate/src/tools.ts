@@ -245,12 +245,12 @@ export function buildComputerUseTools(
         (coordinateMode === "display_pt"
           ? "The image is a scaled-down view of the full screen for token economy. The screen's actual pixel resolution is included as a text caption alongside the image; click coordinates must be in that ORIGINAL screen resolution, not the smaller image dimensions. "
           : "The returned image is what subsequent click coordinates are relative to. ") +
-        "**The mouse cursor IS rendered in the image** — use it as ground truth for where input will land.\n\n" +
+        "**The mouse cursor IS rendered in the image with a thick lime-green CIRCLE outline drawn around it** (the ring is added so the cursor remains unmissable at any image scale / JPEG compression). The cursor's pointer tip sits at the CENTER of the green ring. Use the green ring as ground-truth for where input will land.\n\n" +
         "**Coordinate system: x increases LEFT→RIGHT, y increases TOP→BOTTOM.** (0, 0) is the top-left pixel; (width-1, height-1) is the bottom-right.\n\n" +
-        "**Before any click, verify the cursor sits directly on the target. LOOP this procedure until confirmed:**\n" +
+        "**Before any click, verify the green ring sits directly on the target. LOOP this procedure until confirmed:**\n" +
         "1. `mouse_move` to your best-estimate coords.\n" +
-        "2. `screenshot` (this tool) — locate the cursor in the image.\n" +
-        "3. Cursor on target? NO → loop back to step 1 with refined coords (do this as many times as needed; do NOT give up after one try). YES → step 4.\n" +
+        "2. `screenshot` (this tool) — locate the **lime-green circle** in the image (the cursor's tip is at its center).\n" +
+        "3. Green ring on target? NO → loop back to step 1 with refined coords (do this as many times as needed; do NOT give up after one try). YES → step 4.\n" +
         "4. `left_click` (or other click) with NO arguments — commits at the verified cursor position.\n\n" +
         "If the user names a specific application (e.g. \"截 Slack\", \"show me Chrome\"), prefer `screenshot_window` to capture only that app's frontmost window.",
       inputSchema: {
@@ -308,8 +308,8 @@ export function buildComputerUseTools(
         `Left-click at \`coordinate\`, OR at the current cursor position if \`coordinate\` is omitted.\n\n` +
         `**DO NOT guess coordinates.** You're a VL model — you can only estimate pixel positions from an image, not measure them precisely. Always follow this procedure:\n\n` +
         `1. \`mouse_move\` to your best-estimate coords.\n` +
-        `2. \`screenshot\` — the cursor IS rendered in the image; locate it.\n` +
-        `3. Verify: is the cursor sitting **directly on top of the target** (not "near", not "approximately") ?\n` +
+        `2. \`screenshot\` — find the **lime-green circle** in the image (the cursor's tip is at its center; the green ring is drawn around the cursor specifically so you can spot it at any scale).\n` +
+        `3. Verify: is the green ring sitting **directly on top of the target** (not "near", not "approximately") ?\n` +
         `   - **NO** → go back to step 1 with refined coords. **LOOP steps 1-2-3 as many times as needed.** Two rounds is normal; five is fine if the target is small. Do NOT give up early.\n` +
         `   - **YES** → proceed to step 4.\n` +
         `4. \`left_click\` with NO arguments — commits the click at the verified cursor position.\n\n` +
@@ -469,8 +469,8 @@ export function buildComputerUseTools(
       description:
         `Move the mouse cursor to \`coordinate\` (no click). Primary use is the click-verify LOOP (see \`left_click\`):\n\n` +
         `1. \`mouse_move\` here to your estimated coords.\n` +
-        `2. \`screenshot\` — the cursor IS rendered in the image; locate it.\n` +
-        `3. Cursor directly on target? NO → loop back to step 1 with refined coords (loop as many rounds as needed). YES → step 4.\n` +
+        `2. \`screenshot\` — locate the **lime-green circle** in the image (the cursor's tip is at its center).\n` +
+        `3. Green ring directly on target? NO → loop back to step 1 with refined coords (loop as many rounds as needed). YES → step 4.\n` +
         `4. \`left_click\` (or other click) with NO arguments — commits at the verified cursor position.\n\n` +
         `If the cursor is pushed at/past a screen edge it may become invisible (off-screen / body cropped); the response text warns which edge so you can correct.${frontmostHint}`,
       inputSchema: {

@@ -339,6 +339,8 @@ pub fn capture_display_scaled(
     physical_y: i32,
     physical_w: u32,
     physical_h: u32,
+    logical_w: u32,
+    logical_h: u32,
     target_w: u32,
     target_h: u32,
     jpeg_quality: u32,
@@ -350,6 +352,8 @@ pub fn capture_display_scaled(
             physical_y,
             physical_w,
             physical_h,
+            logical_w,
+            logical_h,
             target_w,
             target_h,
             jpeg_quality.min(100) as u8,
@@ -358,7 +362,8 @@ pub fn capture_display_scaled(
     #[cfg(not(target_os = "windows"))]
     {
         let _ = (
-            physical_x, physical_y, physical_w, physical_h, target_w, target_h, jpeg_quality,
+            physical_x, physical_y, physical_w, physical_h, logical_w, logical_h,
+            target_w, target_h, jpeg_quality,
         );
         Ok(None)
     }
@@ -708,9 +713,10 @@ mod windows_impl {
         CloseHandle, BOOL, ERROR_NO_MORE_ITEMS, HANDLE, HWND, LPARAM, POINT, RECT,
     };
     use windows::Win32::Graphics::Gdi::{
-        BitBlt, CreateCompatibleBitmap, CreateCompatibleDC, DeleteDC, DeleteObject,
-        EnumDisplayMonitors, GetDC, GetDIBits, ReleaseDC, SelectObject, BITMAPINFO,
-        BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS, HDC, HMONITOR, SRCCOPY,
+        BitBlt, CreateCompatibleBitmap, CreateCompatibleDC, CreatePen, DeleteDC,
+        DeleteObject, Ellipse, EnumDisplayMonitors, GetDC, GetDIBits, GetStockObject,
+        ReleaseDC, SelectObject, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS,
+        HDC, HMONITOR, NULL_BRUSH, PS_SOLID, SRCCOPY,
     };
     use windows::Win32::Security::{GetTokenInformation, TokenElevation, TOKEN_ELEVATION, TOKEN_QUERY};
     use windows::Win32::System::Registry::{
@@ -1721,10 +1727,28 @@ mod windows_impl {
     /// Note: `GetIconInfo` allocates `hbmMask` and (for color cursors)
     /// `hbmColor` bitmap handles which the caller owns; we DeleteObject
     /// them on every exit path.
+    /// `dc_physical_w` / `dc_physical_h` describe the **physical** pixel
+    /// dimensions of the bitmap selected into `dc`. Used to bridge the
+    /// coord-space mismatch caused by Win DPI virtualization: this NAPI
+    /// module is DPI-unaware (the calling Bun process is too), so
+    /// `GetCursorInfo`'s `ptScreenPos` returns LOGICAL pixels, but the
+    /// `mem_dc` we composite into was filled by `BitBlt` of PHYSICAL
+    /// pixels. Without scale conversion the cursor lands at logical-coord
+    /// position inside a bitmap that's `scale_factor`× bigger, putting
+    /// the cursor at ~1/scale of where it should be (visible at top-left
+    /// instead of where the user actually pointed). The `_logical_*`
+    /// params let us scale the cursor coord to the physical bitmap space.
+    /// Origin is also passed in physical coords (the BitBlt source rect
+    /// origin); cursor's logical coord is scaled up first, then the
+    /// physical origin is subtracted.
     unsafe fn compose_cursor_into_dc(
         dc: HDC,
-        origin_x: i32,
-        origin_y: i32,
+        physical_origin_x: i32,
+        physical_origin_y: i32,
+        logical_screen_w: i32,
+        logical_screen_h: i32,
+        physical_screen_w: i32,
+        physical_screen_h: i32,
     ) {
         let mut info: CURSORINFO = std::mem::zeroed();
         info.cbSize = std::mem::size_of::<CURSORINFO>() as u32;
@@ -1744,10 +1768,31 @@ mod windows_impl {
         if GetIconInfo(info.hCursor, &mut icon_info).is_err() {
             return;
         }
-        let draw_x =
-            info.ptScreenPos.x - origin_x - icon_info.xHotspot as i32;
-        let draw_y =
-            info.ptScreenPos.y - origin_y - icon_info.yHotspot as i32;
+        // Cursor coord is in logical pixels (DPI-unaware process); scale
+        // to physical pixels before placing into the physical-sized DC.
+        // Guard against div-by-zero with sensible fallback (treat as 1:1).
+        let scale_x = if logical_screen_w > 0 {
+            physical_screen_w as f32 / logical_screen_w as f32
+        } else {
+            1.0
+        };
+        let scale_y = if logical_screen_h > 0 {
+            physical_screen_h as f32 / logical_screen_h as f32
+        } else {
+            1.0
+        };
+        let cursor_physical_x =
+            (info.ptScreenPos.x as f32 * scale_x).round() as i32;
+        let cursor_physical_y =
+            (info.ptScreenPos.y as f32 * scale_y).round() as i32;
+        let tip_x = cursor_physical_x - physical_origin_x;
+        let tip_y = cursor_physical_y - physical_origin_y;
+        // Hotspot is in logical pixels (per Win cursor convention);
+        // scale to physical to match the cursor bitmap we're compositing.
+        let hotspot_x = (icon_info.xHotspot as f32 * scale_x).round() as i32;
+        let hotspot_y = (icon_info.yHotspot as f32 * scale_y).round() as i32;
+        let draw_x = tip_x - hotspot_x;
+        let draw_y = tip_y - hotspot_y;
         let _ = DrawIconEx(
             dc,
             draw_x,
@@ -1764,6 +1809,43 @@ mod windows_impl {
         }
         if !icon_info.hbmColor.0.is_null() {
             let _ = DeleteObject(icon_info.hbmColor);
+        }
+
+        // High-contrast marker ring around the cursor tip. The system cursor
+        // (~32×32 grayscale arrow) gets visually swallowed by JPEG
+        // compression + screenshot downscaling at scaled-down image dims;
+        // VL models then can't locate the cursor in the image and fall
+        // back to clicking guessed coords. A thick lime-green circle is
+        // unmistakable at any zoom level — VL models latch onto it
+        // reliably as the input-position indicator.
+        //
+        // COLORREF format on Win32 is 0x00BBGGRR (BGR despite the name).
+        // 0x0000FF00 = pure green. Lime green is high-contrast against
+        // both light and dark UI themes. Pen width 3 in physical pixels,
+        // which still renders ~2px after a 1920→1568 downscale — enough
+        // to remain visible after JPEG quantization.
+        const RING_RADIUS: i32 = 18;
+        const RING_PEN_WIDTH: i32 = 3;
+        const RING_COLOR: u32 = 0x0000FF00; // BGR: pure lime green
+        let pen = CreatePen(
+            PS_SOLID,
+            RING_PEN_WIDTH,
+            windows::Win32::Foundation::COLORREF(RING_COLOR),
+        );
+        if !pen.0.is_null() {
+            let null_brush = GetStockObject(NULL_BRUSH);
+            let prev_pen = SelectObject(dc, pen);
+            let prev_brush = SelectObject(dc, null_brush);
+            let _ = Ellipse(
+                dc,
+                tip_x - RING_RADIUS,
+                tip_y - RING_RADIUS,
+                tip_x + RING_RADIUS,
+                tip_y + RING_RADIUS,
+            );
+            SelectObject(dc, prev_pen);
+            SelectObject(dc, prev_brush);
+            let _ = DeleteObject(pen);
         }
     }
 
@@ -1850,7 +1932,20 @@ mod windows_impl {
         // it lives on a separate hardware-overlay path. If the cursor
         // happens to be inside this window's rect, paint it; otherwise
         // DrawIconEx clips and produces no visible change.
-        compose_cursor_into_dc(mem_dc, window_left, window_top);
+        //
+        // Window capture: PrintWindow / BitBlt-from-window-DC produces
+        // a bitmap in the window's local coord space, which is the same
+        // space as `GetCursorInfo`'s logical coords. No scale conversion
+        // needed — pass logical=physical so the helper's scaling is 1:1.
+        compose_cursor_into_dc(
+            mem_dc,
+            window_left,
+            window_top,
+            width,
+            height,
+            width,
+            height,
+        );
 
         // Read pixels via GetDIBits. We request 32bpp top-down (negative
         // height in BITMAPINFOHEADER) so we don't need to flip rows after.
@@ -1917,6 +2012,8 @@ mod windows_impl {
         physical_y: i32,
         physical_w: u32,
         physical_h: u32,
+        logical_w: u32,
+        logical_h: u32,
         target_w: u32,
         target_h: u32,
         jpeg_quality: u8,
@@ -1930,6 +2027,8 @@ mod windows_impl {
                 physical_y,
                 physical_w as i32,
                 physical_h as i32,
+                logical_w as i32,
+                logical_h as i32,
                 target_w,
                 target_h,
                 jpeg_quality,
@@ -1952,6 +2051,8 @@ mod windows_impl {
         src_y: i32,
         src_w: i32,
         src_h: i32,
+        logical_w: i32,
+        logical_h: i32,
         target_w: u32,
         target_h: u32,
         jpeg_quality: u8,
@@ -2016,11 +2117,20 @@ mod windows_impl {
 
         // Composite the cursor on top of the captured display pixels.
         // BitBlt(desktop DC) doesn't include the cursor — it lives on a
-        // separate hardware-overlay path. The capture origin in virtual-
-        // screen space is (src_x, src_y); the cursor's screen position
-        // (from GetCursorInfo) is also in virtual-screen space, so
-        // compose_cursor_into_dc subtracts to get the local coord.
-        compose_cursor_into_dc(mem_dc, src_x, src_y);
+        // separate hardware-overlay path. mem_dc is sized to physical
+        // pixels (src_w × src_h); GetCursorInfo returns logical coords
+        // (this NAPI module / Bun process is DPI-unaware), so we pass
+        // the logical-vs-physical screen dims to scale the cursor coord
+        // up to the physical bitmap space before drawing.
+        compose_cursor_into_dc(
+            mem_dc,
+            src_x,
+            src_y,
+            logical_w,
+            logical_h,
+            src_w,
+            src_h,
+        );
 
         // 32bpp top-down BGRA — same as capture_window_inner.
         let row_size = (src_w as usize) * 4;

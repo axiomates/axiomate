@@ -135,10 +135,26 @@ export function createWinExecutor(): ComputerExecutor {
     // models misidentify which icon is which. 92 keeps small UI
     // elements crisp; size goes up ~2.5× (~150KB → ~370KB) which is
     // still fine for token budgets.
-    const r = winNapi.captureDisplayScaled(physX, physY, physW, physH, tw, th, 92)
+    // Pass both physical dims (BitBlt source rect) and logical dims
+    // (cursor coord space). The Rust composite step needs both to scale
+    // GetCursorInfo's logical-pixel ptScreenPos up to physical pixels
+    // before painting the cursor onto the physical-sized mem_dc; without
+    // this the cursor lands at ~1/scale of where it should be on
+    // high-DPI displays (4K @ 200% paints cursor at half-position).
+    const r = winNapi.captureDisplayScaled(
+      physX,
+      physY,
+      physW,
+      physH,
+      display.width,
+      display.height,
+      tw,
+      th,
+      92,
+    )
     if (!r) {
       logForDebugging(
-        `[computer-use] captureDisplayScaled returned null (physX=${physX} physY=${physY} physW=${physW} physH=${physH} tw=${tw} th=${th})`,
+        `[computer-use] captureDisplayScaled returned null (physX=${physX} physY=${physY} physW=${physW} physH=${physH} logW=${display.width} logH=${display.height} tw=${tw} th=${th})`,
         { level: 'warn' },
       )
       return null
