@@ -45,7 +45,7 @@ import type {
   ScreenshotResult,
 } from 'computer-use-mcp-axiomate'
 
-import { logForDebugging } from '../debug.js'
+import { dumpScreenshotForDebug, logForDebugging } from '../debug.js'
 import { WIN_CLI_CAPABILITIES } from './common.js'
 import { notifyExpectedEscape } from './escHotkey.js'
 import {
@@ -143,6 +143,10 @@ export function createWinExecutor(): ComputerExecutor {
       )
       return null
     }
+    // Debug aux: dump JPEG to ~/.axiomate/debug/screenshots/screenshot-latest.jpg
+    // so user can visually inspect what AI saw (cursor position, UI state).
+    // Best-effort, never breaks the screenshot return path.
+    dumpScreenshotForDebug('screenshot', r.base64)
     return {
       base64: r.base64,
       width: r.width,
@@ -419,6 +423,8 @@ export function createWinExecutor(): ComputerExecutor {
       )
       const image = outcome.image
       if (!image) return null
+      // Debug aux: dump JPEG so user can visually inspect what AI saw.
+      dumpScreenshotForDebug('screenshot_window', image.base64)
       return {
         base64: image.base64,
         width: image.width,

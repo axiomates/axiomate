@@ -237,6 +237,35 @@ export function getDebugLogPath(): string {
 }
 
 /**
+ * Dump a screenshot's JPEG bytes to `~/.axiomate/debug/screenshots/<tool>-latest.jpg`
+ * (overwrites). Best-effort — silently swallows errors so a debug-aux
+ * failure never breaks the actual screenshot return path. The user
+ * inspects these to verify what AI saw vs what's actually on screen
+ * (cursor render position, UI element location, etc.).
+ *
+ * `tool` distinguishes screenshot variants ("screenshot" / "screenshot_window" /
+ * "zoom"). Each tool gets its own latest file so the user can compare
+ * the most recent of each. Older session-stamped files are NOT kept —
+ * the volume of screenshots in a debug session would balloon disk usage;
+ * this is for "what did AI see right now" not historical archive.
+ */
+export function dumpScreenshotForDebug(tool: string, base64: string): void {
+  try {
+    if (!base64) return
+    const buf = Buffer.from(base64, 'base64')
+    if (buf.length === 0) return
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const fs = require('fs') as typeof import('fs')
+    const dir = join(getConfigHomeDir(), 'debug', 'screenshots')
+    fs.mkdirSync(dir, { recursive: true })
+    const safe = tool.replace(/[^a-zA-Z0-9_-]/g, '_')
+    fs.writeFileSync(join(dir, `${safe}-latest.jpg`), buf)
+  } catch {
+    // best-effort
+  }
+}
+
+/**
  * Updates the latest debug log symlink to point to the current debug log file.
  * Creates or updates a symlink at ~/.axiomate/debug/latest
  */
