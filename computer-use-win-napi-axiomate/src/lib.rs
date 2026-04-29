@@ -411,9 +411,25 @@ pub fn capture_excluding(
     Ok(None)
 }
 
-/// Move the cursor to (x, y). Coords are PHYSICAL pixels in virtual-
-/// screen space — same coord system that GetCursorPos returns. Negative
-/// x is fine for monitors left of the primary.
+/// Move the cursor to (x, y) in virtual-screen space. Negative x is
+/// fine for monitors left of the primary.
+///
+/// **Coord space**: same DPI mode as the calling process. Currently
+/// the Bun host is DPI-unaware (we don't call
+/// `SetProcessDpiAwarenessContext`), so all Win32 cursor APIs in this
+/// module — `GetCursorPos`, `SendInput(MOUSEEVENTF_ABSOLUTE)` (which
+/// normalizes against `GetSystemMetrics(SM_*VIRTUALSCREEN)`) — operate
+/// in LOGICAL pixels (the OS virtualizes physical→logical for the
+/// process). The agent's `scaleCoord` likewise produces logical-screen
+/// coords. Everything in this module is internally consistent in
+/// logical-pixel space; the OS handles the logical→physical mapping
+/// at the input-driver layer when it dispatches the cursor.
+///
+/// (If we ever flip the process to DPI-aware via
+/// `SetProcessDpiAwarenessContext(PER_MONITOR_AWARE_V2)`, this entire
+/// pipeline would shift to physical pixels and the agent's `scaleCoord`
+/// would need to multiply by `scaleFactor`. See coord-pipeline review
+/// notes for the full audit.)
 ///
 /// Replaces nut.js's `mouse.move()` on Windows. nut.js has been
 /// silently failing in Bun-compiled axiomate exes — standalone Node
@@ -1787,12 +1803,16 @@ mod windows_impl {
             (info.ptScreenPos.y as f32 * scale_y).round() as i32;
         let tip_x = cursor_physical_x - physical_origin_x;
         let tip_y = cursor_physical_y - physical_origin_y;
-        // Hotspot is in logical pixels (per Win cursor convention);
-        // scale to physical to match the cursor bitmap we're compositing.
-        let hotspot_x = (icon_info.xHotspot as f32 * scale_x).round() as i32;
-        let hotspot_y = (icon_info.yHotspot as f32 * scale_y).round() as i32;
-        let draw_x = tip_x - hotspot_x;
-        let draw_y = tip_y - hotspot_y;
+        // Hotspot is in CURSOR-BITMAP-PIXEL coords (the cursor's own
+        // bitmap, ~32×32), NOT screen-pixel coords. `DrawIconEx` with
+        // `cxWidth=0, cyHeight=0` paints the cursor at its native bitmap
+        // size, so the hotspot's pixel offset from `(draw_x, draw_y)` is
+        // unchanged regardless of mem_dc DPI. Do NOT multiply by scale —
+        // doing so would put non-arrow cursors (text I-beam hotspot
+        // ~(15,15), hand cursor, resize cursors) off-target by
+        // `(scale - 1) × hotspot` pixels in the physical mem_dc.
+        let draw_x = tip_x - icon_info.xHotspot as i32;
+        let draw_y = tip_y - icon_info.yHotspot as i32;
         let _ = DrawIconEx(
             dc,
             draw_x,
@@ -1821,15 +1841,24 @@ mod windows_impl {
         //
         // COLORREF format on Win32 is 0x00BBGGRR (BGR despite the name).
         // 0x0000FF00 = pure green. Lime green is high-contrast against
-        // both light and dark UI themes. Pen width 3 in physical pixels,
-        // which still renders ~2px after a 1920→1568 downscale — enough
-        // to remain visible after JPEG quantization.
-        const RING_RADIUS: i32 = 18;
-        const RING_PEN_WIDTH: i32 = 3;
+        // both light and dark UI themes.
+        //
+        // Sizes are in OUTPUT (logical) pixels, scaled UP to physical
+        // pixels for the actual draw. After Lanczos resize from physical
+        // mem_dc → logical-size JPG, the ring lands at exactly
+        // RING_RADIUS_OUT logical pixels regardless of DPI scale. Without
+        // this, a fixed physical radius shrinks proportionally to scale
+        // factor in the output JPG (4K@200% → 9px ring instead of 18).
+        const RING_RADIUS_OUT: i32 = 18;
+        const RING_PEN_WIDTH_OUT: i32 = 3;
         const RING_COLOR: u32 = 0x0000FF00; // BGR: pure lime green
+        let ring_radius_phys =
+            ((RING_RADIUS_OUT as f32) * scale_x).round() as i32;
+        let ring_pen_width_phys =
+            ((RING_PEN_WIDTH_OUT as f32) * scale_x).round().max(1.0) as i32;
         let pen = CreatePen(
             PS_SOLID,
-            RING_PEN_WIDTH,
+            ring_pen_width_phys,
             windows::Win32::Foundation::COLORREF(RING_COLOR),
         );
         if !pen.0.is_null() {
@@ -1838,10 +1867,10 @@ mod windows_impl {
             let prev_brush = SelectObject(dc, null_brush);
             let _ = Ellipse(
                 dc,
-                tip_x - RING_RADIUS,
-                tip_y - RING_RADIUS,
-                tip_x + RING_RADIUS,
-                tip_y + RING_RADIUS,
+                tip_x - ring_radius_phys,
+                tip_y - ring_radius_phys,
+                tip_x + ring_radius_phys,
+                tip_y + ring_radius_phys,
             );
             SelectObject(dc, prev_pen);
             SelectObject(dc, prev_brush);
