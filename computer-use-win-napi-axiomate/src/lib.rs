@@ -404,6 +404,7 @@ pub fn capture_display_scaled(
     target_w: u32,
     target_h: u32,
     jpeg_quality: u32,
+    grid_mode: Option<u32>,
 ) -> napi::Result<Option<DisplayCaptureResult>> {
     #[cfg(target_os = "windows")]
     {
@@ -412,11 +413,12 @@ pub fn capture_display_scaled(
             target_w,
             target_h,
             jpeg_quality.min(100) as u8,
+            grid_mode.unwrap_or(0) as u8,
         ))
     }
     #[cfg(not(target_os = "windows"))]
     {
-        let _ = (src, target_w, target_h, jpeg_quality);
+        let _ = (src, target_w, target_h, jpeg_quality, grid_mode);
         Ok(None)
     }
 }
@@ -1853,6 +1855,182 @@ mod windows_impl {
         }
     }
 
+    // ── Coordinate grid / ruler overlay ────────────────────────────────
+    // 5×7 bitmap font for digits 0-9. Each digit is 7 rows of 5 bits
+    // packed into the low 5 bits of a u8 (MSB = leftmost pixel).
+    const FONT_W: i32 = 5;
+    const FONT_H: i32 = 7;
+    #[rustfmt::skip]
+    const DIGITS: [[u8; 7]; 10] = [
+        [0b01110, 0b10001, 0b10011, 0b10101, 0b11001, 0b10001, 0b01110], // 0
+        [0b00100, 0b01100, 0b00100, 0b00100, 0b00100, 0b00100, 0b01110], // 1
+        [0b01110, 0b10001, 0b00001, 0b00110, 0b01000, 0b10000, 0b11111], // 2
+        [0b01110, 0b10001, 0b00001, 0b00110, 0b00001, 0b10001, 0b01110], // 3
+        [0b00010, 0b00110, 0b01010, 0b10010, 0b11111, 0b00010, 0b00010], // 4
+        [0b11111, 0b10000, 0b11110, 0b00001, 0b00001, 0b10001, 0b01110], // 5
+        [0b00110, 0b01000, 0b10000, 0b11110, 0b10001, 0b10001, 0b01110], // 6
+        [0b11111, 0b00001, 0b00010, 0b00100, 0b01000, 0b01000, 0b01000], // 7
+        [0b01110, 0b10001, 0b10001, 0b01110, 0b10001, 0b10001, 0b01110], // 8
+        [0b01110, 0b10001, 0b10001, 0b01111, 0b00001, 0b00010, 0b01100], // 9
+    ];
+
+    fn set_px(buf: &mut [u8], w: u32, h: u32, x: i32, y: i32, r: u8, g: u8, b: u8) {
+        if x >= 0 && x < w as i32 && y >= 0 && y < h as i32 {
+            let idx = ((y as usize) * (w as usize) + (x as usize)) * 3;
+            buf[idx] = r;
+            buf[idx + 1] = g;
+            buf[idx + 2] = b;
+        }
+    }
+
+    fn blend_px(buf: &mut [u8], w: u32, h: u32, x: i32, y: i32, r: u8, g: u8, b: u8, alpha: f32) {
+        if x >= 0 && x < w as i32 && y >= 0 && y < h as i32 {
+            let idx = ((y as usize) * (w as usize) + (x as usize)) * 3;
+            let inv = 1.0 - alpha;
+            buf[idx]     = (buf[idx]     as f32 * inv + r as f32 * alpha) as u8;
+            buf[idx + 1] = (buf[idx + 1] as f32 * inv + g as f32 * alpha) as u8;
+            buf[idx + 2] = (buf[idx + 2] as f32 * inv + b as f32 * alpha) as u8;
+        }
+    }
+
+    fn darken_px(buf: &mut [u8], w: u32, _h: u32, x: i32, y: i32) {
+        let idx = ((y as usize) * (w as usize) + (x as usize)) * 3;
+        buf[idx]     = buf[idx]     / 2;
+        buf[idx + 1] = buf[idx + 1] / 2;
+        buf[idx + 2] = buf[idx + 2] / 2;
+    }
+
+    fn draw_digit(buf: &mut [u8], w: u32, h: u32, digit: u8, ox: i32, oy: i32) {
+        let glyph = &DIGITS[digit as usize % 10];
+        for row in 0..FONT_H {
+            let bits = glyph[row as usize];
+            for col in 0..FONT_W {
+                if bits & (1 << (FONT_W - 1 - col)) != 0 {
+                    set_px(buf, w, h, ox + col, oy + row, 255, 0, 0);
+                }
+            }
+        }
+    }
+
+    fn draw_number(buf: &mut [u8], w: u32, h: u32, num: u32, ox: i32, oy: i32) {
+        let s = num.to_string();
+        let mut x = ox;
+        for ch in s.bytes() {
+            if ch >= b'0' && ch <= b'9' {
+                draw_digit(buf, w, h, ch - b'0', x, oy);
+                x += FONT_W + 1;
+            }
+        }
+    }
+
+    fn number_pixel_width(num: u32) -> i32 {
+        let digits = if num == 0 { 1 } else { (num as f64).log10() as i32 + 1 };
+        digits * (FONT_W + 1) - 1
+    }
+
+    /// Draw coordinate rulers (mode 1 = edge only, mode 2 = edge + full grid).
+    fn draw_grid_on_rgb(buf: &mut [u8], w: u32, h: u32, mode: u8) {
+        let w_i = w as i32;
+        let h_i = h as i32;
+        // top/bottom band: 5px tick + 2px gap + 7px font = 14
+        let tb = 14_i32;
+        // left/right band: 5px tick + 2px gap + 23px max label = 30
+        let sb = 30_i32;
+        let tick_interval = 50_i32;
+        let label_interval = 100_i32;
+        let label_tick = 5_i32;
+        let plain_tick = 10_i32;
+
+        // ── Top ruler: ticks from top edge down, labels below ─────────
+        let mut cx = 0;
+        while cx <= w_i {
+            let is_label = cx % label_interval == 0;
+            let tl = if is_label { label_tick } else { plain_tick };
+            let pad = if is_label { number_pixel_width(cx as u32) / 2 + 2 } else { 2 };
+            let dh = if is_label { tb } else { tl };
+            for y in 0..dh.min(h_i) {
+                for x in (cx - pad).max(0)..(cx + pad + 1).min(w_i) {
+                    darken_px(buf, w, h, x, y);
+                }
+            }
+            for y in 0..tl { blend_px(buf, w, h, cx, y, 255, 0, 0, 0.5); }
+            if is_label {
+                let nw = number_pixel_width(cx as u32);
+                draw_number(buf, w, h, cx as u32, (cx - nw / 2).max(0), tb - FONT_H);
+            }
+            cx += tick_interval;
+        }
+
+        // ── Left ruler: ticks from left edge right, labels to the right ─
+        let mut cy = 0;
+        while cy <= h_i {
+            let is_label = cy % label_interval == 0 && cy > 0;
+            let tl = if is_label { label_tick } else { plain_tick };
+            let pad = if is_label { FONT_H / 2 + 2 } else { 2 };
+            let dw = if is_label { sb } else { tl };
+            for y in (cy - pad).max(0)..(cy + pad + 1).min(h_i) {
+                for x in 0..dw.min(w_i) { darken_px(buf, w, h, x, y); }
+            }
+            for x in 0..tl { blend_px(buf, w, h, x, cy, 255, 0, 0, 0.5); }
+            if is_label {
+                draw_number(buf, w, h, cy as u32, label_tick + 2, cy - FONT_H / 2);
+            }
+            cy += tick_interval;
+        }
+
+        // ── Bottom ruler: ticks from bottom edge up, labels above ─────
+        let mut cx = 0;
+        while cx <= w_i {
+            let is_label = cx % label_interval == 0;
+            let tl = if is_label { label_tick } else { plain_tick };
+            let pad = if is_label { number_pixel_width(cx as u32) / 2 + 2 } else { 2 };
+            let dh = if is_label { tb } else { tl };
+            for y in (h_i - dh).max(0)..h_i {
+                for x in (cx - pad).max(0)..(cx + pad + 1).min(w_i) {
+                    darken_px(buf, w, h, x, y);
+                }
+            }
+            for y in (h_i - tl)..h_i { blend_px(buf, w, h, cx, y, 255, 0, 0, 0.5); }
+            if is_label {
+                let nw = number_pixel_width(cx as u32);
+                draw_number(buf, w, h, cx as u32, (cx - nw / 2).max(0), h_i - tb);
+            }
+            cx += tick_interval;
+        }
+
+        // ── Right ruler: ticks from right edge left, labels to the left ─
+        let mut cy = 0;
+        while cy <= h_i {
+            let is_label = cy % label_interval == 0 && cy > 0;
+            let tl = if is_label { label_tick } else { plain_tick };
+            let pad = if is_label { FONT_H / 2 + 2 } else { 2 };
+            let dw = if is_label { sb } else { tl };
+            for y in (cy - pad).max(0)..(cy + pad + 1).min(h_i) {
+                for x in (w_i - dw).max(0)..w_i { darken_px(buf, w, h, x, y); }
+            }
+            for x in (w_i - tl)..w_i { blend_px(buf, w, h, x, cy, 255, 0, 0, 0.5); }
+            if is_label {
+                let nw = number_pixel_width(cy as u32);
+                draw_number(buf, w, h, cy as u32, w_i - label_tick - 2 - nw, cy - FONT_H / 2);
+            }
+            cy += tick_interval;
+        }
+
+        // Full mode: semi-transparent grid lines across the image
+        if mode >= 2 {
+            let mut gx = tick_interval;
+            while gx < w_i {
+                for y in tb..(h_i - tb) { blend_px(buf, w, h, gx, y, 255, 0, 0, 0.25); }
+                gx += tick_interval;
+            }
+            let mut gy = tick_interval;
+            while gy < h_i {
+                for x in sb..(w_i - sb) { blend_px(buf, w, h, x, gy, 255, 0, 0, 0.25); }
+                gy += tick_interval;
+            }
+        }
+    }
+
     /// Returns the bitmap-local cursor tip `(x, y)` if the cursor was
     /// visible and drawn, or `None` if cursor was hidden / suppressed.
     unsafe fn compose_cursor_into_dc(dc: HDC, bitmap_origin: VPoint) -> Option<(i32, i32)> {
@@ -2054,6 +2232,7 @@ mod windows_impl {
         target_w: u32,
         target_h: u32,
         jpeg_quality: u8,
+        grid_mode: u8,
     ) -> Option<DisplayCaptureResult> {
         ensure_dpi_aware();
         if src.size.w == 0 || src.size.h == 0 || target_w == 0 || target_h == 0 {
@@ -2065,6 +2244,7 @@ mod windows_impl {
                 target_w,
                 target_h,
                 jpeg_quality,
+                grid_mode,
             )
         };
         match result {
@@ -2084,6 +2264,7 @@ mod windows_impl {
         target_w: u32,
         target_h: u32,
         jpeg_quality: u8,
+        grid_mode: u8,
     ) -> Result<DisplayCaptureResult, String> {
         let src_x = src.origin.x;
         let src_y = src.origin.y;
@@ -2207,6 +2388,10 @@ mod windows_impl {
             let tip_x_img = (tx as i64 * final_w as i64 / src_w as i64) as i32;
             let tip_y_img = (ty as i64 * final_h as i64 / src_h as i64) as i32;
             draw_ring_on_rgb(&mut final_rgb, final_w, final_h, tip_x_img, tip_y_img);
+        }
+
+        if grid_mode > 0 {
+            draw_grid_on_rgb(&mut final_rgb, final_w, final_h, grid_mode);
         }
 
         let mut jpeg = Vec::new();

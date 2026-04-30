@@ -93,7 +93,7 @@ export interface ComputerExecutor {
   findWindowDisplays(appIdentifiers: string[]): Promise<Array<{ appIdentifier: string; displayIds: number[] }>>;
 
   // ── Screenshots ──────────────────────────────────────────────────────
-  screenshot(opts: { allowedAppIdentifiers: string[]; displayId?: number }): Promise<ScreenshotResult>;
+  screenshot(opts: { allowedAppIdentifiers: string[]; displayId?: number; coordinateGrid?: string }): Promise<ScreenshotResult>;
   zoom(
     region: { x: number; y: number; w: number; h: number },
     allowedAppIdentifiers: string[],
@@ -104,6 +104,7 @@ export interface ComputerExecutor {
     preferredDisplayId?: number;
     autoResolve: boolean;
     doHide?: boolean;
+    coordinateGrid?: string;
   }): Promise<ResolvePrepareCaptureResult>;
   /**
    * Capture the frontmost window of the given app. macOS uses

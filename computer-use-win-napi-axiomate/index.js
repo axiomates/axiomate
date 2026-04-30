@@ -126,10 +126,11 @@ module.exports.captureDisplayScaled = function captureDisplayScaled(
   targetW,
   targetH,
   jpegQuality,
+  gridMode,
 ) {
   const mod = loadNative()
   if (!mod) return null
-  return mod.captureDisplayScaled(src, targetW, targetH, jpegQuality)
+  return mod.captureDisplayScaled(src, targetW, targetH, jpegQuality, gridMode ?? undefined)
 }
 
 // ── WGC allowlist-filtered capture (Stage 3 skeleton, returns None) ────────

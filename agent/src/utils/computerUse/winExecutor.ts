@@ -121,7 +121,7 @@ export function createWinExecutor(): ComputerExecutor {
   // Per-Monitor V2 DPI awareness, all coords — including scaleCoord
   // output, click targets, and cursor positions — are in physical px.
   // Image resize is purely a visual / token-budget optimization.
-  async function captureScaledDisplay(displayId?: number): Promise<ScreenshotResult | null> {
+  async function captureScaledDisplay(displayId?: number, gridMode?: number): Promise<ScreenshotResult | null> {
     if (!napiAvailable) return null
     const display = getWinDisplaySize(displayId)
     const [tw, th] = computeImageDim(display.width, display.height)
@@ -132,7 +132,7 @@ export function createWinExecutor(): ComputerExecutor {
     // still fine for token budgets.
     const r = winNapi.captureDisplayScaled(
       { origin: { x: display.originX, y: display.originY }, size: { w: display.width, h: display.height } },
-      tw, th, 92,
+      tw, th, 92, gridMode,
     )
     if (!r) {
       logForDebugging(
@@ -433,11 +433,13 @@ export function createWinExecutor(): ComputerExecutor {
     async screenshot(opts: {
       allowedAppIdentifiers: string[]
       displayId?: number
+      coordinateGrid?: string
     }): Promise<ScreenshotResult> {
       // Non-atomic path — toolCalls.ts handleScreenshot calls this when
       // autoTargetDisplay sub-gate is OFF. Hide loop (if enabled) runs
       // separately via prepareForAction; here we only do the capture.
-      const r = await captureScaledDisplay(opts.displayId)
+      const gridMode = opts.coordinateGrid === 'none' ? 0 : opts.coordinateGrid === 'edge' ? 1 : 2
+      const r = await captureScaledDisplay(opts.displayId, gridMode)
       if (!r) return winFallbackScreenshot(opts)
       return r
     },
@@ -451,6 +453,7 @@ export function createWinExecutor(): ComputerExecutor {
       preferredDisplayId?: number
       autoResolve: boolean
       doHide?: boolean
+      coordinateGrid?: string
     }): Promise<ResolvePrepareCaptureResult> {
       // Atomic path — toolCalls.ts handleScreenshot calls this when
       // autoTargetDisplay sub-gate is ON (the common case). On Win we
@@ -459,7 +462,8 @@ export function createWinExecutor(): ComputerExecutor {
       // land and Win11 shell handles target activation". Empty `hidden`
       // returned regardless of `opts.doHide`. See COORDINATES.md / the
       // platform-divergence note in computer-use-mcp-axiomate/executor.ts.
-      const r = await captureScaledDisplay(opts.preferredDisplayId)
+      const gridMode = opts.coordinateGrid === 'none' ? 0 : opts.coordinateGrid === 'edge' ? 1 : 2
+      const r = await captureScaledDisplay(opts.preferredDisplayId, gridMode)
       if (!r) {
         return await winFallbackResolvePrepareCapture(opts)
       }

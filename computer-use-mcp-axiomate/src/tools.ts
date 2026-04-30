@@ -252,7 +252,17 @@ export function buildComputerUseTools(
         "If the user names a specific application (e.g. \"截 Slack\", \"show me Chrome\"), prefer `screenshot_window` to capture only that app's frontmost window.",
       inputSchema: {
         type: "object" as const,
-        properties: {},
+        properties: {
+          coordinate_grid: {
+            type: "string" as const,
+            enum: ["none", "edge", "full"],
+            description:
+              "Overlay coordinate reference on the screenshot. " +
+              "'edge': rulers with tick marks and numbers along top/left edges (minimal obstruction). " +
+              "'full': edge rulers plus semi-transparent grid lines across the image (maximum precision). " +
+              "Omit or 'none' for a clean screenshot.",
+          },
+        },
         required: [],
       },
     },
@@ -307,7 +317,7 @@ export function buildComputerUseTools(
         `1. \`mouse_move\` to your best-estimate coords.\n` +
         `2. \`screenshot\` — find the **lime-green circle** in the image (the cursor's tip is at its center; the green ring is drawn around the cursor specifically so you can spot it at any scale).\n` +
         `3. Verify: can you see the green ring in the image, AND is it sitting **directly on top of the target** (not "near", not "approximately") ?\n` +
-        `   - **GREEN RING NOT VISIBLE** → DO NOT click. The cursor may be off-screen / behind a fullscreen overlay / hidden by the OS. Call \`mouse_move\` to a known on-screen coord (e.g. \`[100, 100]\`) and \`screenshot\` again to recover. Never click on faith when you can't see the ring.\n` +
+        `   - **GREEN RING NOT VISIBLE** → DO NOT click. Call \`mouse_move\` to a known coord (e.g. \`[100, 100]\`) and \`screenshot\` again to recover. Never click on faith when you can't see the ring.\n` +
         `   - **VISIBLE BUT NOT ON TARGET** → go back to step 1 with refined coords. **LOOP steps 1-2-3 as many times as needed.** Two rounds is normal; five is fine if the target is small. Do NOT give up early.\n` +
         `   - **VISIBLE AND ON TARGET** → proceed to step 4.\n` +
         `4. \`left_click\` with NO arguments — commits the click at the verified cursor position.\n\n` +
@@ -473,7 +483,7 @@ export function buildComputerUseTools(
         `   - VISIBLE BUT OFF TARGET → loop back to step 1 with refined coords (loop as many rounds as needed).\n` +
         `   - VISIBLE AND ON TARGET → step 4.\n` +
         `4. \`left_click\` (or other click) with NO arguments — commits at the verified cursor position.\n\n` +
-        `If the cursor is pushed at/past a screen edge it may become invisible (off-screen / body cropped); the response text warns which edge so you can correct.${frontmostHint}`,
+        `If the response text includes a WARNING about a screen edge, the cursor may be clipped — follow the suggested correction. No warning means the cursor is safely on-screen.${frontmostHint}`,
       inputSchema: {
         type: "object" as const,
         properties: {

@@ -752,13 +752,14 @@ async function takeScreenshotWithRetry(
   allowedAppIdentifiers: string[],
   logger: ComputerUseHostAdapter["logger"],
   displayId?: number,
+  coordinateGrid?: string,
 ): Promise<ScreenshotResult> {
-  let shot = await executor.screenshot({ allowedAppIdentifiers, displayId });
+  let shot = await executor.screenshot({ allowedAppIdentifiers, displayId, coordinateGrid });
   if (decodedByteLength(shot.base64) < MIN_SCREENSHOT_BYTES) {
     logger.warn(
       `[computer-use] screenshot implausibly small (${decodedByteLength(shot.base64)} bytes decoded), retrying once`,
     );
-    shot = await executor.screenshot({ allowedAppIdentifiers, displayId });
+    shot = await executor.screenshot({ allowedAppIdentifiers, displayId, coordinateGrid });
   }
   return shot;
 }
@@ -2221,6 +2222,7 @@ async function handleScreenshot(
   adapter: ComputerUseHostAdapter,
   overrides: ComputerUseOverrides,
   subGates: CuSubGates,
+  args?: Record<string, unknown>,
 ): Promise<CuCallToolResult> {
   const allowedApps = allowedAppsOf(overrides);
   adapter.logger.debug(
@@ -2274,6 +2276,7 @@ async function handleScreenshot(
       `[computer-use] handleScreenshot atomic: calling resolvePrepareCapture allowedAppIdentifiers=[${allowedAppIdentifiers.join(",")}] preferredDisplayId=${overrides.selectedDisplayId ?? "undef"} autoResolve=${autoResolve} doHide=${subGates.hideBeforeAction}`,
     );
 
+    const coordinateGrid = typeof args?.coordinate_grid === "string" ? args.coordinate_grid : undefined;
     const result = await adapter.executor.resolvePrepareCapture({
       allowedAppIdentifiers,
       preferredDisplayId: overrides.selectedDisplayId,
@@ -2282,6 +2285,7 @@ async function handleScreenshot(
       // atomic path honors the same toggle the non-atomic path checks
       // at the prepareForAction call site.
       doHide: subGates.hideBeforeAction,
+      coordinateGrid,
     });
 
     adapter.logger.debug(
@@ -2419,11 +2423,13 @@ async function handleScreenshot(
   adapter.logger.debug(
     `[computer-use] handleScreenshot non-atomic: calling takeScreenshotWithRetry allowedAppIdentifiers=[${allowedAppIdentifiers.join(",")}] selectedDisplayId=${overrides.selectedDisplayId ?? "undef"}`,
   );
+  const coordinateGrid = typeof args?.coordinate_grid === "string" ? args.coordinate_grid : undefined;
   const shot = await takeScreenshotWithRetry(
     adapter.executor,
     allowedAppIdentifiers,
     adapter.logger,
     overrides.selectedDisplayId,
+    coordinateGrid,
   );
   adapter.logger.debug(
     `[computer-use] handleScreenshot non-atomic: takeScreenshotWithRetry returned base64Len=${shot.base64?.length ?? "undef"} width=${shot.width} height=${shot.height} displayId=${shot.displayId}`,
@@ -3172,7 +3178,7 @@ async function handleMoveMouse(
     }
   }
 
-  const CURSOR_MARGIN_IMAGE_PX = 25;
+  const CURSOR_MARGIN_IMAGE_PX = 5;
   const warnings: string[] = [];
   const posX = actualScreenX ?? rawX;
   const posY = actualScreenY ?? rawY;
@@ -3236,7 +3242,7 @@ async function handleMoveMouse(
     );
   }
   const pos =
-    actualScreenX !== undefined ? ` Cursor now at (${posX}, ${posY}).` : "";
+    actualScreenX !== undefined ? ` Cursor at (${posX}, ${posY}) on screen.` : "";
   if (warnings.length > 0) {
     return okText(`Moved (warning: ${warnings.join("; ")}).${pos}`);
   }
@@ -3912,7 +3918,7 @@ async function dispatchAction(
 ): Promise<CuCallToolResult> {
   switch (name) {
     case "screenshot":
-      return handleScreenshot(adapter, overrides, subGates);
+      return handleScreenshot(adapter, overrides, subGates, a);
 
     case "screenshot_window":
       return handleScreenshotWindow(adapter, a);
