@@ -44,61 +44,30 @@ function getMonitorClass(): MonitorClass {
 }
 
 // ─── Display info ─────────────────────────────────────────────────────────
-// node-screenshots returns physical-pixel coords on Windows (different from
-// macOS/Linux). We normalize to logical (DIP) for the agent layer, which
-// always works in DIP space — winExecutor multiplies by scaleFactor at the
-// SetCursorPos boundary.
+// node-screenshots returns physical-pixel coords on Windows. Under
+// Per-Monitor V2 DPI awareness (set in the win NAPI via ensure_dpi_aware),
+// all Win32 coord APIs also speak physical pixels. So DisplayGeometry
+// carries physical values directly — no logical conversion. scaleCoord
+// (cross-platform) naturally outputs physical coords on Win because
+// display.width/height/originX/originY are physical.
 
-function monitorToDisplay(m: MonitorType): DisplayGeometry & {
-  physicalWidth: number
-  physicalHeight: number
-  physicalOriginX: number
-  physicalOriginY: number
-} {
-  const scale = m.scaleFactor()
-  const physW = m.width()    // physical px on Win
-  const physH = m.height()
-  // node-screenshots reports m.x() / m.y() in PHYSICAL pixels on Win.
-  // Keep the raw values for the BitBlt source rect and cursor-render
-  // origin so we don't lose precision through a logical round-trip.
-  // logX/logY (logical) are still derived for the agent layer's
-  // DisplayGeometry contract — agent's click coords are logical, so
-  // it needs logical origin for multi-monitor offset math.
-  const physX = m.x()
-  const physY = m.y()
-  const logW = Math.round(physW / scale)
-  const logH = Math.round(physH / scale)
-  const logX = Math.round(physX / scale)
-  const logY = Math.round(physY / scale)
+function monitorToDisplay(m: MonitorType): DisplayGeometry {
   return {
     displayId: m.id(),
-    width: logW,
-    height: logH,
-    scaleFactor: scale,
-    originX: logX,
-    originY: logY,
+    width: m.width(),
+    height: m.height(),
+    originX: m.x(),
+    originY: m.y(),
     isPrimary: m.isPrimary(),
     label: m.name() || `Display ${m.id()}`,
-    physicalWidth: physW,
-    physicalHeight: physH,
-    physicalOriginX: physX,
-    physicalOriginY: physY,
   }
 }
 
 export function listWinDisplays(): DisplayGeometry[] {
-  return getMonitorClass().all().map(m => {
-    const { physicalWidth: _pw, physicalHeight: _ph, physicalOriginX: _px, physicalOriginY: _py, ...geom } = monitorToDisplay(m)
-    return geom
-  })
+  return getMonitorClass().all().map(monitorToDisplay)
 }
 
-export function getWinDisplaySize(displayId?: number): DisplayGeometry & {
-  physicalWidth: number
-  physicalHeight: number
-  physicalOriginX: number
-  physicalOriginY: number
-} {
+export function getWinDisplaySize(displayId?: number): DisplayGeometry {
   const monitors = getMonitorClass().all()
   if (displayId !== undefined) {
     const m = monitors.find(m => m.id() === displayId)

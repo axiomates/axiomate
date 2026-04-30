@@ -7,7 +7,7 @@ file first; the comments in the code reference these names.
 ## Spaces
 
 ```
-                    image-px space         display logical pt        physical px
+                    image-px space         display coord pt          physical px
 ┌─────────────┐    ┌──────────────┐    ┌──────────────────┐    ┌──────────────┐
 │ AI's eyes   │ →  │ image dim    │    │ display.width    │    │ raw screen   │
 │             │    │ ≤ 1920 long  │    │ × display.height │    │ pixels       │
@@ -17,12 +17,24 @@ file first; the comments in the code reference these names.
 | Space | What it is | Example values (4K @ 200%) |
 |-------|-----------|----------------------------|
 | **image-px** | Pixel coords inside the JPEG sent to the model | (0, 0) – (1920, 1080) |
-| **display logical pt** | OS coord space — what the user's apps draw in, what mac swift NAPI input takes, AND what Win32 SetCursorPos / GetCursorPos accept in DPI-aware processes | (0, 0) – (1920, 1080) |
+| **display coord pt** | Platform's native cursor coord space. **mac**: logical pt (what apps draw in). **win**: physical virtual-screen px (Per-Monitor V2 DPI-aware — `GetCursorPos`/`SendInput` operate in physical px) | mac: (0,0)–(1920,1080) / win: (0,0)–(3840,2160) |
 | **physical px** | Raw GPU framebuffer pixels — what BitBlt copies | (0, 0) – (3840, 2160) |
 
-For the user's specific case (4K monitor at 200% Windows scaling), image-px and display-logical-pt happen to coincide. For 4K @ 100% they're different: image-px is 1920×1080 (capped), display-logical-pt is 3840×2160. The math must work in both cases.
+On Windows, display-coord-pt and physical-px are the same space (both
+physical virtual-screen pixels under Per-Monitor V2 DPI awareness). On
+mac, display-coord-pt is logical and physical-px is the framebuffer.
 
-**Important Win32 finding** (counter to a common assumption): `SetCursorPos` and `GetCursorPos` in a Per-Monitor V2 DPI-aware Bun-compiled process accept and return **logical pt**, NOT physical pixels. Empirical evidence: sending `(980, 2110)` results in cursor at `(980, 1080)` — y is clamped to 1080 (logical y-max), not 2160 (physical y-max). If the API took physical, 2110 < 2160 would not have been clamped. We previously assumed physical and were `× scaleFactor`-multiplying, which doubled all coords and made every non-taskbar click land in the wrong screen quadrant.
+`DisplayGeometry.width/height/originX/originY` carries the display-coord-pt
+values for the active platform: logical on mac, physical on win. This
+lets `scaleCoord` (cross-platform) output the correct coord space for
+each platform without platform branches.
+
+**Win32 DPI history**: before Phase 1 the Bun process was DPI-unaware,
+so `SetCursorPos`/`GetCursorPos` returned logical pt. The old
+COORDINATES.md documented "logical pt end-to-end" based on empirical
+evidence from that era. Phase 1 flipped the process to Per-Monitor V2
+DPI-aware via `SetProcessDpiAwarenessContext` in `ensure_dpi_aware()`
+(lib.rs), which shifts all Win32 coord APIs to physical px.
 
 ## Conversion ownership
 
@@ -30,19 +42,23 @@ For the user's specific case (4K monitor at 200% Windows scaling), image-px and 
 |------------|-------|------|
 | screen physical-px → image-px | win NAPI `capture_display_scaled` (BitBlt + Lanczos resize) | every win screenshot |
 | screen physical-px → image-px | mac swift NAPI `captureExcluding` (CGImage + targetImageSize) | every mac screenshot |
-| image-px → display-pt | **scaleCoord** (mode = `pixels`) — `rawX * (display_W / image_W) + originX` | every click in `pixels` mode |
-| (no conversion) | **scaleCoord** (mode = `display_pt`) — `rawX + originX`, AI gives display-pt directly | every click in `display_pt` mode |
-| display-pt → cursor | win NAPI `move_cursor` (SetCursorPos, takes logical pt) | every win click |
-| display-pt → cursor | mac swift NAPI `moveMouse` / `mouseButton` | every mac click |
+| image-px → display-coord-pt | **scaleCoord** (mode = `pixels`) — `rawX * (display_W / image_W) + originX` | every click in `pixels` mode |
+| (no conversion) | **scaleCoord** (mode = `display_pt`) — `rawX + originX`, AI gives display-coord-pt directly | every click in `display_pt` mode |
+| display-coord-pt → cursor | win NAPI `move_cursor` (SendInput, takes physical px) | every win click |
+| display-coord-pt → cursor | mac swift NAPI `moveMouse` / `mouseButton` (takes logical pt) | every mac click |
 
-**Win path is identity end-to-end after scaleCoord**: no `× scaleFactor` / `÷ scaleFactor` anywhere. Coords stay in display-pt space from scaleCoord output through Win32 SetCursorPos.
+**Both paths are identity end-to-end after scaleCoord**: no `× scaleFactor` /
+`÷ scaleFactor` anywhere. Coords stay in display-coord-pt space from
+scaleCoord output through the platform's input API. The DPI difference
+is absorbed by `DisplayGeometry` carrying the right values for each
+platform.
 
 ## Coordinate modes
 
 `CoordinateMode` (in `types.ts`) tells `scaleCoord` what convention the AI is using:
 
-- **`pixels`** (mac default) — AI emits in image-px space. scaleCoord multiplies by `display_W / image_W` to reach display-pt. This is the Anthropic computer-use beta convention.
-- **`display_pt`** (win default) — AI emits in display logical-pt space directly. scaleCoord is identity (modulo origin offset). This matches Qwen-VL and other non-Anthropic VLMs that ignore "image-pixel" tool descriptions and emit screen-coordinates regardless of image size.
+- **`pixels`** (mac default) — AI emits in image-px space. scaleCoord multiplies by `display_W / image_W` to reach display-coord-pt. This is the Anthropic computer-use beta convention.
+- **`display_pt`** (win default) — AI emits in display-coord-pt space directly. scaleCoord is identity (modulo origin offset). This matches Qwen-VL and other non-Anthropic VLMs that ignore "image-pixel" tool descriptions and emit screen-coordinates regardless of image size.
 - **`normalized_0_100`** — AI emits a percentage. scaleCoord multiplies by `display_W / 100`.
 
 In `display_pt` mode the screenshot tool emits a text caption with the screen's actual pixel resolution alongside the image, so the model knows what space to give coords in even when the image is downscaled.
@@ -54,6 +70,11 @@ Past bugs we fixed by being precise about which conversion happens where:
 - `screenshotToLogical` divided by scaleFactor a SECOND time after `scaleCoord` already converted (commit 24b3112). Killed by deletion.
 - nut.js silently no-op'd in Bun-compiled exes despite reporting "successful" cursor positions; mac path used its own swift NAPI, win was the only platform hitting nut.js (commit 5860ce7). Killed by replacing with direct Win32 SendInput / SetCursorPos.
 - Image dim was forced to equal display logical dim as a hack to make scaleCoord identity, which broke for non-16:9 / non-200%-scaling screens (commit 850dc5a era). Killed by introducing `display_pt` mode.
-- Initial Win32 input wrapper assumed `SetCursorPos` takes physical px in DPI-aware processes and `× scaleFactor`-multiplied the logical coords. Y clamping at 1080 (logical y-max) on out-of-bounds coords proved otherwise. Bug masquerade: taskbar clicks "happened to work" because doubled-y was clamped back to taskbar y, but every non-taskbar click landed in the wrong screen quadrant. Killed in winExecutor by removing `logicalToPhysical` helper entirely.
+- Initial Win32 input wrapper assumed `SetCursorPos` takes physical px when the process was DPI-unaware, and `× scaleFactor`-multiplied the logical coords. This doubled all coords — killed by removing `logicalToPhysical` helper. Phase 1 then flipped to Per-Monitor V2 DPI-aware and made `DisplayGeometry` carry physical px, so the identity path works in physical space.
 
-If you're tempted to add a `* scaleFactor` or `/ scaleFactor` somewhere, ask: which space are the inputs in, which space should the outputs be in, and is the conversion already done by one of the owners above? Prefer extending an existing owner over inserting a new one. **Win path should be identity end-to-end** — there's no DPI math anywhere on the input boundary in winExecutor.
+If you're tempted to add a `* scaleFactor` or `/ scaleFactor` somewhere,
+ask: which space are the inputs in, which space should the outputs be in,
+and is the conversion already done by one of the owners above? Prefer
+extending an existing owner over inserting a new one. **Both platform
+paths should be identity end-to-end** — there's no DPI math anywhere on
+the input boundary in the executor.

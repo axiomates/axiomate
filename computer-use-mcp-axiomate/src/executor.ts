@@ -14,7 +14,6 @@ export interface DisplayGeometry {
   displayId: number;
   width: number;
   height: number;
-  scaleFactor: number;
   isMain?: boolean;
   isPrimary?: boolean;
   originX?: number;

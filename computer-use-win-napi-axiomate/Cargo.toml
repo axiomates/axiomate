@@ -79,6 +79,16 @@ windows = { version = "0.58", features = [
                                       # is the only reliable filter so we
                                       # don't capture a Calculator on
                                       # desktop 2 when user is on desktop 1.
+  "Win32_UI_HiDpi",                   # SetProcessDpiAwarenessContext +
+                                      # DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2.
+                                      # Process is Per-Monitor V2 DPI-aware so
+                                      # all coords (GetCursorPos, SendInput,
+                                      # SM_*VIRTUALSCREEN, BitBlt source) are
+                                      # in physical virtual-screen pixels —
+                                      # one canonical type (VPoint/VRect)
+                                      # internally with transforms only at
+                                      # the SendInput-normalize and
+                                      # screenshot-downscale boundaries.
 ] }
 # JPEG encoder for screenshot_window output. Matches mac NAPI's pipeline
 # (image::JpegEncoder at quality 85) so the {base64,width,height} payload

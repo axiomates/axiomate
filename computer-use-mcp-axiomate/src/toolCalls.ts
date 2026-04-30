@@ -309,23 +309,22 @@ function scaleCoord(
     logger.debug(
       `[CU-COORD] scaleCoord: in=(${rawX},${rawY}) ` +
         `screenshot=${lastScreenshot.width}x${lastScreenshot.height} (image px) ` +
-        `display=${lastScreenshot.displayWidth}x${lastScreenshot.displayHeight} (logical pt) ` +
+        `display=${lastScreenshot.displayWidth}x${lastScreenshot.displayHeight} (display coord pt) ` +
         `origin=(${lastScreenshot.originX},${lastScreenshot.originY}) ` +
-        `→ out=(${result.x},${result.y}) (logical screen coords)`,
+        `→ out=(${result.x},${result.y}) (display coords)`,
     );
     return result;
   }
 
-  // Cold start: model sent pixel coords without having taken a screenshot.
-  // Degenerate — fall back to the old /sf behavior and warn.
-  logger.warn(
-    "[computer-use] pixels-mode coordinate received with no prior screenshot; " +
-      "falling back to /scaleFactor. Click may be off if downsample is active.",
+  // No lastScreenshot in pixels mode — model sent pixel coords without
+  // a prior screenshot. This is a model error: pixel coords are relative
+  // to the screenshot image, which doesn't exist yet. Refuse rather than
+  // guess (the old scaleFactor fallback was wrong whenever downsample was
+  // active, and Phase 2 eliminates coordinate-guessing entirely).
+  throw new Error(
+    "[computer-use] pixels-mode coordinate received with no prior screenshot. " +
+      "Take a screenshot first so scaleCoord can map image-px to screen coords.",
   );
-  return {
-    x: Math.round(rawX / display.scaleFactor) + display.originX,
-    y: Math.round(rawY / display.scaleFactor) + display.originY,
-  };
 }
 
 /**

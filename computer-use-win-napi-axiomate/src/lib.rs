@@ -7,7 +7,7 @@
 //!    keys (HKLM 64-bit, HKLM WoW6432 32-bit redirect, HKCU per-user) to
 //!    feed `request_access` with installed-app candidates. macOS uses
 //!    `mdfind` + `plutil` for this; Windows uses Add-Or-Remove-Programs.
-//! 2. `app_under_point(x, y)` — `WindowFromPoint` → owning pid → exe path.
+//! 2. `app_under_point(p: VPoint)` — `WindowFromPoint` → owning pid → exe path.
 //!    Used by the click safety gate to reject clicks landing on overlay
 //!    windows that aren't in the user's allowlist.
 //! 3. `find_window_displays(app_identifiers)` — for each requested app's
@@ -52,28 +52,96 @@ pub struct AppHitInfo {
     pub display_name: String,
 }
 
-/// Monitor RECT in raw Win32 physical pixel coords (same space as
-/// `node-screenshots` Monitor.x()/y()/width()/height() on Windows).
-/// The agent layer matches these against `node-screenshots` to recover
-/// the displayId — see winExecutor.findWindowDisplays. This decouples
-/// the win NAPI from node-screenshots' internal ID scheme (which
-/// derives from device path hash, not HMONITOR).
+// ───────────────────────────────────────────────────────────────────────────
+// VPoint / VSize / VRect — canonical virtual-screen coord types. PHYSICAL
+// pixels in the Windows virtual-screen bounding box (multi-monitor; negative
+// x/y permitted for monitors left/above the primary). The module is
+// Per-Monitor V2 DPI-aware, so every Win32 coord-bearing API
+// (`GetCursorPos`, `SendInput(MOUSEEVENTF_ABSOLUTE)` against
+// `SM_*VIRTUALSCREEN`, `BitBlt` source rect, `GetCursorInfo`,
+// `GetWindowRect`, `GetMonitorInfoW`) speaks these units uniformly.
+//
+// Exactly TWO code paths transform out of this coord system; everything
+// else — including the NAPI-to-TS surface — speaks VPoint/VRect natively:
+//   1. mouse-input simulation: `vpoint_to_normalized_absolute`
+//      (VPoint → 0..65535 for `SendInput(MOUSEEVENTF_VIRTUALDESK)`).
+//   2. screenshot scaling: Lanczos resize from a `VRect` source to the
+//      JPEG output dims inside `capture_display_scaled`.
+// `RECT → VRect` repacking after a Win32 syscall is NOT a transform —
+// same coord system, different struct shape.
+// ───────────────────────────────────────────────────────────────────────────
+
 #[napi(object)]
-pub struct WindowMonitorRect {
+#[derive(Copy, Clone, Debug)]
+pub struct VPoint {
     pub x: i32,
     pub y: i32,
-    pub width: i32,
-    pub height: i32,
+}
+
+#[napi(object)]
+#[derive(Copy, Clone, Debug)]
+pub struct VSize {
+    pub w: u32,
+    pub h: u32,
+}
+
+#[napi(object)]
+#[derive(Copy, Clone, Debug)]
+pub struct VRect {
+    pub origin: VPoint,
+    pub size: VSize,
+}
+
+impl VRect {
+    pub fn new(x: i32, y: i32, w: u32, h: u32) -> Self {
+        VRect { origin: VPoint { x, y }, size: VSize { w, h } }
+    }
+
+    /// Half-open `[x, x+w) × [y, y+h)` overlap test against another VRect.
+    /// Used by `find_window_monitor_rects` to test which monitors a given
+    /// window's rect intersects.
+    pub fn intersects(&self, other: &VRect) -> bool {
+        let r1 = self.origin.x + self.size.w as i32;
+        let b1 = self.origin.y + self.size.h as i32;
+        let r2 = other.origin.x + other.size.w as i32;
+        let b2 = other.origin.y + other.size.h as i32;
+        self.origin.x < r2
+            && r1 > other.origin.x
+            && self.origin.y < b2
+            && b1 > other.origin.y
+    }
+}
+
+/// Win32 `RECT` → `VRect` at the syscall instant (after `GetWindowRect` /
+/// `GetMonitorInfoW`). Same coord system (physical px, virtual-screen
+/// space) — just struct repacking. Width/height clamped at 0 if right <
+/// left (defensive against degenerate RECTs).
+#[cfg(target_os = "windows")]
+impl From<windows::Win32::Foundation::RECT> for VRect {
+    fn from(r: windows::Win32::Foundation::RECT) -> Self {
+        let w = (r.right - r.left).max(0) as u32;
+        let h = (r.bottom - r.top).max(0) as u32;
+        VRect {
+            origin: VPoint { x: r.left, y: r.top },
+            size: VSize { w, h },
+        }
+    }
 }
 
 #[napi(object)]
 pub struct WindowMonitorInfo {
     pub app_identifier: String,
-    /// All monitor rects whose bounds intersect any of this app's
-    /// visible top-level window rects. Multi-monitor windows produce
-    /// multiple rects (matches mac NAPI semantics — mac uses
-    /// CGRect intersection across all CGDisplays).
-    pub monitor_rects: Vec<WindowMonitorRect>,
+    /// All monitor rects (`VRect` — virtual-screen physical px, same
+    /// space as `node-screenshots` Monitor.x()/y()/width()/height() on
+    /// Windows) whose bounds intersect any of this app's visible
+    /// top-level window rects. The agent layer matches these against
+    /// `node-screenshots` to recover the displayId — see
+    /// winExecutor.findWindowDisplays. This decouples the win NAPI
+    /// from node-screenshots' internal ID scheme (which derives from
+    /// device path hash, not HMONITOR). Multi-monitor windows produce
+    /// multiple rects (matches mac NAPI semantics — mac uses CGRect
+    /// intersection across all CGDisplays).
+    pub monitor_rects: Vec<VRect>,
 }
 
 /// JPEG image returned by capture_window. Same {base64, width, height}
@@ -95,17 +163,9 @@ pub struct CaptureWindowOutcome {
     pub diagnostic: String,
 }
 
-/// Cursor position from Win32 GetCursorPos. Physical pixel coords in
-/// virtual-screen space (negative x for monitors left of primary).
-/// Returned by both `move_cursor` (post-move verification) and
-/// `get_cursor_pos`. Same shape as nut.js Point so the agent layer
-/// doesn't branch on input source — but with the truth that comes
-/// directly from Win32 instead of nut.js's own bookkeeping.
-#[napi(object)]
-pub struct CursorPos {
-    pub x: i32,
-    pub y: i32,
-}
+// CursorPos removed — `move_cursor` and `get_cursor_pos` now return
+// `VPoint` directly: same coord system, same struct shape, one canonical
+// type for virtual-screen physical-px coords.
 
 /// Resized full-screen JPEG returned by capture_display_scaled. The
 /// width/height fields are the post-resize dims (= target_w/target_h
@@ -140,14 +200,14 @@ pub fn list_installed_apps() -> napi::Result<Vec<InstalledApp>> {
 }
 
 #[napi]
-pub fn app_under_point(x: i32, y: i32) -> napi::Result<Option<AppHitInfo>> {
+pub fn app_under_point(p: VPoint) -> napi::Result<Option<AppHitInfo>> {
     #[cfg(target_os = "windows")]
     {
-        Ok(windows_impl::app_under_point(x, y))
+        Ok(windows_impl::app_under_point(p))
     }
     #[cfg(not(target_os = "windows"))]
     {
-        let _ = (x, y);
+        let _ = p;
         Ok(None)
     }
 }
@@ -322,25 +382,25 @@ pub fn capture_window(app_identifier: String) -> napi::Result<CaptureWindowOutco
 /// but the server-resized version the model saw was 1568, and clicks
 /// landed at 0.4× the right position. See COORDINATES.md.
 ///
-/// Source coords (`physical_x/y`) and source size (`physical_w/h`) are
-/// in Win32 physical-pixel virtual-screen space — same coord system as
-/// `node-screenshots` Monitor.x()/y()/width()/height(). Caller multiplies
-/// the logical DisplayGeometry by scaleFactor to get these. Source rect
-/// can lie at any virtual-screen offset for multi-monitor setups
-/// (negative x for monitors left of the primary).
+/// Source rect `src` is a `VRect` — virtual-screen physical pixels
+/// (multi-monitor bounding box; negative origin permitted for monitors
+/// left/above the primary). The caller (TS-side `winExecutor`) reads
+/// these straight from `node-screenshots` Monitor.x()/y()/width()/
+/// height(), which are already physical px — no logical→physical
+/// multiplication on the JS side either.
 ///
 /// Returns `None` on failure (BitBlt 0 / GetDIBits 0 lines / encode
 /// fails) — agent layer falls back to `base.screenshot` (unfiltered,
 /// unresized; click coords will be off but better than no screenshot).
 /// `jpeg_quality` is 0–100 (75 to match mac path's 0.75 default).
+///
+/// Phase 1 dropped the previous `logical_w/h` parameters: under
+/// Per-Monitor V2 DPI awareness `GetCursorInfo` returns physical
+/// virtual-screen px directly, so the cursor compositor doesn't need
+/// the logical→physical bridge anymore.
 #[napi]
 pub fn capture_display_scaled(
-    physical_x: i32,
-    physical_y: i32,
-    physical_w: u32,
-    physical_h: u32,
-    logical_w: u32,
-    logical_h: u32,
+    src: VRect,
     target_w: u32,
     target_h: u32,
     jpeg_quality: u32,
@@ -348,12 +408,7 @@ pub fn capture_display_scaled(
     #[cfg(target_os = "windows")]
     {
         Ok(windows_impl::capture_display_scaled(
-            physical_x,
-            physical_y,
-            physical_w,
-            physical_h,
-            logical_w,
-            logical_h,
+            src,
             target_w,
             target_h,
             jpeg_quality.min(100) as u8,
@@ -361,10 +416,7 @@ pub fn capture_display_scaled(
     }
     #[cfg(not(target_os = "windows"))]
     {
-        let _ = (
-            physical_x, physical_y, physical_w, physical_h, logical_w, logical_h,
-            target_w, target_h, jpeg_quality,
-        );
+        let _ = (src, target_w, target_h, jpeg_quality);
         Ok(None)
     }
 }
@@ -411,25 +463,27 @@ pub fn capture_excluding(
     Ok(None)
 }
 
-/// Move the cursor to (x, y) in virtual-screen space. Negative x is
-/// fine for monitors left of the primary.
+/// Move the cursor to a virtual-screen point.
 ///
-/// **Coord space**: same DPI mode as the calling process. Currently
-/// the Bun host is DPI-unaware (we don't call
-/// `SetProcessDpiAwarenessContext`), so all Win32 cursor APIs in this
-/// module — `GetCursorPos`, `SendInput(MOUSEEVENTF_ABSOLUTE)` (which
-/// normalizes against `GetSystemMetrics(SM_*VIRTUALSCREEN)`) — operate
-/// in LOGICAL pixels (the OS virtualizes physical→logical for the
-/// process). The agent's `scaleCoord` likewise produces logical-screen
-/// coords. Everything in this module is internally consistent in
-/// logical-pixel space; the OS handles the logical→physical mapping
-/// at the input-driver layer when it dispatches the cursor.
+/// **Coord space**: PHYSICAL pixels in the Windows virtual-screen
+/// bounding box (`VPoint`). Negative x/y are fine for monitors
+/// left/above the primary. The module is Per-Monitor V2 DPI-aware
+/// (set at first-call init via `ensure_dpi_aware()`), so every Win32
+/// coord-bearing API in this file — `GetCursorPos`,
+/// `SendInput(MOUSEEVENTF_ABSOLUTE)` against `SM_*VIRTUALSCREEN`,
+/// `BitBlt` source rect, `GetCursorInfo` — operates in physical
+/// pixels uniformly. There are exactly two coord transforms in the
+/// module: `vpoint_to_normalized_absolute` (VPoint → 0..65535 for
+/// SendInput) and the screenshot Lanczos resize (VRect-source →
+/// JPEG dims). Callers below the agent's `scaleCoord` boundary work
+/// directly in `VPoint` / `VRect` — no DPI multiplication anywhere
+/// inside this module.
 ///
-/// (If we ever flip the process to DPI-aware via
-/// `SetProcessDpiAwarenessContext(PER_MONITOR_AWARE_V2)`, this entire
-/// pipeline would shift to physical pixels and the agent's `scaleCoord`
-/// would need to multiply by `scaleFactor`. See coord-pipeline review
-/// notes for the full audit.)
+/// The TS-side `winExecutor` converts the agent's logical screen pt
+/// to physical pixels (via per-monitor `scaleFactor`) before calling
+/// any napi entry point that takes coords. That single boundary keeps
+/// the cross-platform `scaleCoord` contract logical while the Win
+/// internals stay physical end-to-end.
 ///
 /// Replaces nut.js's `mouse.move()` on Windows. nut.js has been
 /// silently failing in Bun-compiled axiomate exes — standalone Node
@@ -451,16 +505,16 @@ pub fn capture_excluding(
 /// zero on success, non-zero if Win32 clamped to a monitor edge / UAC
 /// secure desktop is up / process lacks foreground rights).
 #[napi]
-pub fn move_cursor(x: i32, y: i32) -> napi::Result<CursorPos> {
+pub fn move_cursor(p: VPoint) -> napi::Result<VPoint> {
     #[cfg(target_os = "windows")]
     {
-        windows_impl::move_cursor(x, y)
+        windows_impl::move_cursor(p)
             .map_err(|e| napi::Error::from_reason(e))
     }
     #[cfg(not(target_os = "windows"))]
     {
-        let _ = (x, y);
-        Ok(CursorPos { x: 0, y: 0 })
+        let _ = p;
+        Ok(VPoint { x: 0, y: 0 })
     }
 }
 
@@ -578,11 +632,11 @@ pub fn type_text_unicode(text: String) -> napi::Result<()> {
     }
 }
 
-/// Win32 GetCursorPos — physical px in virtual-screen space. Used
-/// by the agent's post-click verification log and by tools that
+/// Win32 GetCursorPos — VPoint in virtual-screen physical-px space.
+/// Used by the agent's post-click verification log and by tools that
 /// need to report current cursor location (drag-from origin etc.).
 #[napi]
-pub fn get_cursor_pos() -> napi::Result<CursorPos> {
+pub fn get_cursor_pos() -> napi::Result<VPoint> {
     #[cfg(target_os = "windows")]
     {
         windows_impl::get_cursor_pos()
@@ -590,7 +644,7 @@ pub fn get_cursor_pos() -> napi::Result<CursorPos> {
     }
     #[cfg(not(target_os = "windows"))]
     {
-        Ok(CursorPos { x: 0, y: 0 })
+        Ok(VPoint { x: 0, y: 0 })
     }
 }
 
@@ -717,8 +771,8 @@ pub fn defocus_self_to_previous_foreground() -> bool {
 #[cfg(target_os = "windows")]
 mod windows_impl {
     use super::{
-        AppHitInfo, CaptureWindowImage, CaptureWindowOutcome, CursorPos,
-        DisplayCaptureResult, InstalledApp, WindowMonitorInfo, WindowMonitorRect,
+        AppHitInfo, CaptureWindowImage, CaptureWindowOutcome,
+        DisplayCaptureResult, InstalledApp, VPoint, VRect, WindowMonitorInfo,
     };
     use base64::Engine;
     use std::collections::{BTreeMap, BTreeSet};
@@ -780,7 +834,31 @@ mod windows_impl {
         SHCreateItemFromParsingName, IShellItem, SIGDN_NORMALDISPLAY,
     };
     use windows::Win32::Graphics::Dwm::{DwmGetWindowAttribute, DWMWA_CLOAKED};
+    use windows::Win32::UI::HiDpi::{
+        SetProcessDpiAwarenessContext, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2,
+    };
     use std::sync::OnceLock;
+
+    // VPoint / VSize / VRect are crate-root #[napi(object)] types — see
+    // top of file for the canonical-coord-system contract and the two
+    // transform paths that live outside it.
+
+    /// Per-Monitor V2 DPI awareness gate. Win32's coord APIs change unit
+    /// (logical px → physical px) the moment this is called, so it must
+    /// run before any cursor / virtual-screen / monitor-info call. Idempotent
+    /// (Win32's SetProcessDpiAwarenessContext is one-shot per process; second
+    /// call is a no-op error we ignore). All public napi entry points that
+    /// touch coords call `ensure_dpi_aware()` first.
+    static DPI_INITIALIZED: OnceLock<()> = OnceLock::new();
+    pub fn ensure_dpi_aware() {
+        DPI_INITIALIZED.get_or_init(|| {
+            unsafe {
+                let _ = SetProcessDpiAwarenessContext(
+                    DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2,
+                );
+            }
+        });
+    }
 
     /// Localized message for the calling thread's last Win32 error +
     /// numeric HRESULT. Use immediately after a Win32 BOOL/handle return-
@@ -1131,8 +1209,10 @@ mod windows_impl {
 
     // ────────────── 2. app_under_point ──────────────
 
-    pub fn app_under_point(x: i32, y: i32) -> Option<AppHitInfo> {
-        let pt = POINT { x, y };
+    /// `p` is a `VPoint` — virtual-screen physical pixels.
+    pub fn app_under_point(p: VPoint) -> Option<AppHitInfo> {
+        ensure_dpi_aware();
+        let pt = POINT { x: p.x, y: p.y };
         let hwnd = unsafe { WindowFromPoint(pt) };
         if hwnd.0.is_null() {
             return None;
@@ -1553,6 +1633,7 @@ mod windows_impl {
     /// CaptureWindowOutcome with image=None and a diagnostic on any
     /// failure step.
     pub fn capture_window(app_identifier: &str) -> CaptureWindowOutcome {
+        ensure_dpi_aware();
         let (matched, visible_seen) = find_first_visible_window_for_app(app_identifier);
         let m = match matched {
             Some(m) => m,
@@ -1743,29 +1824,16 @@ mod windows_impl {
     /// Note: `GetIconInfo` allocates `hbmMask` and (for color cursors)
     /// `hbmColor` bitmap handles which the caller owns; we DeleteObject
     /// them on every exit path.
-    /// `dc_physical_w` / `dc_physical_h` describe the **physical** pixel
-    /// dimensions of the bitmap selected into `dc`. Used to bridge the
-    /// coord-space mismatch caused by Win DPI virtualization: this NAPI
-    /// module is DPI-unaware (the calling Bun process is too), so
-    /// `GetCursorInfo`'s `ptScreenPos` returns LOGICAL pixels, but the
-    /// `mem_dc` we composite into was filled by `BitBlt` of PHYSICAL
-    /// pixels. Without scale conversion the cursor lands at logical-coord
-    /// position inside a bitmap that's `scale_factor`× bigger, putting
-    /// the cursor at ~1/scale of where it should be (visible at top-left
-    /// instead of where the user actually pointed). The `_logical_*`
-    /// params let us scale the cursor coord to the physical bitmap space.
-    /// Origin is also passed in physical coords (the BitBlt source rect
-    /// origin); cursor's logical coord is scaled up first, then the
-    /// physical origin is subtracted.
-    unsafe fn compose_cursor_into_dc(
-        dc: HDC,
-        physical_origin_x: i32,
-        physical_origin_y: i32,
-        logical_screen_w: i32,
-        logical_screen_h: i32,
-        physical_screen_w: i32,
-        physical_screen_h: i32,
-    ) {
+    ///
+    /// `bitmap_origin` is the top-left corner (in `VPoint` = physical
+    /// virtual-screen px) of the bitmap selected into `dc` — i.e. the
+    /// `BitBlt` source-rect origin. Under Per-Monitor V2 DPI awareness
+    /// (set by `ensure_dpi_aware`), `GetCursorInfo`'s `ptScreenPos`
+    /// returns physical virtual-screen px directly, so we just subtract
+    /// the bitmap origin to get bitmap-local coords. No scaling math
+    /// — the canonical-`VPoint` contract eliminated the previous
+    /// logical-vs-physical bridge.
+    unsafe fn compose_cursor_into_dc(dc: HDC, bitmap_origin: VPoint) {
         let mut info: CURSORINFO = std::mem::zeroed();
         info.cbSize = std::mem::size_of::<CURSORINFO>() as u32;
         if GetCursorInfo(&mut info).is_err() {
@@ -1784,33 +1852,15 @@ mod windows_impl {
         if GetIconInfo(info.hCursor, &mut icon_info).is_err() {
             return;
         }
-        // Cursor coord is in logical pixels (DPI-unaware process); scale
-        // to physical pixels before placing into the physical-sized DC.
-        // Guard against div-by-zero with sensible fallback (treat as 1:1).
-        let scale_x = if logical_screen_w > 0 {
-            physical_screen_w as f32 / logical_screen_w as f32
-        } else {
-            1.0
-        };
-        let scale_y = if logical_screen_h > 0 {
-            physical_screen_h as f32 / logical_screen_h as f32
-        } else {
-            1.0
-        };
-        let cursor_physical_x =
-            (info.ptScreenPos.x as f32 * scale_x).round() as i32;
-        let cursor_physical_y =
-            (info.ptScreenPos.y as f32 * scale_y).round() as i32;
-        let tip_x = cursor_physical_x - physical_origin_x;
-        let tip_y = cursor_physical_y - physical_origin_y;
+        // ptScreenPos is in virtual-screen physical px (Per-Monitor V2
+        // DPI-aware). Bitmap-local tip = global tip − bitmap origin.
+        let tip_x = info.ptScreenPos.x - bitmap_origin.x;
+        let tip_y = info.ptScreenPos.y - bitmap_origin.y;
         // Hotspot is in CURSOR-BITMAP-PIXEL coords (the cursor's own
         // bitmap, ~32×32), NOT screen-pixel coords. `DrawIconEx` with
         // `cxWidth=0, cyHeight=0` paints the cursor at its native bitmap
         // size, so the hotspot's pixel offset from `(draw_x, draw_y)` is
-        // unchanged regardless of mem_dc DPI. Do NOT multiply by scale —
-        // doing so would put non-arrow cursors (text I-beam hotspot
-        // ~(15,15), hand cursor, resize cursors) off-target by
-        // `(scale - 1) × hotspot` pixels in the physical mem_dc.
+        // unchanged regardless of DPI scale.
         let draw_x = tip_x - icon_info.xHotspot as i32;
         let draw_y = tip_y - icon_info.yHotspot as i32;
         let _ = DrawIconEx(
@@ -1843,29 +1893,21 @@ mod windows_impl {
         // 0x0000FF00 = pure green. Lime green is high-contrast against
         // both light and dark UI themes.
         //
-        // Sizes are in OUTPUT (logical) pixels, scaled UP to physical
-        // pixels for the actual draw. After Lanczos resize from physical
-        // mem_dc → logical-size JPG, the ring lands at exactly
-        // RING_RADIUS_OUT logical pixels regardless of DPI scale. Without
-        // this, a fixed physical radius shrinks proportionally to scale
-        // factor in the output JPG (4K@200% → 6px ring instead of 12).
-        //
+        // Sizes are in physical pixels (the bitmap's coord space).
         // Tighter radius (12) + thicker stroke (5) — empirically the
         // earlier 18/3 ring covered too much UI area while the thin
         // stroke faded under JPEG quantization. The smaller diameter
         // hugs the cursor tip; the bolder stroke survives compression
         // and downscaling, keeping the ring unmissable to VL models
-        // without obscuring nearby UI elements.
-        const RING_RADIUS_OUT: i32 = 12;
-        const RING_PEN_WIDTH_OUT: i32 = 5;
+        // without obscuring nearby UI elements. (Phase 1 dropped the
+        // logical-pixel-then-scale-up dance that the DPI-unaware bridge
+        // required; ring renders at fixed physical px now.)
+        const RING_RADIUS: i32 = 12;
+        const RING_PEN_WIDTH: i32 = 5;
         const RING_COLOR: u32 = 0x0000FF00; // BGR: pure lime green
-        let ring_radius_phys =
-            ((RING_RADIUS_OUT as f32) * scale_x).round() as i32;
-        let ring_pen_width_phys =
-            ((RING_PEN_WIDTH_OUT as f32) * scale_x).round().max(1.0) as i32;
         let pen = CreatePen(
             PS_SOLID,
-            ring_pen_width_phys,
+            RING_PEN_WIDTH,
             windows::Win32::Foundation::COLORREF(RING_COLOR),
         );
         if !pen.0.is_null() {
@@ -1874,10 +1916,10 @@ mod windows_impl {
             let prev_brush = SelectObject(dc, null_brush);
             let _ = Ellipse(
                 dc,
-                tip_x - ring_radius_phys,
-                tip_y - ring_radius_phys,
-                tip_x + ring_radius_phys,
-                tip_y + ring_radius_phys,
+                tip_x - RING_RADIUS,
+                tip_y - RING_RADIUS,
+                tip_x + RING_RADIUS,
+                tip_y + RING_RADIUS,
             );
             SelectObject(dc, prev_pen);
             SelectObject(dc, prev_brush);
@@ -1967,20 +2009,14 @@ mod windows_impl {
         // PrintWindow / BitBlt(window DC) doesn't include the cursor —
         // it lives on a separate hardware-overlay path. If the cursor
         // happens to be inside this window's rect, paint it; otherwise
-        // DrawIconEx clips and produces no visible change.
-        //
-        // Window capture: PrintWindow / BitBlt-from-window-DC produces
-        // a bitmap in the window's local coord space, which is the same
-        // space as `GetCursorInfo`'s logical coords. No scale conversion
-        // needed — pass logical=physical so the helper's scaling is 1:1.
+        // DrawIconEx clips and produces no visible change. The bitmap
+        // origin is the window's top-left in virtual-screen physical
+        // px (same coord space as `GetCursorInfo` under Per-Monitor V2
+        // DPI awareness), so the cursor's bitmap-local position is
+        // (cursor_screen − window_origin).
         compose_cursor_into_dc(
             mem_dc,
-            window_left,
-            window_top,
-            width,
-            height,
-            width,
-            height,
+            VPoint { x: window_left, y: window_top },
         );
 
         // Read pixels via GetDIBits. We request 32bpp top-down (negative
@@ -2039,32 +2075,24 @@ mod windows_impl {
     // ────────────── capture_display_scaled ──────────────
 
     /// Same BitBlt+GetDIBits+Lanczos+JPEG pipeline as capture_window_inner
-    /// but: (a) source rect is the desktop DC at (physical_x, physical_y)
-    /// instead of (0,0), (b) inserts a Lanczos resize step before encode
-    /// so the output JPEG matches what the API server would have resized
-    /// to anyway. None on any failure → agent falls back to base.screenshot.
+    /// but: (a) source rect is the desktop DC at (src_x, src_y) instead
+    /// of (0,0), (b) inserts a Lanczos resize step before encode so the
+    /// output JPEG matches what the API server would have resized to
+    /// anyway. None on any failure → agent falls back to base.screenshot.
+    /// `src_*` is a `VRect` — physical virtual-screen pixels.
     pub fn capture_display_scaled(
-        physical_x: i32,
-        physical_y: i32,
-        physical_w: u32,
-        physical_h: u32,
-        logical_w: u32,
-        logical_h: u32,
+        src: VRect,
         target_w: u32,
         target_h: u32,
         jpeg_quality: u8,
     ) -> Option<DisplayCaptureResult> {
-        if physical_w == 0 || physical_h == 0 || target_w == 0 || target_h == 0 {
+        ensure_dpi_aware();
+        if src.size.w == 0 || src.size.h == 0 || target_w == 0 || target_h == 0 {
             return None;
         }
         let result = unsafe {
             capture_display_scaled_inner(
-                physical_x,
-                physical_y,
-                physical_w as i32,
-                physical_h as i32,
-                logical_w as i32,
-                logical_h as i32,
+                src,
                 target_w,
                 target_h,
                 jpeg_quality,
@@ -2083,16 +2111,15 @@ mod windows_impl {
     }
 
     unsafe fn capture_display_scaled_inner(
-        src_x: i32,
-        src_y: i32,
-        src_w: i32,
-        src_h: i32,
-        logical_w: i32,
-        logical_h: i32,
+        src: VRect,
         target_w: u32,
         target_h: u32,
         jpeg_quality: u8,
     ) -> Result<DisplayCaptureResult, String> {
+        let src_x = src.origin.x;
+        let src_y = src.origin.y;
+        let src_w = src.size.w as i32;
+        let src_h = src.size.h as i32;
         // Same RAII guard pattern as capture_window_inner — windows-rs 0.58
         // doesn't accept Option<HWND/HDC>; null via HWND::default() means
         // "the entire (virtual) screen" per GetDC docs, which is what we
@@ -2153,20 +2180,11 @@ mod windows_impl {
 
         // Composite the cursor on top of the captured display pixels.
         // BitBlt(desktop DC) doesn't include the cursor — it lives on a
-        // separate hardware-overlay path. mem_dc is sized to physical
-        // pixels (src_w × src_h); GetCursorInfo returns logical coords
-        // (this NAPI module / Bun process is DPI-unaware), so we pass
-        // the logical-vs-physical screen dims to scale the cursor coord
-        // up to the physical bitmap space before drawing.
-        compose_cursor_into_dc(
-            mem_dc,
-            src_x,
-            src_y,
-            logical_w,
-            logical_h,
-            src_w,
-            src_h,
-        );
+        // separate hardware-overlay path. Under Per-Monitor V2 DPI
+        // awareness `GetCursorInfo` returns physical virtual-screen px
+        // directly, so the bitmap-local cursor position is
+        // (cursor_screen − bitmap_origin). No DPI scaling math needed.
+        compose_cursor_into_dc(mem_dc, VPoint { x: src_x, y: src_y });
 
         // 32bpp top-down BGRA — same as capture_window_inner.
         let row_size = (src_w as usize) * 4;
@@ -2242,14 +2260,14 @@ mod windows_impl {
 
     // ────────────── mouse input (Win32 SendInput / SetCursorPos) ──────────────
 
-    /// Move the cursor to virtual-screen physical pixel `(x, y)`.
+    /// Move the cursor to virtual-screen physical pixel `VPoint(x, y)`.
     ///
     /// Uses `SendInput(MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE |
     /// MOUSEEVENTF_VIRTUALDESK)` instead of `SetCursorPos` because Win10/11
-    /// has a known issue where `SetCursorPos` updates the logical cursor
-    /// coord (so `GetCursorPos` returns the new value) but does NOT always
-    /// trigger a redraw of the visible cursor. The `click` path historically
-    /// masked this — its subsequent `SendInput(LEFTDOWN/UP)` would force the
+    /// has a known issue where `SetCursorPos` updates the cursor coord (so
+    /// `GetCursorPos` returns the new value) but does NOT always trigger a
+    /// redraw of the visible cursor. The `click` path historically masked
+    /// this — its subsequent `SendInput(LEFTDOWN/UP)` would force the
     /// redraw — but `mouse_move` (no follow-up SendInput) leaves the cursor
     /// visually frozen even though the OS believes it moved.
     ///
@@ -2259,8 +2277,9 @@ mod windows_impl {
     /// destination (not delta); `MOUSEEVENTF_VIRTUALDESK` makes the
     /// normalized 0..65535 range span the multi-monitor virtual screen
     /// instead of the primary monitor only.
-    pub fn move_cursor(x: i32, y: i32) -> Result<CursorPos, String> {
-        let (nx, ny) = physical_to_normalized_absolute(x, y)
+    pub fn move_cursor(p: VPoint) -> Result<VPoint, String> {
+        ensure_dpi_aware();
+        let (nx, ny) = vpoint_to_normalized_absolute(p)
             .ok_or_else(|| "VIRTUALSCREEN dims invalid (≤1)".to_string())?;
         send_mouse(
             MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK,
@@ -2271,8 +2290,9 @@ mod windows_impl {
         get_cursor_pos()
     }
 
-    /// Translate virtual-screen physical pixel coords to the normalized
-    /// 0..65535 range that `SendInput(MOUSEEVENTF_ABSOLUTE)` expects.
+    /// Translate a virtual-screen `VPoint` (physical pixels) to the
+    /// normalized 0..65535 range that `SendInput(MOUSEEVENTF_ABSOLUTE)`
+    /// expects.
     ///
     /// Per MSDN: with `MOUSEEVENTF_VIRTUALDESK`, `0..65535` maps onto the
     /// virtual desktop's full extent (multi-monitor bounding box).
@@ -2284,7 +2304,11 @@ mod windows_impl {
     /// Returns `None` when `GetSystemMetrics` reports degenerate virtual
     /// screen dims (≤1) — defensive; would mean the desktop session is
     /// in an unusual state (lock screen during transition, RDP edge case).
-    fn physical_to_normalized_absolute(x: i32, y: i32) -> Option<(i32, i32)> {
+    ///
+    /// Under Per-Monitor V2 DPI awareness (`ensure_dpi_aware`), the
+    /// `SM_*VIRTUALSCREEN` metrics are already in physical pixels, so this
+    /// is a single-step transform — no logical/physical scaling involved.
+    fn vpoint_to_normalized_absolute(p: VPoint) -> Option<(i32, i32)> {
         let vx = unsafe { GetSystemMetrics(SM_XVIRTUALSCREEN) };
         let vy = unsafe { GetSystemMetrics(SM_YVIRTUALSCREEN) };
         let vw = unsafe { GetSystemMetrics(SM_CXVIRTUALSCREEN) };
@@ -2294,21 +2318,23 @@ mod windows_impl {
         }
         // i64 intermediate to avoid overflow on 4K+ displays where
         // (x - vx) * 65535 can exceed i32 range.
-        let nx = (((x - vx) as i64 * 65535) / (vw - 1) as i64) as i32;
-        let ny = (((y - vy) as i64 * 65535) / (vh - 1) as i64) as i32;
+        let nx = (((p.x - vx) as i64 * 65535) / (vw - 1) as i64) as i32;
+        let ny = (((p.y - vy) as i64 * 65535) / (vh - 1) as i64) as i32;
         Some((nx, ny))
     }
 
-    pub fn get_cursor_pos() -> Result<CursorPos, String> {
-        let mut p = POINT { x: 0, y: 0 };
-        let ok = unsafe { GetCursorPos(&mut p) }.is_ok();
+    pub fn get_cursor_pos() -> Result<VPoint, String> {
+        ensure_dpi_aware();
+        let mut pt = POINT { x: 0, y: 0 };
+        let ok = unsafe { GetCursorPos(&mut pt) }.is_ok();
         if !ok {
             return Err(format!("GetCursorPos failed: {}", last_win_error()));
         }
-        Ok(CursorPos { x: p.x, y: p.y })
+        Ok(VPoint { x: pt.x, y: pt.y })
     }
 
     pub fn click_mouse(button: u32, count: u32) -> Result<(), String> {
+        ensure_dpi_aware();
         let (down, up) = match button {
             0 => (MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP),
             1 => (MOUSEEVENTF_RIGHTDOWN, MOUSEEVENTF_RIGHTUP),
@@ -2325,6 +2351,7 @@ mod windows_impl {
     }
 
     pub fn mouse_button_event(button: u32, down: bool) -> Result<(), String> {
+        ensure_dpi_aware();
         let flags = match (button, down) {
             (0, true) => MOUSEEVENTF_LEFTDOWN,
             (0, false) => MOUSEEVENTF_LEFTUP,
@@ -2338,6 +2365,7 @@ mod windows_impl {
     }
 
     pub fn mouse_scroll(dx: i32, dy: i32) -> Result<(), String> {
+        ensure_dpi_aware();
         // Vertical wheel first, then horizontal — matches typical Win32
         // input order if both axes are scrolled at once.
         if dy != 0 {
@@ -2577,6 +2605,7 @@ mod windows_impl {
     }
 
     pub fn defocus_self_to_previous_foreground() -> bool {
+        ensure_dpi_aware();
         let current_fg = unsafe { GetForegroundWindow() };
         if current_fg.0.is_null() {
             return false;
@@ -2782,26 +2811,20 @@ mod windows_impl {
     struct WindowEnumState {
         app_identifier_set: BTreeSet<String>,
         /// app_identifier → set of (x, y, w, h) monitor rects intersecting any
-        /// window of that app. Tuple is hashable so a BTreeSet dedupes
-        /// — multi-window apps that all sit on the same monitor produce
-        /// one entry.
-        results: BTreeMap<String, BTreeSet<(i32, i32, i32, i32)>>,
+        /// window of that app. Stored as a tuple (not VRect) so the BTreeSet
+        /// can use derived Ord for dedup — multi-window apps that all sit
+        /// on the same monitor produce one entry. Reconstituted as VRect
+        /// at result-emission time.
+        results: BTreeMap<String, BTreeSet<(i32, i32, u32, u32)>>,
         pid_to_path: BTreeMap<u32, String>,
-        /// All active monitors with their full rects, computed once per
+        /// All active monitors with their full VRects, computed once per
         /// call (`list_monitor_rects`). Used to test which monitors
         /// each window intersects.
-        monitors: Vec<MonitorRect>,
-    }
-
-    #[derive(Clone, Copy)]
-    struct MonitorRect {
-        x: i32,
-        y: i32,
-        width: i32,
-        height: i32,
+        monitors: Vec<VRect>,
     }
 
     pub fn find_window_monitor_rects(app_identifiers: &[String]) -> Vec<WindowMonitorInfo> {
+        ensure_dpi_aware();
         if app_identifiers.is_empty() {
             return Vec::new();
         }
@@ -2836,12 +2859,7 @@ mod windows_impl {
                     .get(bid)
                     .map(|s| {
                         s.iter()
-                            .map(|(x, y, w, h)| WindowMonitorRect {
-                                x: *x,
-                                y: *y,
-                                width: *w,
-                                height: *h,
-                            })
+                            .map(|(x, y, w, h)| VRect::new(*x, *y, *w, *h))
                             .collect()
                     })
                     .unwrap_or_default(),
@@ -2880,35 +2898,27 @@ mod windows_impl {
         if path.is_empty() || !state.app_identifier_set.contains(&path) {
             return true.into();
         }
-        // Window rect (Win32 RECT, physical px on per-monitor-DPI-aware
-        // process — same coord space as our monitor rects from
-        // GetMonitorInfoW).
+        // Window rect from Win32 (physical px on per-monitor-DPI-aware
+        // process — same coord space as our monitor VRects from
+        // GetMonitorInfoW). Repacked to VRect at the syscall instant.
         let mut win_rect = RECT::default();
         if GetWindowRect(hwnd, &mut win_rect).is_err() {
             return true.into();
         }
+        let win_vrect = VRect::from(win_rect);
         // Test against every monitor — multi-monitor windows produce
         // multiple entries (matches mac NAPI's CGRect intersection
         // semantics; a window straddling two monitors lights up both).
         for m in &state.monitors {
-            if rects_intersect(&win_rect, m) {
+            if win_vrect.intersects(m) {
                 state
                     .results
                     .entry(path.clone())
                     .or_default()
-                    .insert((m.x, m.y, m.width, m.height));
+                    .insert((m.origin.x, m.origin.y, m.size.w, m.size.h));
             }
         }
         true.into()
-    }
-
-    fn rects_intersect(win: &RECT, mon: &MonitorRect) -> bool {
-        let mon_right = mon.x + mon.width;
-        let mon_bottom = mon.y + mon.height;
-        win.left < mon_right
-            && win.right > mon.x
-            && win.top < mon_bottom
-            && win.bottom > mon.y
     }
 
     /// Enumerate active monitors with their full rects via
@@ -2916,7 +2926,7 @@ mod windows_impl {
     /// `node-screenshots` Monitor.x()/y()/width()/height() on Windows
     /// (both query the same Win32 path with the same DPI awareness as
     /// the host process).
-    fn list_monitor_rects() -> Vec<MonitorRect> {
+    fn list_monitor_rects() -> Vec<VRect> {
         use windows::Win32::Graphics::Gdi::{GetMonitorInfoW, MONITORINFO};
         let mut hmonitors: Vec<HMONITOR> = Vec::new();
         unsafe {
@@ -2936,12 +2946,7 @@ mod windows_impl {
                 if !ok {
                     return None;
                 }
-                Some(MonitorRect {
-                    x: info.rcMonitor.left,
-                    y: info.rcMonitor.top,
-                    width: info.rcMonitor.right - info.rcMonitor.left,
-                    height: info.rcMonitor.bottom - info.rcMonitor.top,
-                })
+                Some(VRect::from(info.rcMonitor))
             })
             .collect()
     }
@@ -3168,7 +3173,7 @@ mod windows_impl {
         }
 
         #[test]
-        fn physical_to_normalized_absolute_endpoints() {
+        fn vpoint_to_normalized_absolute_endpoints() {
             // The virtual-screen origin and far corner must map to the
             // 0..65535 range endpoints. We can't hardcode the test box's
             // virtual screen dims (varies per machine), so we read them
@@ -3183,18 +3188,25 @@ mod windows_impl {
                 return;
             }
             // Top-left of virtual screen → (0, 0).
-            let tl = physical_to_normalized_absolute(vx, vy).expect("tl ok");
+            let tl = vpoint_to_normalized_absolute(VPoint { x: vx, y: vy })
+                .expect("tl ok");
             assert_eq!(tl, (0, 0));
             // Bottom-right pixel (vx + vw - 1, vy + vh - 1) → (65535, 65535).
-            let br = physical_to_normalized_absolute(vx + vw - 1, vy + vh - 1)
-                .expect("br ok");
+            let br = vpoint_to_normalized_absolute(VPoint {
+                x: vx + vw - 1,
+                y: vy + vh - 1,
+            })
+            .expect("br ok");
             assert_eq!(br, (65535, 65535));
             // Monotonicity + bounds check on a sample inside the rect: a
             // pixel at offset (vw/4, vh/4) should normalize to roughly
             // 25% of 65535 (= 16383). We allow generous tolerance because
             // integer division precision varies with monitor dims.
-            let q = physical_to_normalized_absolute(vx + vw / 4, vy + vh / 4)
-                .expect("quarter ok");
+            let q = vpoint_to_normalized_absolute(VPoint {
+                x: vx + vw / 4,
+                y: vy + vh / 4,
+            })
+            .expect("quarter ok");
             assert!(
                 q.0 > 0 && q.0 < 65535 && q.1 > 0 && q.1 < 65535,
                 "quarter point should be strictly inside 0..65535: {:?}",

@@ -103,11 +103,11 @@ export function createWinExecutor(): ComputerExecutor {
   // right size for VL token economy.
   const LONG_EDGE_CAP = 1920
 
-  function computeImageDim(logicalW: number, logicalH: number): [number, number] {
-    const longEdge = Math.max(logicalW, logicalH)
-    if (longEdge <= LONG_EDGE_CAP) return [logicalW, logicalH]
+  function computeImageDim(w: number, h: number): [number, number] {
+    const longEdge = Math.max(w, h)
+    if (longEdge <= LONG_EDGE_CAP) return [w, h]
     const ratio = LONG_EDGE_CAP / longEdge
-    return [Math.round(logicalW * ratio), Math.round(logicalH * ratio)]
+    return [Math.round(w * ratio), Math.round(h * ratio)]
   }
 
   // Captures one display via the win NAPI's BitBlt + Lanczos resize +
@@ -117,47 +117,26 @@ export function createWinExecutor(): ComputerExecutor {
   //
   // Returned ScreenshotResult.{width,height} are the IMAGE dims (≤ 1920
   // long edge); .{displayWidth,displayHeight,originX,originY} are the
-  // real display logical dims. In `display_pt` coord mode scaleCoord
-  // takes click coords as-is (image dim doesn't affect coord math),
-  // and winExecutor.click multiplies by scaleFactor to reach physical
-  // px for SetCursorPos. Single DPI conversion at the boundary; image
-  // resize is purely a visual / token-budget optimization.
+  // display's physical-pixel dims (virtual-screen space). Under
+  // Per-Monitor V2 DPI awareness, all coords — including scaleCoord
+  // output, click targets, and cursor positions — are in physical px.
+  // Image resize is purely a visual / token-budget optimization.
   async function captureScaledDisplay(displayId?: number): Promise<ScreenshotResult | null> {
     if (!napiAvailable) return null
     const display = getWinDisplaySize(displayId)
-    const physW = display.physicalWidth
-    const physH = display.physicalHeight
-    // Use raw physical origin from node-screenshots — avoids the
-    // logical-round-trip ±1px loss that would otherwise compound with
-    // the cursor-render origin subtraction inside the NAPI composite.
-    const physX = display.physicalOriginX
-    const physY = display.physicalOriginY
     const [tw, th] = computeImageDim(display.width, display.height)
     // JPEG quality 92 (was 75). At 75 the chroma subsampling + DCT
     // quantization smudges 24×24-px task bar icons enough that VL
     // models misidentify which icon is which. 92 keeps small UI
     // elements crisp; size goes up ~2.5× (~150KB → ~370KB) which is
     // still fine for token budgets.
-    // Pass both physical dims (BitBlt source rect) and logical dims
-    // (cursor coord space). The Rust composite step needs both to scale
-    // GetCursorInfo's logical-pixel ptScreenPos up to physical pixels
-    // before painting the cursor onto the physical-sized mem_dc; without
-    // this the cursor lands at ~1/scale of where it should be on
-    // high-DPI displays (4K @ 200% paints cursor at half-position).
     const r = winNapi.captureDisplayScaled(
-      physX,
-      physY,
-      physW,
-      physH,
-      display.width,
-      display.height,
-      tw,
-      th,
-      92,
+      { origin: { x: display.originX, y: display.originY }, size: { w: display.width, h: display.height } },
+      tw, th, 92,
     )
     if (!r) {
       logForDebugging(
-        `[computer-use] captureDisplayScaled returned null (physX=${physX} physY=${physY} physW=${physW} physH=${physH} logW=${display.width} logH=${display.height} tw=${tw} th=${th})`,
+        `[computer-use] captureDisplayScaled returned null (x=${display.originX} y=${display.originY} w=${display.width} h=${display.height} tw=${tw} th=${th})`,
         { level: 'warn' },
       )
       return null
@@ -333,8 +312,7 @@ export function createWinExecutor(): ComputerExecutor {
     // ── Display geometry (winFallbacks → node-screenshots) ──────────────
 
     async getDisplaySize(displayId?: number) {
-      const { physicalWidth: _pw, physicalHeight: _ph, ...geom } = getWinDisplaySize(displayId)
-      return geom
+      return getWinDisplaySize(displayId)
     },
 
     async listDisplays() {
@@ -385,12 +363,10 @@ export function createWinExecutor(): ComputerExecutor {
     },
 
     async findWindowDisplays(appIdentifiers) {
-      // Win NAPI returns monitor RECTs from Win32 GetMonitorInfoW.
-      // In a DPI-aware process (Bun on Win10+) those rects are in
-      // LOGICAL DIPs — e.g. a 4K display at 200% scale reports
-      // 1920×1080 with the secondary at x=-1920. node-screenshots
-      // (via listWinDisplays) already returns DIP-logical origin
-      // (raw pixels / scaleFactor). So we match DIP-against-DIP.
+      // Win NAPI returns monitor VRects (physical virtual-screen px)
+      // from Win32 GetMonitorInfoW under Per-Monitor V2 DPI awareness.
+      // node-screenshots also returns physical-pixel origins. We match
+      // physical-origin-against-physical-origin.
       if (!napiAvailable) {
         return appIdentifiers.map(appIdentifier => ({ appIdentifier, displayIds: [] }))
       }
@@ -400,7 +376,7 @@ export function createWinExecutor(): ComputerExecutor {
         const ids = new Set<number>()
         for (const r of monitorRects) {
           for (const d of displays) {
-            if (d.originX === r.x && d.originY === r.y) {
+            if (d.originX === r.origin.x && d.originY === r.origin.y) {
               ids.add(d.displayId)
             }
           }
@@ -503,21 +479,21 @@ export function createWinExecutor(): ComputerExecutor {
     // getCursorPosition. nut.js silently fails in Bun-compiled exes
     // (cursor doesn't visibly move; getPosition returns the requested
     // value, masking the failure as "delta=0 success"). Going through
-    // win NAPI calls SetCursorPos / SendInput directly with no
-    // intermediate native binding.
+    // win NAPI calls SendInput directly with no intermediate native
+    // binding.
     //
-    // Coords are LOGICAL pt end-to-end. SetCursorPos / GetCursorPos in
-    // a DPI-aware Bun process accept and return logical pt directly —
-    // there's no DPI multiplication anywhere on the win path. Empirical
-    // proof from earlier diagnostics: SetCursorPos(980, 2110) clamps to
-    // (980, 1080) = logical screen y-max, not (980, 2110) physical
-    // (which would have been valid since 2110 < 2160). See COORDINATES.md.
+    // Coords are PHYSICAL virtual-screen px end-to-end. The win NAPI
+    // is Per-Monitor V2 DPI-aware (ensure_dpi_aware in lib.rs), so
+    // all Win32 coord APIs — GetCursorPos, SendInput, WindowFromPoint
+    // — speak physical pixels. DisplayGeometry on Win carries physical
+    // values, so scaleCoord naturally outputs physical coords. No DPI
+    // multiplication anywhere on the win path. See COORDINATES.md.
 
     async moveMouse(x: number, y: number): Promise<void> {
       if (!napiAvailable) inputUnavailable('moveMouse')
-      const actual = winNapi.moveCursor(Math.round(x), Math.round(y))
+      const actual = winNapi.moveCursor({ x: Math.round(x), y: Math.round(y) })
       logForDebugging(
-        `[computer-use] moveMouse (win): logical=(${x},${y}) win32_actual=(${actual.x},${actual.y})`,
+        `[computer-use] moveMouse (win): target=(${x},${y}) win32_actual=(${actual.x},${actual.y})`,
         { level: 'debug' },
       )
     },
@@ -535,9 +511,9 @@ export function createWinExecutor(): ComputerExecutor {
       // Modifier path: press all modifiers, position cursor, click, release
       // modifiers in reverse. All Win32 SendInput — no nut.js fall-through.
       for (const vk of modVks) winNapi.keyEvent(vk, true, false)
-      const moved = winNapi.moveCursor(Math.round(x), Math.round(y))
+      const moved = winNapi.moveCursor({ x: Math.round(x), y: Math.round(y) })
       logForDebugging(
-        `[computer-use] click (win): logical=(${x},${y}) win32_actual=(${moved.x},${moved.y}) button=${button} count=${count} modifiers=[${(modifiers ?? []).join(',')}]`,
+        `[computer-use] click (win): target=(${x},${y}) win32_actual=(${moved.x},${moved.y}) button=${button} count=${count} modifiers=[${(modifiers ?? []).join(',')}]`,
         { level: 'debug' },
       )
       try {
@@ -570,14 +546,14 @@ export function createWinExecutor(): ComputerExecutor {
       if (!napiAvailable) inputUnavailable('drag')
       // Win32 drag = move-to-from → button-down → move-to-to → button-up.
       // Mouse path is left-button only (per ComputerExecutor contract).
-      if (from) winNapi.moveCursor(Math.round(from.x), Math.round(from.y))
+      if (from) winNapi.moveCursor({ x: Math.round(from.x), y: Math.round(from.y) })
       winNapi.mouseButtonEvent(0, true)
       try {
         // Tiny sleep so the OS sees the down before the move. Without it
         // some apps treat a same-tick down+move as a click + then ignored
         // movement, which breaks selection-drag semantics.
         await sleep(10)
-        winNapi.moveCursor(Math.round(to.x), Math.round(to.y))
+        winNapi.moveCursor({ x: Math.round(to.x), y: Math.round(to.y) })
         await sleep(10)
       } finally {
         winNapi.mouseButtonEvent(0, false)
@@ -589,10 +565,10 @@ export function createWinExecutor(): ComputerExecutor {
       // Pre-position cursor so the scroll lands in the intended window.
       // Wheel ticks: incoming dx/dy are "lines" units (positive dy = up
       // by convention here). Multiply by WHEEL_DELTA (120).
-      winNapi.moveCursor(Math.round(x), Math.round(y))
+      winNapi.moveCursor({ x: Math.round(x), y: Math.round(y) })
       winNapi.mouseScroll(Math.round(dx) * 120, Math.round(dy) * 120)
       logForDebugging(
-        `[computer-use] scroll (win): logical=(${x},${y}) dx=${dx} dy=${dy}`,
+        `[computer-use] scroll (win): target=(${x},${y}) dx=${dx} dy=${dy}`,
         { level: 'debug' },
       )
     },

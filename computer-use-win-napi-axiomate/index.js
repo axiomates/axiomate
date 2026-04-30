@@ -44,20 +44,17 @@ module.exports.listInstalledApps = function listInstalledApps() {
 module.exports.appUnderPoint = function appUnderPoint(x, y) {
   const mod = loadNative()
   if (!mod) return null
-  return mod.appUnderPoint(x, y)
+  return mod.appUnderPoint({ x, y })
 }
 
 // ── Multi-display window mapping ───────────────────────────────────────────
 
 /**
- * Returns Vec<{ bundleId, monitorRects: [{x,y,width,height}] }> in raw
- * Win32 physical pixel coords (same space as `node-screenshots`
- * Monitor.x()/y()/width()/height()). The agent layer maps these to
- * displayIds via origin coord match — see winExecutor.findWindowDisplays.
- *
- * Renamed from findWindowDisplays in Stage 2.x because the previous
- * impl returned positional indices that didn't align with
- * node-screenshots' opaque ID scheme.
+ * Returns Vec<{ appIdentifier, monitorRects: VRect[] }> where each VRect
+ * is { origin: { x, y }, size: { w, h } } in virtual-screen physical
+ * pixels (same space as `node-screenshots` Monitor.x()/y()/width()/
+ * height()). The agent layer maps these to displayIds via origin coord
+ * match — see winExecutor.findWindowDisplays.
  */
 module.exports.findWindowMonitorRects = function findWindowMonitorRects(bundleIds) {
   const mod = loadNative()
@@ -125,29 +122,14 @@ module.exports.captureWindow = function captureWindow(bundleId) {
 // ── Full-screen BitBlt + Lanczos resize + JPEG (mac-parity capture path) ───
 
 module.exports.captureDisplayScaled = function captureDisplayScaled(
-  physicalX,
-  physicalY,
-  physicalW,
-  physicalH,
-  logicalW,
-  logicalH,
+  src,
   targetW,
   targetH,
   jpegQuality,
 ) {
   const mod = loadNative()
   if (!mod) return null
-  return mod.captureDisplayScaled(
-    physicalX,
-    physicalY,
-    physicalW,
-    physicalH,
-    logicalW,
-    logicalH,
-    targetW,
-    targetH,
-    jpegQuality,
-  )
+  return mod.captureDisplayScaled(src, targetW, targetH, jpegQuality)
 }
 
 // ── WGC allowlist-filtered capture (Stage 3 skeleton, returns None) ────────
@@ -160,10 +142,10 @@ module.exports.captureExcluding = function captureExcluding(opts) {
 
 // ── Win32 mouse input (bypasses nut.js / libnut) ───────────────────────────
 
-module.exports.moveCursor = function moveCursor(x, y) {
+module.exports.moveCursor = function moveCursor(p) {
   const mod = loadNative()
   if (!mod) throw new Error(`win NAPI not available: ${loadError ?? 'unknown'}`)
-  return mod.moveCursor(x, y)
+  return mod.moveCursor(p)
 }
 
 module.exports.clickMouse = function clickMouse(button, count) {
