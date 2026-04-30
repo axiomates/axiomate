@@ -90,6 +90,18 @@ export function getMidModel(): ModelName {
   return getCurrentModel()
 }
 
+export function getVlModel(): ModelName {
+  const config = getGlobalConfig()
+  if (config.vlModel && config.models?.[config.vlModel]) return config.vlModel
+  return getCurrentModel()
+}
+
+export function getOcrModel(): ModelName | undefined {
+  const config = getGlobalConfig()
+  if (config.ocrModel && config.models?.[config.ocrModel]) return config.ocrModel
+  return undefined
+}
+
 export function getRuntimeMainLoopModel(params: {
   permissionMode: PermissionMode
   mainLoopModel: string

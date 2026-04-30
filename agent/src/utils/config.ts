@@ -556,6 +556,10 @@ export type GlobalConfig = {
   fastModel?: string
   /** Mid-tier model for tasks needing reasoning (memory selection, classification). Falls back to currentModel. */
   midModel?: string
+  /** VL model for computer-use vision. Falls back to currentModel. */
+  vlModel?: string
+  /** OCR model (config slot — not yet integrated). */
+  ocrModel?: string
 }
 
 /**
