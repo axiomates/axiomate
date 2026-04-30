@@ -783,10 +783,10 @@ mod windows_impl {
         CloseHandle, BOOL, ERROR_NO_MORE_ITEMS, HANDLE, HWND, LPARAM, POINT, RECT,
     };
     use windows::Win32::Graphics::Gdi::{
-        BitBlt, CreateCompatibleBitmap, CreateCompatibleDC, CreatePen, DeleteDC,
-        DeleteObject, Ellipse, EnumDisplayMonitors, GetDC, GetDIBits, GetStockObject,
+        BitBlt, CreateCompatibleBitmap, CreateCompatibleDC, DeleteDC,
+        DeleteObject, EnumDisplayMonitors, GetDC, GetDIBits,
         ReleaseDC, SelectObject, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS,
-        HDC, HMONITOR, NULL_BRUSH, PS_SOLID, SRCCOPY,
+        HDC, HMONITOR, SRCCOPY,
     };
     use windows::Win32::Security::{GetTokenInformation, TokenElevation, TOKEN_ELEVATION, TOKEN_QUERY};
     use windows::Win32::System::Registry::{
@@ -1822,45 +1822,57 @@ mod windows_impl {
     /// rather than the cursor bitmap's top-left.
     ///
     /// Note: `GetIconInfo` allocates `hbmMask` and (for color cursors)
-    /// `hbmColor` bitmap handles which the caller owns; we DeleteObject
-    /// them on every exit path.
-    ///
-    /// `bitmap_origin` is the top-left corner (in `VPoint` = physical
-    /// virtual-screen px) of the bitmap selected into `dc` — i.e. the
-    /// `BitBlt` source-rect origin. Under Per-Monitor V2 DPI awareness
-    /// (set by `ensure_dpi_aware`), `GetCursorInfo`'s `ptScreenPos`
-    /// returns physical virtual-screen px directly, so we just subtract
-    /// the bitmap origin to get bitmap-local coords. No scaling math
-    /// — the canonical-`VPoint` contract eliminated the previous
-    /// logical-vs-physical bridge.
-    unsafe fn compose_cursor_into_dc(dc: HDC, bitmap_origin: VPoint) {
+    /// Lime-green marker ring drawn directly on an RGB888 buffer.
+    /// Drawn AFTER Lanczos resize so the ring is pixel-sharp at the
+    /// final image resolution instead of being blurred by downscaling.
+    /// Constants are in image-pixel space (the dims the AI sees).
+    const RING_RADIUS: i32 = 10;
+    const RING_PEN_WIDTH: i32 = 3;
+
+    fn draw_ring_on_rgb(buf: &mut [u8], w: u32, h: u32, cx: i32, cy: i32) {
+        let half = RING_PEN_WIDTH as f32 / 2.0;
+        let r_inner = RING_RADIUS as f32 - half;
+        let r_outer = RING_RADIUS as f32 + half;
+        let r_inner_sq = r_inner * r_inner;
+        let r_outer_sq = r_outer * r_outer;
+        let bound = RING_RADIUS + RING_PEN_WIDTH;
+        for dy in -bound..=bound {
+            for dx in -bound..=bound {
+                let dist_sq = (dx * dx + dy * dy) as f32;
+                if dist_sq >= r_inner_sq && dist_sq <= r_outer_sq {
+                    let px = cx + dx;
+                    let py = cy + dy;
+                    if px >= 0 && px < w as i32 && py >= 0 && py < h as i32 {
+                        let idx = ((py as usize) * (w as usize) + (px as usize)) * 3;
+                        buf[idx] = 0;       // R
+                        buf[idx + 1] = 255; // G
+                        buf[idx + 2] = 0;   // B
+                    }
+                }
+            }
+        }
+    }
+
+    /// Returns the bitmap-local cursor tip `(x, y)` if the cursor was
+    /// visible and drawn, or `None` if cursor was hidden / suppressed.
+    unsafe fn compose_cursor_into_dc(dc: HDC, bitmap_origin: VPoint) -> Option<(i32, i32)> {
         let mut info: CURSORINFO = std::mem::zeroed();
         info.cbSize = std::mem::size_of::<CURSORINFO>() as u32;
         if GetCursorInfo(&mut info).is_err() {
-            return;
+            return None;
         }
-        // CURSOR_SHOWING == 1; flags can also be CURSOR_SUPPRESSED (2)
-        // when touch is the active pointer mode. Either non-SHOWING
-        // case → don't paint a phantom cursor.
         if info.flags.0 & CURSOR_SHOWING.0 == 0 {
-            return;
+            return None;
         }
         if info.hCursor.0.is_null() {
-            return;
+            return None;
         }
         let mut icon_info: ICONINFO = std::mem::zeroed();
         if GetIconInfo(info.hCursor, &mut icon_info).is_err() {
-            return;
+            return None;
         }
-        // ptScreenPos is in virtual-screen physical px (Per-Monitor V2
-        // DPI-aware). Bitmap-local tip = global tip − bitmap origin.
         let tip_x = info.ptScreenPos.x - bitmap_origin.x;
         let tip_y = info.ptScreenPos.y - bitmap_origin.y;
-        // Hotspot is in CURSOR-BITMAP-PIXEL coords (the cursor's own
-        // bitmap, ~32×32), NOT screen-pixel coords. `DrawIconEx` with
-        // `cxWidth=0, cyHeight=0` paints the cursor at its native bitmap
-        // size, so the hotspot's pixel offset from `(draw_x, draw_y)` is
-        // unchanged regardless of DPI scale.
         let draw_x = tip_x - icon_info.xHotspot as i32;
         let draw_y = tip_y - icon_info.yHotspot as i32;
         let _ = DrawIconEx(
@@ -1868,9 +1880,9 @@ mod windows_impl {
             draw_x,
             draw_y,
             info.hCursor,
-            0, // 0 = use cursor's native width
-            0, // 0 = use cursor's native height
-            0, // istepIfAniCur — 0 = first frame, fine for static cursors
+            0,
+            0,
+            0,
             None,
             DI_NORMAL,
         );
@@ -1880,51 +1892,7 @@ mod windows_impl {
         if !icon_info.hbmColor.0.is_null() {
             let _ = DeleteObject(icon_info.hbmColor);
         }
-
-        // High-contrast marker ring around the cursor tip. The system cursor
-        // (~32×32 grayscale arrow) gets visually swallowed by JPEG
-        // compression + screenshot downscaling at scaled-down image dims;
-        // VL models then can't locate the cursor in the image and fall
-        // back to clicking guessed coords. A thick lime-green circle is
-        // unmistakable at any zoom level — VL models latch onto it
-        // reliably as the input-position indicator.
-        //
-        // COLORREF format on Win32 is 0x00BBGGRR (BGR despite the name).
-        // 0x0000FF00 = pure green. Lime green is high-contrast against
-        // both light and dark UI themes.
-        //
-        // Sizes are in physical pixels (the bitmap's coord space).
-        // Tighter radius (12) + thicker stroke (5) — empirically the
-        // earlier 18/3 ring covered too much UI area while the thin
-        // stroke faded under JPEG quantization. The smaller diameter
-        // hugs the cursor tip; the bolder stroke survives compression
-        // and downscaling, keeping the ring unmissable to VL models
-        // without obscuring nearby UI elements. (Phase 1 dropped the
-        // logical-pixel-then-scale-up dance that the DPI-unaware bridge
-        // required; ring renders at fixed physical px now.)
-        const RING_RADIUS: i32 = 12;
-        const RING_PEN_WIDTH: i32 = 5;
-        const RING_COLOR: u32 = 0x0000FF00; // BGR: pure lime green
-        let pen = CreatePen(
-            PS_SOLID,
-            RING_PEN_WIDTH,
-            windows::Win32::Foundation::COLORREF(RING_COLOR),
-        );
-        if !pen.0.is_null() {
-            let null_brush = GetStockObject(NULL_BRUSH);
-            let prev_pen = SelectObject(dc, pen);
-            let prev_brush = SelectObject(dc, null_brush);
-            let _ = Ellipse(
-                dc,
-                tip_x - RING_RADIUS,
-                tip_y - RING_RADIUS,
-                tip_x + RING_RADIUS,
-                tip_y + RING_RADIUS,
-            );
-            SelectObject(dc, prev_pen);
-            SelectObject(dc, prev_brush);
-            let _ = DeleteObject(pen);
-        }
+        Some((tip_x, tip_y))
     }
 
     /// Inner capture path; returns Result so we can `?` through the
@@ -2014,20 +1982,18 @@ mod windows_impl {
         // px (same coord space as `GetCursorInfo` under Per-Monitor V2
         // DPI awareness), so the cursor's bitmap-local position is
         // (cursor_screen − window_origin).
-        compose_cursor_into_dc(
+        let cursor_tip = compose_cursor_into_dc(
             mem_dc,
             VPoint { x: window_left, y: window_top },
         );
 
-        // Read pixels via GetDIBits. We request 32bpp top-down (negative
-        // height in BITMAPINFOHEADER) so we don't need to flip rows after.
         let row_size = (width as usize) * 4;
         let buf_size = row_size * (height as usize);
         let mut buf = vec![0u8; buf_size];
         let mut bmi: BITMAPINFO = std::mem::zeroed();
         bmi.bmiHeader.biSize = std::mem::size_of::<BITMAPINFOHEADER>() as u32;
         bmi.bmiHeader.biWidth = width;
-        bmi.bmiHeader.biHeight = -height; // negative = top-down
+        bmi.bmiHeader.biHeight = -height;
         bmi.bmiHeader.biPlanes = 1;
         bmi.bmiHeader.biBitCount = 32;
         bmi.bmiHeader.biCompression = BI_RGB.0;
@@ -2045,12 +2011,15 @@ mod windows_impl {
             return Err("GetDIBits returned 0 lines".to_string());
         }
 
-        // BGRA → RGB. Same conversion as mac NAPI cg_image_to_jpeg_base64.
         let mut rgb = Vec::with_capacity((width as usize) * (height as usize) * 3);
         for px in buf.chunks_exact(4) {
-            rgb.push(px[2]); // R
-            rgb.push(px[1]); // G
-            rgb.push(px[0]); // B
+            rgb.push(px[2]);
+            rgb.push(px[1]);
+            rgb.push(px[0]);
+        }
+
+        if let Some((tx, ty)) = cursor_tip {
+            draw_ring_on_rgb(&mut rgb, width as u32, height as u32, tx, ty);
         }
 
         let mut jpeg = Vec::new();
@@ -2184,16 +2153,15 @@ mod windows_impl {
         // awareness `GetCursorInfo` returns physical virtual-screen px
         // directly, so the bitmap-local cursor position is
         // (cursor_screen − bitmap_origin). No DPI scaling math needed.
-        compose_cursor_into_dc(mem_dc, VPoint { x: src_x, y: src_y });
+        let cursor_tip = compose_cursor_into_dc(mem_dc, VPoint { x: src_x, y: src_y });
 
-        // 32bpp top-down BGRA — same as capture_window_inner.
         let row_size = (src_w as usize) * 4;
         let buf_size = row_size * (src_h as usize);
         let mut buf = vec![0u8; buf_size];
         let mut bmi: BITMAPINFO = std::mem::zeroed();
         bmi.bmiHeader.biSize = std::mem::size_of::<BITMAPINFOHEADER>() as u32;
         bmi.bmiHeader.biWidth = src_w;
-        bmi.bmiHeader.biHeight = -src_h; // negative = top-down
+        bmi.bmiHeader.biHeight = -src_h;
         bmi.bmiHeader.biPlanes = 1;
         bmi.bmiHeader.biBitCount = 32;
         bmi.bmiHeader.biCompression = BI_RGB.0;
@@ -2211,7 +2179,6 @@ mod windows_impl {
             return Err("GetDIBits returned 0 lines".to_string());
         }
 
-        // BGRA → RGB.
         let mut rgb = Vec::with_capacity((src_w as usize) * (src_h as usize) * 3);
         for px in buf.chunks_exact(4) {
             rgb.push(px[2]);
@@ -2219,10 +2186,7 @@ mod windows_impl {
             rgb.push(px[0]);
         }
 
-        // Resize step. Skipped when target == source (small monitors
-        // already inside the API's token budget). Lanczos3 — slightly
-        // sharper than Triangle/CatmullRom for screenshot text/icons.
-        let (final_rgb, final_w, final_h) = if target_w as i32 == src_w
+        let (mut final_rgb, final_w, final_h) = if target_w as i32 == src_w
             && target_h as i32 == src_h
         {
             (rgb, src_w as u32, src_h as u32)
@@ -2238,6 +2202,12 @@ mod windows_impl {
             );
             (resized.into_raw(), target_w, target_h)
         };
+
+        if let Some((tx, ty)) = cursor_tip {
+            let tip_x_img = (tx as i64 * final_w as i64 / src_w as i64) as i32;
+            let tip_y_img = (ty as i64 * final_h as i64 / src_h as i64) as i32;
+            draw_ring_on_rgb(&mut final_rgb, final_w, final_h, tip_x_img, tip_y_img);
+        }
 
         let mut jpeg = Vec::new();
         let mut encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut jpeg, jpeg_quality);

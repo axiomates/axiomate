@@ -5,19 +5,8 @@ type ChicagoConfig = CuSubGates & {
   coordinateMode: CoordinateMode
 }
 
-// Per-platform default coordinate mode.
-// - win32: `display_pt` — Qwen-VL (and other non-Anthropic VLMs that
-//   the win-side gets fed via OpenAI-compat) emit click coords in
-//   display logical-pt space regardless of the screenshot image dim.
-//   The mode tells scaleCoord to take coords as-is (origin offset
-//   only) and decouples image resize from click math, so we can ship
-//   a pre-resized 1080p-ish screenshot for token economy without
-//   breaking clicks. See COORDINATES.md.
-// - darwin: `pixels` — Anthropic computer-use beta convention; mac
-//   pipeline already pre-resizes to API token budget and Anthropic
-//   models emit in image-pixel space.
 function defaultCoordinateMode(): CoordinateMode {
-  return process.platform === 'win32' ? 'display_pt' : 'pixels'
+  return 'pixels'
 }
 
 const DEFAULTS_BASE = {

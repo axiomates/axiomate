@@ -42,8 +42,7 @@ DPI-aware via `SetProcessDpiAwarenessContext` in `ensure_dpi_aware()`
 |------------|-------|------|
 | screen physical-px → image-px | win NAPI `capture_display_scaled` (BitBlt + Lanczos resize) | every win screenshot |
 | screen physical-px → image-px | mac swift NAPI `captureExcluding` (CGImage + targetImageSize) | every mac screenshot |
-| image-px → display-coord-pt | **scaleCoord** (mode = `pixels`) — `rawX * (display_W / image_W) + originX` | every click in `pixels` mode |
-| (no conversion) | **scaleCoord** (mode = `display_pt`) — `rawX + originX`, AI gives display-coord-pt directly | every click in `display_pt` mode |
+| image-px → display-coord-pt | **scaleCoord** (mode = `pixels`) — `rawX * (display_W / image_W) + originX` | every click |
 | display-coord-pt → cursor | win NAPI `move_cursor` (SendInput, takes physical px) | every win click |
 | display-coord-pt → cursor | mac swift NAPI `moveMouse` / `mouseButton` (takes logical pt) | every mac click |
 
@@ -57,11 +56,8 @@ platform.
 
 `CoordinateMode` (in `types.ts`) tells `scaleCoord` what convention the AI is using:
 
-- **`pixels`** (mac default) — AI emits in image-px space. scaleCoord multiplies by `display_W / image_W` to reach display-coord-pt. This is the Anthropic computer-use beta convention.
-- **`display_pt`** (win default) — AI emits in display-coord-pt space directly. scaleCoord is identity (modulo origin offset). This matches Qwen-VL and other non-Anthropic VLMs that ignore "image-pixel" tool descriptions and emit screen-coordinates regardless of image size.
+- **`pixels`** (default, both platforms) — AI emits in image-px space. scaleCoord multiplies by `display_W / image_W` to reach display-coord-pt. The AI only sees the downscaled image (≤1920 long edge) and operates entirely in that virtual resolution. The physical display resolution is never exposed to the AI.
 - **`normalized_0_100`** — AI emits a percentage. scaleCoord multiplies by `display_W / 100`.
-
-In `display_pt` mode the screenshot tool emits a text caption with the screen's actual pixel resolution alongside the image, so the model knows what space to give coords in even when the image is downscaled.
 
 ## Why this matters
 
@@ -69,7 +65,7 @@ Past bugs we fixed by being precise about which conversion happens where:
 
 - `screenshotToLogical` divided by scaleFactor a SECOND time after `scaleCoord` already converted (commit 24b3112). Killed by deletion.
 - nut.js silently no-op'd in Bun-compiled exes despite reporting "successful" cursor positions; mac path used its own swift NAPI, win was the only platform hitting nut.js (commit 5860ce7). Killed by replacing with direct Win32 SendInput / SetCursorPos.
-- Image dim was forced to equal display logical dim as a hack to make scaleCoord identity, which broke for non-16:9 / non-200%-scaling screens (commit 850dc5a era). Killed by introducing `display_pt` mode.
+- Image dim was forced to equal display logical dim as a hack to make scaleCoord identity, which broke for non-16:9 / non-200%-scaling screens (commit 850dc5a era). Killed by proper `pixels` mode with `display_W / image_W` scaling.
 - Initial Win32 input wrapper assumed `SetCursorPos` takes physical px when the process was DPI-unaware, and `× scaleFactor`-multiplied the logical coords. This doubled all coords — killed by removing `logicalToPhysical` helper. Phase 1 then flipped to Per-Monitor V2 DPI-aware and made `DisplayGeometry` carry physical px, so the identity path works in physical space.
 
 If you're tempted to add a `* scaleFactor` or `/ scaleFactor` somewhere,

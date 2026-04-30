@@ -270,26 +270,6 @@ function scaleCoord(
     };
   }
 
-  if (mode === "display_pt") {
-    // Model emitted coords in the screen's original logical-pt space.
-    // No image-px → logical scaling needed (image dim and click-coord
-    // space are deliberately decoupled in this mode); just add the
-    // captured display's origin for multi-monitor virtual-screen
-    // offsets. Origin comes from lastScreenshot, not fresh display
-    // lookup, so a mid-session display switch doesn't yank coords
-    // mid-click.
-    const originX = lastScreenshot?.originX ?? display.originX;
-    const originY = lastScreenshot?.originY ?? display.originY;
-    const result = {
-      x: Math.round(rawX) + originX,
-      y: Math.round(rawY) + originY,
-    };
-    logger.debug(
-      `[CU-COORD] scaleCoord (display_pt): in=(${rawX},${rawY}) origin=(${originX},${originY}) → out=(${result.x},${result.y})`,
-    );
-    return result;
-  }
-
   // mode === "pixels": model sent image-space pixel coords.
   if (lastScreenshot) {
     // The transform. Chrome coordinateScaling.ts:22-34 + native computer-use
@@ -354,18 +334,6 @@ function coordToPercentageForPixelCompare(
     // validateClickTarget at pixelCompare.ts:141-143 already skips when
     // lastScreenshot is undefined, so this return value never reaches a crop.
     return { xPct: 0, yPct: 0 };
-  }
-
-  if (mode === "display_pt") {
-    // Model coord is in display logical-pt space. Convert via display dim
-    // (which lastScreenshot.displayWidth holds) so the percentage targets
-    // the same fraction of the captured display as the click will hit.
-    const dW = lastScreenshot.displayWidth ?? lastScreenshot.width;
-    const dH = lastScreenshot.displayHeight ?? lastScreenshot.height;
-    return {
-      xPct: (rawX / dW) * 100,
-      yPct: (rawY / dH) * 100,
-    };
   }
 
   // mode === "pixels"
@@ -2249,32 +2217,6 @@ async function autoTriggerEmptyAllowlistDialog(
   return undefined;
 }
 
-/**
- * In `display_pt` coord mode the model is told to give clicks in the
- * screen's original-resolution space — but unless the model is told
- * what that resolution actually is, it can only guess. This caption
- * appears as a text content block alongside every screenshot in
- * display_pt mode. Image dim is included too so the model can
- * compute the upscale ratio if it's reading icons in image-px space
- * mentally and translating.
- */
-function buildDisplayDimNote(
-  shot: ScreenshotResult,
-  coordinateMode: CoordinateMode,
-): string | null {
-  if (coordinateMode !== "display_pt") return null;
-  const dW = shot.displayWidth ?? shot.width;
-  const dH = shot.displayHeight ?? shot.height;
-  if (shot.width === dW && shot.height === dH) {
-    return `Screen resolution: ${dW}×${dH}. Click coordinates must be in this space.`;
-  }
-  return (
-    `Screen resolution: ${dW}×${dH}. The image below is a scaled-down ` +
-    `${shot.width}×${shot.height} view; click coordinates must be in the ` +
-    `original ${dW}×${dH} screen space, not the smaller image space.`
-  );
-}
-
 async function handleScreenshot(
   adapter: ComputerUseHostAdapter,
   overrides: ComputerUseOverrides,
@@ -2412,7 +2354,7 @@ async function handleScreenshot(
     };
     adapter.logger.debug(
       `[CU-COORD] handleScreenshot atomic stash: image=${shot.width}x${shot.height} (px) ` +
-        `displayLogical=${shot.displayWidth}x${shot.displayHeight} (pt) ` +
+        `display=${shot.displayWidth}x${shot.displayHeight} (physical) ` +
         `origin=(${shot.originX},${shot.originY}) displayId=${shot.displayId} ` +
         `(these are the dims AI's clicks will be scaled against)`,
     );
@@ -2423,13 +2365,10 @@ async function handleScreenshot(
       overrides.lastScreenshot?.displayId,
       overrides.onDisplayPinned !== undefined,
     );
-    const displayDimNote = buildDisplayDimNote(shot, overrides.coordinateMode);
-
     return {
       content: [
         ...(monitorNote ? [{ type: "text" as const, text: monitorNote }] : []),
         ...(hiddenNote ? [{ type: "text" as const, text: hiddenNote }] : []),
-        ...(displayDimNote ? [{ type: "text" as const, text: displayDimNote }] : []),
         {
           type: "image",
           data: shot.base64,
@@ -2491,7 +2430,7 @@ async function handleScreenshot(
   );
   adapter.logger.debug(
     `[CU-COORD] handleScreenshot non-atomic stash: image=${shot.width}x${shot.height} (px) ` +
-      `displayLogical=${shot.displayWidth}x${shot.displayHeight} (pt) ` +
+      `display=${shot.displayWidth}x${shot.displayHeight} (physical) ` +
       `origin=(${shot.originX},${shot.originY}) displayId=${shot.displayId} ` +
       `(these are the dims AI's clicks will be scaled against)`,
   );
@@ -2504,13 +2443,10 @@ async function handleScreenshot(
     overrides.lastScreenshot?.displayId,
     overrides.onDisplayPinned !== undefined,
   );
-  const displayDimNote = buildDisplayDimNote(shot, overrides.coordinateMode);
-
   return {
     content: [
       ...(monitorNote ? [{ type: "text" as const, text: monitorNote }] : []),
       ...(hiddenNote ? [{ type: "text" as const, text: hiddenNote }] : []),
-      ...(displayDimNote ? [{ type: "text" as const, text: displayDimNote }] : []),
       {
         type: "image",
         data: shot.base64,
@@ -3167,52 +3103,58 @@ async function handleMoveMouse(
   await adapter.executor.moveMouse(x, y);
   if (mouseButtonHeld) mouseMoved = true;
 
-  // Edge warning: if the requested coord lands at/past the screen boundary
-  // (or within ~20px margin needed for the cursor body to be fully visible),
-  // tell the AI which edge so it can correct. The cursor body extends right
-  // and down from the tip; a tip at (0, 0) is fully visible, but a tip at
-  // (display.width-1, display.height-1) puts the body off-screen → cursor
-  // becomes invisible in the next screenshot, which would otherwise leave
-  // the AI confused ("I moved the mouse but I can't see it"). Comparing the
-  // raw input (display_pt or normalized space, depending on coord mode)
-  // against display dims in the same space.
-  const CURSOR_BODY_PX = 20;
+  const CURSOR_MARGIN_IMAGE_PX = 25;
   const warnings: string[] = [];
-  // Translate raw input to a "fraction of display" so the same warning
-  // logic works across coord modes. For display_pt: rawX is screen px.
-  // For pixels: rawX is image px (compare against image dim if available,
-  // else display). For normalized_0_100: rawX is 0..100.
   let xFrac: number | null = null;
   let yFrac: number | null = null;
-  if (overrides.coordinateMode === "display_pt") {
-    if (display.width > 0) xFrac = rawX / display.width;
-    if (display.height > 0) yFrac = rawY / display.height;
-  } else if (overrides.coordinateMode === "normalized_0_100") {
+  let reportW = display.width;
+  let reportH = display.height;
+  let marginFracX = CURSOR_MARGIN_IMAGE_PX / display.width;
+  let marginFracY = CURSOR_MARGIN_IMAGE_PX / display.height;
+  if (overrides.coordinateMode === "normalized_0_100") {
     xFrac = rawX / 100;
     yFrac = rawY / 100;
   } else if (
     overrides.coordinateMode === "pixels" &&
     overrides.lastScreenshot
   ) {
-    if (overrides.lastScreenshot.width > 0)
-      xFrac = rawX / overrides.lastScreenshot.width;
-    if (overrides.lastScreenshot.height > 0)
-      yFrac = rawY / overrides.lastScreenshot.height;
+    reportW = overrides.lastScreenshot.width;
+    reportH = overrides.lastScreenshot.height;
+    if (reportW > 0) {
+      xFrac = rawX / reportW;
+      marginFracX = CURSOR_MARGIN_IMAGE_PX / reportW;
+    }
+    if (reportH > 0) {
+      yFrac = rawY / reportH;
+      marginFracY = CURSOR_MARGIN_IMAGE_PX / reportH;
+    }
   }
-  if (xFrac !== null && display.width > 0) {
-    const marginFrac = CURSOR_BODY_PX / display.width;
-    if (xFrac < 0) warnings.push("past LEFT edge (x<0)");
-    else if (xFrac > 1 - marginFrac)
+  if (xFrac !== null && reportW > 0) {
+    if (xFrac < 0)
+      warnings.push("past LEFT edge (x<0) — fully off-screen. Increase x.");
+    else if (xFrac < marginFracX)
+      warnings.push("near LEFT edge — cursor partially clipped. Increase x.");
+    else if (xFrac >= 1)
       warnings.push(
-        `at/past RIGHT edge (display width ${display.width}px) — cursor may be off-screen / invisible. Reduce x.`,
+        `past RIGHT edge (image width ${reportW}px) — fully off-screen. Reduce x.`,
+      );
+    else if (xFrac > 1 - marginFracX)
+      warnings.push(
+        `near RIGHT edge (image width ${reportW}px) — cursor partially clipped. Reduce x.`,
       );
   }
-  if (yFrac !== null && display.height > 0) {
-    const marginFrac = CURSOR_BODY_PX / display.height;
-    if (yFrac < 0) warnings.push("past TOP edge (y<0)");
-    else if (yFrac > 1 - marginFrac)
+  if (yFrac !== null && reportH > 0) {
+    if (yFrac < 0)
+      warnings.push("past TOP edge (y<0) — fully off-screen. Increase y.");
+    else if (yFrac < marginFracY)
+      warnings.push("near TOP edge — cursor partially clipped. Increase y.");
+    else if (yFrac >= 1)
       warnings.push(
-        `at/past BOTTOM edge (display height ${display.height}px) — cursor may be off-screen / invisible. Reduce y.`,
+        `past BOTTOM edge (image height ${reportH}px) — fully off-screen. Reduce y.`,
+      );
+    else if (yFrac > 1 - marginFracY)
+      warnings.push(
+        `near BOTTOM edge (image height ${reportH}px) — cursor partially clipped. Reduce y.`,
       );
   }
   if (warnings.length > 0) {
@@ -3514,19 +3456,6 @@ async function handleCursorPosition(
   overrides: ComputerUseOverrides,
 ): Promise<CuCallToolResult> {
   const logical = await adapter.executor.getCursorPosition();
-
-  // In display_pt coord mode (Win default), AI gives clicks in display
-  // logical-pt space directly. cursor_position must return the same space
-  // so the AI's mental model is coherent — a click at the returned (x, y)
-  // would land where the cursor currently is. No image-px conversion.
-  if (overrides.coordinateMode === "display_pt") {
-    return okJson({
-      x: logical.x,
-      y: logical.y,
-      coordinateSpace: "display_pt",
-    });
-  }
-
   const shot = overrides.lastScreenshot;
   if (shot) {
     // Inverse of scaleCoord: subtract capture-time origin to go from

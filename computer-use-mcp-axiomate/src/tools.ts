@@ -24,10 +24,6 @@ const COORD_DESC: Record<CoordinateMode, { x: string; y: string }> = {
     x: "Horizontal position as a percentage of screen width, 0.0–100.0 (0 = LEFT edge, 100 = RIGHT edge; x increases rightward).",
     y: "Vertical position as a percentage of screen height, 0.0–100.0 (0 = TOP edge, 100 = BOTTOM edge; y increases downward).",
   },
-  display_pt: {
-    x: "Horizontal pixel position in the screen's original resolution, measured from the LEFT edge (x increases rightward). The image is a scaled-down view; give coords in the ORIGINAL-size screen space, not image pixels.",
-    y: "Vertical pixel position in the screen's original resolution, measured from the TOP edge (y increases downward). Same scale-back rule as x.",
-  },
 };
 
 const FRONTMOST_GATE_DESC =
@@ -242,9 +238,7 @@ export function buildComputerUseTools(
         (caps.screenshotFiltering === "native"
           ? " If the session allowlist is empty, the dispatch layer auto-throws a PermissionRequest (not a hard error) and the host application surfaces an interactive dialog where the user picks apps to allow; the screenshot then resumes automatically. **Do NOT pre-call request_access for the screenshot itself, and do NOT fall back to shell commands like `screencapture` if you see a permission-related result. Retry once if the call appears interrupted.** "
           : " No allowlist setup is required — just call this tool directly with no arguments. ") +
-        (coordinateMode === "display_pt"
-          ? "The image is a scaled-down view of the full screen for token economy. The screen's actual pixel resolution is included as a text caption alongside the image; click coordinates must be in that ORIGINAL screen resolution, not the smaller image dimensions. "
-          : "The returned image is what subsequent click coordinates are relative to. ") +
+        "The returned image is what subsequent click coordinates are relative to. " +
         "**The mouse cursor IS rendered in the image with a thick lime-green CIRCLE outline drawn around it** (the ring is added so the cursor remains unmissable at any image scale / JPEG compression). The cursor's pointer tip sits at the CENTER of the green ring. Use the green ring as ground-truth for where input will land.\n\n" +
         "**Coordinate system: x increases LEFT→RIGHT, y increases TOP→BOTTOM.** (0, 0) is the top-left pixel; (width-1, height-1) is the bottom-right.\n\n" +
         "**Before any click, verify the green ring sits directly on the target. LOOP this procedure until confirmed:**\n" +
@@ -595,9 +589,7 @@ export function buildComputerUseTools(
 
     {
       name: "cursor_position",
-      description: coordinateMode === "display_pt"
-        ? "Get the current mouse cursor position. Returns coordinates in display logical-pt space — the same space click tools accept."
-        : "Get the current mouse cursor position. Returns image-pixel coordinates relative to the most recent screenshot, or logical points if no screenshot has been taken.",
+      description: "Get the current mouse cursor position. Returns image-pixel coordinates relative to the most recent screenshot, or raw screen points if no screenshot has been taken yet.",
       inputSchema: {
         type: "object" as const,
         properties: {},
