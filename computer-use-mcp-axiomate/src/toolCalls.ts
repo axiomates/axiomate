@@ -3103,8 +3103,24 @@ async function handleMoveMouse(
   await adapter.executor.moveMouse(x, y);
   if (mouseButtonHeld) mouseMoved = true;
 
+  // Read back actual cursor position and convert to screen (virtual) coords.
+  const actual = await adapter.executor.getCursorPosition();
+  const shot = overrides.lastScreenshot;
+  let actualScreenX: number | undefined;
+  let actualScreenY: number | undefined;
+  if (shot && shot.displayWidth > 0 && shot.displayHeight > 0) {
+    const localX = actual.x - shot.originX;
+    const localY = actual.y - shot.originY;
+    if (localX >= 0 && localX <= shot.displayWidth && localY >= 0 && localY <= shot.displayHeight) {
+      actualScreenX = Math.round(localX * (shot.width / shot.displayWidth));
+      actualScreenY = Math.round(localY * (shot.height / shot.displayHeight));
+    }
+  }
+
   const CURSOR_MARGIN_IMAGE_PX = 25;
   const warnings: string[] = [];
+  const posX = actualScreenX ?? rawX;
+  const posY = actualScreenY ?? rawY;
   let xFrac: number | null = null;
   let yFrac: number | null = null;
   let reportW = display.width;
@@ -3157,10 +3173,11 @@ async function handleMoveMouse(
         `near BOTTOM edge (screen height ${reportH}px) — cursor partially clipped. Reduce y.`,
       );
   }
+  const pos = actualScreenX !== undefined ? ` Cursor now at (${posX}, ${posY}).` : "";
   if (warnings.length > 0) {
-    return okText(`Moved (warning: cursor ${warnings.join("; ")}).`);
+    return okText(`Moved (warning: cursor ${warnings.join("; ")}).${pos}`);
   }
-  return okText("Moved.");
+  return okText(`Moved.${pos}`);
 }
 
 async function handleOpenApplication(
