@@ -3103,17 +3103,72 @@ async function handleMoveMouse(
   await adapter.executor.moveMouse(x, y);
   if (mouseButtonHeld) mouseMoved = true;
 
-  // Read back actual cursor position and convert to screen (virtual) coords.
   const actual = await adapter.executor.getCursorPosition();
   const shot = overrides.lastScreenshot;
+
   let actualScreenX: number | undefined;
   let actualScreenY: number | undefined;
-  if (shot && shot.displayWidth > 0 && shot.displayHeight > 0) {
-    const localX = actual.x - shot.originX;
-    const localY = actual.y - shot.originY;
-    if (localX >= 0 && localX <= shot.displayWidth && localY >= 0 && localY <= shot.displayHeight) {
+  let displayChanged = false;
+  let fromDisplayLabel: string | undefined;
+  let toDisplayLabel: string | undefined;
+  try {
+    const displays = await adapter.executor.listDisplays();
+    const cursorDisplay = displays.find(
+      (d) =>
+        d.originX !== undefined &&
+        d.originY !== undefined &&
+        actual.x >= d.originX &&
+        actual.x < d.originX + d.width &&
+        actual.y >= d.originY &&
+        actual.y < d.originY + d.height,
+    );
+    if (
+      cursorDisplay &&
+      cursorDisplay.originX !== undefined &&
+      cursorDisplay.originY !== undefined
+    ) {
+      toDisplayLabel = cursorDisplay.label;
+      const longEdge = Math.max(cursorDisplay.width, cursorDisplay.height);
+      const ratio = longEdge <= 1920 ? 1 : 1920 / longEdge;
+      const virtualW = Math.round(cursorDisplay.width * ratio);
+      const virtualH = Math.round(cursorDisplay.height * ratio);
+      const localX = actual.x - cursorDisplay.originX;
+      const localY = actual.y - cursorDisplay.originY;
+      actualScreenX = Math.round(localX * (virtualW / cursorDisplay.width));
+      actualScreenY = Math.round(localY * (virtualH / cursorDisplay.height));
+      if (
+        shot?.displayId !== undefined &&
+        cursorDisplay.displayId !== shot.displayId
+      ) {
+        displayChanged = true;
+        const fromDisplay = displays.find(
+          (d) => d.displayId === shot.displayId,
+        );
+        fromDisplayLabel =
+          fromDisplay?.label ?? `display ${shot.displayId}`;
+      }
+    }
+  } catch {
+    // fallback: shot-based mapping (single display or listDisplays unavailable)
+  }
+  if (
+    actualScreenX === undefined &&
+    shot &&
+    shot.displayWidth > 0 &&
+    shot.displayHeight > 0
+  ) {
+    const localX = actual.x - (shot.originX ?? 0);
+    const localY = actual.y - (shot.originY ?? 0);
+    if (
+      localX >= 0 &&
+      localX <= shot.displayWidth &&
+      localY >= 0 &&
+      localY <= shot.displayHeight
+    ) {
       actualScreenX = Math.round(localX * (shot.width / shot.displayWidth));
-      actualScreenY = Math.round(localY * (shot.height / shot.displayHeight));
+      actualScreenY = Math.round(
+        localY * (shot.height / shot.displayHeight),
+      );
     }
   }
 
@@ -3173,9 +3228,15 @@ async function handleMoveMouse(
         `near BOTTOM edge (screen height ${reportH}px) — cursor partially clipped. Reduce y.`,
       );
   }
-  const pos = actualScreenX !== undefined ? ` Cursor now at (${posX}, ${posY}).` : "";
+  if (displayChanged) {
+    warnings.push(
+      `cursor has moved from screen "${fromDisplayLabel}" to screen "${toDisplayLabel}". Take a new screenshot to see the current screen.`,
+    );
+  }
+  const pos =
+    actualScreenX !== undefined ? ` Cursor now at (${posX}, ${posY}).` : "";
   if (warnings.length > 0) {
-    return okText(`Moved (warning: cursor ${warnings.join("; ")}).${pos}`);
+    return okText(`Moved (warning: ${warnings.join("; ")}).${pos}`);
   }
   return okText(`Moved.${pos}`);
 }
