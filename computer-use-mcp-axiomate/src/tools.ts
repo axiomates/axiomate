@@ -17,8 +17,8 @@ import type { CoordinateMode } from "./types.js";
 // phrasing — "pixels from the left edge", no geometry, no number to do math with.
 const COORD_DESC: Record<CoordinateMode, { x: string; y: string }> = {
   pixels: {
-    x: "Horizontal pixel position read from the screenshot image, measured from the LEFT edge (x increases rightward). Server handles scaling.",
-    y: "Vertical pixel position read from the screenshot image, measured from the TOP edge (y increases downward). Server handles scaling.",
+    x: "Horizontal pixel position, measured from the LEFT edge of the screen (x increases rightward).",
+    y: "Vertical pixel position, measured from the TOP edge of the screen (y increases downward).",
   },
   normalized_0_100: {
     x: "Horizontal position as a percentage of screen width, 0.0–100.0 (0 = LEFT edge, 100 = RIGHT edge; x increases rightward).",
@@ -589,7 +589,7 @@ export function buildComputerUseTools(
 
     {
       name: "cursor_position",
-      description: "Get the current mouse cursor position. Returns image-pixel coordinates relative to the most recent screenshot, or raw screen points if no screenshot has been taken yet.",
+      description: "Get the current mouse cursor position. Returns pixel coordinates on the screen.",
       inputSchema: {
         type: "object" as const,
         properties: {},

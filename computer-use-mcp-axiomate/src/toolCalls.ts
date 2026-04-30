@@ -3136,11 +3136,11 @@ async function handleMoveMouse(
       warnings.push("near LEFT edge — cursor partially clipped. Increase x.");
     else if (xFrac >= 1)
       warnings.push(
-        `past RIGHT edge (image width ${reportW}px) — fully off-screen. Reduce x.`,
+        `past RIGHT edge (screen width ${reportW}px) — fully off-screen. Reduce x.`,
       );
     else if (xFrac > 1 - marginFracX)
       warnings.push(
-        `near RIGHT edge (image width ${reportW}px) — cursor partially clipped. Reduce x.`,
+        `near RIGHT edge (screen width ${reportW}px) — cursor partially clipped. Reduce x.`,
       );
   }
   if (yFrac !== null && reportH > 0) {
@@ -3150,11 +3150,11 @@ async function handleMoveMouse(
       warnings.push("near TOP edge — cursor partially clipped. Increase y.");
     else if (yFrac >= 1)
       warnings.push(
-        `past BOTTOM edge (image height ${reportH}px) — fully off-screen. Reduce y.`,
+        `past BOTTOM edge (screen height ${reportH}px) — fully off-screen. Reduce y.`,
       );
     else if (yFrac > 1 - marginFracY)
       warnings.push(
-        `near BOTTOM edge (image height ${reportH}px) — cursor partially clipped. Reduce y.`,
+        `near BOTTOM edge (screen height ${reportH}px) — cursor partially clipped. Reduce y.`,
       );
   }
   if (warnings.length > 0) {
@@ -3474,19 +3474,17 @@ async function handleCursorPosition(
       return okJson({
         x: logical.x,
         y: logical.y,
-        coordinateSpace: "logical_points",
         note: "cursor is on a different monitor than your last screenshot; take a fresh screenshot",
       });
     }
     const x = Math.round(localX * (shot.width / shot.displayWidth));
     const y = Math.round(localY * (shot.height / shot.displayHeight));
-    return okJson({ x, y, coordinateSpace: "image_pixels" });
+    return okJson({ x, y });
   }
   return okJson({
     x: logical.x,
     y: logical.y,
-    coordinateSpace: "logical_points",
-    note: "take a screenshot first for image-pixel coordinates",
+    note: "take a screenshot first for accurate coordinates",
   });
 }
 
