@@ -298,8 +298,8 @@ export function buildComputerUseTools(
     {
       name: "click_target",
       description:
-        "Click on a UI element described in natural language. " +
-        "No coordinates needed — just describe what to click." +
+        "Enter guided click mode for a UI element described in natural language. " +
+        "Returns a screenshot. Use mouse_move, screenshot, zoom to locate the target, then left_click to commit." +
         frontmostHint,
       inputSchema: {
         type: "object" as const,
@@ -320,6 +320,81 @@ export function buildComputerUseTools(
           },
         },
         required: ["description"],
+      },
+    },
+
+    {
+      name: "left_click",
+      description:
+        `Left-click at \`coordinate\`, or at the current cursor position if omitted.` +
+        frontmostHint,
+      inputSchema: {
+        type: "object" as const,
+        properties: {
+          coordinate: coordinateTuple,
+          text: clickModifierText,
+        },
+        required: [],
+      },
+    },
+
+    {
+      name: "double_click",
+      description:
+        `Double-click at \`coordinate\`, or at the current cursor position if omitted.` +
+        frontmostHint,
+      inputSchema: {
+        type: "object" as const,
+        properties: {
+          coordinate: coordinateTuple,
+          text: clickModifierText,
+        },
+        required: [],
+      },
+    },
+
+    {
+      name: "triple_click",
+      description:
+        `Triple-click at \`coordinate\`, or at the current cursor position if omitted.` +
+        frontmostHint,
+      inputSchema: {
+        type: "object" as const,
+        properties: {
+          coordinate: coordinateTuple,
+          text: clickModifierText,
+        },
+        required: [],
+      },
+    },
+
+    {
+      name: "right_click",
+      description:
+        `Right-click at \`coordinate\`, or at the current cursor position if omitted.` +
+        frontmostHint,
+      inputSchema: {
+        type: "object" as const,
+        properties: {
+          coordinate: coordinateTuple,
+          text: clickModifierText,
+        },
+        required: [],
+      },
+    },
+
+    {
+      name: "middle_click",
+      description:
+        `Middle-click at \`coordinate\`, or at the current cursor position if omitted.` +
+        frontmostHint,
+      inputSchema: {
+        type: "object" as const,
+        properties: {
+          coordinate: coordinateTuple,
+          text: clickModifierText,
+        },
+        required: [],
       },
     },
 

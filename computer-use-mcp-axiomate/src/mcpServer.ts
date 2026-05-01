@@ -99,6 +99,9 @@ export function bindSessionContext(
   // onto the returned dispatcher; that's the identity that matters.
   let lastScreenshot: ScreenshotResult | undefined;
 
+  // Click loop state — set by click_target, cleared by left_click/right_click/middle_click.
+  let activeClickLoop: import("./clickTarget.js").ClickLoopState | null = null;
+
   const wrapPermission = ctx.onPermissionRequest
     ? async (
         req: Parameters<NonNullable<typeof ctx.onPermissionRequest>>[0],
@@ -258,6 +261,42 @@ export function bindSessionContext(
         const { base64: _blob, ...dims } = result.screenshot;
         logger.debug(`[${serverName}] screenshot dims: ${JSON.stringify(dims)}`);
         ctx.onScreenshotCaptured?.(dims);
+      }
+
+      // ─── Click loop state management ──────────────────────────────────
+      const { buildClickLoopInjection, advanceClickLoopPhase } = await import("./clickTarget.js");
+
+      if (name === "click_target" && (result as any).clickLoop) {
+        activeClickLoop = (result as any).clickLoop;
+        delete (result as any).clickLoop;
+        const injection = buildClickLoopInjection(activeClickLoop!, name);
+        result.content.push({ type: "text", text: injection });
+        logger.debug(`[${serverName}] click loop ENTER target="${activeClickLoop!.target}" phase=${activeClickLoop!.phase}`);
+        logger.debug(`[${serverName}] click loop injection:\n${injection}`);
+      } else if (activeClickLoop) {
+        const isClickTool = ["left_click", "double_click", "triple_click", "right_click", "middle_click"].includes(name);
+
+        if (isClickTool && !result.isError) {
+          const target = activeClickLoop.target;
+          logger.debug(`[${serverName}] click loop EXIT: clicked "${target}" via ${name}`);
+          result.content.push({ type: "text", text: `[Click Target] Clicked "${target}".` });
+          activeClickLoop = null;
+        } else if (isClickTool && result.isError) {
+          const injection = buildClickLoopInjection(activeClickLoop, name);
+          result.content.push({ type: "text", text: injection });
+          logger.debug(`[${serverName}] click loop ${name} FAILED (staying in loop) phase=${activeClickLoop.phase}`);
+          logger.debug(`[${serverName}] click loop injection:\n${injection}`);
+        } else {
+          const prevPhase = activeClickLoop.phase;
+          activeClickLoop = { ...activeClickLoop, phase: advanceClickLoopPhase(activeClickLoop, name) };
+          const injection = buildClickLoopInjection(activeClickLoop, name);
+          result.content.push({ type: "text", text: injection });
+          logger.debug(`[${serverName}] click loop ${name}: phase ${prevPhase}→${activeClickLoop.phase}`);
+          logger.debug(`[${serverName}] click loop injection:\n${injection}`);
+        }
+      } else if (["left_click", "double_click", "triple_click", "right_click", "middle_click"].includes(name) && !result.isError) {
+        result.content.push({ type: "text", text: "Tip: For reliable clicking, use click_target first to enter guided mode." });
+        logger.debug(`[${serverName}] click outside loop: ${name} (hint injected)`);
       }
 
       return result;
