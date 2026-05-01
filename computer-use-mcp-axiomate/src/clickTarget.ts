@@ -335,6 +335,8 @@ async function confirmCursorOnTarget(
 
 // ── State transitions ───────────────────────────────────────────────────
 
+type ClickStats = { vlCalls: number; parseFails: number; moveTo: number; zoom: number; pickSom: number; giveUp: number; confirmYes: number; confirmNo: number; vlErrors: number; invalidAction: number };
+
 async function transition(
   state: ClickState,
   action: VlAction,
@@ -344,6 +346,7 @@ async function transition(
   button: string, // validated by caller: "left" | "right" | "middle"
   count: number, // validated by caller: 1 | 2 | 3
   lastScreenshot: ScreenshotResult, // guaranteed set — prepareView runs first
+  stats: ClickStats,
 ): Promise<ClickState> {
   switch (action.type) {
     case "move_to": {
@@ -366,6 +369,7 @@ async function transition(
         action.y,
         lastScreenshot,
       );
+      if (confirmed) { stats.confirmYes++; } else { stats.confirmNo++; }
       if (confirmed) {
         await adapter.executor.click(physX, physY, button as "left" | "right" | "middle", count as 1 | 2 | 3);
         return {
@@ -433,6 +437,7 @@ async function transition(
         el.center.y,
         lastScreenshot,
       );
+      if (confirmed) { stats.confirmYes++; } else { stats.confirmNo++; }
       if (confirmed) {
         await adapter.executor.click(physX, physY, button as "left" | "right" | "middle", count as 1 | 2 | 3);
         return {
@@ -552,14 +557,15 @@ export async function handleClickTarget(
 
   adapter.logger.debug(`[click_target] START target="${args.description}" button=${button} count=${count}`);
   const t0 = Date.now();
+  const stats = { vlCalls: 0, parseFails: 0, moveTo: 0, zoom: 0, pickSom: 0, giveUp: 0, confirmYes: 0, confirmNo: 0, vlErrors: 0, invalidAction: 0 };
 
   for (let round = 0; round < MAX_ROUNDS; round++) {
     if (state.phase === "clicked") {
-      adapter.logger.debug(`[click_target] END (clicked) ${Date.now() - t0}ms`);
+      adapter.logger.debug(`[click_target] END (clicked) ${Date.now() - t0}ms stats=${JSON.stringify(stats)}`);
       return { ...okText(state.message), screenshot: lastScreenshot };
     }
     if (state.phase === "failed") {
-      adapter.logger.debug(`[click_target] END (failed) ${Date.now() - t0}ms reason=${(state as { reason: string }).reason}`);
+      adapter.logger.debug(`[click_target] END (failed) ${Date.now() - t0}ms reason=${(state as { reason: string }).reason} stats=${JSON.stringify(stats)}`);
       return errorResult(
         `Could not find: "${args.description}". Reason: ${state.reason}`,
       );
@@ -567,7 +573,7 @@ export async function handleClickTarget(
 
     // Check abort
     if (overrides.isAborted?.()) {
-      adapter.logger.debug(`[click_target] END (aborted) ${Date.now() - t0}ms`);
+      adapter.logger.debug(`[click_target] END (aborted) ${Date.now() - t0}ms stats=${JSON.stringify(stats)}`);
       return errorResult("click_target aborted by user.");
     }
 
@@ -617,6 +623,7 @@ export async function handleClickTarget(
         schema,
       });
     } catch (err) {
+      stats.vlErrors++;
       adapter.logger.warn(
         `[click_target] vlQuery failed (${Date.now() - tVl}ms): ${err instanceof Error ? err.message : err}`,
       );
@@ -629,6 +636,7 @@ export async function handleClickTarget(
       continue;
     }
 
+    stats.vlCalls++;
     adapter.logger.debug(`[click_target] VL response (${Date.now() - tVl}ms): text=${vlResult.text} parsed=${JSON.stringify(vlResult.parsed)}`);
 
     // Parse VL action
@@ -650,6 +658,7 @@ export async function handleClickTarget(
       }
       action = parsed as VlAction;
     } catch {
+      stats.parseFails++;
       adapter.logger.warn(
         `[click_target] VL returned unparseable response: ${vlResult.text}`,
       );
@@ -666,6 +675,7 @@ export async function handleClickTarget(
 
     // Validate action type is available
     if (!actions.includes(action.type)) {
+      stats.invalidAction++;
       adapter.logger.debug(`[click_target] invalid action type "${action.type}" not in [${actions}]`);
       state = {
         ...state,
@@ -673,6 +683,12 @@ export async function handleClickTarget(
       } as ClickState;
       continue;
     }
+
+    // Count action type
+    if (action.type === "move_to") stats.moveTo++;
+    else if (action.type === "zoom") stats.zoom++;
+    else if (action.type === "pick_som") stats.pickSom++;
+    else if (action.type === "give_up") stats.giveUp++;
 
     // Execute transition — lastScreenshot guaranteed set by prepareView above
     const tTransition = Date.now();
@@ -685,23 +701,24 @@ export async function handleClickTarget(
       button,
       count,
       lastScreenshot!,
+      stats,
     );
     adapter.logger.debug(`[click_target] transition ${Date.now() - tTransition}ms → phase=${state.phase}`);
   }
 
   // Check terminal states after loop
   if (state.phase === "clicked") {
-    adapter.logger.debug(`[click_target] END (clicked post-loop) ${Date.now() - t0}ms`);
+    adapter.logger.debug(`[click_target] END (clicked post-loop) ${Date.now() - t0}ms stats=${JSON.stringify(stats)}`);
     return { ...okText(state.message), screenshot: lastScreenshot };
   }
   if (state.phase === "failed") {
-    adapter.logger.debug(`[click_target] END (failed post-loop) ${Date.now() - t0}ms`);
+    adapter.logger.debug(`[click_target] END (failed post-loop) ${Date.now() - t0}ms stats=${JSON.stringify(stats)}`);
     return errorResult(
       `Could not find: "${args.description}". Reason: ${state.reason}`,
     );
   }
 
-  adapter.logger.debug(`[click_target] END (exhausted) ${Date.now() - t0}ms`);
+  adapter.logger.debug(`[click_target] END (exhausted) ${Date.now() - t0}ms stats=${JSON.stringify(stats)}`);
   return errorResult(
     `Exhausted ${MAX_ROUNDS} rounds trying to find "${args.description}"`,
   );
