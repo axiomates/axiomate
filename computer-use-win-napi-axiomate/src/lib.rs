@@ -405,6 +405,10 @@ pub fn capture_display_scaled(
     target_h: u32,
     jpeg_quality: u32,
     grid_mode: Option<u32>,
+    grid_origin_x: Option<i32>,
+    grid_origin_y: Option<i32>,
+    grid_range_w: Option<u32>,
+    grid_range_h: Option<u32>,
 ) -> napi::Result<Option<DisplayCaptureResult>> {
     #[cfg(target_os = "windows")]
     {
@@ -414,11 +418,15 @@ pub fn capture_display_scaled(
             target_h,
             jpeg_quality.min(100) as u8,
             grid_mode.unwrap_or(0) as u8,
+            grid_origin_x,
+            grid_origin_y,
+            grid_range_w,
+            grid_range_h,
         ))
     }
     #[cfg(not(target_os = "windows"))]
     {
-        let _ = (src, target_w, target_h, jpeg_quality, grid_mode);
+        let _ = (src, target_w, target_h, jpeg_quality, grid_mode, grid_origin_x, grid_origin_y, grid_range_w, grid_range_h);
         Ok(None)
     }
 }
@@ -1928,47 +1936,86 @@ mod windows_impl {
         digits * (FONT_W + 1) - 1
     }
 
+    const NICE_VALUES: [f64; 5] = [1.0, 2.0, 2.5, 5.0, 10.0];
+
+    fn nice_round(raw: f64) -> f64 {
+        if raw <= 0.0 { return 1.0; }
+        let exp = 10.0_f64.powf(raw.log10().floor());
+        let frac = raw / exp;
+        let mut best = NICE_VALUES[0];
+        let mut best_dist = f64::INFINITY;
+        for &n in &NICE_VALUES {
+            let dist = (frac / n).ln().abs();
+            if dist < best_dist {
+                best_dist = dist;
+                best = n;
+            }
+        }
+        best * exp
+    }
+
+    fn is_multiple(val: f64, interval: f64) -> bool {
+        let rem = val - (val / interval).floor() * interval;
+        rem < 0.01 || (interval - rem) < 0.01
+    }
+
     /// Draw coordinate rulers (mode 1 = edge only, mode 2 = edge + full grid).
-    fn draw_grid_on_rgb(buf: &mut [u8], w: u32, h: u32, mode: u8) {
+    /// coord_origin/range map image pixels to virtual coordinates for labels.
+    fn draw_grid_on_rgb(buf: &mut [u8], w: u32, h: u32, mode: u8,
+                        coord_origin_x: i32, coord_origin_y: i32,
+                        coord_range_w: u32, coord_range_h: u32) {
         let w_i = w as i32;
         let h_i = h as i32;
-        // top/bottom band: 5px tick + 2px gap + 7px font = 14
         let tb = 14_i32;
-        // left/right band: 5px tick + 2px gap + 23px max label = 30
         let sb = 30_i32;
-        let tick_interval = 25_i32;
-        let label_interval = 50_i32;
         let label_tick = 5_i32;
         let plain_tick = 10_i32;
 
-        // ── Top ruler: ticks from top edge down, labels below ─────────
-        let mut cx = 0;
-        while cx <= w_i {
-            let is_label = cx % label_interval == 0;
+        let label_ivl_x = nice_round(50.0 * coord_range_w as f64 / w as f64);
+        let tick_ivl_x = label_ivl_x / 2.0;
+        let label_ivl_y = nice_round(50.0 * coord_range_h as f64 / h as f64);
+        let tick_ivl_y = label_ivl_y / 2.0;
+
+        let ox = coord_origin_x as f64;
+        let oy = coord_origin_y as f64;
+        let rw = coord_range_w as f64;
+        let rh = coord_range_h as f64;
+        let end_x = ox + rw;
+        let end_y = oy + rh;
+
+        let vx_to_px = |v: f64| -> i32 { ((v - ox) / rw * w as f64).round() as i32 };
+        let vy_to_px = |v: f64| -> i32 { ((v - oy) / rh * h as f64).round() as i32 };
+
+        // ── Top ruler ─────────────────────────────────────────────────
+        let mut vx = (ox / tick_ivl_x).ceil() * tick_ivl_x;
+        while vx <= end_x {
+            let cx = vx_to_px(vx);
+            let lv = vx.round() as u32;
+            let is_label = is_multiple(vx, label_ivl_x);
             let tl = if is_label { label_tick } else { plain_tick };
             if is_label {
-                let pad = number_pixel_width(cx as u32) / 2 + 2;
+                let pad = number_pixel_width(lv) / 2 + 2;
                 for y in (tb - FONT_H - 1).max(0)..tb.min(h_i) {
-                    for x in (cx - pad).max(0)..(cx + pad + 1).min(w_i) {
-                        darken_px(buf, w, h, x, y);
-                    }
+                    for x in (cx - pad).max(0)..(cx + pad + 1).min(w_i) { darken_px(buf, w, h, x, y); }
                 }
             }
             for y in 0..tl { blend_px(buf, w, h, cx, y, 255, 0, 0, 0.5); }
             if is_label {
-                let nw = number_pixel_width(cx as u32);
-                draw_number(buf, w, h, cx as u32, (cx - nw / 2).max(0), tb - FONT_H);
+                let nw = number_pixel_width(lv);
+                draw_number(buf, w, h, lv, (cx - nw / 2).max(0), tb - FONT_H);
             }
-            cx += tick_interval;
+            vx += tick_ivl_x;
         }
 
-        // ── Left ruler: ticks from left edge right, labels to the right ─
-        let mut cy = 0;
-        while cy <= h_i {
-            let is_label = cy % label_interval == 0 && cy > 0;
+        // ── Left ruler ────────────────────────────────────────────────
+        let mut vy = (oy / tick_ivl_y).ceil() * tick_ivl_y;
+        while vy <= end_y {
+            let cy = vy_to_px(vy);
+            let lv = vy.round() as u32;
+            let is_label = is_multiple(vy, label_ivl_y) && vy > oy + 0.01;
             let tl = if is_label { label_tick } else { plain_tick };
             if is_label {
-                let nw = number_pixel_width(cy as u32);
+                let nw = number_pixel_width(lv);
                 let pad = FONT_H / 2 + 2;
                 for y in (cy - pad).max(0)..(cy + pad + 1).min(h_i) {
                     for x in (label_tick + 1)..(label_tick + 3 + nw).min(w_i) { darken_px(buf, w, h, x, y); }
@@ -1976,39 +2023,41 @@ mod windows_impl {
             }
             for x in 0..tl { blend_px(buf, w, h, x, cy, 255, 0, 0, 0.5); }
             if is_label {
-                draw_number(buf, w, h, cy as u32, label_tick + 2, cy - FONT_H / 2);
+                draw_number(buf, w, h, lv, label_tick + 2, cy - FONT_H / 2);
             }
-            cy += tick_interval;
+            vy += tick_ivl_y;
         }
 
-        // ── Bottom ruler: ticks from bottom edge up, labels above ─────
-        let mut cx = 0;
-        while cx <= w_i {
-            let is_label = cx % label_interval == 0;
+        // ── Bottom ruler ──────────────────────────────────────────────
+        let mut vx = (ox / tick_ivl_x).ceil() * tick_ivl_x;
+        while vx <= end_x {
+            let cx = vx_to_px(vx);
+            let lv = vx.round() as u32;
+            let is_label = is_multiple(vx, label_ivl_x);
             let tl = if is_label { label_tick } else { plain_tick };
             if is_label {
-                let pad = number_pixel_width(cx as u32) / 2 + 2;
+                let pad = number_pixel_width(lv) / 2 + 2;
                 for y in (h_i - tb).max(0)..(h_i - tb + FONT_H + 1).min(h_i) {
-                    for x in (cx - pad).max(0)..(cx + pad + 1).min(w_i) {
-                        darken_px(buf, w, h, x, y);
-                    }
+                    for x in (cx - pad).max(0)..(cx + pad + 1).min(w_i) { darken_px(buf, w, h, x, y); }
                 }
             }
             for y in (h_i - tl)..h_i { blend_px(buf, w, h, cx, y, 255, 0, 0, 0.5); }
             if is_label {
-                let nw = number_pixel_width(cx as u32);
-                draw_number(buf, w, h, cx as u32, (cx - nw / 2).max(0), h_i - tb);
+                let nw = number_pixel_width(lv);
+                draw_number(buf, w, h, lv, (cx - nw / 2).max(0), h_i - tb);
             }
-            cx += tick_interval;
+            vx += tick_ivl_x;
         }
 
-        // ── Right ruler: ticks from right edge left, labels to the left ─
-        let mut cy = 0;
-        while cy <= h_i {
-            let is_label = cy % label_interval == 0 && cy > 0;
+        // ── Right ruler ───────────────────────────────────────────────
+        let mut vy = (oy / tick_ivl_y).ceil() * tick_ivl_y;
+        while vy <= end_y {
+            let cy = vy_to_px(vy);
+            let lv = vy.round() as u32;
+            let is_label = is_multiple(vy, label_ivl_y) && vy > oy + 0.01;
             let tl = if is_label { label_tick } else { plain_tick };
             if is_label {
-                let nw = number_pixel_width(cy as u32);
+                let nw = number_pixel_width(lv);
                 let pad = FONT_H / 2 + 2;
                 for y in (cy - pad).max(0)..(cy + pad + 1).min(h_i) {
                     for x in (w_i - label_tick - 3 - nw).max(0)..(w_i - label_tick - 1) { darken_px(buf, w, h, x, y); }
@@ -2016,23 +2065,29 @@ mod windows_impl {
             }
             for x in (w_i - tl)..w_i { blend_px(buf, w, h, x, cy, 255, 0, 0, 0.5); }
             if is_label {
-                let nw = number_pixel_width(cy as u32);
-                draw_number(buf, w, h, cy as u32, w_i - label_tick - 2 - nw, cy - FONT_H / 2);
+                let nw = number_pixel_width(lv);
+                draw_number(buf, w, h, lv, w_i - label_tick - 2 - nw, cy - FONT_H / 2);
             }
-            cy += tick_interval;
+            vy += tick_ivl_y;
         }
 
-        // Full mode: semi-transparent grid lines across the image
+        // Full mode: semi-transparent grid lines at label intervals
         if mode >= 2 {
-            let mut gx = label_interval;
-            while gx < w_i {
-                for y in tb..(h_i - tb) { blend_px(buf, w, h, gx, y, 255, 0, 0, 0.25); }
-                gx += label_interval;
+            let mut vx = ((ox / label_ivl_x).ceil() + 1.0) * label_ivl_x;
+            while vx < end_x {
+                let gx = vx_to_px(vx);
+                if gx > 0 && gx < w_i {
+                    for y in tb..(h_i - tb) { blend_px(buf, w, h, gx, y, 255, 0, 0, 0.25); }
+                }
+                vx += label_ivl_x;
             }
-            let mut gy = label_interval;
-            while gy < h_i {
-                for x in sb..(w_i - sb) { blend_px(buf, w, h, x, gy, 255, 0, 0, 0.25); }
-                gy += label_interval;
+            let mut vy = ((oy / label_ivl_y).ceil() + 1.0) * label_ivl_y;
+            while vy < end_y {
+                let gy = vy_to_px(vy);
+                if gy > 0 && gy < h_i {
+                    for x in sb..(w_i - sb) { blend_px(buf, w, h, x, gy, 255, 0, 0, 0.25); }
+                }
+                vy += label_ivl_y;
             }
         }
     }
@@ -2239,6 +2294,10 @@ mod windows_impl {
         target_h: u32,
         jpeg_quality: u8,
         grid_mode: u8,
+        grid_origin_x: Option<i32>,
+        grid_origin_y: Option<i32>,
+        grid_range_w: Option<u32>,
+        grid_range_h: Option<u32>,
     ) -> Option<DisplayCaptureResult> {
         ensure_dpi_aware();
         if src.size.w == 0 || src.size.h == 0 || target_w == 0 || target_h == 0 {
@@ -2251,6 +2310,10 @@ mod windows_impl {
                 target_h,
                 jpeg_quality,
                 grid_mode,
+                grid_origin_x,
+                grid_origin_y,
+                grid_range_w,
+                grid_range_h,
             )
         };
         match result {
@@ -2271,6 +2334,10 @@ mod windows_impl {
         target_h: u32,
         jpeg_quality: u8,
         grid_mode: u8,
+        grid_origin_x: Option<i32>,
+        grid_origin_y: Option<i32>,
+        grid_range_w: Option<u32>,
+        grid_range_h: Option<u32>,
     ) -> Result<DisplayCaptureResult, String> {
         let src_x = src.origin.x;
         let src_y = src.origin.y;
@@ -2397,7 +2464,11 @@ mod windows_impl {
         }
 
         if grid_mode > 0 {
-            draw_grid_on_rgb(&mut final_rgb, final_w, final_h, grid_mode);
+            let gox = grid_origin_x.unwrap_or(0);
+            let goy = grid_origin_y.unwrap_or(0);
+            let grw = grid_range_w.unwrap_or(final_w);
+            let grh = grid_range_h.unwrap_or(final_h);
+            draw_grid_on_rgb(&mut final_rgb, final_w, final_h, grid_mode, gox, goy, grw, grh);
         }
 
         let mut jpeg = Vec::new();

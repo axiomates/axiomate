@@ -19,6 +19,7 @@
  */
 import type { ComputerUseHostAdapter } from "./types.js";
 import type { ComputerUseOverrides } from "./types.js";
+import { allowedAppsOf } from "./types.js";
 import type { ScreenshotResult } from "./executor.js";
 import type { CuCallToolResult } from "./toolCalls.js";
 import type { DetectedElement, Rect } from "./detection.js";
@@ -29,15 +30,28 @@ import {
   shouldOverlaySoM,
 } from "./detection.js";
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+function screenshotAllowlist(adapter: ComputerUseHostAdapter, overrides: ComputerUseOverrides): string[] {
+  if (adapter.executor.capabilities.platform !== "darwin") return [];
+  return allowedAppsOf(overrides).map(a => a.appIdentifier);
+}
+
 // ── State types ─────────────────────────────────────────────────────────
 
+type ActionFeedback =
+  | { kind: "spatial"; message: string }
+  | { kind: "action"; message: string };
+
 type ClickState =
-  | { phase: "full_scan"; feedback: string | null }
+  | { phase: "full_scan"; feedback: ActionFeedback | null }
   | {
       phase: "zoomed";
       rect: Rect;
       som: DetectedElement[] | null;
-      feedback: string | null;
+      feedback: ActionFeedback | null;
     }
   | { phase: "clicked"; message: string }
   | { phase: "failed"; reason: string };
@@ -78,7 +92,7 @@ function availableActions(state: ClickState): VlAction["type"][] {
 function buildVlPrompt(opts: {
   target: string;
   round: number;
-  feedback: string | null;
+  feedback: ActionFeedback | null;
   actions: VlAction["type"][];
   screenW: number;
   screenH: number;
@@ -111,8 +125,8 @@ function buildVlPrompt(opts: {
   parts.push("");
 
   // Feedback from previous round
-  if (opts.feedback) {
-    parts.push(`Previous action result: ${opts.feedback}`);
+  if (opts.feedback && !(opts.feedback.kind === "spatial" && opts.zoomRect)) {
+    parts.push(`Previous action result: ${opts.feedback.message}`);
     parts.push("");
   }
 
@@ -228,9 +242,14 @@ async function confirmCursorOnTarget(
 ): Promise<boolean> {
   if (!overrides.vlQuery) return true;
 
+  // macOS: empty allowedAppIdentifiers triggers PermissionRequest auto-throw.
+  // Skip cursor confirmation on macOS for now — the path needs a different
+  // approach (pass real allowedApps or use a different screenshot method).
+  if (adapter.executor.capabilities.platform === "darwin") return true;
+
   // 1. Full screenshot (scaled, with cursor)
   const fullShot = await adapter.executor.screenshot({
-    allowedAppIdentifiers: [],
+    allowedAppIdentifiers: screenshotAllowlist(adapter, overrides),
     displayId: lastScreenshot?.displayId,
   });
 
@@ -238,27 +257,9 @@ async function confirmCursorOnTarget(
   const screenW = lastScreenshot?.width ?? fullShot.width;
   const screenH = lastScreenshot?.height ?? fullShot.height;
   const zoomRect = computeZoomRect(vx, vy, 150, screenW, screenH);
-  const zoomRegion = lastScreenshot
-    ? {
-        x:
-          zoomRect.x *
-            (lastScreenshot.displayWidth! / lastScreenshot.width) +
-          (lastScreenshot.originX ?? 0),
-        y:
-          zoomRect.y *
-            (lastScreenshot.displayHeight! / lastScreenshot.height) +
-          (lastScreenshot.originY ?? 0),
-        w:
-          zoomRect.w *
-          (lastScreenshot.displayWidth! / lastScreenshot.width),
-        h:
-          zoomRect.h *
-          (lastScreenshot.displayHeight! / lastScreenshot.height),
-      }
-    : { x: zoomRect.x, y: zoomRect.y, w: zoomRect.w, h: zoomRect.h };
 
   const zoomShot = await adapter.executor.zoom(
-    zoomRegion,
+    zoomRect,
     [],
     lastScreenshot?.displayId,
   );
@@ -268,10 +269,10 @@ async function confirmCursorOnTarget(
   if (adapter.executor.elementFromPoint && lastScreenshot) {
     try {
       const physX =
-        vx * (lastScreenshot.displayWidth! / lastScreenshot.width) +
+        vx * ((lastScreenshot.displayWidth ?? lastScreenshot.width) / lastScreenshot.width) +
         (lastScreenshot.originX ?? 0);
       const physY =
-        vy * (lastScreenshot.displayHeight! / lastScreenshot.height) +
+        vy * ((lastScreenshot.displayHeight ?? lastScreenshot.height) / lastScreenshot.height) +
         (lastScreenshot.originY ?? 0);
       const el = await adapter.executor.elementFromPoint(physX, physY);
       if (el?.name) {
@@ -307,29 +308,22 @@ async function transition(
   adapter: ComputerUseHostAdapter,
   overrides: ComputerUseOverrides,
   target: string,
-  button: "left" | "right" | "middle",
-  count: 1 | 2 | 3,
-  screenW: number,
-  screenH: number,
-  lastScreenshot: ScreenshotResult | undefined,
+  button: string, // validated by caller: "left" | "right" | "middle"
+  count: number, // validated by caller: 1 | 2 | 3
+  lastScreenshot: ScreenshotResult, // guaranteed set — prepareView runs first
 ): Promise<ClickState> {
   switch (action.type) {
     case "move_to": {
-      if (!lastScreenshot) {
-        return {
-          phase: state.phase as "full_scan",
-          feedback: "No screenshot available. Cannot move cursor.",
-        } as ClickState;
-      }
-      const ratioX = lastScreenshot.displayWidth! / lastScreenshot.width;
+      const ratioX = (lastScreenshot.displayWidth ?? lastScreenshot.width) / lastScreenshot.width;
       const ratioY =
-        lastScreenshot.displayHeight! / lastScreenshot.height;
+        (lastScreenshot.displayHeight ?? lastScreenshot.height) / lastScreenshot.height;
       const physX =
         Math.round(action.x * ratioX) + (lastScreenshot.originX ?? 0);
       const physY =
         Math.round(action.y * ratioY) + (lastScreenshot.originY ?? 0);
 
       await adapter.executor.moveMouse(physX, physY);
+      await sleep(50);
 
       const confirmed = await confirmCursorOnTarget(
         adapter,
@@ -340,14 +334,14 @@ async function transition(
         lastScreenshot,
       );
       if (confirmed) {
-        await adapter.executor.click(physX, physY, button, count);
+        await adapter.executor.click(physX, physY, button as "left" | "right" | "middle", count as 1 | 2 | 3);
         return {
           phase: "clicked",
           message: `Clicked ${button} on "${target}" at (${action.x}, ${action.y})`,
         };
       }
 
-      const feedback = `Cursor moved to (${action.x}, ${action.y}) but did not cover the target. Adjust coordinates or try a different approach.`;
+      const feedback: ActionFeedback = { kind: "action", message: `Cursor moved to (${action.x}, ${action.y}) but did not cover the target. Adjust coordinates or try a different approach.` };
       if (state.phase === "zoomed") {
         return { ...(state as ClickState & { phase: "zoomed" }), feedback };
       }
@@ -360,45 +354,31 @@ async function transition(
         action.cx,
         action.cy,
         size,
-        screenW,
-        screenH,
+        lastScreenshot.width,
+        lastScreenshot.height,
       );
-      const actualCx = rect.x + rect.w / 2;
-      const actualCy = rect.y + rect.h / 2;
       return {
         phase: "zoomed",
         rect,
         som: null,
-        feedback: `Zoomed into region [${rect.x},${rect.y}]-[${rect.x + rect.w},${rect.y + rect.h}], center (${actualCx},${actualCy}), size ${rect.w}×${rect.h}.`,
+        feedback: { kind: "spatial", message: `Zoomed to region [${rect.x},${rect.y}]-[${rect.x + rect.w},${rect.y + rect.h}], size ${rect.w}×${rect.h}.` },
       };
     }
 
     case "pick_som": {
-      if (state.phase !== "zoomed" || !state.som) {
-        return {
-          ...state,
-          feedback:
-            "pick_som is not available. Use move_to or zoom instead.",
-        } as ClickState;
-      }
-      const el = state.som.find((e) => e.id === action.id);
+      // state.phase === "zoomed" && state.som !== null guaranteed —
+      // pick_som is only in availableActions() when both hold, and
+      // the main loop validates action.type ∈ availableActions.
+      const zoomedState = state as ClickState & { phase: "zoomed" };
+      const som = zoomedState.som!;
+      const el = som.find((e) => e.id === action.id);
       if (!el) {
-        return {
-          ...state,
-          feedback: `SoM #${action.id} does not exist. Available: ${state.som.map((e) => e.id).join(", ")}.`,
-        };
+        return { ...zoomedState, feedback: { kind: "action", message: `SoM #${action.id} does not exist. Available: ${som.map((e) => e.id).join(", ")}.` } };
       }
 
-      if (!lastScreenshot) {
-        return {
-          ...state,
-          feedback: "No screenshot available. Cannot move cursor.",
-        };
-      }
-
-      const ratioX = lastScreenshot.displayWidth! / lastScreenshot.width;
+      const ratioX = (lastScreenshot.displayWidth ?? lastScreenshot.width) / lastScreenshot.width;
       const ratioY =
-        lastScreenshot.displayHeight! / lastScreenshot.height;
+        (lastScreenshot.displayHeight ?? lastScreenshot.height) / lastScreenshot.height;
       const physX =
         Math.round(el.center.x * ratioX) +
         (lastScreenshot.originX ?? 0);
@@ -407,6 +387,7 @@ async function transition(
         (lastScreenshot.originY ?? 0);
 
       await adapter.executor.moveMouse(physX, physY);
+      await sleep(50);
 
       const confirmed = await confirmCursorOnTarget(
         adapter,
@@ -417,16 +398,13 @@ async function transition(
         lastScreenshot,
       );
       if (confirmed) {
-        await adapter.executor.click(physX, physY, button, count);
+        await adapter.executor.click(physX, physY, button as "left" | "right" | "middle", count as 1 | 2 | 3);
         return {
           phase: "clicked",
           message: `Clicked ${button} on "${target}" (SoM #${action.id})`,
         };
       }
-      return {
-        ...state,
-        feedback: `SoM #${action.id} ("${el.rawName}") missed the target. Pick another element or adjust.`,
-      };
+      return { ...zoomedState, feedback: { kind: "action", message: `SoM #${action.id} missed the target. Pick another element or adjust.` } };
     }
 
     case "give_up":
@@ -440,57 +418,49 @@ async function prepareView(
   state: ClickState,
   adapter: ComputerUseHostAdapter,
   overrides: ComputerUseOverrides,
-  screenW: number,
-  screenH: number,
   lastScreenshot: ScreenshotResult | undefined,
-): Promise<{ imageBase64: string; updatedState: ClickState }> {
+): Promise<{ imageBase64: string; updatedState: ClickState; screenshot?: ScreenshotResult }> {
   switch (state.phase) {
     case "full_scan": {
       const shot = await adapter.executor.screenshot({
-        allowedAppIdentifiers: [],
+        allowedAppIdentifiers: screenshotAllowlist(adapter, overrides),
         displayId: lastScreenshot?.displayId,
         coordinateGrid: "full",
       });
-      return { imageBase64: shot.base64, updatedState: state };
+      return { imageBase64: shot.base64, updatedState: state, screenshot: shot };
     }
 
     case "zoomed": {
       if (!lastScreenshot) {
         const shot = await adapter.executor.screenshot({
-          allowedAppIdentifiers: [],
+          allowedAppIdentifiers: screenshotAllowlist(adapter, overrides),
           coordinateGrid: "full",
         });
         return {
           imageBase64: shot.base64,
-          updatedState: { phase: "full_scan", feedback: "No prior screenshot for zoom. Showing full screen." },
+          updatedState: { phase: "full_scan", feedback: { kind: "action", message: "No prior screenshot for zoom. Showing full screen." } },
+          screenshot: shot,
         };
       }
 
-      // Convert virtual rect → physical for zoom capture
-      const ratioX = lastScreenshot.displayWidth! / lastScreenshot.width;
-      const ratioY = lastScreenshot.displayHeight! / lastScreenshot.height;
-      const physRegion = {
-        x: state.rect.x * ratioX + (lastScreenshot.originX ?? 0),
-        y: state.rect.y * ratioY + (lastScreenshot.originY ?? 0),
-        w: state.rect.w * ratioX,
-        h: state.rect.h * ratioY,
-      };
-
       const zoomed = await adapter.executor.zoom(
-        physRegion,
+        state.rect,
         [],
         lastScreenshot.displayId,
+        "full",
       );
 
-      // SoM overlay check
+      // SoM overlay: check area condition first (without element count),
+      // then enumerate elements only if the area is small enough, then do
+      // the full check including element count.
       let updatedState: ClickState = state;
-      if (
-        shouldOverlaySoM(state.rect, screenW, screenH, 0) &&
-        adapter.executor.enumerateVisibleElements
-      ) {
+      const sw = lastScreenshot.width;
+      const sh = lastScreenshot.height;
+      const areaRatio = (state.rect.w * state.rect.h) / (sw * sh);
+      if (areaRatio <= 0.15 && adapter.executor.enumerateVisibleElements) {
         const vtpRatio = {
-          ratioX,
-          ratioY,
+          ratioX: (lastScreenshot.displayWidth ?? lastScreenshot.width) / lastScreenshot.width,
+          ratioY: (lastScreenshot.displayHeight ?? lastScreenshot.height) / lastScreenshot.height,
           originX: lastScreenshot.originX ?? 0,
           originY: lastScreenshot.originY ?? 0,
         };
@@ -499,7 +469,7 @@ async function prepareView(
           state.rect,
           vtpRatio,
         );
-        if (shouldOverlaySoM(state.rect, screenW, screenH, elements.length)) {
+        if (shouldOverlaySoM(state.rect, sw, sh, elements.length)) {
           // TODO: draw SoM markers on the image via Rust NAPI
           // For now, mark elements available for pick_som
           updatedState = { ...state, som: elements };
@@ -529,17 +499,19 @@ export async function handleClickTarget(
     );
   }
 
-  const button = (args.button ?? "left") as "left" | "right" | "middle";
-  const count = (args.count ?? 1) as 1 | 2 | 3;
+  const button = args.button ?? "left";
+  if (!["left", "right", "middle"].includes(button))
+    return errorResult(`Invalid button: "${button}". Use left, right, or middle.`);
+  const count = args.count ?? 1;
+  if (![1, 2, 3].includes(count))
+    return errorResult(`Invalid count: ${count}. Use 1, 2, or 3.`);
 
-  const lastScreenshot = overrides.lastScreenshot;
-  const screenW = lastScreenshot?.width ?? 1920;
-  const screenH = lastScreenshot?.height ?? 1080;
+  let lastScreenshot = overrides.lastScreenshot;
 
   let state: ClickState = { phase: "full_scan", feedback: null };
 
   for (let round = 0; round < MAX_ROUNDS; round++) {
-    if (state.phase === "clicked") return okText(state.message);
+    if (state.phase === "clicked") return { ...okText(state.message), screenshot: lastScreenshot };
     if (state.phase === "failed")
       return errorResult(
         `Could not find: "${args.description}". Reason: ${state.reason}`,
@@ -551,15 +523,18 @@ export async function handleClickTarget(
     }
 
     // Prepare view (screenshot + optional SoM)
-    const { imageBase64, updatedState } = await prepareView(
+    const { imageBase64, updatedState, screenshot: viewShot } = await prepareView(
       state,
       adapter,
       overrides,
-      screenW,
-      screenH,
       lastScreenshot,
     );
     state = updatedState;
+    if (viewShot) lastScreenshot = viewShot;
+
+    // After prepareView, lastScreenshot is guaranteed set (full_scan takes one)
+    const screenW = lastScreenshot!.width;
+    const screenH = lastScreenshot!.height;
 
     // Build prompt and query VL
     const actions = availableActions(state);
@@ -577,11 +552,25 @@ export async function handleClickTarget(
     });
     const schema = buildActionSchema(actions);
 
-    const vlResult = await overrides.vlQuery({
-      images: [imageBase64],
-      prompt,
-      schema,
-    });
+    let vlResult;
+    try {
+      vlResult = await overrides.vlQuery({
+        images: [imageBase64],
+        prompt,
+        schema,
+      });
+    } catch (err) {
+      adapter.logger.warn(
+        `[click_target] vlQuery failed: ${err instanceof Error ? err.message : err}`,
+      );
+      const retryFeedback: ActionFeedback = { kind: "action", message: "VL query failed. Retrying..." };
+      if (state.phase === "zoomed") {
+        state = { ...state, feedback: retryFeedback };
+      } else {
+        state = { phase: "full_scan", feedback: retryFeedback };
+      }
+      continue;
+    }
 
     // Parse VL action
     let action: VlAction;
@@ -592,11 +581,12 @@ export async function handleClickTarget(
       adapter.logger.warn(
         `[click_target] VL returned unparseable response: ${vlResult.text}`,
       );
-      state = {
-        phase: state.phase as "full_scan",
-        feedback:
-          "Invalid response format. Please respond with a valid JSON action.",
-      } as ClickState;
+      const parseFeedback: ActionFeedback = { kind: "action", message: "Invalid response format. Please respond with a valid JSON action." };
+      if (state.phase === "zoomed") {
+        state = { ...state, feedback: parseFeedback };
+      } else {
+        state = { phase: "full_scan", feedback: parseFeedback };
+      }
       continue;
     }
 
@@ -604,12 +594,12 @@ export async function handleClickTarget(
     if (!actions.includes(action.type)) {
       state = {
         ...state,
-        feedback: `Action "${action.type}" is not available. Available: ${actions.join(", ")}.`,
+        feedback: { kind: "action", message: `Action "${action.type}" is not available. Available: ${actions.join(", ")}.` },
       } as ClickState;
       continue;
     }
 
-    // Execute transition
+    // Execute transition — lastScreenshot guaranteed set by prepareView above
     state = await transition(
       state,
       action,
@@ -618,14 +608,12 @@ export async function handleClickTarget(
       args.description,
       button,
       count,
-      screenW,
-      screenH,
-      lastScreenshot,
+      lastScreenshot!,
     );
   }
 
   // Check terminal states after loop
-  if (state.phase === "clicked") return okText(state.message);
+  if (state.phase === "clicked") return { ...okText(state.message), screenshot: lastScreenshot };
   if (state.phase === "failed")
     return errorResult(
       `Could not find: "${args.description}". Reason: ${state.reason}`,

@@ -444,8 +444,42 @@ export function createWinExecutor(): ComputerExecutor {
       return r
     },
 
-    async zoom(region, _allowedAppIdentifiers, displayId?: number) {
-      return winFallbackZoom(region, displayId)
+    async zoom(region, _allowedAppIdentifiers, displayId?: number, coordinateGrid?: string) {
+      if (napiAvailable) {
+        const display = getWinDisplaySize(displayId)
+        const [fullVirtualW, fullVirtualH] = computeImageDim(display.width, display.height)
+        const ratioX = display.width / fullVirtualW
+        const ratioY = display.height / fullVirtualH
+        const physRegion = {
+          x: Math.round(region.x * ratioX) + display.originX,
+          y: Math.round(region.y * ratioY) + display.originY,
+          w: Math.round(region.w * ratioX),
+          h: Math.round(region.h * ratioY),
+        }
+        const gridMode = coordinateGrid === 'none' ? 0 : coordinateGrid === 'edge' ? 1 : 2
+        const r = winNapi.captureDisplayScaled(
+          { origin: { x: physRegion.x, y: physRegion.y }, size: { w: physRegion.w, h: physRegion.h } },
+          physRegion.w, physRegion.h,
+          92, gridMode,
+          region.x, region.y, region.w, region.h,
+        )
+        if (r) {
+          dumpScreenshotForDebug('zoom', r.base64)
+          return { base64: r.base64, width: r.width, height: r.height }
+        }
+      }
+      // Fallback: convert virtual → physical for the legacy node-screenshots path
+      const display = getWinDisplaySize(displayId)
+      const [fullVirtualW, fullVirtualH] = computeImageDim(display.width, display.height)
+      const ratioX = display.width / fullVirtualW
+      const ratioY = display.height / fullVirtualH
+      const physRegion = {
+        x: Math.round(region.x * ratioX) + display.originX,
+        y: Math.round(region.y * ratioY) + display.originY,
+        w: Math.round(region.w * ratioX),
+        h: Math.round(region.h * ratioY),
+      }
+      return winFallbackZoom(physRegion, displayId)
     },
 
     async resolvePrepareCapture(opts: {

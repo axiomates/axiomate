@@ -98,6 +98,7 @@ export interface ComputerExecutor {
     region: { x: number; y: number; w: number; h: number },
     allowedAppIdentifiers: string[],
     displayId?: number,
+    coordinateGrid?: string,
   ): Promise<{ base64: string; width: number; height: number }>;
   resolvePrepareCapture(opts: {
     allowedAppIdentifiers: string[];

@@ -57,7 +57,6 @@ const BATCH_ACTION_ITEM_SCHEMA = {
         "key",
         "type",
         "mouse_move",
-        "click_target",
         "left_click_drag",
         "scroll",
         "hold_key",
@@ -591,7 +590,7 @@ export function buildComputerUseTools(
         "batching a predictable sequence eliminates all but one. Use this whenever you can predict the outcome of several actions ahead — " +
         "e.g. click a field, type into it, press Return. Actions execute sequentially and stop on the first error." +
         (frontmostHint ? `${frontmostHint} The frontmost check runs before EACH action inside the batch — if an action opens a non-allowed app, the next action's gate fires and the batch stops there.` : "") +
-        " Mid-batch screenshot actions are allowed for inspection but coordinates in subsequent clicks always refer to the PRE-BATCH full-screen screenshot.",
+        " Mid-batch screenshot actions are allowed for inspection but coordinates in subsequent actions always refer to the PRE-BATCH full-screen screenshot.",
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -600,7 +599,7 @@ export function buildComputerUseTools(
             minItems: 1,
             items: BATCH_ACTION_ITEM_SCHEMA,
             description:
-              'List of actions. Example: [{"action":"left_click","coordinate":[100,200]},{"action":"type","text":"hello"},{"action":"key","text":"Return"}]',
+              'List of actions. Example: [{"action":"mouse_move","coordinate":[100,200]},{"action":"type","text":"hello"},{"action":"key","text":"Return"}]',
           },
         },
         required: ["actions"],

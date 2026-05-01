@@ -96,6 +96,8 @@ export function computeZoomRect(
   screenW: number,
   screenH: number,
 ): Rect {
+  cx = Math.max(0, Math.min(screenW, cx));
+  cy = Math.max(0, Math.min(screenH, cy));
   const half = Math.floor(size / 2);
   const x = Math.max(0, cx - half);
   const y = Math.max(0, cy - half);

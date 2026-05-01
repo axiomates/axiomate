@@ -480,11 +480,22 @@ export function createCliExecutor(opts: {
     },
 
     async zoom(
-      regionLogical: { x: number; y: number; w: number; h: number },
+      regionVirtual: { x: number; y: number; w: number; h: number },
       allowedAppIdentifiers: string[],
       displayId?: number,
+      _coordinateGrid?: string,
     ): Promise<{ base64: string; width: number; height: number }> {
       const d = cu.display.getSize(displayId)
+      // Virtual (image-px) → logical (points): same ratio as screenshot downscale
+      const [imgW, imgH] = computeTargetDims(d.width, d.height, d.scaleFactor)
+      const ratioX = d.width / imgW
+      const ratioY = d.height / imgH
+      const regionLogical = {
+        x: regionVirtual.x * ratioX,
+        y: regionVirtual.y * ratioY,
+        w: regionVirtual.w * ratioX,
+        h: regionVirtual.h * ratioY,
+      }
       const [outW, outH] = computeTargetDims(
         regionLogical.w,
         regionLogical.h,

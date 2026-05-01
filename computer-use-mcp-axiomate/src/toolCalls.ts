@@ -2570,24 +2570,20 @@ async function handleZoom(
     );
   }
 
-  // image-px → logical-pt. Same ratio as scaleCoord (:198-199) —
-  // displayWidth / width, not 1/scaleFactor. The ratio is folded.
-  const ratioX = last.displayWidth / last.width;
-  const ratioY = last.displayHeight / last.height;
-  const regionLogical = {
-    x: x0 * ratioX,
-    y: y0 * ratioY,
-    w: (x1 - x0) * ratioX,
-    h: (y1 - y0) * ratioY,
+  const regionVirtual = {
+    x: x0,
+    y: y0,
+    w: x1 - x0,
+    h: y1 - y0,
   };
 
   const allowedIds = allowedAppsOf(overrides).map((g) => g.appIdentifier);
-  // Crop from the same display as lastScreenshot so the zoom region
-  // matches the image the model is reading coords from.
+  const coordinateGrid = (args.coordinate_grid as string) ?? "full";
   const zoomed = await adapter.executor.zoom(
-    regionLogical,
+    regionVirtual,
     allowedIds,
     last.displayId,
+    coordinateGrid,
   );
 
   // Return the image. NO `.screenshot` piggyback — this is the invariant.
@@ -3738,7 +3734,6 @@ const BATCHABLE_ACTIONS: ReadonlySet<string> = new Set([
   "key",
   "type",
   "mouse_move",
-  "click_target",
   "left_click_drag",
   "scroll",
   "hold_key",
