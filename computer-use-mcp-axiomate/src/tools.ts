@@ -227,16 +227,45 @@ export function buildComputerUseTools(
     },
 
     {
+      name: "click_target",
+      description:
+        "**Click a UI element described in natural language** — e.g. \"Chrome icon in the taskbar\", \"Send button\", \"the X to close this dialog\". This is the PREFERRED tool whenever the user's intent is to click something they describe by name or appearance (rather than by exact coordinates). " +
+        "Returns a screenshot and step-by-step guidance: use `mouse_move` + `screenshot` (and `zoom` for small/dense areas) to locate the target and verify the lime-green cursor ring lands on it, then `left_click` (no args) to commit. " +
+        "Do NOT pre-call `screenshot` to \"look first\" — call `click_target` directly with the description; the screenshot comes back as part of the response." +
+        frontmostHint,
+      inputSchema: {
+        type: "object" as const,
+        properties: {
+          description: {
+            type: "string",
+            description: "What to click, in natural language.",
+          },
+          button: {
+            type: "string",
+            enum: ["left", "right", "middle"],
+            description: "Mouse button. Defaults to left.",
+          },
+          count: {
+            type: "integer",
+            enum: [1, 2, 3],
+            description: "Click count (1=single, 2=double, 3=triple). Defaults to 1.",
+          },
+        },
+        required: ["description"],
+      },
+    },
+
+    {
       name: "screenshot",
       description:
         screenshotDesc +
         (caps.screenshotFiltering === "native"
           ? " If the session allowlist is empty, the dispatch layer auto-throws a PermissionRequest (not a hard error) and the host application surfaces an interactive dialog where the user picks apps to allow; the screenshot then resumes automatically. **Do NOT pre-call request_access for the screenshot itself, and do NOT fall back to shell commands like `screencapture` if you see a permission-related result. Retry once if the call appears interrupted.** "
           : " No allowlist setup is required — just call this tool directly with no arguments. ") +
+        "\n\n**⚠ Tool selection: if the user's intent is to CLICK a UI element they describe by name or appearance (e.g. \"click the Chrome icon in the taskbar\", \"click Send\", \"open Settings\"), call `click_target` instead — it ALSO returns a screenshot AND walks you through locating + clicking the target. Use this `screenshot` tool only when the goal is to OBSERVE or READ the screen (verifying state, reading text, planning, debugging) — not as the first step of a click.**\n\n" +
         "**The mouse cursor IS rendered in the image with a thick lime-green CIRCLE outline drawn around it** (the ring is added so the cursor remains unmissable at any image scale / JPEG compression). The cursor's pointer tip sits at the CENTER of the green ring. Use the green ring as ground-truth for where input will land.\n\n" +
         "**Coordinate system: x increases LEFT→RIGHT, y increases TOP→BOTTOM.** (0, 0) is the top-left corner. The ruler numbers on each edge show the valid coordinate range — the largest numbers at the right/bottom edges are the screen width/height.\n\n" +
-        "If the user names a specific application (e.g. \"截 Slack\", \"show me Chrome\"), prefer `screenshot_window` to capture only that app's frontmost window.\n\n" +
-        "If you need to click a UI element, use `click_target` instead — it returns a screenshot and guides you through the click process.",
+        "If the user names a specific application and just wants to SEE it (e.g. \"show me Slack\", \"截 Chrome\"), prefer `screenshot_window` to capture only that app's frontmost window.",
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -312,34 +341,6 @@ export function buildComputerUseTools(
           },
         },
         required: [],
-      },
-    },
-
-    {
-      name: "click_target",
-      description:
-        "Enter guided click mode for a UI element described in natural language. " +
-        "Returns a screenshot. Use mouse_move, screenshot, zoom to locate the target, then left_click to commit." +
-        frontmostHint,
-      inputSchema: {
-        type: "object" as const,
-        properties: {
-          description: {
-            type: "string",
-            description: "What to click, in natural language.",
-          },
-          button: {
-            type: "string",
-            enum: ["left", "right", "middle"],
-            description: "Mouse button. Defaults to left.",
-          },
-          count: {
-            type: "integer",
-            enum: [1, 2, 3],
-            description: "Click count (1=single, 2=double, 3=triple). Defaults to 1.",
-          },
-        },
-        required: ["description"],
       },
     },
 
