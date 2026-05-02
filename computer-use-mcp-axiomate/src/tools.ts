@@ -279,7 +279,12 @@ export function buildComputerUseTools(
       name: "zoom",
       description:
         "Take a higher-resolution screenshot of a specific region of the last full-screen screenshot. Use this to inspect small text, button labels, or fine UI details that are hard to read in the downsampled full-screen image. " +
-        "Requires a prior `screenshot` call — the region coords map into that screenshot's pixel space.",
+        "Requires a prior `screenshot` call — the region coords map into that screenshot's pixel space.\n\n" +
+        "Two parameter formats:\n" +
+        "1. Rectangle: `region: [x0, y0, x1, y1]` (top-left and bottom-right corners)\n" +
+        "2. Square: `center: [cx, cy], size: N` (center point and side length)\n\n" +
+        "If the specified region extends beyond screen edges, it will be automatically clipped to screen bounds. " +
+        "The returned image shows the clipped region, and coordinate rulers reflect the actual captured area.",
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -291,8 +296,22 @@ export function buildComputerUseTools(
             description:
               "(x0, y0, x1, y1): Rectangle to zoom into, in the coordinate space of the most recent full-screen screenshot. x0,y0 = top-left, x1,y1 = bottom-right.",
           },
+          center: {
+            type: "array",
+            items: { type: "integer" },
+            minItems: 2,
+            maxItems: 2,
+            description:
+              "(cx, cy): Center point of the square zoom region in the coordinate space of the most recent full-screen screenshot. Use with `size`.",
+          },
+          size: {
+            type: "integer",
+            minimum: 10,
+            description:
+              "Side length of the square zoom region in pixels. Use with `center`. Minimum 10 pixels.",
+          },
         },
-        required: ["region"],
+        required: [],
       },
     },
 

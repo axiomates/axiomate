@@ -2535,27 +2535,64 @@ async function handleZoom(
   args: Record<string, unknown>,
   overrides: ComputerUseOverrides,
 ): Promise<CuCallToolResult> {
-  // region: [x0, y0, x1, y1] in IMAGE-PX of lastScreenshot — same space the
-  // model reads click coords from.
-  const region = args.region;
-  if (!Array.isArray(region) || region.length !== 4) {
-    return errorResult(
-      "region must be an array of length 4: [x0, y0, x1, y1]",
-      "bad_args",
-    );
-  }
-  const [x0, y0, x1, y1] = region;
-  if (![x0, y0, x1, y1].every((v) => typeof v === "number" && v >= 0)) {
-    return errorResult(
-      "region values must be non-negative numbers",
-      "bad_args",
-    );
-  }
-  if (x1 <= x0)
-    return errorResult("region x1 must be greater than x0", "bad_args");
-  if (y1 <= y0)
-    return errorResult("region y1 must be greater than y0", "bad_args");
+  // ── Parse parameters: support both region=[x0,y0,x1,y1] and center=[cx,cy]+size ──
+  const hasRegion = Array.isArray(args.region) && args.region.length === 4;
+  const hasCenter = Array.isArray(args.center) && args.center.length === 2;
+  const hasSize = typeof args.size === "number";
 
+  if (!hasRegion && !(hasCenter && hasSize)) {
+    return errorResult(
+      "Provide either 'region: [x0, y0, x1, y1]' or 'center: [cx, cy], size: N'",
+      "bad_args",
+    );
+  }
+  if (hasRegion && (hasCenter || hasSize)) {
+    return errorResult(
+      "Cannot specify both 'region' and 'center'/'size'",
+      "bad_args",
+    );
+  }
+
+  let x0: number, y0: number, x1: number, y1: number;
+  let wasClipped = false;
+
+  if (hasRegion) {
+    // ── Existing path: region = [x0, y0, x1, y1] ──
+    [x0, y0, x1, y1] = args.region as number[];
+    if (![x0, y0, x1, y1].every((v) => typeof v === "number" && v >= 0)) {
+      return errorResult(
+        "region values must be non-negative numbers",
+        "bad_args",
+      );
+    }
+    if (x1 <= x0)
+      return errorResult("region x1 must be greater than x0", "bad_args");
+    if (y1 <= y0)
+      return errorResult("region y1 must be greater than y0", "bad_args");
+  } else {
+    // ── New path: center + size → square ──
+    const [cx, cy] = args.center as number[];
+    const size = args.size as number;
+
+    if (![cx, cy].every((v) => typeof v === "number" && v >= 0)) {
+      return errorResult(
+        "center coordinates must be non-negative numbers",
+        "bad_args",
+      );
+    }
+    if (typeof size !== "number" || size < 10) {
+      return errorResult("size must be a number >= 10", "bad_args");
+    }
+
+    // Convert center+size to rect (ideal square, before clipping)
+    const halfSize = size / 2;
+    x0 = Math.round(cx - halfSize);
+    y0 = Math.round(cy - halfSize);
+    x1 = Math.round(cx + halfSize);
+    y1 = Math.round(cy + halfSize);
+  }
+
+  // ── Boundary clipping (applies to both paths) ──
   const last = overrides.lastScreenshot;
   if (!last) {
     return errorResult(
@@ -2563,13 +2600,30 @@ async function handleZoom(
       "state_conflict",
     );
   }
-  if (x1 > last.width || y1 > last.height) {
+
+  // Track original coords to detect clipping
+  const origX0 = x0, origY0 = y0, origX1 = x1, origY1 = y1;
+
+  // Clamp to screen bounds [0, last.width] × [0, last.height]
+  x0 = Math.max(0, x0);
+  y0 = Math.max(0, y0);
+  x1 = Math.min(last.width, x1);
+  y1 = Math.min(last.height, y1);
+
+  // Check if clipping occurred
+  if (x0 !== origX0 || y0 !== origY0 || x1 !== origX1 || y1 !== origY1) {
+    wasClipped = true;
+  }
+
+  // After clamping, ensure valid rect (can happen if center is off-screen)
+  if (x1 <= x0 || y1 <= y0) {
     return errorResult(
-      `region exceeds screenshot bounds (${last.width}×${last.height})`,
+      `Computed zoom region [${x0},${y0}]-[${x1},${y1}] is invalid (zero or negative size after boundary clipping). Choose a center and size that intersect the screen.`,
       "bad_args",
     );
   }
 
+  // ── Execute zoom with clipped region ──
   const regionVirtual = {
     x: x0,
     y: y0,
@@ -2586,7 +2640,7 @@ async function handleZoom(
     coordinateGrid,
   );
 
-  // Build feedback text with region info + edge warnings + cursor position
+  // ── Build feedback text ──
   const w = x1 - x0;
   const h = y1 - y0;
   const warnings: string[] = [];
@@ -2598,11 +2652,17 @@ async function handleZoom(
   const centerX = Math.round((x0 + x1) / 2);
   const centerY = Math.round((y0 + y1) / 2);
   let text = `Zoomed to [${x0},${y0}]-[${x1},${y1}], center (${centerX},${centerY}), size ${w}×${h} px. Screen is ${last.width}×${last.height}.`;
+
+  // Add clipping note if rect was adjusted
+  if (hasCenter && wasClipped) {
+    text += ` Region was clipped to screen bounds.`;
+  }
+
   if (warnings.length > 0) {
     text += ` Region touches ${warnings.join(", ")} of the screen — content may be clipped. Zoom to a narrower region if you need to see edge detail more clearly.`;
   }
 
-  // Check cursor position relative to zoom region
+  // ── Cursor position feedback (existing logic) ──
   try {
     const cursor = await adapter.executor.getCursorPosition();
     const localX = cursor.x - (last.originX ?? 0);
