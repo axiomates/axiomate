@@ -444,7 +444,7 @@ export function createWinExecutor(): ComputerExecutor {
       return r
     },
 
-    async zoom(region, _allowedAppIdentifiers, displayId?: number, coordinateGrid?: string) {
+    async zoom(region, _allowedAppIdentifiers, displayId?: number, coordinateGrid?: string, marks?: Array<{ id: number; x: number; y: number }>) {
       if (napiAvailable) {
         const display = getWinDisplaySize(displayId)
         const [fullVirtualW, fullVirtualH] = computeImageDim(display.width, display.height)
@@ -457,11 +457,15 @@ export function createWinExecutor(): ComputerExecutor {
           h: Math.round(region.h * ratioY),
         }
         const gridMode = coordinateGrid === 'none' ? 0 : coordinateGrid === 'edge' ? 1 : 2
+        // SoM markers: passed through verbatim — coords are in the same
+        // virtual-coord space as `region` (rulers' label space), which is
+        // exactly what the napi's draw_marks_on_rgb expects.
         const r = winNapi.captureDisplayScaled(
           { origin: { x: physRegion.x, y: physRegion.y }, size: { w: physRegion.w, h: physRegion.h } },
           physRegion.w, physRegion.h,
           92, gridMode,
           region.x, region.y, region.w, region.h,
+          marks,
         )
         if (r) {
           dumpScreenshotForDebug('zoom', r.base64)
@@ -511,6 +515,35 @@ export function createWinExecutor(): ComputerExecutor {
         originX: r.originX,
         originY: r.originY,
       }
+    },
+
+    // ── UI Automation (SoM overlay for click_target zoom) ──────────────
+    // Enumerate visible UI elements within a physical-pixel rect via
+    // IUIAutomation::FindAll rooted at the desktop. The agent calls this
+    // during a click_target loop's zoom step; results feed into the SoM
+    // marker overlay drawn into the zoomed image AND the structured-text
+    // mark list that goes back alongside the image.
+    //
+    // Returns [] when the napi isn't available (non-Windows / load failure)
+    // or when COM init / IUIAutomation creation failed inside Rust — the
+    // dispatcher treats empty as "no marks; fall back to ruler positioning".
+    async enumerateVisibleElements(rect) {
+      if (!napiAvailable) return []
+      const raw = winNapi.enumerateUiElementsInRect({
+        origin: { x: Math.round(rect.x), y: Math.round(rect.y) },
+        size:   { w: Math.round(rect.w), h: Math.round(rect.h) },
+      })
+      return raw.map(e => ({
+        bbox: {
+          x: e.bbox.origin.x,
+          y: e.bbox.origin.y,
+          w: e.bbox.size.w,
+          h: e.bbox.size.h,
+        },
+        name: e.name,
+        role: e.role,
+        automationId: e.automationId ?? undefined,
+      }))
     },
 
     // Win32-direct mouse input — replaces nut.js for moveMouse / click /

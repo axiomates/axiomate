@@ -546,6 +546,33 @@ interface BaseComputerUseOverrides {
     schema?: object;
   }) => Promise<{ text: string; parsed?: unknown }>;
 
+  // ── Click-target loop state (SoM enrichment) ──────────────────────────
+  // Wired by `bindSessionContext`. The loop state lives in the dispatcher's
+  // closure (`activeClickLoop`); these two callbacks are the ONLY way handlers
+  // (handleZoom, handleMoveMouse) can read or mutate it. Both undefined means
+  // the dispatcher isn't wired (no loop tracking) — handlers fall back to
+  // their pre-SoM behavior (no marks attached, mark_id resolution errors).
+
+  /**
+   * Read the currently-active click_target loop state, or null if no loop
+   * is in progress. Handlers gate SoM logic on this — outside a loop, zoom
+   * skips UIA enumeration entirely (zero perf cost), and mouse_move's
+   * `mark_id` param errors out with a clear message.
+   */
+  getActiveClickLoop?: () => import("./clickTarget.js").ClickLoopState | null;
+
+  /**
+   * Replace the active loop's `marks` with a new list. Called by handleZoom
+   * after a SoM detection pass; the new marks become the resolution target
+   * for the next `mouse_move(mark_id)`. No-op when no loop is active.
+   *
+   * `marks` is REPLACED (not appended) so id numbering on the wire matches
+   * what the AI just saw drawn on the zoomed image.
+   */
+  onClickLoopMarksUpdated?: (
+    marks: import("./clickTarget.js").Mark[],
+  ) => void;
+
   // ── Teach mode ───────────────────────────────────────────────────────
   // Wired only when the host's teachModeEnabled gate is on. All five
   // undefined → `request_teach_access` / `teach_step` return tool errors

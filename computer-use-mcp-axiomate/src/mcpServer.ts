@@ -238,6 +238,17 @@ export function bindSessionContext(
       acquireCuLock: undefined,
       isAborted: ctx.isAborted,
       vlQuery: ctx.vlQuery,
+      // SoM enrichment hooks — read/write the `activeClickLoop` closure
+      // cell defined above. Used by handleZoom (to attach detected marks)
+      // and handleMoveMouse (to resolve `mark_id`). When no loop is
+      // active getActiveClickLoop returns null and onClickLoopMarksUpdated
+      // is a no-op.
+      getActiveClickLoop: () => activeClickLoop,
+      onClickLoopMarksUpdated: (marks: import("./clickTarget.js").Mark[]) => {
+        if (activeClickLoop) {
+          activeClickLoop = { ...activeClickLoop, marks };
+        }
+      },
     };
     const overrides: ComputerUseOverrides = isMacAdapter
       ? {
@@ -298,7 +309,7 @@ export function bindSessionContext(
         result.content.push({ type: "text", text: "Tip: For reliable clicking, use click_target first to enter guided mode." });
         logger.debug(`[${serverName}] click outside loop: ${name} (hint injected)`);
       } else if (name === "screenshot" && !result.isError) {
-        result.content.push({ type: "text", text: "Tip: If your next step is to click a UI element you can describe by name (e.g. 'taskbar QQ icon', 'Send button'), call `click_target` instead of guessing coordinates — guided mode is far more reliable on small/dense targets." });
+        result.content.push({ type: "text", text: "Tip: If your next step is to click a UI element you can describe by name (e.g. 'taskbar settings icon', 'Send button'), call `click_target` instead of guessing coordinates — guided mode is far more reliable on small/dense targets." });
         logger.debug(`[${serverName}] screenshot outside click loop: nudge injected`);
       }
 

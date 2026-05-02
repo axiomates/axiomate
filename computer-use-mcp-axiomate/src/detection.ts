@@ -6,6 +6,7 @@
  * is left to the VL model.
  */
 import type { ComputerExecutor } from "./executor.js";
+import type { Mark } from "./clickTarget.js";
 
 export interface DetectedElement {
   id: number;
@@ -66,6 +67,59 @@ export async function detectElementsInRect(
       automationId: el.automationId,
     };
   });
+}
+
+/**
+ * Detection sources for the SoM overlay. UIAutomation is wired today; the
+ * other three are placeholders for the future multi-modal detection
+ * pipeline (YOLO for icons, GroundingDINO for natural-language queries,
+ * OCR for text labels). Each future source will run in parallel with UIA
+ * and have its results merged via dedup-by-IoU + confidence aggregation
+ * inside `detectElementsMultiSource`.
+ */
+export type DetectionSource = "uia" | "yolo" | "grounder" | "ocr";
+
+/**
+ * Multi-source SoM detector. Today only `uia` is wired — the executor's
+ * `enumerateVisibleElements` (Win32 IUIAutomation::FindAll). Other sources
+ * are stubbed so the merge structure is in place without forcing the call
+ * site to know which sources exist.
+ *
+ * Returns a flat `Mark[]` ready for direct attachment to
+ * `ClickLoopState.marks`. IDs are assigned in-order starting from 1; the
+ * mark numbering matches what the renderer draws on the zoomed image so
+ * `mouse_move(mark_id: N)` resolution is straightforward.
+ *
+ * Future merge contract (when yolo/grounder/ocr land): each source produces
+ * its own bbox+confidence list; the merger dedups by IoU > 0.5 and aggregates
+ * confidence (max across sources, with a small bonus for multi-source agreement).
+ * The output `Mark` carries `source` of the highest-confidence contributor.
+ */
+export async function detectElementsMultiSource(
+  executor: ComputerExecutor,
+  rect: Rect,
+  virtualToPhysical: { ratioX: number; ratioY: number; originX: number; originY: number },
+  sources: DetectionSource[] = ["uia"],
+): Promise<Mark[]> {
+  const all: Mark[] = [];
+  if (sources.includes("uia")) {
+    const uia = await detectElementsInRect(executor, rect, virtualToPhysical);
+    for (const el of uia) {
+      all.push({
+        id: 0, // re-assigned below after merge
+        x: el.center.x,
+        y: el.center.y,
+        name: el.rawName,
+        role: el.role ?? "",
+        automationId: el.automationId,
+        source: "uia",
+        confidence: 1.0,
+      });
+    }
+  }
+  // TODO: yolo / grounder / ocr — call each detector, normalize to the same
+  // shape, then run dedup-by-IoU + confidence-aggregate before id assignment.
+  return all.map((m, i) => ({ ...m, id: i + 1 }));
 }
 
 /**

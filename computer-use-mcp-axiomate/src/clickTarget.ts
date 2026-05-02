@@ -23,11 +23,40 @@ function screenshotAllowlist(adapter: ComputerUseHostAdapter, overrides: Compute
 
 // ── Click loop state (managed by mcpServer.ts session dispatcher) ──────
 
+/**
+ * One SoM (Set-of-Mark) detection result. Stored on `ClickLoopState.marks`
+ * after a zoom inside a click_target loop runs UI-element detection. The
+ * AI can pass `mark_id: id` to `mouse_move` to jump cursor to (x, y) without
+ * estimating pixel positions; if the AI doesn't recognize any mark as the
+ * target, it can still use the rulers as before. Coords are in the same
+ * virtual-coord space as the rulers / mouse_move's `coordinate` param.
+ */
+export interface Mark {
+  id: number;
+  x: number;
+  y: number;
+  name: string;
+  role: string;
+  automationId?: string;
+  /** Source of the detection. Today only `'uia'` is wired; yolo/grounder/ocr are TODO. */
+  source: "uia";
+  /** 0..1. UIA's `IsControlElement` is deterministic so it gets 1.0; future fuzzy sources will weight lower. */
+  confidence: number;
+}
+
 export interface ClickLoopState {
   target: string;
   button: "left" | "right" | "middle";
   count: 1 | 2 | 3;
   phase: "init" | "moving" | "verifying";
+  /**
+   * Marks detected on the most recent `zoom` inside this loop. REPLACED
+   * (not accumulated) on each zoom so id numbering stays consistent with
+   * what the AI sees in the current zoomed image. `mouse_move(mark_id: N)`
+   * resolves N against this list. Empty after init and after any zoom that
+   * was called with `som: false`.
+   */
+  marks: Mark[];
 }
 
 // ── Injection text builders ────────────────────────────────────────────
@@ -73,12 +102,18 @@ export function buildClickLoopInjection(
         `- TARGET HARD TO IDENTIFY → use zoom on the area to see more detail before adjusting.`
       );
 
-    case "zoom":
+    case "zoom": {
+      const markCount = state.marks.length;
+      const markHint =
+        markCount > 0
+          ? `\nDETECTED ${markCount} UI element${markCount === 1 ? "" : "s"} via UIAutomation — see the red numbered circles on the image and the "Marks" text block above. To click one of them, call \`mouse_move\` with \`mark_id: N\` (no coordinates needed) — that jumps the cursor to mark N's recorded center. If your target ISN'T marked (UIA misses some custom-drawn controls), fall back to reading coordinates from the rulers.`
+          : `\nNo UIAutomation marks were detected in this region (or the region is too dense — >25 elements). Read coordinates from the rulers and call mouse_move with explicit coordinates.`;
       return (
         `[Click Target: "${t}"]\n` +
-        `Use the zoomed view to identify the target precisely. Read coordinates from the rulers, then call mouse_move to position the cursor.\n` +
+        `Use the zoomed view to identify the target precisely.${markHint}\n` +
         `Note: coordinates in mouse_move/left_click always refer to the full-screen coordinate space (same numbers shown on the zoom rulers).`
       );
+    }
 
     default:
       return `[Click Target: "${t}"]`;
@@ -118,7 +153,7 @@ export async function handleClickTargetInit(
     return {
       content: [{ type: "text", text: `Invalid button: "${button}". Use left, right, or middle.` }],
       isError: true,
-      clickLoop: { target: args.description, button, count: 1, phase: "init" },
+      clickLoop: { target: args.description, button, count: 1, phase: "init", marks: [] },
     };
   }
   const count = (args.count ?? 1) as 1 | 2 | 3;
@@ -126,7 +161,7 @@ export async function handleClickTargetInit(
     return {
       content: [{ type: "text", text: `Invalid count: ${count}. Use 1, 2, or 3.` }],
       isError: true,
-      clickLoop: { target: args.description, button, count: 1, phase: "init" },
+      clickLoop: { target: args.description, button, count: 1, phase: "init", marks: [] },
     };
   }
 
@@ -143,6 +178,7 @@ export async function handleClickTargetInit(
     button,
     count,
     phase: "init",
+    marks: [],
   };
 
   return {

@@ -131,10 +131,22 @@ module.exports.captureDisplayScaled = function captureDisplayScaled(
   gridOriginY,
   gridRangeW,
   gridRangeH,
+  marks,
 ) {
   const mod = loadNative()
   if (!mod) return null
-  return mod.captureDisplayScaled(src, targetW, targetH, jpegQuality, gridMode ?? undefined, gridOriginX ?? undefined, gridOriginY ?? undefined, gridRangeW ?? undefined, gridRangeH ?? undefined)
+  return mod.captureDisplayScaled(src, targetW, targetH, jpegQuality, gridMode ?? undefined, gridOriginX ?? undefined, gridOriginY ?? undefined, gridRangeW ?? undefined, gridRangeH ?? undefined, marks ?? undefined)
+}
+
+// ── UIAutomation enumeration (SoM overlay for click_target zoom) ─────────
+//
+// Returns up to 50 visible UI elements whose bbox intersects the input rect.
+// Empty Vec on COM failure / non-Windows / native binding load failure —
+// agent treats empty as "no marks; fall back to ruler positioning".
+module.exports.enumerateUiElementsInRect = function enumerateUiElementsInRect(rect) {
+  const mod = loadNative()
+  if (!mod) return []
+  return mod.enumerateUiElementsInRect(rect)
 }
 
 // ── WGC allowlist-filtered capture (Stage 3 skeleton, returns None) ────────

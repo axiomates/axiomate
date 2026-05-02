@@ -89,6 +89,16 @@ windows = { version = "0.58", features = [
                                       # internally with transforms only at
                                       # the SendInput-normalize and
                                       # screenshot-downscale boundaries.
+  "Win32_UI_Accessibility",           # IUIAutomation, IUIAutomationElement,
+                                      # IUIAutomationCondition, TreeScope_*,
+                                      # CUIAutomation CLSID — used by the
+                                      # SoM (Set-of-Mark) overlay path:
+                                      # enumerate visible UI elements within
+                                      # a screen rect (zoom region) so VL
+                                      # gets exact bboxes for taskbar /
+                                      # buttons / menu items it would
+                                      # otherwise have to estimate from
+                                      # downscaled pixels.
 ] }
 # JPEG encoder for screenshot_window output. Matches mac NAPI's pipeline
 # (image::JpegEncoder at quality 85) so the {base64,width,height} payload

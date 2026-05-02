@@ -99,6 +99,13 @@ export interface ComputerExecutor {
     allowedAppIdentifiers: string[],
     displayId?: number,
     coordinateGrid?: string,
+    /**
+     * SoM (Set-of-Mark) overlay markers to draw on top of the zoomed image.
+     * Coords are in the SAME virtual-coord space as `region` (not image
+     * pixels). Drawn as semi-transparent red filled circles + numbered
+     * labels. Optional — when omitted the image is returned without marks.
+     */
+    marks?: Array<{ id: number; x: number; y: number }>,
   ): Promise<{ base64: string; width: number; height: number }>;
   resolvePrepareCapture(opts: {
     allowedAppIdentifiers: string[];
@@ -179,7 +186,13 @@ export interface ComputerExecutor {
   /**
    * Enumerate visible interactable UI elements within a physical-pixel rect.
    * Used by click_target's SoM overlay. Optional — returns [] if unavailable.
-   * Win32: IUIAutomation::FindAll with TreeScope_Subtree on the foreground window.
+   * Win32: IUIAutomation::FindAll with TreeScope_Subtree rooted at
+   * `GetRootElement()` (the desktop), filtered by `IsControlElement = true`,
+   * then post-filtered to elements whose bbox intersects `rect`. Rooting at
+   * the desktop (not the foreground window) is intentional so taskbar
+   * (`Shell_TrayWnd`), system tray, and floating top-level windows are
+   * included — foreground-scoped FindAll would miss the most common
+   * "click X in the taskbar" intent.
    */
   enumerateVisibleElements?(rect: {
     x: number;

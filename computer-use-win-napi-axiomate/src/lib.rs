@@ -183,6 +183,36 @@ pub struct DisplayCaptureResult {
     pub height: i64,
 }
 
+/// SoM (Set-of-Mark) overlay marker — one numbered red circle to draw on
+/// the captured image. Used by `capture_display_scaled` when the agent
+/// wants to highlight UI elements detected by `enumerate_ui_elements_in_rect`.
+/// `(x, y)` is in the SAME coordinate space as `grid_origin_*` — i.e. the
+/// virtual-coord space that the rulers label, NOT image pixels.
+#[napi(object)]
+pub struct MarkOverlay {
+    pub id: u32,
+    pub x: i32,
+    pub y: i32,
+}
+
+/// One UI element returned by `enumerate_ui_elements_in_rect`. `bbox` is in
+/// the same physical-pixel virtual-screen space as everything else in this
+/// crate (VRect convention — see top of file).
+#[napi(object)]
+pub struct UiElement {
+    pub bbox: VRect,
+    /// UIAutomation `CurrentName` — control's accessible name. Empty when
+    /// the control didn't expose one.
+    pub name: String,
+    /// Human-readable control type ("Button", "Edit", "MenuItem", ...).
+    /// Mapped from the integer `UIA_*ControlTypeId`. "Unknown" if the
+    /// type ID didn't match any of the standard values.
+    pub role: String,
+    /// UIAutomation `CurrentAutomationId` — stable per-control identifier
+    /// when the app sets one. None when empty.
+    pub automation_id: Option<String>,
+}
+
 // ───────────────────────────────────────────────────────────────────────────
 // Public NAPI functions
 // ───────────────────────────────────────────────────────────────────────────
@@ -409,6 +439,7 @@ pub fn capture_display_scaled(
     grid_origin_y: Option<i32>,
     grid_range_w: Option<u32>,
     grid_range_h: Option<u32>,
+    marks: Option<Vec<MarkOverlay>>,
 ) -> napi::Result<Option<DisplayCaptureResult>> {
     #[cfg(target_os = "windows")]
     {
@@ -422,12 +453,47 @@ pub fn capture_display_scaled(
             grid_origin_y,
             grid_range_w,
             grid_range_h,
+            marks,
         ))
     }
     #[cfg(not(target_os = "windows"))]
     {
-        let _ = (src, target_w, target_h, jpeg_quality, grid_mode, grid_origin_x, grid_origin_y, grid_range_w, grid_range_h);
+        let _ = (src, target_w, target_h, jpeg_quality, grid_mode, grid_origin_x, grid_origin_y, grid_range_w, grid_range_h, marks);
         Ok(None)
+    }
+}
+
+/// Enumerate visible interactable UI elements within a screen rect using
+/// IUIAutomation. Used by the click_target SoM (Set-of-Mark) overlay path:
+/// when the AI zooms into a region inside an active click_target loop, the
+/// system asks the OS for exact bboxes of buttons/menus/edits/etc. and
+/// hands them back as numbered markers + structured text so the AI doesn't
+/// have to estimate pixel positions from a downscaled image.
+///
+/// Scope: rooted at `IUIAutomation::GetRootElement` (the desktop), NOT the
+/// foreground window — this is intentional so taskbar (`Shell_TrayWnd`),
+/// system tray, and floating top-level windows are included. Without root
+/// scope the "click QQ icon in taskbar" use case would never see the icon.
+///
+/// Filtering: `IsControlElement = true` removes pure-content nodes
+/// (TextBlock, Image without click handler) so the result list stays
+/// focused on actually-clickable surfaces. Capped at 50 results to bound
+/// per-call latency on dense desktops.
+///
+/// Returns empty Vec on COM failure (apartment not init'd, IUIAutomation
+/// unavailable on stripped Windows installs) — the agent layer treats
+/// `[]` as "no marks available, fall back to ruler-based positioning"
+/// gracefully.
+#[napi]
+pub fn enumerate_ui_elements_in_rect(rect: VRect) -> napi::Result<Vec<UiElement>> {
+    #[cfg(target_os = "windows")]
+    {
+        Ok(windows_impl::enumerate_ui_elements_in_rect(rect))
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = rect;
+        Ok(Vec::new())
     }
 }
 
@@ -782,7 +848,8 @@ pub fn defocus_self_to_previous_foreground() -> bool {
 mod windows_impl {
     use super::{
         AppHitInfo, CaptureWindowImage, CaptureWindowOutcome,
-        DisplayCaptureResult, InstalledApp, VPoint, VRect, WindowMonitorInfo,
+        DisplayCaptureResult, InstalledApp, MarkOverlay, UiElement,
+        VPoint, VRect, WindowMonitorInfo,
     };
     use base64::Engine;
     use std::collections::{BTreeMap, BTreeSet};
@@ -815,12 +882,13 @@ mod windows_impl {
         PROCESS_QUERY_LIMITED_INFORMATION,
     };
     use windows::Win32::UI::WindowsAndMessaging::{
-        BringWindowToTop, DrawIconEx, EnumWindows, GetCursorInfo, GetCursorPos,
-        GetForegroundWindow, GetIconInfo, GetSystemMetrics, GetWindowRect,
-        GetWindowThreadProcessId, IsIconic, IsWindowVisible, SetForegroundWindow,
-        ShowWindow, WindowFromPoint, CURSORINFO, CURSOR_SHOWING, DI_NORMAL,
-        ICONINFO, SHOW_WINDOW_CMD, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN,
-        SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN, SW_HIDE, SW_SHOWNOACTIVATE,
+        BringWindowToTop, DrawIconEx, EnumWindows, FindWindowW, GetCursorInfo,
+        GetCursorPos, GetForegroundWindow, GetIconInfo, GetSystemMetrics,
+        GetWindowRect, GetWindowThreadProcessId, IsIconic, IsWindowVisible,
+        SetForegroundWindow, ShowWindow, WindowFromPoint, CURSORINFO,
+        CURSOR_SHOWING, DI_NORMAL, ICONINFO, SHOW_WINDOW_CMD, SM_CXVIRTUALSCREEN,
+        SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN, SW_HIDE,
+        SW_SHOWNOACTIVATE,
     };
     use windows::Win32::UI::Input::KeyboardAndMouse::{
         SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, INPUT_MOUSE, KEYBDINPUT,
@@ -832,9 +900,10 @@ mod windows_impl {
         MOUSEINPUT, MOUSE_EVENT_FLAGS, VIRTUAL_KEY,
     };
     use windows::Win32::Storage::Xps::{PrintWindow, PRINT_WINDOW_FLAGS};
-    use windows::core::{GUID, PROPVARIANT};
+    use windows::core::{GUID, PROPVARIANT, VARIANT};
     use windows::Win32::System::Com::{
-        CoInitializeEx, CoTaskMemFree, COINIT_APARTMENTTHREADED,
+        CoCreateInstance, CoInitializeEx, CoTaskMemFree, CLSCTX_INPROC_SERVER,
+        COINIT_APARTMENTTHREADED,
     };
     use windows::Win32::System::Com::StructuredStorage::PropVariantToStringAlloc;
     use windows::Win32::UI::Shell::PropertiesSystem::{
@@ -846,6 +915,32 @@ mod windows_impl {
     use windows::Win32::Graphics::Dwm::{DwmGetWindowAttribute, DWMWA_CLOAKED};
     use windows::Win32::UI::HiDpi::{
         SetProcessDpiAwarenessContext, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2,
+    };
+    // UIAutomation — IUIAutomation::FindAll path used by enumerate_ui_elements_in_rect
+    // for the SoM (Set-of-Mark) overlay. CUIAutomation is the COM CLSID;
+    // IUIAutomation* are the COM interfaces; UIA_*PropertyId / UIA_*ControlTypeId
+    // are typed constants windows-rs generated from the UIA TLB. We root at
+    // GetRootElement (the desktop) so taskbar / Shell_TrayWnd are included —
+    // foreground-window-scoped FindAll would miss them.
+    use windows::Win32::UI::Accessibility::{
+        CUIAutomation, IUIAutomation, IUIAutomationCondition, IUIAutomationElement,
+        IUIAutomationElementArray, TreeScope_Children, TreeScope_Subtree,
+        UIA_AppBarControlTypeId,
+        UIA_ButtonControlTypeId, UIA_CalendarControlTypeId, UIA_CheckBoxControlTypeId,
+        UIA_ComboBoxControlTypeId, UIA_CustomControlTypeId, UIA_DataGridControlTypeId,
+        UIA_DataItemControlTypeId, UIA_DocumentControlTypeId, UIA_EditControlTypeId,
+        UIA_GroupControlTypeId, UIA_HeaderControlTypeId, UIA_HeaderItemControlTypeId,
+        UIA_HyperlinkControlTypeId, UIA_ImageControlTypeId, UIA_IsControlElementPropertyId,
+        UIA_ListControlTypeId, UIA_ListItemControlTypeId, UIA_MenuBarControlTypeId,
+        UIA_MenuControlTypeId, UIA_MenuItemControlTypeId, UIA_PaneControlTypeId,
+        UIA_ProgressBarControlTypeId, UIA_RadioButtonControlTypeId,
+        UIA_ScrollBarControlTypeId, UIA_SemanticZoomControlTypeId,
+        UIA_SeparatorControlTypeId, UIA_SliderControlTypeId, UIA_SpinnerControlTypeId,
+        UIA_SplitButtonControlTypeId, UIA_StatusBarControlTypeId, UIA_TabControlTypeId,
+        UIA_TabItemControlTypeId, UIA_TableControlTypeId, UIA_TextControlTypeId,
+        UIA_TitleBarControlTypeId, UIA_ToolBarControlTypeId, UIA_ToolTipControlTypeId,
+        UIA_TreeControlTypeId, UIA_TreeItemControlTypeId, UIA_WindowControlTypeId,
+        UIA_CONTROLTYPE_ID,
     };
     use std::sync::OnceLock;
 
@@ -983,6 +1078,237 @@ mod windows_impl {
             let result = pwstr.to_string().ok();
             CoTaskMemFree(Some(pwstr.0 as _));
             result
+        }
+    }
+
+    // ────────────── UIAutomation enumeration (SoM overlay) ──────────────
+
+    /// Map a UIAutomation `UIA_*ControlTypeId` integer to a short
+    /// human-readable role string. Falls through to "Unknown" for IDs we
+    /// don't enumerate explicitly. The agent layer feeds these to VL as
+    /// part of the per-mark structured-text item, so the names should be
+    /// short and self-explanatory ("Button", "Edit", "MenuItem") rather
+    /// than the raw int. Mirrors the strings WAI-ARIA / accessibility
+    /// inspectors typically use.
+    #[allow(non_upper_case_globals)]
+    fn control_type_to_string(id: UIA_CONTROLTYPE_ID) -> &'static str {
+        match id {
+            UIA_ButtonControlTypeId => "Button",
+            UIA_EditControlTypeId => "Edit",
+            UIA_MenuItemControlTypeId => "MenuItem",
+            UIA_HyperlinkControlTypeId => "Hyperlink",
+            UIA_TextControlTypeId => "Text",
+            UIA_ListItemControlTypeId => "ListItem",
+            UIA_TabItemControlTypeId => "TabItem",
+            UIA_CheckBoxControlTypeId => "CheckBox",
+            UIA_ComboBoxControlTypeId => "ComboBox",
+            UIA_RadioButtonControlTypeId => "RadioButton",
+            UIA_ScrollBarControlTypeId => "ScrollBar",
+            UIA_SliderControlTypeId => "Slider",
+            UIA_SpinnerControlTypeId => "Spinner",
+            UIA_StatusBarControlTypeId => "StatusBar",
+            UIA_ToolBarControlTypeId => "ToolBar",
+            UIA_TreeItemControlTypeId => "TreeItem",
+            UIA_ImageControlTypeId => "Image",
+            UIA_DocumentControlTypeId => "Document",
+            UIA_PaneControlTypeId => "Pane",
+            UIA_GroupControlTypeId => "Group",
+            UIA_WindowControlTypeId => "Window",
+            UIA_MenuControlTypeId => "Menu",
+            UIA_MenuBarControlTypeId => "MenuBar",
+            UIA_HeaderControlTypeId => "Header",
+            UIA_HeaderItemControlTypeId => "HeaderItem",
+            UIA_DataItemControlTypeId => "DataItem",
+            UIA_DataGridControlTypeId => "DataGrid",
+            UIA_TableControlTypeId => "Table",
+            UIA_ToolTipControlTypeId => "ToolTip",
+            UIA_TreeControlTypeId => "Tree",
+            UIA_CalendarControlTypeId => "Calendar",
+            UIA_ListControlTypeId => "List",
+            UIA_TabControlTypeId => "Tab",
+            UIA_SemanticZoomControlTypeId => "SemanticZoom",
+            UIA_AppBarControlTypeId => "AppBar",
+            UIA_TitleBarControlTypeId => "TitleBar",
+            UIA_SeparatorControlTypeId => "Separator",
+            UIA_ProgressBarControlTypeId => "ProgressBar",
+            UIA_SplitButtonControlTypeId => "SplitButton",
+            UIA_CustomControlTypeId => "Custom",
+            _ => "Unknown",
+        }
+    }
+
+    /// Enumerate UI elements whose bounding rect is mostly contained in
+    /// `rect`. Caps at 50 to bound latency on busy desktops.
+    ///
+    /// Strategy — `IUIAutomation::FindAll(TreeScope_Subtree)` from the
+    /// desktop root does NOT reliably reach into modern app processes
+    /// (Win11 taskbar lives in StartMenuExperienceHost.exe; UIA's cross-
+    /// process proxy only surfaces top-level Window/Pane containers, not
+    /// deeper Buttons). Workaround: enumerate THREE specific subtrees
+    /// individually via `ElementFromHandle`, dedup by bbox:
+    ///   1. `Shell_TrayWnd` — the taskbar (covers "click X in taskbar").
+    ///   2. The foreground window — covers app controls in zoom region.
+    ///   3. The desktop root's direct children — fallback for popups /
+    ///      context menus / floating windows not under the above two.
+    ///
+    /// Filtering — for each candidate:
+    ///   - bbox must overlap `rect` AND ≥50% of bbox area must lie inside
+    ///     `rect`. Catches taskbar buttons (small, fully contained); rejects
+    ///     whole-screen Window/Pane containers whose bbox technically
+    ///     intersects the input rect but whose useful pixels are far outside.
+    ///   - exclude container roles (Window, Pane, Group, Document, TitleBar)
+    ///     since they're not actually clickable targets.
+    ///
+    /// Returns `Vec::new()` on any COM failure — caller treats empty as
+    /// "no marks available, fall back to ruler positioning".
+    pub fn enumerate_ui_elements_in_rect(rect: VRect) -> Vec<UiElement> {
+        ensure_dpi_aware();
+        init_com_once();
+        unsafe {
+            let automation: IUIAutomation =
+                match CoCreateInstance(&CUIAutomation, None, CLSCTX_INPROC_SERVER) {
+                    Ok(a) => a,
+                    Err(_) => return Vec::new(),
+                };
+            // Filter to controls (skips pure-content nodes like decorative
+            // TextBlocks). VARIANT::from(true) wraps a VARIANT_BOOL.
+            let true_var: VARIANT = VARIANT::from(true);
+            let condition: IUIAutomationCondition = match automation
+                .CreatePropertyCondition(UIA_IsControlElementPropertyId, &true_var)
+            {
+                Ok(c) => c,
+                Err(_) => return Vec::new(),
+            };
+
+            let mut results: Vec<UiElement> = Vec::new();
+            let mut seen: BTreeSet<(i32, i32, u32, u32)> = BTreeSet::new();
+
+            // Source 1: Shell_TrayWnd subtree — the taskbar.
+            let taskbar_class = to_wide("Shell_TrayWnd");
+            if let Ok(hwnd) = FindWindowW(PCWSTR(taskbar_class.as_ptr()), PCWSTR::null()) {
+                if !hwnd.0.is_null() {
+                    if let Ok(el) = automation.ElementFromHandle(hwnd) {
+                        if let Ok(arr) = el.FindAll(TreeScope_Subtree, &condition) {
+                            collect_into(&arr, &rect, &mut results, &mut seen);
+                        }
+                    }
+                }
+            }
+
+            // Source 2: Foreground window subtree — app controls in zoom region.
+            let fg_hwnd = GetForegroundWindow();
+            if !fg_hwnd.0.is_null() {
+                if let Ok(el) = automation.ElementFromHandle(fg_hwnd) {
+                    if let Ok(arr) = el.FindAll(TreeScope_Subtree, &condition) {
+                        collect_into(&arr, &rect, &mut results, &mut seen);
+                    }
+                }
+            }
+
+            // Source 3 (fallback): desktop root's direct children — covers
+            // floating popups / context menus / system tray flyouts that
+            // aren't subtrees of the foreground app or Shell_TrayWnd.
+            if let Ok(root) = automation.GetRootElement() {
+                if let Ok(arr) = root.FindAll(TreeScope_Children, &condition) {
+                    collect_into(&arr, &rect, &mut results, &mut seen);
+                }
+            }
+
+            results
+        }
+    }
+
+    /// Iterate `array` and append qualifying elements to `results`.
+    /// Containment + role filters applied here so each enumeration source
+    /// uses the same gates. `seen` dedups by bbox tuple — the same element
+    /// can appear in multiple subtree walks (foreground window often shows
+    /// up under the desktop root's children too).
+    #[allow(non_upper_case_globals)]
+    unsafe fn collect_into(
+        array: &IUIAutomationElementArray,
+        rect: &VRect,
+        results: &mut Vec<UiElement>,
+        seen: &mut BTreeSet<(i32, i32, u32, u32)>,
+    ) {
+        let count = match array.Length() {
+            Ok(c) => c,
+            Err(_) => return,
+        };
+        for i in 0..count {
+            if results.len() >= 50 {
+                return;
+            }
+            let el: IUIAutomationElement = match array.GetElement(i) {
+                Ok(e) => e,
+                Err(_) => continue,
+            };
+            let bbox_rect = match el.CurrentBoundingRectangle() {
+                Ok(r) => r,
+                Err(_) => continue,
+            };
+            let bbox: VRect = bbox_rect.into();
+            if bbox.size.w == 0 || bbox.size.h == 0 {
+                continue;
+            }
+            if !bbox.intersects(rect) {
+                continue;
+            }
+            // Containment: at least 50% of bbox area must lie inside `rect`.
+            // Rejects whole-screen Window/Pane containers whose bbox technically
+            // intersects the input rect but whose useful pixels are far outside
+            // (e.g. a full-screen VS Code window when AI zoomed into the
+            // bottom 100px taskbar strip).
+            let intersect_w = ((bbox.origin.x + bbox.size.w as i32)
+                .min(rect.origin.x + rect.size.w as i32)
+                - bbox.origin.x.max(rect.origin.x))
+                .max(0) as u64;
+            let intersect_h = ((bbox.origin.y + bbox.size.h as i32)
+                .min(rect.origin.y + rect.size.h as i32)
+                - bbox.origin.y.max(rect.origin.y))
+                .max(0) as u64;
+            let intersect_area = intersect_w * intersect_h;
+            let bbox_area = (bbox.size.w as u64) * (bbox.size.h as u64);
+            if bbox_area == 0 || (intersect_area * 2) < bbox_area {
+                continue;
+            }
+            // Role-based exclusion: skip pure-container types that aren't
+            // useful click targets. Custom is kept (many apps use it for
+            // their bespoke icon buttons).
+            let role_id = el
+                .CurrentControlType()
+                .unwrap_or(UIA_CustomControlTypeId);
+            if matches!(
+                role_id,
+                UIA_WindowControlTypeId
+                    | UIA_PaneControlTypeId
+                    | UIA_GroupControlTypeId
+                    | UIA_DocumentControlTypeId
+                    | UIA_TitleBarControlTypeId
+            ) {
+                continue;
+            }
+            let key = (bbox.origin.x, bbox.origin.y, bbox.size.w, bbox.size.h);
+            if seen.contains(&key) {
+                continue;
+            }
+            seen.insert(key);
+            let name = el
+                .CurrentName()
+                .ok()
+                .map(|s| s.to_string())
+                .unwrap_or_default();
+            let role = control_type_to_string(role_id).to_string();
+            let automation_id = el
+                .CurrentAutomationId()
+                .ok()
+                .map(|s| s.to_string())
+                .filter(|s| !s.is_empty());
+            results.push(UiElement {
+                bbox,
+                name,
+                role,
+                automation_id,
+            });
         }
     }
 
@@ -2092,6 +2418,99 @@ mod windows_impl {
         }
     }
 
+    // ── SoM (Set-of-Mark) overlay ──────────────────────────────────────
+    // Color-parameterized variants of draw_digit / draw_number — same
+    // 5×7 bitmap font as the rulers, but in any RGB. Used to render the
+    // mark numbers with white fill + black 1-px outline so digits stay
+    // legible on top of the translucent red circle and on whatever UI
+    // pixels lie behind it.
+
+    fn draw_digit_color(
+        buf: &mut [u8], w: u32, h: u32, digit: u8, ox: i32, oy: i32, r: u8, g: u8, b: u8,
+    ) {
+        let glyph = &DIGITS[digit as usize % 10];
+        for row in 0..FONT_H {
+            let bits = glyph[row as usize];
+            for col in 0..FONT_W {
+                if bits & (1 << (FONT_W - 1 - col)) != 0 {
+                    set_px(buf, w, h, ox + col, oy + row, r, g, b);
+                }
+            }
+        }
+    }
+
+    fn draw_number_color(
+        buf: &mut [u8], w: u32, h: u32, num: u32, ox: i32, oy: i32, r: u8, g: u8, b: u8,
+    ) {
+        let s = num.to_string();
+        let mut x = ox;
+        for ch in s.bytes() {
+            if ch >= b'0' && ch <= b'9' {
+                draw_digit_color(buf, w, h, ch - b'0', x, oy, r, g, b);
+                x += FONT_W + 1;
+            }
+        }
+    }
+
+    /// Draw SoM marker circles + numbers onto the captured/resized image.
+    /// Marks come in virtual coords (same space as ruler labels). The
+    /// (coord_origin_*, coord_range_*) define how to project virtual →
+    /// image pixels — exactly the inverse of how `draw_grid_on_rgb`
+    /// projects ruler labels.
+    ///
+    /// Visual: filled translucent red circle sized to **just contain the
+    /// digit** (acts as the digit's background, not a big halo around it).
+    /// Radius = ceil(half the digit-glyph diagonal) + 2px padding. White
+    /// digit centered, with 1-px black outline so it stays readable on
+    /// red-ish UI backgrounds.
+    fn draw_marks_on_rgb(
+        buf: &mut [u8],
+        w: u32,
+        h: u32,
+        marks: &[MarkOverlay],
+        coord_origin_x: i32,
+        coord_origin_y: i32,
+        coord_range_w: u32,
+        coord_range_h: u32,
+    ) {
+        if coord_range_w == 0 || coord_range_h == 0 {
+            return;
+        }
+        for mark in marks {
+            // Virtual coord → image px (inverse of the grid projection).
+            let px_x = ((mark.x - coord_origin_x) as i64 * w as i64
+                / coord_range_w as i64) as i32;
+            let px_y = ((mark.y - coord_origin_y) as i64 * h as i64
+                / coord_range_h as i64) as i32;
+            // Tight radius — just a digit-background pill. Use the longer
+            // glyph axis as the bound so multi-digit numbers (≥10) don't
+            // spill outside the disc.
+            let num_w = number_pixel_width(mark.id);
+            let num_h = FONT_H;
+            let half_diag = (((num_w * num_w + num_h * num_h) as f32).sqrt() / 2.0).ceil() as i32;
+            let radius = half_diag + 2; // 2-px padding around the glyph
+            let radius_sq = radius * radius;
+            // Filled translucent red disc.
+            for dy in -radius..=radius {
+                for dx in -radius..=radius {
+                    if dx * dx + dy * dy <= radius_sq {
+                        blend_px(buf, w, h, px_x + dx, px_y + dy, 255, 0, 0, 0.5);
+                    }
+                }
+            }
+            // White digit centered on the disc, with a 1-px black outline
+            // for contrast against bright UI backgrounds.
+            let num_ox = px_x - num_w / 2;
+            let num_oy = px_y - num_h / 2;
+            for &(odx, ody) in &[(-1_i32, 0_i32), (1, 0), (0, -1), (0, 1)] {
+                draw_number_color(
+                    buf, w, h, mark.id, num_ox + odx, num_oy + ody, 0, 0, 0,
+                );
+            }
+            draw_number_color(buf, w, h, mark.id, num_ox, num_oy, 255, 255, 255);
+        }
+    }
+
     /// Returns the bitmap-local cursor tip `(x, y)` if the cursor was
     /// visible and drawn, or `None` if cursor was hidden / suppressed.
     unsafe fn compose_cursor_into_dc(dc: HDC, bitmap_origin: VPoint) -> Option<(i32, i32)> {
@@ -2298,6 +2717,7 @@ mod windows_impl {
         grid_origin_y: Option<i32>,
         grid_range_w: Option<u32>,
         grid_range_h: Option<u32>,
+        marks: Option<Vec<MarkOverlay>>,
     ) -> Option<DisplayCaptureResult> {
         ensure_dpi_aware();
         if src.size.w == 0 || src.size.h == 0 || target_w == 0 || target_h == 0 {
@@ -2314,6 +2734,7 @@ mod windows_impl {
                 grid_origin_y,
                 grid_range_w,
                 grid_range_h,
+                marks,
             )
         };
         match result {
@@ -2338,6 +2759,7 @@ mod windows_impl {
         grid_origin_y: Option<i32>,
         grid_range_w: Option<u32>,
         grid_range_h: Option<u32>,
+        marks: Option<Vec<MarkOverlay>>,
     ) -> Result<DisplayCaptureResult, String> {
         let src_x = src.origin.x;
         let src_y = src.origin.y;
@@ -2469,6 +2891,21 @@ mod windows_impl {
             let grw = grid_range_w.unwrap_or(final_w);
             let grh = grid_range_h.unwrap_or(final_h);
             draw_grid_on_rgb(&mut final_rgb, final_w, final_h, grid_mode, gox, goy, grw, grh);
+        }
+
+        // SoM (Set-of-Mark) overlay — drawn AFTER the grid so marks land
+        // on top of any ruler crossings rather than under them. The mark
+        // (x, y) virtual coords use the same coord_origin/range as the
+        // grid; when the grid params are absent we default to image-px
+        // space so callers can pass image-px directly if they prefer.
+        if let Some(marks_vec) = marks.as_ref() {
+            if !marks_vec.is_empty() {
+                let gox = grid_origin_x.unwrap_or(0);
+                let goy = grid_origin_y.unwrap_or(0);
+                let grw = grid_range_w.unwrap_or(final_w);
+                let grh = grid_range_h.unwrap_or(final_h);
+                draw_marks_on_rgb(&mut final_rgb, final_w, final_h, marks_vec, gox, goy, grw, grh);
+            }
         }
 
         let mut jpeg = Vec::new();

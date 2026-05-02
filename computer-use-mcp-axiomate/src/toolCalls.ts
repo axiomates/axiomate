@@ -38,6 +38,8 @@ import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { randomUUID } from "node:crypto";
 
 import { handleClickTargetInit } from "./clickTarget.js";
+import type { Mark } from "./clickTarget.js";
+import { detectElementsMultiSource, shouldOverlaySoM } from "./detection.js";
 import { getDefaultTierForApp, getDeniedCategoryForApp, isPolicyDenied } from "./deniedApps.js";
 
 /**
@@ -2633,11 +2635,53 @@ async function handleZoom(
 
   const allowedIds = allowedAppsOf(overrides).map((g) => g.appIdentifier);
   const coordinateGrid = (args.coordinate_grid as string) ?? "full";
+
+  // ── SoM (Set-of-Mark) enrichment ──
+  // Passive layer: only fires inside an active click_target loop AND when
+  // the AI hasn't opted out via `som: false`. Detection populates marks
+  // (always — so `mark_id` resolution stays available); the image overlay
+  // is gated by `shouldOverlaySoM` (≤25 elements, area ratio ≤ 0.15) so
+  // dense regions don't get drowned in red circles.
+  const somDisabled = args.som === false;
+  const activeLoop = somDisabled
+    ? null
+    : (overrides.getActiveClickLoop?.() ?? null);
+  let marks: Mark[] = [];
+  let drawMarks = false;
+  if (activeLoop) {
+    const ratioX = last.displayWidth ? last.displayWidth / last.width : 1;
+    const ratioY = last.displayHeight ? last.displayHeight / last.height : 1;
+    const originX = last.originX ?? 0;
+    const originY = last.originY ?? 0;
+    try {
+      marks = await detectElementsMultiSource(
+        adapter.executor,
+        regionVirtual,
+        { ratioX, ratioY, originX, originY },
+        ["uia"],
+      );
+      drawMarks = shouldOverlaySoM(
+        regionVirtual,
+        last.width,
+        last.height,
+        marks.length,
+      );
+      // Replace (not append) — id numbering must match what's drawn on
+      // the image AI's about to see, so prior-zoom marks don't linger.
+      overrides.onClickLoopMarksUpdated?.(marks);
+    } catch (e) {
+      adapter.logger.debug(
+        `[zoom-som] detection failed: ${e instanceof Error ? e.message : String(e)} — falling back to ruler-only zoom`,
+      );
+    }
+  }
+
   const zoomed = await adapter.executor.zoom(
     regionVirtual,
     allowedIds,
     last.displayId,
     coordinateGrid,
+    drawMarks ? marks.map((m) => ({ id: m.id, x: m.x, y: m.y })) : undefined,
   );
 
   // ── Build feedback text ──
@@ -2677,6 +2721,24 @@ async function handleZoom(
     }
   } catch {
     // best-effort
+  }
+
+  // ── SoM marks structured text ──
+  // Same dataset the image-overlay numbers reference. Always included
+  // when detection ran and produced results — even when the image overlay
+  // was suppressed by the density gate, so AI can still resolve mark_id
+  // against names/roles in the text.
+  if (marks.length > 0) {
+    const overlayNote = drawMarks
+      ? "red numbered circles overlaid on the image"
+      : `image overlay suppressed (${marks.length > 25 ? ">25 elements" : "region too large"}) — text-only`;
+    text += `\n\nDetected ${marks.length} UI element${marks.length === 1 ? "" : "s"} via UIAutomation (${overlayNote}):`;
+    for (const m of marks) {
+      const nameLabel = m.name ? `"${m.name}"` : "(unnamed)";
+      const idLabel = m.automationId ? ` id=${m.automationId}` : "";
+      text += `\n  #${m.id} ${m.role || "?"} ${nameLabel}${idLabel} center=(${m.x}, ${m.y})`;
+    }
+    text += `\nPass \`mark_id: N\` to mouse_move to jump cursor to mark N's center. If your target isn't listed, fall back to reading coordinates from the rulers.`;
   }
 
   // Return the image + text feedback. NO `.screenshot` piggyback — this is the invariant.
@@ -3154,9 +3216,54 @@ async function handleMoveMouse(
   overrides: ComputerUseOverrides,
   subGates: CuSubGates,
 ): Promise<CuCallToolResult> {
-  const coord = extractCoordinate(args);
-  if (coord instanceof Error) return errorResult(coord.message, "bad_args");
-  const [rawX, rawY] = coord;
+  // ── mark_id resolution (SoM shortcut) ──
+  // Inside an active click_target loop, after a zoom that ran SoM detection,
+  // AI can pass `mark_id: N` instead of a coordinate. We resolve N to the
+  // recorded (x, y) of the matching mark and proceed exactly as if the AI
+  // had passed those coords explicitly.
+  const markId =
+    typeof args.mark_id === "number" && Number.isInteger(args.mark_id)
+      ? args.mark_id
+      : undefined;
+  const hasCoord = Array.isArray(args.coordinate);
+  if (markId !== undefined && hasCoord) {
+    return errorResult(
+      "Cannot specify both `coordinate` and `mark_id` — pick one. mark_id resolves to the recorded center of a SoM mark; coordinate is an explicit (x, y) pair.",
+      "bad_args",
+    );
+  }
+
+  let rawX: number;
+  let rawY: number;
+  if (markId !== undefined) {
+    const loop = overrides.getActiveClickLoop?.() ?? null;
+    if (!loop) {
+      return errorResult(
+        "`mark_id` is only valid inside an active click_target loop. No loop is currently active — call `click_target` first, then zoom (which generates SoM marks), then mouse_move with mark_id.",
+        "bad_args",
+      );
+    }
+    const mark = loop.marks.find((m) => m.id === markId);
+    if (!mark) {
+      const known =
+        loop.marks.length > 0
+          ? loop.marks.map((m) => m.id).join(", ")
+          : "(none — last zoom produced no marks, or marks were cleared)";
+      return errorResult(
+        `mark_id ${markId} not found in current click_target loop. Available marks: ${known}. Marks come from the most recent zoom that ran SoM detection (zoom called with default \`som\` setting, inside this loop).`,
+        "bad_args",
+      );
+    }
+    rawX = mark.x;
+    rawY = mark.y;
+    adapter.logger.debug(
+      `[mouse_move] mark_id=${markId} resolved to (${rawX}, ${rawY}) name="${mark.name}" role=${mark.role}`,
+    );
+  } else {
+    const coord = extractCoordinate(args);
+    if (coord instanceof Error) return errorResult(coord.message, "bad_args");
+    [rawX, rawY] = coord;
+  }
 
   // When the button is held, moveMouse generates leftMouseDragged events on
   // the window under the cursor — that's interaction, not positioning.

@@ -313,7 +313,8 @@ export function buildComputerUseTools(
         "1. Rectangle: `region: [x0, y0, x1, y1]` (top-left and bottom-right corners)\n" +
         "2. Square: `center: [cx, cy], size: N` (center point and side length)\n\n" +
         "If the specified region extends beyond screen edges, it will be automatically clipped to screen bounds. " +
-        "The returned image shows the clipped region, and coordinate rulers reflect the actual captured area.",
+        "The returned image shows the clipped region, and coordinate rulers reflect the actual captured area.\n\n" +
+        "SoM markers (semi-transparent red numbered circles) are auto-overlaid on detected UI elements when zooming inside an active `click_target` loop and the region has a tractable element count. Pass `som: false` to suppress them, similar to `coordinate_grid: 'none'`.",
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -338,6 +339,14 @@ export function buildComputerUseTools(
             minimum: 10,
             description:
               "Side length of the square zoom region in pixels. Use with `center`. Minimum 10 pixels.",
+          },
+          som: {
+            type: "boolean",
+            description:
+              "Whether to overlay SoM (Set-of-Mark) detection markers on the zoomed image. Default true (system auto-decides based on element count + region size). " +
+              "Set to false if the markers feel noisy or are obscuring details — analogous to passing `coordinate_grid: 'none'` to suppress rulers. " +
+              "Note: SoM only renders inside an active click_target loop; outside the loop this param is ignored. " +
+              "Setting false does NOT clear marks recorded by a prior zoom — `mouse_move(mark_id: N)` continues to resolve against the most recent zoom that ran detection.",
           },
         },
         required: [],
@@ -502,13 +511,20 @@ export function buildComputerUseTools(
       name: "mouse_move",
       description:
         `Move the mouse cursor to \`coordinate\` (no click). Use this for hover inspection or drag setup.\n\n` +
+        `Inside an active click_target loop, after a zoom that produced SoM marks, you can pass \`mark_id: N\` instead of \`coordinate\` — the cursor jumps to the recorded center of mark N. Either coordinate OR mark_id, not both.\n\n` +
         `If the response text includes a WARNING about a screen edge, the cursor may be clipped — follow the suggested correction. No warning means the cursor is safely on-screen.${frontmostHint}`,
       inputSchema: {
         type: "object" as const,
         properties: {
           coordinate: coordinateTuple,
+          mark_id: {
+            type: "integer",
+            minimum: 1,
+            description:
+              "Jump cursor to mark N's recorded center, where N is one of the numbered red circles drawn on the most recent zoom inside the active click_target loop. Mutually exclusive with `coordinate`. Errors if no click_target loop is active or if N isn't a known mark.",
+          },
         },
-        required: ["coordinate"],
+        required: [],
       },
     },
 
