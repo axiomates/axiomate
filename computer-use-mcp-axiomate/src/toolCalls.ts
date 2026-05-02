@@ -3754,8 +3754,10 @@ async function handleCursorPosition(
     const localX = logical.x - shot.originX;
     const localY = logical.y - shot.originY;
     // Cursor off the captured display (multi-monitor): local coords go
-    // negative or exceed display dims. Return logical_points + hint rather
-    // than garbage image-px.
+    // negative or exceed display dims. Don't return raw physical-px — the
+    // model works in image-px space (≤1920) and physical values on a 4K
+    // or multi-monitor setup can be 2×–4× larger (or negative). Guiding
+    // the model to re-screenshot is safer than leaking coords it can't use.
     if (
       localX < 0 ||
       localX > shot.displayWidth ||
@@ -3763,9 +3765,7 @@ async function handleCursorPosition(
       localY > shot.displayHeight
     ) {
       return okJson({
-        x: logical.x,
-        y: logical.y,
-        note: "cursor is on a different monitor than your last screenshot; take a fresh screenshot",
+        error: "cursor is on a different monitor than your last screenshot; take a fresh screenshot first",
       });
     }
     const x = Math.round(localX * (shot.width / shot.displayWidth));
@@ -3773,9 +3773,7 @@ async function handleCursorPosition(
     return okJson({ x, y });
   }
   return okJson({
-    x: logical.x,
-    y: logical.y,
-    note: "take a screenshot first for accurate coordinates",
+    error: "take a screenshot first — cursor position is reported in screenshot pixel coordinates",
   });
 }
 
