@@ -2161,17 +2161,22 @@ mod windows_impl {
     /// Lime-green marker ring drawn directly on an RGB888 buffer.
     /// Drawn AFTER Lanczos resize so the ring is pixel-sharp at the
     /// final image resolution instead of being blurred by downscaling.
-    /// Constants are in image-pixel space (the dims the AI sees).
-    const RING_RADIUS: i32 = 10;
-    const RING_PEN_WIDTH: i32 = 3;
+    ///
+    /// Ring radius is a fixed 10 px regardless of image width, so the
+    /// cursor indicator stays the same visual size at every zoom level
+    /// and in full-screen captures.
 
     fn draw_ring_on_rgb(buf: &mut [u8], w: u32, h: u32, cx: i32, cy: i32) {
-        let half = RING_PEN_WIDTH as f32 / 2.0;
-        let r_inner = RING_RADIUS as f32 - half;
-        let r_outer = RING_RADIUS as f32 + half;
+        // Fixed-size ring so the cursor indicator stays visually consistent
+        // at every zoom level (same pixel footprint in the output image).
+        let ring_radius = 10i32;
+        let pen_width = 3i32;
+        let half = pen_width as f32 / 2.0;
+        let r_inner = ring_radius as f32 - half;
+        let r_outer = ring_radius as f32 + half;
         let r_inner_sq = r_inner * r_inner;
         let r_outer_sq = r_outer * r_outer;
-        let bound = RING_RADIUS + RING_PEN_WIDTH;
+        let bound = ring_radius + pen_width;
         for dy in -bound..=bound {
             for dx in -bound..=bound {
                 let dist_sq = (dx * dx + dy * dy) as f32;
