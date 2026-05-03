@@ -2906,12 +2906,6 @@ mod windows_impl {
             (resized.into_raw(), target_w, target_h)
         };
 
-        if let Some((tx, ty)) = cursor_tip {
-            let tip_x_img = (tx as i64 * final_w as i64 / src_w as i64) as i32;
-            let tip_y_img = (ty as i64 * final_h as i64 / src_h as i64) as i32;
-            draw_ring_on_rgb(&mut final_rgb, final_w, final_h, tip_x_img, tip_y_img);
-        }
-
         if grid_mode > 0 {
             let gox = grid_origin_x.unwrap_or(0);
             let goy = grid_origin_y.unwrap_or(0);
@@ -2933,6 +2927,13 @@ mod windows_impl {
                 let grh = grid_range_h.unwrap_or(final_h);
                 draw_marks_on_rgb(&mut final_rgb, final_w, final_h, marks_vec, gox, goy, grw, grh);
             }
+        }
+
+        // Cursor ring — drawn LAST so it sits on top of grid, rulers, and SoM marks.
+        if let Some((tx, ty)) = cursor_tip {
+            let tip_x_img = (tx as i64 * final_w as i64 / src_w as i64) as i32;
+            let tip_y_img = (ty as i64 * final_h as i64 / src_h as i64) as i32;
+            draw_ring_on_rgb(&mut final_rgb, final_w, final_h, tip_x_img, tip_y_img);
         }
 
         let mut jpeg = Vec::new();
