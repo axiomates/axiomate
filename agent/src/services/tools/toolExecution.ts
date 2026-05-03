@@ -388,6 +388,9 @@ export async function* runToolUse(
   const toolInput = toolUse.input as { [key: string]: string }
   try {
     if (toolUseContext.abortController.signal.aborted) {
+      logForDebugging(
+        `[TOOL-CANCEL] runToolUse: id=${toolUse.id} name=${toolName} aborted=true reason=${toolUseContext.abortController.signal.reason} → yielding cancel tool_result`,
+      );
       const content = createToolResultStopMessage(toolUse.id)
       content.content = withMemoryCorrectionHint(CANCEL_MESSAGE)
       yield {

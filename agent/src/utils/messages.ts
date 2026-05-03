@@ -131,7 +131,7 @@ import { TASK_UPDATE_TOOL_NAME } from '../tools/TaskUpdateTool/constants.js'
 import type { PermissionMode } from '../types/permissions.js'
 import { normalizeToolInput, normalizeToolInputForAPI } from './api.js'
 import { getCurrentProjectConfig } from './config.js'
-import { logDevError, logForDebugging } from './debug.js'
+import { isDebugMode, logDevError, logForDebugging } from './debug.js'
 import { stripIdeContextTags } from './displayTags.js'
 import { hasEmbeddedSearchTools } from './embeddedTools.js'
 import { formatFileSize } from './format.js'
@@ -4345,6 +4345,23 @@ export function ensureToolResultPairing(
   const result: (UserMessage | AssistantMessage)[] = []
   let repaired = false
 
+  // Quick summary of incoming messages for debugging (guarded — O(n) over messages)
+  if (isDebugMode()) {
+    const incomingSummary = messages.map((m, i) => {
+      if (m.type === 'assistant') {
+        const tus = Array.isArray(m.message.content)
+          ? m.message.content.filter(b => b.type === 'tool_use').length
+          : 0
+        return `[${i}]asst(tu=${tus})`
+      }
+      const trs = Array.isArray(m.message.content)
+        ? m.message.content.filter(b => b.type === 'tool_result').length
+        : 0
+      return `[${i}]user(tr=${trs})`
+    }).join(',')
+    logForDebugging(`[TOOL-CANCEL] ensureToolResultPairing: input ${messages.length} msgs → ${incomingSummary}`)
+  }
+
   // Cross-message tool_use ID tracking. The per-message seenToolUseIds below
   // only caught duplicates within a single assistant's content array (the
   // normalizeMessagesForAPI-merged case). When two assistants with DIFFERENT
@@ -4523,6 +4540,10 @@ export function ensureToolResultPairing(
       continue
     }
 
+    logForDebugging(
+      `[TOOL-CANCEL] ensureToolResultPairing: REPAIR at msg[${i}] missingIds=[${missingIds.join(',')}] orphanedIds=[${orphanedIds.join(',')}] dupTR=${hasDuplicateToolResults} hasNextUser=${nextMsg?.type === 'user'}`,
+    );
+
     repaired = true
 
     // Build synthetic error tool_result blocks for missing IDs
@@ -4593,6 +4614,9 @@ export function ensureToolResultPairing(
     } else {
       // No user message follows - insert a synthetic user message (only if missing IDs)
       if (syntheticBlocks.length > 0) {
+        logForDebugging(
+          `[TOOL-CANCEL] ensureToolResultPairing: NO next user msg → inserting synthetic user with ${syntheticBlocks.length} tool_result blocks`,
+        );
         result.push(
           createUserMessage({
             content: syntheticBlocks,

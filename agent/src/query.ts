@@ -820,15 +820,28 @@ async function* queryLoop(
     // executor can generate synthetic tool_result blocks for queued/in-progress tools.
     // Without this, tool_use blocks would lack matching tool_result blocks.
     if (toolUseContext.abortController.signal.aborted) {
+      logForDebugging(
+        `[TOOL-CANCEL] query.ts: streaming abort detected reason=${toolUseContext.abortController.signal.reason} ` +
+        `hasExecutor=${!!streamingToolExecutor} assistantMsgCount=${assistantMessages.length} ` +
+        `toolUseBlocks=${toolUseBlocks.length}`,
+      );
       if (streamingToolExecutor) {
         // Consume remaining results - executor generates synthetic tool_results for
         // aborted tools since it checks the abort signal in executeTool()
+        let yieldedCount = 0;
         for await (const update of streamingToolExecutor.getRemainingResults()) {
           if (update.message) {
+            yieldedCount++;
             yield update.message
           }
         }
+        logForDebugging(
+          `[TOOL-CANCEL] query.ts: streaming abort STE yielded ${yieldedCount} messages`,
+        );
       } else {
+        logForDebugging(
+          `[TOOL-CANCEL] query.ts: streaming abort no executor → yieldMissingToolResultBlocks for ${assistantMessages.length} msgs`,
+        );
         yield* yieldMissingToolResultBlocks(
           assistantMessages,
           'Interrupted by user',
@@ -1172,6 +1185,10 @@ async function* queryLoop(
 
     // We were aborted during tool calls
     if (toolUseContext.abortController.signal.aborted) {
+      logForDebugging(
+        `[TOOL-CANCEL] query.ts: tool-use abort detected reason=${toolUseContext.abortController.signal.reason} ` +
+        `toolResults=${toolResults.length} toolUseBlocks=${toolUseBlocks.length} turnCount=${turnCount}`,
+      );
       // Skip the interruption message for submit-interrupts — the queued
       // user message that follows provides sufficient context.
       if (toolUseContext.abortController.signal.reason !== 'interrupt') {

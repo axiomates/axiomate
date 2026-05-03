@@ -10,6 +10,7 @@ import type {
   NeutralToolSchema,
   ToolChoice,
 } from '../streamTypes.js'
+import { isDebugMode, logForDebugging } from '../../../utils/debug.js'
 
 // ---------------------------------------------------------------------------
 // Messages
@@ -208,18 +209,25 @@ export function messagesToOpenAI(
       }
     }
 
-    // Emit assistant message with tool_calls if present
+    // Determine the main message to emit (if any). For user messages with
+    // tool_results, the tool messages MUST come before the user text so they
+    // sit directly after the preceding assistant's tool_calls. OpenAI and
+    // strict providers (DeepSeek V4 Pro) reject tool messages separated from
+    // their tool_calls by an intervening user message.
+    let mainMessage: OpenAIMessage | null = null
+    const emitToolResultsFirst = msg.role === 'user' && toolResults.length > 0
+
     if (msg.role === 'assistant' && toolCalls.length > 0) {
-      result.push({
+      mainMessage = {
         role: 'assistant',
         content: textParts.length > 0 ? textParts : null,
         tool_calls: toolCalls,
         ...(reasoningText.length > 0
           ? { reasoning_content: reasoningText }
           : {}),
-      })
+      }
     } else if (textParts.length > 0) {
-      result.push({
+      mainMessage = {
         role: msg.role,
         content: textParts.length === 1 && textParts[0]!.type === 'text'
           ? textParts[0]!.text
@@ -227,28 +235,52 @@ export function messagesToOpenAI(
         ...(msg.role === 'assistant' && reasoningText.length > 0
           ? { reasoning_content: reasoningText }
           : {}),
-      })
+      }
     } else if (msg.role === 'assistant' && reasoningText.length > 0) {
       // Edge case: assistant message with thinking only (no text, no tool_use).
       // Emit a stub assistant message so DeepSeek's reasoning chain stays
-      // attached to the right turn. Using empty string content (OpenAI accepts
-      // empty content on assistant role; null content is for tool_calls path).
-      result.push({
+      // attached to the right turn.
+      mainMessage = {
         role: 'assistant',
         content: '',
         reasoning_content: reasoningText,
-      })
+      }
     }
 
-    // Emit tool results as separate messages
-    for (const tr of toolResults) {
-      result.push(tr)
+    // Emit in the correct order: for user messages with tool_results, tool
+    // results go first so they immediately follow the assistant's tool_calls.
+    if (emitToolResultsFirst) {
+      for (const tr of toolResults) result.push(tr)
+      if (pendingToolResultImages.length > 0) {
+        result.push({ role: 'user', content: pendingToolResultImages })
+      }
+      if (mainMessage) result.push(mainMessage)
+    } else {
+      if (mainMessage) result.push(mainMessage)
+      for (const tr of toolResults) result.push(tr)
+      if (pendingToolResultImages.length > 0) {
+        result.push({ role: 'user', content: pendingToolResultImages })
+      }
     }
+  }
 
-    // Emit images returned by tools as a follow-up user message. OpenAI
-    // protocol routes images through user/image_url, never role:'tool'.
-    if (pendingToolResultImages.length > 0) {
-      result.push({ role: 'user', content: pendingToolResultImages })
+  // Diagnostic: log the final OpenAI message structure when tool_calls are present
+  if (isDebugMode()) {
+    const hasToolCalls = result.some(m => m.role === 'assistant' && m.tool_calls?.length)
+    if (hasToolCalls) {
+      const summary = result.map((m, i) => {
+        if (m.role === 'assistant' && m.tool_calls) {
+          const ids = m.tool_calls.map(tc => tc.id.slice(-8)).join(',')
+          return `[${i}]asst(tool_calls=[...${ids}],hasContent=${m.content !== null},hasReasoning=${!!m.reasoning_content})`
+        }
+        if (m.role === 'tool') {
+          return `[${i}]tool(id=...${m.tool_call_id.slice(-8)})`
+        }
+        return `[${i}]${m.role}`
+      }).join(', ')
+      logForDebugging(
+        `[TOOL-CANCEL] messagesToOpenAI: ${result.length} msgs with tool_calls → ${summary}`,
+      )
     }
   }
 

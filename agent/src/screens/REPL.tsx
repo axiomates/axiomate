@@ -1726,7 +1726,12 @@ export function REPL({
       // Elicitation dialog handles its own Escape, and closing it shouldn't affect any loading state.
       return;
     }
-    logForDebugging(`[onCancel] focusedInputDialog=${focusedInputDialog} streamMode=${streamMode}`);
+    logForDebugging(
+      `[TOOL-CANCEL] onCancel: focusedDialog=${focusedInputDialog} streamMode=${streamMode} ` +
+      `confirmQ=${toolUseConfirmQueue.length} promptQ=${promptQueue.length} ` +
+      `abortCtrl=${!!abortController} aborted=${!!abortController?.signal.aborted} ` +
+      `hasStreamText=${!!streamingText?.trim()} streamToolUses=${streamingToolUses.length}`,
+    );
 
     queryGuard.forceEnd();
     skipIdleCheckRef.current = false;
@@ -1749,16 +1754,22 @@ export function REPL({
     }
     if (focusedInputDialog === 'tool-permission') {
       // Tool use confirm handles the abort signal itself
+      logForDebugging(`[TOOL-CANCEL] onCancel: PERMISSION path, calling onAbort on queue[0]`);
       toolUseConfirmQueue[0]?.onAbort();
       setToolUseConfirmQueue([]);
     } else if (focusedInputDialog === 'prompt') {
       // Reject all pending prompts and clear the queue
+      logForDebugging(`[TOOL-CANCEL] onCancel: PROMPT path, rejecting ${promptQueue.length} prompts`);
       for (const item of promptQueue) {
         item.reject(new Error('Prompt cancelled by user'));
       }
       setPromptQueue([]);
       abortController?.abort('user-cancel');
     } else {
+      logForDebugging(
+        `[TOOL-CANCEL] onCancel: ELSE path (dialog=${focusedInputDialog}), ` +
+        `firing abort('user-cancel') on ctrl=${!!abortController}`,
+      );
       abortController?.abort('user-cancel');
     }
 

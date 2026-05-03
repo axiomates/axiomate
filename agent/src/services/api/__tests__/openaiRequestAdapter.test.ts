@@ -183,6 +183,42 @@ describe('messagesToOpenAI — tool_result with image (the fix)', () => {
     )
   })
 
+  it('user msg with text AND tool_result: tool emitted BEFORE user text (regression)', () => {
+    // Regression: when a user message has both text content and tool_result
+    // blocks, tool messages must immediately follow the preceding assistant's
+    // tool_calls. Emitting user text first would insert a `user` role between
+    // `assistant(tool_calls)` and `tool`, which strict providers (DeepSeek V4
+    // Pro) reject with HTTP 400.
+    const messages: MessageParam[] = [
+      {
+        role: 'assistant',
+        content: [{ type: 'tool_use', id: 'call_t1', name: 'Bash', input: { cmd: 'ls' } }],
+      },
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: 'Thanks, now run: make build' },
+          {
+            type: 'tool_result',
+            tool_use_id: 'call_t1',
+            content: [{ type: 'text', text: 'file1.txt\nfile2.txt' }],
+          },
+        ],
+      },
+    ]
+    const out = messagesToOpenAI(messages)
+    expect(out).toHaveLength(3)
+    expect(out[0]!.role).toBe('assistant')
+    expect(out[0]!.tool_calls).toHaveLength(1)
+    // tool MUST come before user text — OpenAI requires
+    // assistant(tool_calls) -> tool, no other roles in between
+    expect(out[1]!.role).toBe('tool')
+    expect(out[1]!.content).toBe('file1.txt\nfile2.txt')
+    expect(out[1]!.tool_call_id).toBe('call_t1')
+    expect(out[2]!.role).toBe('user')
+    expect(out[2]!.content).toBe('Thanks, now run: make build')
+  })
+
   it('error tool_result with image: prefixes Error: + still emits image follow-up', () => {
     const messages: MessageParam[] = [
       {

@@ -9,6 +9,7 @@ import { findToolByName, type Tools, type ToolUseContext } from '../../Tool.js'
 import { BASH_TOOL_NAME } from '../../tools/BashTool/toolName.js'
 import type { AssistantMessage, Message } from '../../types/message.js'
 import { createChildAbortController } from '../../utils/abortController.js'
+import { logForDebugging } from '../../utils/debug.js'
 import { runToolUse } from './toolExecution.js'
 
 type MessageUpdate = {
@@ -67,6 +68,9 @@ export class StreamingToolExecutor {
    * Queued tools won't start, and in-progress tools will receive synthetic errors.
    */
   discard(): void {
+    logForDebugging(
+      `[TOOL-CANCEL] STE.discard: tools=${this.tools.length} executing=${this.tools.filter(t => t.status === 'executing').length} queued=${this.tools.filter(t => t.status === 'queued').length}`,
+    );
     this.discarded = true
   }
 
@@ -74,6 +78,9 @@ export class StreamingToolExecutor {
    * Add a tool to the execution queue. Will start executing immediately if conditions allow.
    */
   addTool(block: ToolUseBlock, assistantMessage: AssistantMessage): void {
+    logForDebugging(
+      `[TOOL-CANCEL] STE.addTool: id=${block.id} name=${block.name} toolCount=${this.tools.length + 1} discarded=${this.discarded} aborted=${this.toolUseContext.abortController.signal.aborted}`,
+    );
     const toolDefinition = findToolByName(this.toolDefinitions, block.name)
     if (!toolDefinition) {
       this.tools.push({
@@ -211,19 +218,23 @@ export class StreamingToolExecutor {
     tool: TrackedTool,
   ): 'sibling_error' | 'user_interrupted' | 'streaming_fallback' | null {
     if (this.discarded) {
+      logForDebugging(`[TOOL-CANCEL] STE.getAbortReason: id=${tool.id} → streaming_fallback (discarded)`);
       return 'streaming_fallback'
     }
     if (this.hasErrored) {
+      logForDebugging(`[TOOL-CANCEL] STE.getAbortReason: id=${tool.id} → sibling_error`);
       return 'sibling_error'
     }
     if (this.toolUseContext.abortController.signal.aborted) {
+      const reason = this.toolUseContext.abortController.signal.reason;
+      logForDebugging(`[TOOL-CANCEL] STE.getAbortReason: id=${tool.id} aborted=true reason=${reason}`);
       // 'interrupt' means the user typed a new message while tools were
       // running. Only cancel tools whose interruptBehavior is 'cancel';
       // 'block' tools shouldn't reach here (abort isn't fired).
-      if (this.toolUseContext.abortController.signal.reason === 'interrupt') {
-        return this.getToolInterruptBehavior(tool) === 'cancel'
-          ? 'user_interrupted'
-          : null
+      if (reason === 'interrupt') {
+        const behavior = this.getToolInterruptBehavior(tool);
+        logForDebugging(`[TOOL-CANCEL] STE.getAbortReason: id=${tool.id} interruptBehavior=${behavior}`);
+        return behavior === 'cancel' ? 'user_interrupted' : null
       }
       return 'user_interrupted'
     }
@@ -277,6 +288,9 @@ export class StreamingToolExecutor {
       // If already aborted (by error or user), generate synthetic error block instead of running the tool
       const initialAbortReason = this.getAbortReason(tool)
       if (initialAbortReason) {
+        logForDebugging(
+          `[TOOL-CANCEL] STE.executeTool: id=${tool.id} initialAbort=${initialAbortReason} → synthetic error`,
+        );
         messages.push(
           this.createSyntheticErrorMessage(
             tool.id,
@@ -290,6 +304,10 @@ export class StreamingToolExecutor {
         this.updateInterruptibleState()
         return
       }
+
+      logForDebugging(
+        `[TOOL-CANCEL] STE.executeTool: id=${tool.id} status=${tool.status} → starting runToolUse`,
+      );
 
       // Per-tool child controller. Lets siblingAbortController kill running
       // subprocesses (Bash spawns listen to this signal) when a Bash error
@@ -334,6 +352,9 @@ export class StreamingToolExecutor {
         // Only add the synthetic error if THIS tool didn't produce the error.
         const abortReason = this.getAbortReason(tool)
         if (abortReason && !thisToolErrored) {
+          logForDebugging(
+            `[TOOL-CANCEL] STE.executeTool LOOP: id=${tool.id} mid-exec abort=${abortReason} → synthetic error`,
+          );
           messages.push(
             this.createSyntheticErrorMessage(
               tool.id,
@@ -451,6 +472,12 @@ export class StreamingToolExecutor {
    * Also yields progress messages as they become available
    */
   async *getRemainingResults(): AsyncGenerator<MessageUpdate, void> {
+    logForDebugging(
+      `[TOOL-CANCEL] STE.getRemainingResults: discarded=${this.discarded} toolCount=${this.tools.length} ` +
+      `unfinished=${this.hasUnfinishedTools()} queued=${this.tools.filter(t => t.status === 'queued').length} ` +
+      `executing=${this.tools.filter(t => t.status === 'executing').length} completed=${this.tools.filter(t => t.status === 'completed').length} ` +
+      `aborted=${this.toolUseContext.abortController.signal.aborted}`,
+    );
     if (this.discarded) {
       return
     }
