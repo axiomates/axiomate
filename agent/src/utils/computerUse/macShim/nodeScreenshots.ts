@@ -9,6 +9,7 @@
  */
 
 import { createRequire } from 'node:module'
+import { basename, dirname, join } from 'node:path'
 
 type MonitorType = import('node-screenshots').Monitor
 type MonitorClass = typeof import('node-screenshots').Monitor
@@ -21,9 +22,22 @@ function getMonitorClass(): MonitorClass {
   if (_MonitorClass) return _MonitorClass
 
   try {
-    // Use createRequire for ESM compatibility; native .node files can't be import()'d
+    // Use createRequire for ESM compatibility; native .node files can't be import()'d.
+    //
+    // In a Bun-compiled exe, createRequire(import.meta.url) resolves from
+    // the virtual filesystem (B:/~BUN/root/) and cannot find npm packages.
+    // We bypass node-screenshots' internal loader entirely and load the .node
+    // file directly from <exeDir>, mirroring how load-napi.js works for
+    // audio-capture-axiomate. The .node file is copied alongside the exe
+    // during packaging (package-mac.ts step 3).
     const req = createRequire(import.meta.url)
-    const mod = req('node-screenshots')
+    const execBase = basename(process.execPath).toLowerCase()
+    const isCompiled = !/^(bun|node)(\.exe)?$/.test(execBase)
+
+    const mod = isCompiled
+      ? req(join(dirname(process.execPath), `node-screenshots.${process.platform}-${process.arch}.node`))
+      : req('node-screenshots')
+
     _MonitorClass = mod.Monitor
     return _MonitorClass!
   } catch (e: any) {

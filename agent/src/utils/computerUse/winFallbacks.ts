@@ -23,6 +23,7 @@
 
 import { createRequire } from 'node:module'
 import { execSync } from 'node:child_process'
+import { basename, dirname, join } from 'node:path'
 import type { DisplayGeometry, ScreenshotResult, ResolvePrepareCaptureResult } from 'computer-use-mcp-axiomate'
 
 // ─── node-screenshots loader ──────────────────────────────────────────────
@@ -35,10 +36,21 @@ let _MonitorClass: MonitorClass | null = null
 function getMonitorClass(): MonitorClass {
   if (_MonitorClass) return _MonitorClass
   // createRequire works around ESM's no-import-of-.node restriction.
-  // node-screenshots ships a native binding that load via the package's
-  // own loader; we just need its `Monitor` export.
+  //
+  // In a Bun-compiled exe, createRequire(import.meta.url) resolves from
+  // the virtual filesystem (B:/~BUN/root/) and cannot find npm packages.
+  // We bypass node-screenshots' internal loader entirely and load the .node
+  // file directly from <exeDir>, mirroring how load-napi.js works for
+  // audio-capture-axiomate. The .node file is copied alongside the exe
+  // during packaging (package-win.ts step 3).
   const req = createRequire(import.meta.url)
-  const mod = req('node-screenshots')
+  const execBase = basename(process.execPath).toLowerCase()
+  const isCompiled = !/^(bun|node)(\.exe)?$/.test(execBase)
+
+  const mod = isCompiled
+    ? req(join(dirname(process.execPath), 'node-screenshots.win32-x64-msvc.node'))
+    : req('node-screenshots')
+
   _MonitorClass = mod.Monitor
   return _MonitorClass!
 }
