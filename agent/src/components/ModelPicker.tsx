@@ -186,7 +186,10 @@ export function ModelPicker({
         hasToggledEffort,
       )
       const persistable = toPersistableEffort(effortLevel)
-      if (persistable !== undefined) {
+      // Only persist effort when the user explicitly toggled it in this picker
+      // session — otherwise we'd perpetuate whatever value happens to be in
+      // userSettings on every model switch.
+      if (persistable !== undefined && hasToggledEffort) {
         updateSettingsForSource('userSettings', { effortLevel: persistable })
       }
       setAppState(prev => ({ ...prev, effortValue: effortLevel }))

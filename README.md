@@ -1,8 +1,19 @@
 # Axiomate
 
-Terminal AI agent with multi-provider support, built to work with any OpenAI-compatible or Anthropic-compatible API endpoint.
+Multi-provider AI agent CLI with full desktop automation. Chat, code, and control your computer — all from the terminal. Bring your own model from any provider (OpenRouter, SiliconFlow, ollama, vLLM, Anthropic, etc.). No vendor lock-in.
 
-Use any model from any provider — SiliconFlow, OpenRouter, local ollama, vLLM, etc. No Anthropic account required.
+## Features
+
+- **Bring your own model** — OpenAI-compatible or Anthropic-compatible APIs. Any provider, any model.
+- **Computer Use** — 25+ desktop automation tools: screenshot with coordinate rulers, zoom with Set-of-Mark overlays, mouse/keyboard control, natural-language UI element targeting (`screen_locate` + `accept`), batch actions, and teachable macros. Windows UIAutomation integration for pixel-accurate element detection.
+- **Coding Tools** — Read, Write, Edit, Bash, Grep (ripgrep), Glob, Notebook. Full codebase exploration and modification.
+- **Skills** — 11 built-in skills (`/verify`, `/simplify`, `/remember`, `/batch`, `/stuck`, `/loop`, etc.) plus user-defined skills via `SKILL.md` files.
+- **Plugins** — Full marketplace system with browse/install/manage UI, autoupdate, blocklist, and dependency resolution.
+- **MCP** — Connect any MCP server (stdio, HTTP, SSE) for extensible tooling.
+- **Multi-model** — Three-tier model architecture (`currentModel` / `fastModel` / `midModel`) for cost-optimized task routing.
+- **Web Search** — Multi-provider search (Brave, Exa, Tavily, SerpApi) with automatic fallback.
+- **Voice Dictation** — `/voice` sends microphone audio to OpenAI-compatible or HTTP STT endpoints.
+- **Cross-platform** — Windows, macOS, Linux. Ships as a single Bun-compiled executable with bundled native addons.
 
 ## Prerequisites
 
@@ -448,6 +459,27 @@ axiomate plugin uninstall <name>
 axiomate plugin list
 ```
 
+### Skills
+
+Axiomate ships with built-in skills and supports user-defined skills via `SKILL.md` files.
+
+**Built-in skills:**
+
+| Skill | Command | Description |
+|-------|---------|-------------|
+| Verify | `/verify` | Verify a code change does what it should by running the app |
+| Simplify | `/simplify` | Review changed code for reuse, quality, and efficiency, then fix issues |
+| Remember | `/remember` | Review auto-memory entries and propose promotions to project/team memory |
+| Batch | `/batch` | Decompose large changes into 5-30 parallel worktree agents that each open a PR |
+| Stuck | `/stuck` | Diagnose frozen/stuck/slow sessions on this machine |
+| Loop | `/loop` | Schedule a recurring prompt/cron task (e.g., `/loop 5m check the deploy`) |
+| Debug | `/debug` | Enable debug logging and help diagnose issues |
+| Update Config | `/update-config` | Configure settings.json: permissions, hooks, env vars, MCP servers, plugins |
+| Lorem Ipsum | `/lorem-ipsum` | Generate filler text for long context testing (specify token count) |
+| Keybindings | `/keybindings-help` | Customize keyboard shortcuts / `~/.axiomate/keybindings.json` |
+
+**User-defined skills** are Markdown files in `.axiomate/skills/<name>/SKILL.md`. They support conditional activation via `paths` frontmatter, dynamic discovery from edited file paths, and MCP-sourced skill loading.
+
 ### Protocol
 
 - `"openai"` — OpenAI-compatible APIs (OpenRouter, SiliconFlow, vLLM, ollama, etc.)
@@ -463,37 +495,23 @@ All three are keys into the `models` map. If only `currentModel` is set, it's us
 
 ## Project Structure
 
-```
-axiomate/
-  agent/                                 Main CLI application
-    src/entrypoints/cli.tsx              CLI entry point
-    src/services/api/                    Provider registry, OpenAI/Anthropic adapters
-    src/utils/model/                     Model selection + fuzzy context/output table
-    src/utils/config.ts                  Configuration types and loading
-    src/utils/computerUse/               agent CLI computer-use executor wiring
-    build.ts                             Dev build script (bundle only)
-    package-win.ts                       Windows exe packaging script
-    package-mac.ts                       macOS executable packaging script
-  audio-capture-axiomate/                Audio recording (Rust NAPI, cpal — cross-platform)
-  clipboard-axiomate/                    Clipboard access (mac Rust NAPI + PowerShell/xclip fallback)
-  computer-use-mcp-axiomate/             Computer-use MCP server: 28 tools + 5-gate dispatch engine
-  computer-use-mac-napi-axiomate/        mac-only Rust NAPI: hide/unhide/activate, Esc CGEventTap,
-                                         CGWindowList window capture, SCContentFilter (skeleton),
-                                         find_window_displays, app_under_point
-  computer-use-win-napi-axiomate/        win-only Rust NAPI: registry walk, WindowFromPoint hit-test,
-                                         GetForegroundWindow / SetForegroundWindow, BitBlt screenshot,
-                                         PrintWindow capture_window, SendInput mouse/keyboard,
-                                         WH_KEYBOARD_LL ESC hotkey, defocus_self_to_previous_foreground
-  modifiers-mac-napi-axiomate/           mac-only Rust NAPI: keyboard modifier state polling
-  url-handler-mac-napi-axiomate/         mac-only Rust NAPI: URL scheme registration
-  image-processor-axiomate/              Image processing (sharp wrapper)
-  sandbox-axiomate/                      Sandbox execution
-  treeify-axiomate/                      Directory tree display
-  mcpb-axiomate/                         MCP bridge
-  scripts/                               bootstrap.mjs + load-napi.js (shared NAPI loader)
-```
+| Package | Description |
+|---------|-------------|
+| `agent/` | Main CLI application. Entry point, API providers, model selection, configuration, skills, plugins |
+| `computer-use-mcp-axiomate/` | Computer-use MCP server: 25+ tools + 5-gate dispatch engine (tools, permissions, coordinates, safety) |
+| `computer-use-mac-napi-axiomate/` | macOS native bindings: SCContentFilter screenshots, CGEventTap Esc hotkey, CGWindowList capture, NSRunningApplication hide/unhide/activate, app_under_point |
+| `computer-use-win-napi-axiomate/` | Windows native bindings: UIAutomation element detection, WindowFromPoint hit-test, MonitorFromWindow display mapping, SetForegroundWindow, BitBlt/PrintWindow screenshots, SendInput mouse/keyboard, WH_KEYBOARD_LL ESC hotkey |
+| `clipboard-axiomate/` | Cross-platform clipboard access: Rust NAPI on macOS, PowerShell fallback on Windows, xclip/wl-paste on Linux |
+| `modifiers-mac-napi-axiomate/` | macOS native keyboard modifier key state polling via Rust NAPI |
+| `url-handler-mac-napi-axiomate/` | macOS native URL scheme handler via Rust NAPI (Apple Event kAEGetURL) |
+| `audio-capture-axiomate/` | Cross-platform native audio recording and playback via Rust NAPI (cpal) |
+| `image-processor-axiomate/` | Cross-platform image processing (sharp wrapper) + clipboard image access |
+| `sandbox-axiomate/` | Local process sandbox for AI agent command execution (bwrap/sandbox-exec) |
+| `treeify-axiomate/` | Render nested objects as terminal tree strings with optional coloring |
+| `mcpb-axiomate/` | DXT/MCPB plugin format parser (manifest validation, pack/unpack, signing) |
+| `scripts/` | Build tooling: `bootstrap.mjs` (auto-installs toolchain + builds all workspaces) and `load-napi.js` (NAPI .node binary loader) |
 
-## Roadmap — Rebuild Candidates
+## Development Roadmap
 
 Axiomate was forked from Claude Code; during cleanup we removed a lot of Anthropic-service-coupled infrastructure. A handful of those removals were genuinely useful features tangled with private plumbing, not bad ideas. They're good candidates for a clean provider-neutral rebuild. See [DELETED_FEATURES.md](DELETED_FEATURES.md) for the full archive (including features already revived, features decided against rebuilding, and notes on each).
 
