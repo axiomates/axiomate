@@ -543,17 +543,18 @@ interface BaseComputerUseOverrides {
    * skips UIA enumeration entirely (zero perf cost), and mouse_move's
    * `mark_id` param errors out with a clear message.
    */
-  getActiveClickLoop?: () => import("./clickTarget.js").ClickLoopState | null;
+  getActiveLocate?: () => import("./clickTarget.js").LocateState | null;
 
   /**
-   * Replace the active loop's `marks` with a new list. Called by handleZoom
-   * after a SoM detection pass; the new marks become the resolution target
-   * for the next `mouse_move(mark_id)`. No-op when no loop is active.
+   * Replace the active locate loop's `marks` with a new list. Called by
+   * handleZoom after a SoM detection pass; the new marks become the
+   * resolution target for the next `mouse_move(mark_id)`. No-op when no
+   * loop is active.
    *
    * `marks` is REPLACED (not appended) so id numbering on the wire matches
    * what the AI just saw drawn on the zoomed image.
    */
-  onClickLoopMarksUpdated?: (
+  onLocateMarksUpdated?: (
     marks: import("./clickTarget.js").Mark[],
   ) => void;
 

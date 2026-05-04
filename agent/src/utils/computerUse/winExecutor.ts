@@ -230,6 +230,48 @@ export function createWinExecutor(): ComputerExecutor {
   }
 
   /**
+   * Ease-out-cubic animated cursor movement via Win32 SendInput. Mirrors
+   * the mac executor's `animatedMove` (nut.js → enigo) but calls
+   * winNapi.moveCursor directly. 60 fps, distance-proportional at
+   * 2000 px/sec, capped at 0.5 s. Falls through to a single moveCursor
+   * when distance is too short for meaningful animation.
+   *
+   * Only used from `drag` for the press→to trajectory — intermediate
+   * positions generate `.leftMouseDragged` events that target apps
+   * rely on (scrollbars, window resize, file-list selection, etc.).
+   */
+  async function animatedMoveCursor(
+    fromX: number,
+    fromY: number,
+    toX: number,
+    toY: number,
+  ): Promise<void> {
+    const deltaX = toX - fromX
+    const deltaY = toY - fromY
+    const distance = Math.hypot(deltaX, deltaY)
+    if (distance < 1) return
+    const durationSec = Math.min(distance / 2000, 0.5)
+    if (durationSec < 0.03) {
+      winNapi.moveCursor({ x: Math.round(toX), y: Math.round(toY) })
+      return
+    }
+    const frameRate = 60
+    const frameIntervalMs = 1000 / frameRate
+    const totalFrames = Math.floor(durationSec * frameRate)
+    for (let frame = 1; frame <= totalFrames; frame++) {
+      const t = frame / totalFrames
+      const eased = 1 - Math.pow(1 - t, 3)
+      winNapi.moveCursor({
+        x: Math.round(fromX + deltaX * eased),
+        y: Math.round(fromY + deltaY * eased),
+      })
+      if (frame < totalFrames) {
+        await sleep(frameIntervalMs)
+      }
+    }
+  }
+
+  /**
    * Resolve a `screenshot_window` input to the form the win NAPI expects.
    * Inputs that already look like a path or a shell URI pass through
    * unchanged — those are exactly what the NAPI's classic exe-path matcher
@@ -610,7 +652,7 @@ export function createWinExecutor(): ComputerExecutor {
       to: { x: number; y: number },
     ): Promise<void> {
       if (!napiAvailable) inputUnavailable('drag')
-      // Win32 drag = move-to-from → button-down → move-to-to → button-up.
+      // Win32 drag = move-to-from → button-down → animated-move-to-to → button-up.
       // Mouse path is left-button only (per ComputerExecutor contract).
       if (from) winNapi.moveCursor({ x: Math.round(from.x), y: Math.round(from.y) })
       winNapi.mouseButtonEvent(0, true)
@@ -619,8 +661,8 @@ export function createWinExecutor(): ComputerExecutor {
         // some apps treat a same-tick down+move as a click + then ignored
         // movement, which breaks selection-drag semantics.
         await sleep(10)
-        winNapi.moveCursor({ x: Math.round(to.x), y: Math.round(to.y) })
-        await sleep(10)
+        const startPos = winNapi.getCursorPos()
+        await animatedMoveCursor(startPos.x, startPos.y, to.x, to.y)
       } finally {
         winNapi.mouseButtonEvent(0, false)
       }

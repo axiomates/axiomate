@@ -99,8 +99,8 @@ export function bindSessionContext(
   // onto the returned dispatcher; that's the identity that matters.
   let lastScreenshot: ScreenshotResult | undefined;
 
-  // Click loop state — set by click_target, cleared by left_click/right_click/middle_click.
-  let activeClickLoop: import("./clickTarget.js").ClickLoopState | null = null;
+  // Locate loop state — set by screen_locate, cleared by accept.
+  let activeLocate: import("./clickTarget.js").LocateState | null = null;
 
   const wrapPermission = ctx.onPermissionRequest
     ? async (
@@ -237,15 +237,15 @@ export function bindSessionContext(
       acquireCuLock: undefined,
       isAborted: ctx.isAborted,
       vlQuery: ctx.vlQuery,
-      // SoM enrichment hooks — read/write the `activeClickLoop` closure
+      // SoM enrichment hooks — read/write the `activeLocate` closure
       // cell defined above. Used by handleZoom (to attach detected marks)
       // and handleMoveMouse (to resolve `mark_id`). When no loop is
-      // active getActiveClickLoop returns null and onClickLoopMarksUpdated
+      // active getActiveLocate returns null and onLocateMarksUpdated
       // is a no-op.
-      getActiveClickLoop: () => activeClickLoop,
-      onClickLoopMarksUpdated: (marks: import("./clickTarget.js").Mark[]) => {
-        if (activeClickLoop) {
-          activeClickLoop = { ...activeClickLoop, marks };
+      getActiveLocate: () => activeLocate,
+      onLocateMarksUpdated: (marks: import("./clickTarget.js").Mark[]) => {
+        if (activeLocate) {
+          activeLocate = { ...activeLocate, marks };
         }
       },
     };
@@ -273,43 +273,42 @@ export function bindSessionContext(
         ctx.onScreenshotCaptured?.(dims);
       }
 
-      // ─── Click loop state management ──────────────────────────────────
-      const { buildClickLoopInjection, advanceClickLoopPhase } = await import("./clickTarget.js");
+      // ─── Locate loop state management ────────────────────────────────
+      const { buildLocateInjection } = await import("./clickTarget.js");
 
-      if (name === "click_target" && (result as any).clickLoop) {
-        activeClickLoop = (result as any).clickLoop;
-        delete (result as any).clickLoop;
-        const injection = buildClickLoopInjection(activeClickLoop!, name);
+      if (name === "screen_locate" && (result as any).locateLoop) {
+        activeLocate = (result as any).locateLoop;
+        delete (result as any).locateLoop;
+        const injection = buildLocateInjection(activeLocate!, name);
         result.content.push({ type: "text", text: injection });
-        logger.debug(`[${serverName}] click loop ENTER target="${activeClickLoop!.target}" phase=${activeClickLoop!.phase}`);
-        logger.debug(`[${serverName}] click loop injection:\n${injection}`);
-      } else if (activeClickLoop) {
-        const isClickTool = ["left_click", "double_click", "triple_click", "right_click", "middle_click"].includes(name);
-
-        if (isClickTool && !result.isError) {
-          const target = activeClickLoop.target;
-          logger.debug(`[${serverName}] click loop EXIT: clicked "${target}" via ${name}`);
-          result.content.push({ type: "text", text: `[Click Target] Clicked "${target}".` });
-          activeClickLoop = null;
-        } else if (isClickTool && result.isError) {
-          const injection = buildClickLoopInjection(activeClickLoop, name);
+        logger.debug(`[${serverName}] locate loop ENTER target="${activeLocate!.target}"`);
+        logger.debug(`[${serverName}] locate injection:\n${injection}`);
+      } else if (name === "accept") {
+        if (!activeLocate) {
+          result.content.push({ type: "text", text: "No active screen_locate loop. Call screen_locate first to enter positioning mode." });
+          result.isError = true;
+        } else if (result.isError) {
+          // accept error — stay in loop, inject guidance
+          const injection = buildLocateInjection(activeLocate, name);
           result.content.push({ type: "text", text: injection });
-          logger.debug(`[${serverName}] click loop ${name} FAILED (staying in loop) phase=${activeClickLoop.phase}`);
-          logger.debug(`[${serverName}] click loop injection:\n${injection}`);
         } else {
-          const prevPhase = activeClickLoop.phase;
-          activeClickLoop = { ...activeClickLoop, phase: advanceClickLoopPhase(activeClickLoop, name) };
-          const injection = buildClickLoopInjection(activeClickLoop, name);
-          result.content.push({ type: "text", text: injection });
-          logger.debug(`[${serverName}] click loop ${name}: phase ${prevPhase}→${activeClickLoop.phase}`);
-          logger.debug(`[${serverName}] click loop injection:\n${injection}`);
+          const target = activeLocate.target;
+          logger.debug(`[${serverName}] locate loop EXIT: accepted "${target}"`);
+          result.content.push({ type: "text", text: `[Screen Locate] Position of "${target}" confirmed.` });
+          activeLocate = null;
         }
+      } else if (activeLocate) {
+        // Inside locate loop — track moved state and inject guidance.
+        if (name === "mouse_move" && !result.isError) {
+          activeLocate = { ...activeLocate, moved: true };
+        }
+        const injection = buildLocateInjection(activeLocate, name);
+        result.content.push({ type: "text", text: injection });
+        logger.debug(`[${serverName}] locate loop ${name}: injection appended, moved=${activeLocate.moved}`);
       } else if (["left_click", "double_click", "triple_click", "right_click", "middle_click"].includes(name) && !result.isError) {
-        result.content.push({ type: "text", text: "Tip: For reliable clicking, use click_target first to enter guided mode." });
-        logger.debug(`[${serverName}] click outside loop: ${name} (hint injected)`);
+        result.content.push({ type: "text", text: "Tip: For reliable clicking, use screen_locate first to enter guided positioning mode." });
       } else if (name === "screenshot" && !result.isError) {
-        result.content.push({ type: "text", text: "Tip: If your next step is to click a UI element you can describe by name (e.g. 'taskbar settings icon', 'Send button'), call `click_target` instead of guessing coordinates — guided mode is far more reliable on small/dense targets." });
-        logger.debug(`[${serverName}] screenshot outside click loop: nudge injected`);
+        result.content.push({ type: "text", text: "Tip: If your next step is to click a UI element you can describe by name (e.g. 'taskbar settings icon', 'Send button'), call `screen_locate` instead of guessing coordinates — guided mode is far more reliable on small/dense targets." });
       }
 
       return result;

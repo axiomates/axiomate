@@ -37,7 +37,7 @@
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { randomUUID } from "node:crypto";
 
-import { handleClickTargetInit } from "./clickTarget.js";
+import { handleScreenLocate } from "./clickTarget.js";
 import type { Mark } from "./clickTarget.js";
 import { detectElementsMultiSource, shouldOverlaySoM } from "./detection.js";
 import { getDefaultTierForApp, getDeniedCategoryForApp, isPolicyDenied } from "./deniedApps.js";
@@ -310,6 +310,24 @@ function scaleCoord(
     x: Math.round(rawX * scale) + (display.originX ?? 0),
     y: Math.round(rawY * scale) + (display.originY ?? 0),
   };
+}
+
+/**
+ * Resolve the target display for an action tool. When the AI passes
+ * `display_id` (from a prior `accept()`), find that display's geometry.
+ * Falls back to the implicit `selectedDisplayId`.
+ */
+async function resolveDisplay(
+  adapter: ComputerUseHostAdapter,
+  args: Record<string, unknown>,
+  overrides: ComputerUseOverrides,
+): Promise<DisplayGeometry> {
+  if (typeof args.display_id === "number") {
+    const displays = await adapter.executor.listDisplays();
+    const match = displays.find((d) => d.displayId === args.display_id);
+    if (match) return match;
+  }
+  return adapter.executor.getDisplaySize(overrides.selectedDisplayId);
 }
 
 // ---------------------------------------------------------------------------
@@ -2602,24 +2620,24 @@ async function handleZoom(
   const coordinateGrid = (args.coordinate_grid as string) ?? "full";
 
   // ── SoM (Set-of-Mark) enrichment ──
-  // Passive layer: only fires inside an active click_target loop AND when
-  // the AI hasn't opted out via `som: false`. Detection populates marks
-  // (always — so `mark_id` resolution stays available); the image overlay
-  // is gated by `shouldOverlaySoM` (≤25 elements, area ratio ≤ 0.15) so
-  // dense regions don't get drowned in red circles.
+  // Runs on every zoom unless AI opts out via `som: false`. Detection is
+  // no longer gated by loop state — marks appear in zoom response text
+  // regardless. When inside a screen_locate loop, marks are also stored
+  // in the loop state for `mark_id` resolution. Overlay is gated by
+  // `shouldOverlaySoM` (≤25 elements, area ratio ≤ 0.15).
   const somDisabled = args.som === false;
-  const activeLoop = overrides.getActiveClickLoop?.() ?? null;
+  const activeLoop = overrides.getActiveLocate?.() ?? null;
 
   // When AI opts out of SoM (`som: false`), clear any marks lingering from a
   // prior zoom so stale mark_ids don't silently succeed with wrong coords.
   const hadMarksBeforeClear = (activeLoop?.marks?.length ?? 0) > 0;
   if (somDisabled && activeLoop) {
-    overrides.onClickLoopMarksUpdated?.([]);
+    overrides.onLocateMarksUpdated?.([]);
   }
 
   let marks: Mark[] = [];
   let drawMarks = false;
-  if (activeLoop && !somDisabled) {
+  if (!somDisabled) {
     const ratioX = last.displayWidth ? last.displayWidth / last.width : 1;
     const ratioY = last.displayHeight ? last.displayHeight / last.height : 1;
     const originX = last.originX ?? 0;
@@ -2639,7 +2657,9 @@ async function handleZoom(
       );
       // Replace (not append) — id numbering must match what's drawn on
       // the image AI's about to see, so prior-zoom marks don't linger.
-      overrides.onClickLoopMarksUpdated?.(marks);
+      if (activeLoop) {
+        overrides.onLocateMarksUpdated?.(marks);
+      }
     } catch (e) {
       adapter.logger.debug(
         `[zoom-som] detection failed: ${e instanceof Error ? e.message : String(e)} — falling back to ruler-only zoom`,
@@ -2803,9 +2823,7 @@ async function handleClickVariant(
   );
   if (gate) return gate;
 
-  const display = await adapter.executor.getDisplaySize(
-    overrides.selectedDisplayId,
-  );
+  const display = await resolveDisplay(adapter, args, overrides);
 
   // Resolve the screen-space click coords. For click-in-place: read the
   // current cursor position directly (already in physical screen coords,
@@ -3020,9 +3038,7 @@ async function handleScroll(
   const gate = await runInputActionGates(adapter, overrides, subGates, "mouse");
   if (gate) return gate;
 
-  const display = await adapter.executor.getDisplaySize(
-    overrides.selectedDisplayId,
-  );
+  const display = await resolveDisplay(adapter, args, overrides);
   const { x, y } = scaleCoord(
     rawX,
     rawY,
@@ -3090,9 +3106,7 @@ async function handleDrag(
   const gate = await runInputActionGates(adapter, overrides, subGates, "mouse");
   if (gate) return gate;
 
-  const display = await adapter.executor.getDisplaySize(
-    overrides.selectedDisplayId,
-  );
+  const display = await resolveDisplay(adapter, args, overrides);
   const from =
     rawFrom === undefined
       ? undefined
@@ -3146,6 +3160,64 @@ async function handleDrag(
   return okText("Dragged.");
 }
 
+async function handleAccept(
+  adapter: ComputerUseHostAdapter,
+  overrides: ComputerUseOverrides,
+): Promise<CuCallToolResult> {
+  const cursor = await adapter.executor.getCursorPosition();
+
+  // Compute image-space coords: physical virtual-screen → screenshot pixel
+  // space, so the returned (x, y) match what AI sees on the rulers.
+  const shot = overrides.lastScreenshot;
+  let x: number;
+  let y: number;
+  let displayId: number;
+  if (shot && shot.displayWidth > 0 && shot.displayHeight > 0) {
+    const localX = cursor.x - (shot.originX ?? 0);
+    const localY = cursor.y - (shot.originY ?? 0);
+    x = Math.round(localX * (shot.width / shot.displayWidth));
+    y = Math.round(localY * (shot.height / shot.displayHeight));
+    displayId = shot.displayId ?? 0;
+  } else {
+    // No screenshot reference — return physical coords and display 0.
+    x = cursor.x;
+    y = cursor.y;
+    displayId = 0;
+  }
+
+  // Also try to resolve the actual display the cursor is on.
+  try {
+    const displays = await adapter.executor.listDisplays();
+    const cursorDisplay = displays.find(
+      (d) =>
+        cursor.x >= d.originX &&
+        cursor.x < d.originX + d.width &&
+        cursor.y >= d.originY &&
+        cursor.y < d.originY + d.height,
+    );
+    if (cursorDisplay) {
+      displayId = cursorDisplay.displayId;
+      // Recompute image-space coords if the cursor display differs from screenshot
+      if (shot && cursorDisplay.displayId !== shot.displayId) {
+        const localX2 = cursor.x - cursorDisplay.originX;
+        const localY2 = cursor.y - cursorDisplay.originY;
+        x = Math.round(localX2 * (shot.width / (cursorDisplay as any).displayWidth || cursorDisplay.width));
+        y = Math.round(localY2 * (shot.height / (cursorDisplay as any).displayHeight || cursorDisplay.height));
+      }
+    }
+  } catch {
+    // best-effort
+  }
+
+  return {
+    content: [{
+      type: "text",
+      text: `Position accepted: x=${x}, y=${y}, display_id=${displayId}`,
+    }],
+    json: { x, y, display_id: displayId },
+  };
+}
+
 async function handleMoveMouse(
   adapter: ComputerUseHostAdapter,
   args: Record<string, unknown>,
@@ -3153,7 +3225,7 @@ async function handleMoveMouse(
   subGates: CuSubGates,
 ): Promise<CuCallToolResult> {
   // ── mark_id resolution (SoM shortcut) ──
-  // Inside an active click_target loop, after a zoom that ran SoM detection,
+  // Inside an active screen_locate loop, after a zoom that ran SoM detection,
   // AI can pass `mark_id: N` instead of a coordinate. We resolve N to the
   // recorded (x, y) of the matching mark and proceed exactly as if the AI
   // had passed those coords explicitly.
@@ -3172,10 +3244,10 @@ async function handleMoveMouse(
   let rawX: number;
   let rawY: number;
   if (markId !== undefined) {
-    const loop = overrides.getActiveClickLoop?.() ?? null;
+    const loop = overrides.getActiveLocate?.() ?? null;
     if (!loop) {
       return errorResult(
-        "`mark_id` is only valid inside an active click_target loop. No loop is currently active — call `click_target` first, then zoom (which generates SoM marks), then mouse_move with mark_id.",
+        "`mark_id` is only valid inside an active screen_locate loop. No loop is currently active — call `screen_locate` first, then zoom (which generates SoM marks), then mouse_move with mark_id.",
         "bad_args",
       );
     }
@@ -3186,7 +3258,7 @@ async function handleMoveMouse(
           ? loop.marks.map((m) => m.id).join(", ")
           : "(none — last zoom produced no marks, or marks were cleared)";
       return errorResult(
-        `mark_id ${markId} not found in current click_target loop. Available marks: ${known}. Marks come from the most recent zoom that ran SoM detection (zoom called with default \`som\` setting, inside this loop).`,
+        `mark_id ${markId} not found in current screen_locate loop. Available marks: ${known}. Marks come from the most recent zoom that ran SoM detection (zoom called with default \`som\` setting, inside this loop).`,
         "bad_args",
       );
     }
@@ -3220,9 +3292,7 @@ async function handleMoveMouse(
   );
   if (gate) return gate;
 
-  const display = await adapter.executor.getDisplaySize(
-    overrides.selectedDisplayId,
-  );
+  const display = await resolveDisplay(adapter, args, overrides);
   const { x, y } = scaleCoord(
     rawX,
     rawY,
@@ -4056,8 +4126,11 @@ async function dispatchAction(
     case "zoom":
       return handleZoom(adapter, a, overrides);
 
-    case "click_target":
-      return handleClickTargetInit(adapter, a as { description: string; button?: string; count?: number }, overrides);
+    case "screen_locate":
+      return handleScreenLocate(adapter, a as { description: string }, overrides);
+
+    case "accept":
+      return handleAccept(adapter, overrides);
 
     case "left_click":
       return handleClickVariant(adapter, a, overrides, subGates, "left", 1);

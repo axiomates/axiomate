@@ -166,6 +166,13 @@ export function buildComputerUseTools(
     maxItems: 2,
     description: `[x, y] array of two non-negative numbers: ${coord.x}`,
   };
+  // Optional display override for action tools — use value from accept().
+  const displayIdProp = {
+    type: "integer",
+    minimum: 0,
+    description:
+      "Display ID from a prior `accept()` call. When omitted the display is inferred from the last screenshot.",
+  };
   // Modifier hold during click. Shared across all 5 click variants.
   const clickModifierText = {
     type: "string",
@@ -227,31 +234,32 @@ export function buildComputerUseTools(
     },
 
     {
-      name: "click_target",
+      name: "screen_locate",
       description:
-        "**Click a UI element described in natural language** — e.g. \"Chrome icon in the taskbar\", \"Send button\", \"the X to close this dialog\". This is the PREFERRED tool whenever the user's intent is to click something they describe by name or appearance (rather than by exact coordinates). " +
-        "Returns a screenshot and step-by-step guidance: use `mouse_move` + `screenshot` (and `zoom` for small/dense areas) to locate the target and verify the lime-green cursor ring lands on it, then `left_click` (no args) to commit. " +
-        "Do NOT pre-call `screenshot` to \"look first\" — call `click_target` directly with the description; the screenshot comes back as part of the response." +
+        "**Locate a UI element described in natural language** — e.g. \"Chrome icon in the taskbar\", \"Send button\", \"the X to close this dialog\". Use this when you need to find the exact position of something before clicking, scrolling, or dragging it. " +
+        "Returns a screenshot and step-by-step guidance: use `mouse_move` + `screenshot` (and `zoom` for small/dense areas) to position the lime-green cursor ring on the target, then call `accept` to capture its coordinates and display. " +
+        "Do NOT pre-call `screenshot` to \"look first\" — call `screen_locate` directly with the description; the screenshot comes back as part of the response." +
         frontmostHint,
       inputSchema: {
         type: "object" as const,
         properties: {
           description: {
             type: "string",
-            description: "What to click, in natural language.",
-          },
-          button: {
-            type: "string",
-            enum: ["left", "right", "middle"],
-            description: "Mouse button. Defaults to left.",
-          },
-          count: {
-            type: "integer",
-            enum: [1, 2, 3],
-            description: "Click count (1=single, 2=double, 3=triple). Defaults to 1.",
+            description: "What to locate, in natural language.",
           },
         },
         required: ["description"],
+      },
+    },
+
+    {
+      name: "accept",
+      description:
+        "Confirm the current cursor position and return its coordinates. Only available inside an active `screen_locate` loop — outside the loop this returns an error asking you to call `screen_locate` first.",
+      inputSchema: {
+        type: "object" as const,
+        properties: {},
+        required: [],
       },
     },
 
@@ -262,7 +270,7 @@ export function buildComputerUseTools(
         (caps.screenshotFiltering === "native"
           ? " If the session allowlist is empty, the dispatch layer auto-throws a PermissionRequest (not a hard error) and the host application surfaces an interactive dialog where the user picks apps to allow; the screenshot then resumes automatically. **Do NOT pre-call request_access for the screenshot itself, and do NOT fall back to shell commands like `screencapture` if you see a permission-related result. Retry once if the call appears interrupted.** "
           : " No allowlist setup is required — just call this tool directly with no arguments. ") +
-        "\n\n**⚠ Tool selection: if the user's intent is to CLICK a UI element they describe by name or appearance (e.g. \"click the Chrome icon in the taskbar\", \"click Send\", \"open Settings\"), call `click_target` instead — it ALSO returns a screenshot AND walks you through locating + clicking the target. Use this `screenshot` tool only when the goal is to OBSERVE or READ the screen (verifying state, reading text, planning, debugging) — not as the first step of a click.**\n\n" +
+        "\n\n**⚠ Tool selection: if the user's intent is to click or interact with a UI element they describe by name or appearance (e.g. \"click the Chrome icon in the taskbar\", \"click Send\", \"open Settings\"), call `screen_locate` instead — it ALSO returns a screenshot AND walks you through locating the target. Once found, use `accept()` to get coordinates, then any action tool (left_click, scroll, drag, etc.). Use this `screenshot` tool only when the goal is to OBSERVE or READ the screen (verifying state, reading text, planning, debugging) — not as the first step of a click.**\n\n" +
         "**The mouse cursor IS rendered in the image with a thick lime-green CIRCLE outline drawn around it** (the ring is added so the cursor remains unmissable at any image scale / JPEG compression). The cursor's pointer tip sits at the CENTER of the green ring. Use the green ring as ground-truth for where input will land.\n\n" +
         "**Coordinate system: x increases LEFT→RIGHT, y increases TOP→BOTTOM.** (0, 0) is the top-left corner. The ruler numbers on each edge show the valid coordinate range — the largest numbers at the right/bottom edges are the screen width/height.\n\n" +
         "If the user names a specific application and just wants to SEE it (e.g. \"show me Slack\", \"截 Chrome\"), prefer `screenshot_window` to capture only that app's frontmost window.",
@@ -314,7 +322,7 @@ export function buildComputerUseTools(
         "2. Square: `center: [cx, cy], size: N` (center point and side length)\n\n" +
         "If the specified region extends beyond screen edges, it will be automatically clipped to screen bounds. " +
         "The returned image shows the clipped region, and coordinate rulers reflect the actual captured area.\n\n" +
-        "SoM markers (semi-transparent red numbered circles) are auto-overlaid on detected UI elements when zooming inside an active `click_target` loop and the region has a tractable element count. Pass `som: false` to suppress them, similar to `coordinate_grid: 'none'`.",
+        "SoM markers (semi-transparent red numbered circles) are auto-overlaid on detected UI elements when the zoom region has a tractable element count (≤25 elements, ≤15% area ratio). Pass `som: false` to suppress them, similar to `coordinate_grid: 'none'`. Inside a `screen_locate` loop, marks are recorded and usable via `mark_id`; outside the loop they appear in text only.",
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -345,8 +353,7 @@ export function buildComputerUseTools(
             description:
               "Whether to overlay SoM (Set-of-Mark) detection markers on the zoomed image. Default true (system auto-decides based on element count + region size). " +
               "Set to false if the markers feel noisy or are obscuring details — analogous to passing `coordinate_grid: 'none'` to suppress rulers. " +
-              "Note: SoM only renders inside an active click_target loop; outside the loop this param is ignored. " +
-              "Setting false does NOT clear marks recorded by a prior zoom — `mouse_move(mark_id: N)` continues to resolve against the most recent zoom that ran detection.",
+              "Setting false clears marks recorded by a prior zoom — `mouse_move(mark_id: N)` will error until the next zoom.",
           },
         },
         required: [],
@@ -356,13 +363,15 @@ export function buildComputerUseTools(
     {
       name: "left_click",
       description:
-        `Left-click at \`coordinate\`, or at the current cursor position if omitted.` +
+        `Left-click at \`coordinate\`, or at the current cursor position if omitted. ` +
+        `Use \`display_id\` from a prior \`accept()\` to ensure coordinates resolve to the correct display.` +
         frontmostHint,
       inputSchema: {
         type: "object" as const,
         properties: {
           coordinate: coordinateTuple,
           text: clickModifierText,
+          display_id: displayIdProp,
         },
         required: [],
       },
@@ -378,6 +387,7 @@ export function buildComputerUseTools(
         properties: {
           coordinate: coordinateTuple,
           text: clickModifierText,
+          display_id: displayIdProp,
         },
         required: [],
       },
@@ -393,6 +403,7 @@ export function buildComputerUseTools(
         properties: {
           coordinate: coordinateTuple,
           text: clickModifierText,
+          display_id: displayIdProp,
         },
         required: [],
       },
@@ -408,6 +419,7 @@ export function buildComputerUseTools(
         properties: {
           coordinate: coordinateTuple,
           text: clickModifierText,
+          display_id: displayIdProp,
         },
         required: [],
       },
@@ -423,6 +435,7 @@ export function buildComputerUseTools(
         properties: {
           coordinate: coordinateTuple,
           text: clickModifierText,
+          display_id: displayIdProp,
         },
         required: [],
       },
@@ -472,6 +485,7 @@ export function buildComputerUseTools(
         type: "object" as const,
         properties: {
           coordinate: coordinateTuple,
+          display_id: displayIdProp,
           scroll_direction: {
             type: "string",
             enum: ["up", "down", "left", "right"],
@@ -502,6 +516,7 @@ export function buildComputerUseTools(
             ...coordinateTuple,
             description: `(x, y) start point. If omitted, drags from the current cursor position. ${coord.x}`,
           },
+          display_id: displayIdProp,
         },
         required: ["coordinate"],
       },
@@ -512,7 +527,7 @@ export function buildComputerUseTools(
       description:
         `Move the mouse cursor to \`coordinate\` ([x, y] array, no click). Use for hover inspection or drag setup.\n\n` +
         `You MUST pass EXACTLY ONE of: \`coordinate\` ([x, y]) or \`mark_id\` (integer). Never both.\n\n` +
-        `mark_id: Only valid inside a click_target loop after a zoom that produced SoM marks. Jumps cursor to the center of the numbered red circle N.\n\n` +
+        `mark_id: Only valid inside a screen_locate loop after a zoom that produced SoM marks. Jumps cursor to the center of the numbered red circle N.\n\n` +
         `If the response text includes a WARNING about a screen edge, the cursor may be clipped — follow the suggested correction. No warning means the cursor is safely on-screen.${frontmostHint}`,
       inputSchema: {
         type: "object" as const,
@@ -522,7 +537,7 @@ export function buildComputerUseTools(
             type: "integer",
             minimum: 1,
             description:
-              "Inside an active click_target loop: jump cursor to the center of SoM mark N (numbered red circle from the most recent zoom). Use this INSTEAD of `coordinate` — do NOT pass both. Errors if no click_target loop is active or if N is not a known mark.",
+              "Inside an active screen_locate loop: jump cursor to the center of SoM mark N (numbered red circle from the most recent zoom). Use this INSTEAD of `coordinate` — do NOT pass both. Errors if no screen_locate loop is active or if N is not a known mark.",
           },
         },
         required: [],
