@@ -11,7 +11,6 @@ function defaultCoordinateMode(): CoordinateMode {
 
 const DEFAULTS_BASE = {
   enabled: false,
-  pixelValidation: false,
   clipboardPasteMultiline: true,
   mouseAnimation: true,
   hideBeforeAction: true,

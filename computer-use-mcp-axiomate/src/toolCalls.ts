@@ -64,7 +64,7 @@ import type {
   ScreenshotResult,
 } from "./executor.js";
 import { isSystemKeyCombo } from "./keyBlocklist.js";
-import { validateClickTarget } from "./pixelCompare.js";
+
 import { SENTINEL_APP_IDENTIFIERS } from "./sentinelApps.js";
 import type {
   AppGrant,
@@ -312,42 +312,6 @@ function scaleCoord(
   };
 }
 
-/**
- * Convert model-space coordinates to the 0–100 percentage that
- * pixelCompare.ts works in. The staleness check operates in screenshot-image
- * space; comparing by percentage lets us crop both last and fresh screenshots
- * at the same relative location without caring about their absolute dims.
- *
- * With the 1568-px downsample, `screenshot.width != display.width * sf`, so
- * the old `rawX / (display.width * sf)` formula is wrong. The correct
- * denominator is just `lastScreenshot.width` — the model's raw pixel coord is
- * already in that image's coordinate space. `DisplayGeometry` is no longer
- * consumed at all.
- */
-function coordToPercentageForPixelCompare(
-  rawX: number,
-  rawY: number,
-  mode: CoordinateMode,
-  lastScreenshot: ScreenshotResult | undefined,
-): { xPct: number; yPct: number } {
-  if (mode === "normalized_0_100") {
-    // Unchanged — already a percentage.
-    return { xPct: rawX, yPct: rawY };
-  }
-
-  if (!lastScreenshot) {
-    // validateClickTarget at pixelCompare.ts:141-143 already skips when
-    // lastScreenshot is undefined, so this return value never reaches a crop.
-    return { xPct: 0, yPct: 0 };
-  }
-
-  // mode === "pixels"
-  return {
-    xPct: (rawX / lastScreenshot.width) * 100,
-    yPct: (rawY / lastScreenshot.height) * 100,
-  };
-}
-
 // ---------------------------------------------------------------------------
 // Shared input-action gates
 // ---------------------------------------------------------------------------
@@ -531,7 +495,7 @@ async function runInputActionGates(
 
   if (!frontmost) {
     // No frontmost app (rare — login window?). Let it through; the click
-    // will land somewhere and PixelCompare catches staleness.
+    // will land somewhere.
     adapter.logger.debug(
       `[CU-GATE] runInputActionGates PASS: no frontmost app (lock screen / UAC / nothing focused) — letting click through`,
     );
@@ -1819,7 +1783,6 @@ async function executeTeachStep(
   const stepSubGates: CuSubGates = {
     ...subGates,
     hideBeforeAction: false,
-    pixelValidation: false,
     // Anchors are pre-computed against the display at batch start.
     // A mid-batch resolver switch would break tooltip positioning.
     autoTargetDisplay: false,
@@ -2831,47 +2794,6 @@ async function handleClickVariant(
   const display = await adapter.executor.getDisplaySize(
     overrides.selectedDisplayId,
   );
-
-  // §6 item P — pixel-validation staleness check. Sub-gated.
-  // Runs AFTER the gates (no point validating if we're about to refuse
-  // anyway) but BEFORE the executor call. Skipped for click-in-place
-  // because there's no target coord to compare against the lastScreenshot;
-  // the AI's intent is "click where the cursor IS now" (verified visually
-  // via mouse_move + screenshot), not "click at a remembered position".
-  if (subGates.pixelValidation && !clickInPlace) {
-    const { xPct, yPct } = coordToPercentageForPixelCompare(
-      rawX,
-      rawY,
-      overrides.coordinateMode,
-      overrides.lastScreenshot,
-    );
-    const validation = await validateClickTarget(
-      adapter.cropRawPatch,
-      overrides.lastScreenshot,
-      xPct,
-      yPct,
-      async () => {
-        // The fresh screenshot for validation uses the SAME allow-set as
-        // the model's last screenshot did, so we compare like with like.
-        const allowedIds = allowedAppsOf(overrides).map((g) => g.appIdentifier);
-        try {
-          // Fresh shot must match lastScreenshot's display, not the current
-          // selection — pixel-compare is against the model's last image.
-          return await adapter.executor.screenshot({
-            allowedAppIdentifiers: allowedIds,
-            displayId: overrides.lastScreenshot?.displayId,
-          });
-        } catch {
-          return null;
-        }
-      },
-      adapter.logger,
-    );
-    if (!validation.valid && validation.warning) {
-      // Warning result — model told to re-screenshot.
-      return okText(validation.warning);
-    }
-  }
 
   // Resolve the screen-space click coords. For click-in-place: read the
   // current cursor position directly (already in physical screen coords,
@@ -3971,12 +3893,9 @@ interface BatchActionResult {
  *     click might open a non-allowed app. This is the safety net: if action
  *     3 of 5 opened Safari (not allowed), action 4's frontmost check fires
  *     and stops the batch there.
- *   - PixelCompare: SKIPPED inside batch. The model committed to the full
- *     sequence without intermediate screenshots; validating mid-batch clicks
- *     against a pre-batch screenshot would false-positive constantly.
  *
- * Both skips are implemented by passing `{...subGates, hideBeforeAction:
- * false, pixelValidation: false}` to each inner dispatch — the handlers'
+ * The skip is implemented by passing `{...subGates, hideBeforeAction:
+ * false}` to each inner dispatch — the handlers'
  * existing gate logic does the right thing, no new code paths.
  *
  * Stop-on-first-error: accumulate results, on
@@ -4028,13 +3947,11 @@ async function handleComputerBatch(
     }
   }
 
-  // Inner actions: skip prepare (already ran), skip pixelCompare (stale by
-  // design). Frontmost still checked — runInputActionGates does it
-  // unconditionally.
+  // Inner actions: skip prepare (already ran). Frontmost still
+  // checked — runInputActionGates does it unconditionally.
   const batchSubGates: CuSubGates = {
     ...subGates,
     hideBeforeAction: false,
-    pixelValidation: false,
     // Batch already took its screenshot (appended at end); a mid-batch
     // resolver switch would make that screenshot inconsistent with
     // earlier clicks' lastScreenshot-based scaleCoord targeting.
@@ -4398,7 +4315,6 @@ export async function handleToolCall(
 
 export const _test = {
   scaleCoord,
-  coordToPercentageForPixelCompare,
   segmentGraphemes,
   decodedByteLength,
   resolveRequestedApps,

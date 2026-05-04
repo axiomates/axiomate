@@ -190,8 +190,7 @@ export function bindSessionContext(
 
     // ─── Build overrides fresh ───────────────────────────────────────────
     // Blob-first; dims-fallback with base64:"" when the closure cell is
-    // unset (cross-respawn). scaleCoord reads dims; pixelCompare sees "" →
-    // isEmpty → skip.
+    // unset (cross-respawn). scaleCoord reads dims for coordinate transform.
     const dimsFallback = lastScreenshot
       ? undefined
       : ctx.getLastScreenshotDims?.();

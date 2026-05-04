@@ -87,8 +87,6 @@ export type CoordinateMode = "pixels" | "normalized_0_100";
  * GrowthBook by the host adapter, consulted in `toolCalls.ts`.
  */
 export interface CuSubGates {
-  /** 9×9 exact-byte staleness guard before click. */
-  pixelValidation: boolean;
   /** Route `type("foo\nbar")` through clipboard instead of keystroke-by-keystroke. */
   clipboardPasteMultiline: boolean;
   /**
@@ -261,20 +259,6 @@ export interface ComputerUseHostAdapter {
    * mid-session without restart.
    */
   getSubGates(): CuSubGates;
-
-  /**
-   * JPEG decode + crop + raw pixel bytes, for the PixelCompare staleness guard.
-   * Injected so this package stays Electron-free. The host implements it via
-   * `nativeImage.createFromBuffer(jpeg).crop(rect).toBitmap()` — Chromium's
-   * decoders, BSD-licensed, no `.node` binary.
-   *
-   * Returns null on decode/crop failure — caller treats null as `skipped`,
-   * click proceeds (validation failure must never block the action).
-   */
-  cropRawPatch(
-    jpegBase64: string,
-    rect: { x: number; y: number; width: number; height: number },
-  ): Buffer | null;
 }
 
 // ----------------------------------------------------------------------------
@@ -309,7 +293,7 @@ export interface ComputerUseSessionContext {
   getTeachModeActive?(): boolean;
   /** Dims-only fallback when `lastScreenshot` is unset (cross-respawn).
    *  `bindSessionContext` reconstructs `{...dims, base64: ""}` so scaleCoord
-   *  works and pixelCompare correctly skips. */
+   *  can still transform coordinates. */
   getLastScreenshotDims?(): ScreenshotDims | undefined;
 
   // ── Write-back callbacks ───────────────────────────────────────────

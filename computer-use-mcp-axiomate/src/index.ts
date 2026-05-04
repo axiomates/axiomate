@@ -66,12 +66,6 @@ export type {
 export { bindSessionContext, createComputerUseMcpServer } from "./mcpServer.js";
 export { buildComputerUseTools } from "./tools.js";
 
-export {
-  comparePixelAtLocation,
-  validateClickTarget,
-} from "./pixelCompare.js";
-export type { CropRawPatchFn, PixelCompareResult } from "./pixelCompare.js";
-
 export type { DetectedElement, Rect } from "./detection.js";
 export {
   computeRulerIntervals,

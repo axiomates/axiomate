@@ -1,7 +1,6 @@
 import type { CuSubGates } from "./types.js";
 
 export const ALL_SUB_GATES_OFF: CuSubGates = {
-  pixelValidation: false,
   clipboardPasteMultiline: false,
   mouseAnimation: false,
   hideBeforeAction: false,
@@ -10,7 +9,6 @@ export const ALL_SUB_GATES_OFF: CuSubGates = {
 };
 
 export const ALL_SUB_GATES_ON: CuSubGates = {
-  pixelValidation: true,
   clipboardPasteMultiline: true,
   mouseAnimation: true,
   hideBeforeAction: true,
