@@ -2608,12 +2608,18 @@ async function handleZoom(
   // is gated by `shouldOverlaySoM` (≤25 elements, area ratio ≤ 0.15) so
   // dense regions don't get drowned in red circles.
   const somDisabled = args.som === false;
-  const activeLoop = somDisabled
-    ? null
-    : (overrides.getActiveClickLoop?.() ?? null);
+  const activeLoop = overrides.getActiveClickLoop?.() ?? null;
+
+  // When AI opts out of SoM (`som: false`), clear any marks lingering from a
+  // prior zoom so stale mark_ids don't silently succeed with wrong coords.
+  const hadMarksBeforeClear = (activeLoop?.marks?.length ?? 0) > 0;
+  if (somDisabled && activeLoop) {
+    overrides.onClickLoopMarksUpdated?.([]);
+  }
+
   let marks: Mark[] = [];
   let drawMarks = false;
-  if (activeLoop) {
+  if (activeLoop && !somDisabled) {
     const ratioX = last.displayWidth ? last.displayWidth / last.width : 1;
     const ratioY = last.displayHeight ? last.displayHeight / last.height : 1;
     const originX = last.originX ?? 0;
@@ -2704,6 +2710,12 @@ async function handleZoom(
       text += `\n  #${m.id} ${m.role || "?"} ${nameLabel}${idLabel} center=(${m.x}, ${m.y})`;
     }
     text += `\nPass \`mark_id: N\` to mouse_move to jump cursor to mark N's center. If your target isn't listed, fall back to reading coordinates from the rulers.`;
+  } else if (activeLoop && somDisabled) {
+    // som was explicitly disabled, marks from a prior zoom were cleared.
+    const msg = hadMarksBeforeClear
+      ? `\n\nSoM marks cleared (som: false). Use ruler coordinates for positioning.`
+      : `\n\nSoM detection skipped (som: false). Use ruler coordinates for positioning.`;
+    text += msg;
   }
 
   // Return the image + text feedback. NO `.screenshot` piggyback — this is the invariant.
@@ -3370,8 +3382,9 @@ async function handleMoveMouse(
       `cursor has moved from screen "${fromDisplayLabel}" to screen "${toDisplayLabel}". Take a new screenshot to see the current screen.`,
     );
   }
+  const screenLabel = toDisplayLabel ? `"${toDisplayLabel}"` : "screen";
   const pos =
-    actualScreenX !== undefined ? ` Cursor at (${posX}, ${posY}) on screen.` : "";
+    actualScreenX !== undefined ? ` Cursor at (${posX}, ${posY}) on ${screenLabel}.` : "";
   if (warnings.length > 0) {
     return okText(`Moved (warning: ${warnings.join("; ")}).${pos}`);
   }
