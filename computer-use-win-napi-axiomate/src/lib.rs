@@ -1273,24 +1273,29 @@ mod windows_impl {
             // ── Regular sources (shared cap, enumerate after system chrome) ──
 
             // Source 3: Foreground window subtree — app controls in zoom region.
-            // Skip when axiomate (or its terminal host) is in the foreground —
-            // UIA on our own windows produces SoM marks that are noise to the VL.
+            // When axiomate (or its terminal host) is in the foreground, UIA
+            // on our own windows produces SoM marks that are noise to the VL.
+            // Instead of skipping entirely, find the next non-host window in
+            // Z-order and enumerate that subtree so other apps' controls in
+            // the zoom region still get SoM marks.
             let fg_hwnd = GetForegroundWindow();
             if !fg_hwnd.0.is_null() {
-                let mut skip_fg = false;
+                let mut host_hwnd = fg_hwnd;
                 let mut fg_pid: u32 = 0;
                 GetWindowThreadProcessId(fg_hwnd, Some(&mut fg_pid));
                 if fg_pid != 0 {
                     let host_pids = host_pid_set();
                     if host_pids.contains(&fg_pid) {
-                        skip_fg = true;
+                        // Foreground is axiomate — find next non-host window.
+                        let alt = find_non_host_window_in_zorder(&host_pids);
+                        if !alt.0.is_null() {
+                            host_hwnd = alt;
+                        }
                     }
                 }
-                if !skip_fg {
-                    if let Ok(el) = automation.ElementFromHandle(fg_hwnd) {
-                        if let Ok(arr) = el.FindAll(TreeScope_Subtree, &condition) {
-                            collect_into(&arr, &rect, &mut results, &mut seen, REGULAR_CAP);
-                        }
+                if let Ok(el) = automation.ElementFromHandle(host_hwnd) {
+                    if let Ok(arr) = el.FindAll(TreeScope_Subtree, &condition) {
+                        collect_into(&arr, &rect, &mut results, &mut seen, REGULAR_CAP);
                     }
                 }
             }
@@ -1459,6 +1464,8 @@ mod windows_impl {
                     | UIA_GroupControlTypeId
                     | UIA_DocumentControlTypeId
                     | UIA_TitleBarControlTypeId
+                    | UIA_AppBarControlTypeId
+                    | UIA_MenuBarControlTypeId
             ) {
                 continue;
             }
@@ -3628,6 +3635,23 @@ mod windows_impl {
         // Hit. Stop enumeration.
         state.target = hwnd;
         BOOL(0)
+    }
+
+    /// Find the first visible non-axiomate-host window in Z-order.
+    /// Returns the HWND (null if none found). Reused by the defocus
+    /// path and the foreground-window enumeration fallback.
+    fn find_non_host_window_in_zorder(host_pids: &BTreeSet<u32>) -> HWND {
+        let mut state = DefocusFinderState {
+            host_pids: host_pids.clone(),
+            target: HWND::default(),
+        };
+        unsafe {
+            let _ = EnumWindows(
+                Some(defocus_finder_enum_proc),
+                LPARAM(&mut state as *mut DefocusFinderState as isize),
+            );
+        }
+        state.target
     }
 
     pub fn defocus_self_to_previous_foreground() -> bool {
