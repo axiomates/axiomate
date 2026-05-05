@@ -521,21 +521,22 @@ export function buildComputerUseTools(
 
     {
       name: "left_click_drag",
-      description: `Press, move to target, and release. Pass \`display_id\` when coordinates came from another tool.${frontmostHint}`,
+      description: `Press, move to target, and release. Pass \`start_display_id\` and \`end_display_id\` when coordinates came from another tool.${frontmostHint}`,
       inputSchema: {
         type: "object" as const,
         properties: {
-          coordinate: {
-            ...coordinateTuple,
-            description: `(x, y) end point: ${coord.x}`,
-          },
           start_coordinate: {
             ...coordinateTuple,
             description: `(x, y) start point. If omitted, drags from the current cursor position. ${coord.x}`,
           },
-          display_id: displayIdProp,
+          start_display_id: displayIdProp,
+          end_coordinate: {
+            ...coordinateTuple,
+            description: `(x, y) end point: ${coord.x}`,
+          },
+          end_display_id: displayIdProp,
         },
-        required: ["coordinate"],
+        required: ["end_coordinate"],
       },
     },
 

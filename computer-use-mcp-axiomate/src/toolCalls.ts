@@ -3088,13 +3088,11 @@ async function handleDrag(
     mouseMoved = false;
   }
 
-  // `coordinate` is the END point
-  // (required). `start_coordinate` is OPTIONAL — when omitted, drag from
-  // current cursor position.
-  const endCoord = extractCoordinate(args, "coordinate");
-  if (endCoord instanceof Error)
-    return errorResult(endCoord.message, "bad_args");
-  const rawTo = endCoord;
+  // `end_coordinate` is the END point (required).
+  // `start_coordinate` is OPTIONAL — when omitted, drag from current cursor.
+  const rawTo = extractCoordinate(args, "end_coordinate");
+  if (rawTo instanceof Error)
+    return errorResult(rawTo.message, "bad_args");
 
   let rawFrom: [number, number] | undefined;
   if (args.start_coordinate !== undefined) {
@@ -3108,7 +3106,16 @@ async function handleDrag(
   const gate = await runInputActionGates(adapter, overrides, subGates, "mouse");
   if (gate) return gate;
 
-  const display = await resolveDisplay(adapter, args, overrides);
+  // Resolve start and end displays independently for cross-display drag.
+  const toDisplay = await resolveDisplay(adapter, args, overrides);
+
+  let fromDisplay: DisplayGeometry | undefined;
+  if (typeof args.start_display_id === "number") {
+    const displays = await adapter.executor.listDisplays();
+    fromDisplay = displays.find((d) => d.displayId === args.start_display_id);
+  }
+
+  const startDisplay = fromDisplay ?? toDisplay;
   const from =
     rawFrom === undefined
       ? undefined
@@ -3116,7 +3123,7 @@ async function handleDrag(
           rawFrom[0],
           rawFrom[1],
           overrides.coordinateMode,
-          display,
+          startDisplay,
           overrides.lastScreenshot,
           adapter.logger,
         );
@@ -3124,7 +3131,7 @@ async function handleDrag(
     rawTo[0],
     rawTo[1],
     overrides.coordinateMode,
-    display,
+    toDisplay,
     overrides.lastScreenshot,
     adapter.logger,
   );
