@@ -218,17 +218,6 @@ export type AppState = DeepImmutable<{
       clipboardWrite: boolean
       systemKeyCombos: boolean
     }
-    // Dims-only (NOT the blob) for scaleCoord after compaction. The full
-    // `ScreenshotResult` including base64 is process-local in wrapper.tsx.
-    lastScreenshotDims?: {
-      width: number
-      height: number
-      displayWidth: number
-      displayHeight: number
-      displayId?: number
-      originX?: number
-      originY?: number
-    }
     // Accumulated by onAppsHidden, cleared + unhidden at turn end.
     hiddenDuringTurn?: ReadonlySet<string>
     // Which display CU targets. Written back by the package's

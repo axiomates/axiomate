@@ -137,7 +137,7 @@ export async function handleScreenLocate(
 
   const shot = await adapter.executor.screenshot({
     allowedAppIdentifiers: screenshotAllowlist(adapter, overrides),
-    displayId: overrides.lastScreenshot?.displayId,
+    displayId: overrides.selectedDisplayId,
     coordinateGrid: "full",
   });
 

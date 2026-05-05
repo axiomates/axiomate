@@ -95,10 +95,6 @@ export function bindSessionContext(
 ): (name: string, args: unknown) => Promise<CuCallToolResult> {
   const { logger, serverName } = adapter;
 
-  // Screenshot blob persists here across calls — NOT on `ctx`. Hosts hold
-  // onto the returned dispatcher; that's the identity that matters.
-  let lastScreenshot: ScreenshotResult | undefined;
-
   // Locate loop state — set by screen_locate, cleared by accept.
   let activeLocate: import("./clickTarget.js").LocateState | null = null;
   let lastZoomMarks: import("./clickTarget.js").Mark[] = [];
@@ -190,11 +186,6 @@ export function bindSessionContext(
     }
 
     // ─── Build overrides fresh ───────────────────────────────────────────
-    // Blob-first; dims-fallback with base64:"" when the closure cell is
-    // unset (cross-respawn). scaleCoord reads dims for coordinate transform.
-    const dimsFallback = lastScreenshot
-      ? undefined
-      : ctx.getLastScreenshotDims?.();
 
     // Per-call AbortController for dialog dismissal. Aborted in `finally` —
     // if handleToolCall finishes (MCP timeout, throw) before the user
@@ -212,9 +203,6 @@ export function bindSessionContext(
       selectedDisplayId: ctx.getSelectedDisplayId(),
       displayPinnedByModel: ctx.getDisplayPinnedByModel?.(),
       displayResolvedForApps: ctx.getDisplayResolvedForApps?.(),
-      lastScreenshot:
-        lastScreenshot ??
-        (dimsFallback ? { ...dimsFallback, base64: "" } : undefined),
       onPermissionRequest: wrapPermission
         ? (req: CuPermissionRequest) => wrapPermission(req, dialogAbort.signal)
         : undefined,
@@ -266,13 +254,6 @@ export function bindSessionContext(
     // ─── Dispatch ────────────────────────────────────────────────────────
     try {
       const result = await handleToolCall(adapter, name, args, overrides);
-
-      if (result.screenshot) {
-        lastScreenshot = result.screenshot;
-        const { base64: _blob, ...dims } = result.screenshot;
-        logger.debug(`[${serverName}] screenshot dims: ${JSON.stringify(dims)}`);
-        ctx.onScreenshotCaptured?.(dims);
-      }
 
       // ─── Locate loop state management ────────────────────────────────
       const { buildLocateInjection } = await import("./clickTarget.js");

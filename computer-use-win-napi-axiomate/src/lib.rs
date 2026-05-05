@@ -1273,29 +1273,50 @@ mod windows_impl {
             // ── Regular sources (shared cap, enumerate after system chrome) ──
 
             // Source 3: Foreground window subtree — app controls in zoom region.
-            // When axiomate (or its terminal host) is in the foreground, UIA
-            // on our own windows produces SoM marks that are noise to the VL.
-            // Instead of skipping entirely, find the next non-host window in
-            // Z-order and enumerate that subtree so other apps' controls in
-            // the zoom region still get SoM marks.
+            // When axiomate (or its terminal host) is in the foreground, UIA's
+            // HWND Proxy provider for Win32 apps needs the target window to be
+            // active for full subtree enumeration. WPF/UWP apps don't have this
+            // limitation (they use framework-specific providers). Detect via
+            // CurrentFrameworkId: Win32 returns empty/"Win32", WPF returns "WPF",
+            // UWP/XAML returns "XAML". Only defocus for Win32 windows.
             let fg_hwnd = GetForegroundWindow();
             if !fg_hwnd.0.is_null() {
-                let mut host_hwnd = fg_hwnd;
+                let mut source_hwnd = fg_hwnd;
                 let mut fg_pid: u32 = 0;
                 GetWindowThreadProcessId(fg_hwnd, Some(&mut fg_pid));
                 if fg_pid != 0 {
                     let host_pids = host_pid_set();
                     if host_pids.contains(&fg_pid) {
                         // Foreground is axiomate — find next non-host window.
-                        let alt = find_non_host_window_in_zorder(&host_pids);
+                        let alt = find_non_host_hwnd(&host_pids);
                         if !alt.0.is_null() {
-                            host_hwnd = alt;
+                            // Check UIA framework ID to decide if defocus needed.
+                            let needs_defocus = match automation.ElementFromHandle(alt) {
+                                Ok(el) => {
+                                    let fid = el.CurrentFrameworkId()
+                                        .ok()
+                                        .map(|s| s.to_string())
+                                        .unwrap_or_default();
+                                    fid != "WPF" && fid != "XAML"
+                                }
+                                Err(_) => true, // defensive: unknown → defocus
+                            };
+                            if needs_defocus {
+                                // Win32 app needs foreground switch for UIA.
+                                defocus_self_to_previous_foreground();
+                                source_hwnd = GetForegroundWindow();
+                            } else {
+                                // WPF/UWP work from background — enumerate directly.
+                                source_hwnd = alt;
+                            }
                         }
                     }
                 }
-                if let Ok(el) = automation.ElementFromHandle(host_hwnd) {
-                    if let Ok(arr) = el.FindAll(TreeScope_Subtree, &condition) {
-                        collect_into(&arr, &rect, &mut results, &mut seen, REGULAR_CAP);
+                if !source_hwnd.0.is_null() {
+                    if let Ok(el) = automation.ElementFromHandle(source_hwnd) {
+                        if let Ok(arr) = el.FindAll(TreeScope_Subtree, &condition) {
+                            collect_into(&arr, &rect, &mut results, &mut seen, REGULAR_CAP);
+                        }
                     }
                 }
             }
@@ -3637,18 +3658,17 @@ mod windows_impl {
         BOOL(0)
     }
 
-    /// Find the first visible non-axiomate-host window in Z-order.
-    /// Returns the HWND (null if none found). Reused by the defocus
-    /// path and the foreground-window enumeration fallback.
-    fn find_non_host_window_in_zorder(host_pids: &BTreeSet<u32>) -> HWND {
+    /// Z-order walk to find the first visible non-host window (no focus
+    /// switch). Returns the HWND or null if none found.
+    fn find_non_host_hwnd(host_pids: &BTreeSet<u32>) -> HWND {
         let mut state = DefocusFinderState {
             host_pids: host_pids.clone(),
-            target: HWND::default(),
+            target: HWND(std::ptr::null_mut()),
         };
         unsafe {
             let _ = EnumWindows(
                 Some(defocus_finder_enum_proc),
-                LPARAM(&mut state as *mut DefocusFinderState as isize),
+                LPARAM(&mut state as *mut _ as isize),
             );
         }
         state.target
@@ -3676,18 +3696,8 @@ mod windows_impl {
 
         // Walk Z-order, find first visible non-host window over the size
         // threshold. EnumWindows order is documented top-to-bottom.
-        let mut state = DefocusFinderState {
-            host_pids,
-            target: HWND(std::ptr::null_mut()),
-        };
-        unsafe {
-            let _ = EnumWindows(
-                Some(defocus_finder_enum_proc),
-                LPARAM(&mut state as *mut _ as isize),
-            );
-        }
-
-        if state.target.0.is_null() {
+        let target = find_non_host_hwnd(&host_pids);
+        if target.0.is_null() {
             return false; // no suitable target — bail; behavior degrades to current
         }
 
@@ -3695,7 +3705,7 @@ mod windows_impl {
         // foreground from an unrelated process. We're the current
         // foreground (or our host is), so the calling process chain is
         // allowed to hand off.
-        unsafe { SetForegroundWindow(state.target).as_bool() }
+        unsafe { SetForegroundWindow(target).as_bool() }
     }
 
     /// Mutable accumulator passed via LPARAM through visibility_enum_proc.

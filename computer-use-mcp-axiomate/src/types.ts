@@ -291,10 +291,6 @@ export interface ComputerUseSessionContext {
   getDisplayPinnedByModel?(): boolean;
   getDisplayResolvedForApps?(): string | undefined;
   getTeachModeActive?(): boolean;
-  /** Dims-only fallback when `lastScreenshot` is unset (cross-respawn).
-   *  `bindSessionContext` reconstructs `{...dims, base64: ""}` so scaleCoord
-   *  can still transform coordinates. */
-  getLastScreenshotDims?(): ScreenshotDims | undefined;
 
   // ── Write-back callbacks ───────────────────────────────────────────
 
@@ -322,8 +318,6 @@ export interface ComputerUseSessionContext {
   onResolvedDisplayUpdated?(displayId: number): void;
   onDisplayPinned?(displayId: number | undefined): void;
   onDisplayResolvedForApps?(sortedAppIdentifiersKey: string): void;
-  /** Called after each screenshot. Host persists for respawn survival. */
-  onScreenshotCaptured?(dims: ScreenshotDims): void;
   onTeachModeActivated?(): void;
   onTeachStep?(req: TeachStepRequest): Promise<TeachStepResult>;
   onTeachWorking?(): void;
@@ -402,11 +396,6 @@ interface BaseComputerUseOverrides {
 
   /**
    * For the pixel-validation staleness guard. The model's-last-screenshot,
-   * stashed by serverDef.ts after each `screenshot` tool call. Undefined on
-   * cold start → pixel validation skipped (click proceeds).
-   */
-  lastScreenshot?: ScreenshotResult;
-
   /**
    * Fired after every `prepareForAction` with the app identifiers it just hid.
    * The wrapper closure in serverDef.ts accumulates these into

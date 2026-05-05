@@ -244,6 +244,43 @@ function extractOptionalCoordinate(
 // ---------------------------------------------------------------------------
 
 /**
+ * Scale context for coordinate transforms. Derived from the display geometry
+ * (physical pixel dims) and the 1920-long-edge image-resize rule so model
+ * image-space pixel coords can be mapped to physical virtual-screen coords
+ * without a stored screenshot blob.
+ */
+interface ScaleContext {
+  ratioX: number;
+  ratioY: number;
+  originX: number;
+  originY: number;
+}
+
+/** Long-edge cap for screenshot JPEGs — same constant as winExecutor. */
+const LONG_EDGE_CAP = 1920;
+
+/**
+ * Compute the image dimensions after the 1920-long-edge Lanczos resize.
+ */
+function computeImageDim(w: number, h: number): [number, number] {
+  const longEdge = Math.max(w, h);
+  if (longEdge <= LONG_EDGE_CAP) return [w, h];
+  const ratio = LONG_EDGE_CAP / longEdge;
+  return [Math.round(w * ratio), Math.round(h * ratio)];
+}
+
+/** Derive ScaleContext from display geometry. */
+function screenScaleCtx(d: DisplayGeometry): ScaleContext {
+  const [iw, ih] = computeImageDim(d.width, d.height);
+  return {
+    ratioX: d.width / iw,
+    ratioY: d.height / ih,
+    originX: d.originX ?? 0,
+    originY: d.originY ?? 0,
+  };
+}
+
+/**
  * Convert model-space coordinates to the logical points that enigo expects.
  *
  *   - `normalized_0_100`: (x / 100) * display.width. `display` is fetched
@@ -262,11 +299,10 @@ function scaleCoord(
   rawY: number,
   mode: CoordinateMode,
   display: DisplayGeometry,
-  lastScreenshot: ScreenshotResult | undefined,
+  ctx: ScaleContext | undefined,
   logger: Logger,
 ): { x: number; y: number } {
   if (mode === "normalized_0_100") {
-    // Origin offset targets the selected display in virtual-screen space.
     return {
       x: Math.round((rawX / 100) * display.width) + display.originX,
       y: Math.round((rawY / 100) * display.height) + display.originY,
@@ -274,37 +310,21 @@ function scaleCoord(
   }
 
   // mode === "pixels": model sent image-space pixel coords.
-  if (lastScreenshot) {
-    // The transform. Chrome coordinateScaling.ts:22-34 + native computer-use
-    // ComputerTool.swift:70-80 — two independent convergent impls.
-    // Uses the display geometry stashed AT CAPTURE TIME, not fresh.
-    // Origin from the same snapshot keeps clicks coherent with the captured display.
+  if (ctx) {
     const result = {
-      x:
-        Math.round(
-          rawX * (lastScreenshot.displayWidth / lastScreenshot.width),
-        ) + lastScreenshot.originX,
-      y:
-        Math.round(
-          rawY * (lastScreenshot.displayHeight / lastScreenshot.height),
-        ) + lastScreenshot.originY,
+      x: Math.round(rawX * ctx.ratioX) + ctx.originX,
+      y: Math.round(rawY * ctx.ratioY) + ctx.originY,
     };
     logger.debug(
       `[CU-COORD] scaleCoord: in=(${rawX},${rawY}) ` +
-        `screenshot=${lastScreenshot.width}x${lastScreenshot.height} (image px) ` +
-        `display=${lastScreenshot.displayWidth}x${lastScreenshot.displayHeight} (display coord pt) ` +
-        `origin=(${lastScreenshot.originX},${lastScreenshot.originY}) ` +
+        `ratio=(${ctx.ratioX},${ctx.ratioY}) ` +
+        `origin=(${ctx.originX},${ctx.originY}) ` +
         `→ out=(${result.x},${result.y}) (display coords)`,
     );
     return result;
   }
 
-  // No lastScreenshot in pixels mode — model sent pixel coords without
-  // a prior screenshot. Treat as display coordinates and convert virtual
-  // → physical using the same ratio method as the screenshot path:
-  //   screenshot path:  rawX * (displayWidth / screenshotWidth) + origin
-  //   no-screenshot:    rawX * scaleFactor + origin
-  // where scaleFactor = physicalWidth / virtualWidth (from the monitor).
+  // No ctx in pixels mode — model sent pixel coords without scale context.
   const scale = (display as { scaleFactor?: number }).scaleFactor ?? 1;
   return {
     x: Math.round(rawX * scale) + (display.originX ?? 0),
@@ -1709,12 +1729,13 @@ async function validateTeachStepArgs(
     const display = await adapter.executor.getDisplaySize(
       overrides.selectedDisplayId,
     );
+    const ctx = screenScaleCtx(display);
     anchorLogical = scaleCoord(
       anchor[0],
       anchor[1],
       overrides.coordinateMode,
       display,
-      overrides.lastScreenshot,
+      ctx,
       adapter.logger,
     );
   }
@@ -2314,10 +2335,7 @@ async function handleScreenshot(
     // `result.hidden` is mac-only (Win returns undefined since the hide
     // loop is mac-only, see executor.ts ResolvePrepareCaptureResult).
     const resultHidden = result.hidden ?? [];
-    let hiddenSinceLastSeen: string[] = [];
-    if (overrides.lastScreenshot !== undefined) {
-      hiddenSinceLastSeen = resultHidden;
-    }
+    const hiddenSinceLastSeen = resultHidden;
     if (resultHidden.length > 0) {
       overrides.onAppsHidden?.(resultHidden);
     }
@@ -2352,7 +2370,7 @@ async function handleScreenshot(
     const monitorNote = await buildMonitorNote(
       adapter,
       shot.displayId,
-      overrides.lastScreenshot?.displayId,
+      overrides.selectedDisplayId,
       overrides.onDisplayPinned !== undefined,
     );
     return {
@@ -2397,9 +2415,7 @@ async function handleScreenshot(
     // False positive: user alt-tabs mid-turn → Safari re-hidden → reported.
     // Rare, and "Safari appeared" is at worst mild noise — far better than
     // the false-negative of never explaining why the file vanished.
-    if (overrides.lastScreenshot !== undefined) {
-      hiddenSinceLastSeen = hidden;
-    }
+    hiddenSinceLastSeen = hidden;
     if (hidden.length > 0) {
       overrides.onAppsHidden?.(hidden);
     }
@@ -2432,7 +2448,7 @@ async function handleScreenshot(
   const monitorNote = await buildMonitorNote(
     adapter,
     shot.displayId,
-    overrides.lastScreenshot?.displayId,
+    overrides.selectedDisplayId,
     overrides.onDisplayPinned !== undefined,
   );
   return {
@@ -2628,22 +2644,19 @@ async function handleZoom(
   }
 
   // ── Boundary clipping (applies to both paths) ──
-  const last = overrides.lastScreenshot;
-  if (!last) {
-    return errorResult(
-      "take a screenshot before zooming (center/size or region coords are relative to it)",
-      "state_conflict",
-    );
-  }
+  // Get display geometry to compute screen bounds (no stored screenshot needed).
+  const display = await resolveDisplay(adapter, args, overrides);
+  const [screenW, screenH] = computeImageDim(display.width, display.height);
+  const zoomCtx = screenScaleCtx(display);
 
   // Track original coords to detect clipping
   const origX0 = x0, origY0 = y0, origX1 = x1, origY1 = y1;
 
-  // Clamp to screen bounds [0, last.width] × [0, last.height]
+  // Clamp to screen bounds [0, screenW] × [0, screenH]
   x0 = Math.max(0, x0);
   y0 = Math.max(0, y0);
-  x1 = Math.min(last.width, x1);
-  y1 = Math.min(last.height, y1);
+  x1 = Math.min(screenW, x1);
+  y1 = Math.min(screenH, y1);
 
   // Check if clipping occurred
   if (x0 !== origX0 || y0 !== origY0 || x1 !== origX1 || y1 !== origY1) {
@@ -2687,10 +2700,10 @@ async function handleZoom(
   let marks: Mark[] = [];
   let drawMarks = false;
   if (!somDisabled) {
-    const ratioX = last.displayWidth ? last.displayWidth / last.width : 1;
-    const ratioY = last.displayHeight ? last.displayHeight / last.height : 1;
-    const originX = last.originX ?? 0;
-    const originY = last.originY ?? 0;
+    const ratioX = zoomCtx.ratioX;
+    const ratioY = zoomCtx.ratioY;
+    const originX = zoomCtx.originX;
+    const originY = zoomCtx.originY;
     try {
       marks = await detectElementsMultiSource(
         adapter.executor,
@@ -2701,8 +2714,8 @@ async function handleZoom(
       const sysChromeCount = marks.filter(m => m.isSystemChrome).length;
       drawMarks = shouldOverlaySoM(
         regionVirtual,
-        last.width,
-        last.height,
+        screenW,
+        screenH,
         marks.length,
         sysChromeCount,
       );
@@ -2722,7 +2735,7 @@ async function handleZoom(
   const zoomed = await adapter.executor.zoom(
     regionVirtual,
     allowedIds,
-    last.displayId,
+    display.displayId,
     coordinateGrid,
     drawMarks ? marks.map((m) => ({ id: m.id, x: m.x, y: m.y })) : undefined,
   );
@@ -2733,12 +2746,12 @@ async function handleZoom(
   const warnings: string[] = [];
   if (x0 <= 5) warnings.push("LEFT edge");
   if (y0 <= 5) warnings.push("TOP edge");
-  if (x1 >= last.width - 5) warnings.push("RIGHT edge");
-  if (y1 >= last.height - 5) warnings.push("BOTTOM edge");
+  if (x1 >= screenW - 5) warnings.push("RIGHT edge");
+  if (y1 >= screenH - 5) warnings.push("BOTTOM edge");
 
   const centerX = Math.round((x0 + x1) / 2);
   const centerY = Math.round((y0 + y1) / 2);
-  let text = `Zoomed to [${x0},${y0}]-[${x1},${y1}], center (${centerX},${centerY}), size ${w}×${h} px. Screen is ${last.width}×${last.height}.`;
+  let text = `Zoomed to [${x0},${y0}]-[${x1},${y1}], center (${centerX},${centerY}), size ${w}×${h} px. Screen is ${screenW}×${screenH}.`;
 
   // Add clipping note if rect was adjusted
   if (hasCenter && wasClipped) {
@@ -2752,10 +2765,10 @@ async function handleZoom(
   // ── Cursor position feedback (existing logic) ──
   try {
     const cursor = await adapter.executor.getCursorPosition();
-    const localX = cursor.x - (last.originX ?? 0);
-    const localY = cursor.y - (last.originY ?? 0);
-    const cx = Math.round(localX * (last.width / (last.displayWidth ?? last.width)));
-    const cy = Math.round(localY * (last.height / (last.displayHeight ?? last.height)));
+    const localX = cursor.x - zoomCtx.originX;
+    const localY = cursor.y - zoomCtx.originY;
+    const cx = Math.round(localX / zoomCtx.ratioX);
+    const cy = Math.round(localY / zoomCtx.ratioY);
     const MARGIN = 10;
     if (cx < x0 || cx > x1 || cy < y0 || cy > y1) {
       text += ` Cursor is at (${cx}, ${cy}), OUTSIDE this zoom region.`;
@@ -2876,6 +2889,7 @@ async function handleClickVariant(
   if (gate) return gate;
 
   const display = await resolveDisplay(adapter, args, overrides);
+  const ctx = screenScaleCtx(display);
 
   // Resolve the screen-space click coords. For click-in-place: read the
   // current cursor position directly (already in physical screen coords,
@@ -2897,7 +2911,7 @@ async function handleClickVariant(
       rawY,
       overrides.coordinateMode,
       display,
-      overrides.lastScreenshot,
+      ctx,
       adapter.logger,
     );
     x = scaled.x;
@@ -3091,12 +3105,13 @@ async function handleScroll(
   if (gate) return gate;
 
   const display = await resolveDisplay(adapter, args, overrides);
+  const ctx = screenScaleCtx(display);
   const { x, y } = scaleCoord(
     rawX,
     rawY,
     overrides.coordinateMode,
     display,
-    overrides.lastScreenshot,
+    ctx,
     adapter.logger,
   );
 
@@ -3166,6 +3181,8 @@ async function handleDrag(
   }
 
   const startDisplay = fromDisplay ?? toDisplay;
+  const fromCtx = screenScaleCtx(startDisplay);
+  const toCtx = screenScaleCtx(toDisplay);
   const from =
     rawFrom === undefined
       ? undefined
@@ -3174,7 +3191,7 @@ async function handleDrag(
           rawFrom[1],
           overrides.coordinateMode,
           startDisplay,
-          overrides.lastScreenshot,
+          fromCtx,
           adapter.logger,
         );
   const to = scaleCoord(
@@ -3182,7 +3199,7 @@ async function handleDrag(
     rawTo[1],
     overrides.coordinateMode,
     toDisplay,
-    overrides.lastScreenshot,
+    toCtx,
     adapter.logger,
   );
 
@@ -3227,18 +3244,18 @@ async function handleAccept(
 
   // Compute image-space coords: physical virtual-screen → screenshot pixel
   // space, so the returned (x, y) match what AI sees on the rulers.
-  const shot = overrides.lastScreenshot;
   let x: number;
   let y: number;
   let displayId: number;
-  if (shot && shot.displayWidth > 0 && shot.displayHeight > 0) {
-    const localX = cursor.x - (shot.originX ?? 0);
-    const localY = cursor.y - (shot.originY ?? 0);
-    x = Math.round(localX * (shot.width / shot.displayWidth));
-    y = Math.round(localY * (shot.height / shot.displayHeight));
-    displayId = shot.displayId ?? 0;
-  } else {
-    // No screenshot reference — return physical coords and display 0.
+  try {
+    const d = await adapter.executor.getDisplaySize();
+    const ctx = screenScaleCtx(d);
+    const localX = cursor.x - ctx.originX;
+    const localY = cursor.y - ctx.originY;
+    x = Math.round(localX / ctx.ratioX);
+    y = Math.round(localY / ctx.ratioY);
+    displayId = d.displayId;
+  } catch {
     x = cursor.x;
     y = cursor.y;
     displayId = 0;
@@ -3256,13 +3273,6 @@ async function handleAccept(
     );
     if (cursorDisplay) {
       displayId = cursorDisplay.displayId;
-      // Recompute image-space coords if the cursor display differs from screenshot
-      if (shot && cursorDisplay.displayId !== shot.displayId) {
-        const localX2 = cursor.x - cursorDisplay.originX;
-        const localY2 = cursor.y - cursorDisplay.originY;
-        x = Math.round(localX2 * (shot.width / (cursorDisplay as any).displayWidth || cursorDisplay.width));
-        y = Math.round(localY2 * (shot.height / (cursorDisplay as any).displayHeight || cursorDisplay.height));
-      }
     }
   } catch {
     // best-effort
@@ -3348,12 +3358,13 @@ async function handleMoveMouse(
   if (gate) return gate;
 
   const display = await resolveDisplay(adapter, args, overrides);
+  const ctx = screenScaleCtx(display);
   const { x, y } = scaleCoord(
     rawX,
     rawY,
     overrides.coordinateMode,
     display,
-    overrides.lastScreenshot,
+    ctx,
     adapter.logger,
   );
 
@@ -3376,104 +3387,31 @@ async function handleMoveMouse(
   if (mouseButtonHeld) mouseMoved = true;
 
   const actual = await adapter.executor.getCursorPosition();
-  const shot = overrides.lastScreenshot;
-
-  let actualScreenX: number | undefined;
-  let actualScreenY: number | undefined;
-  let displayChanged = false;
-  let fromDisplayLabel: string | undefined;
-  let toDisplayLabel: string | undefined;
-  try {
-    const displays = await adapter.executor.listDisplays();
-    const cursorDisplay = displays.find(
-      (d) =>
-        d.originX !== undefined &&
-        d.originY !== undefined &&
-        actual.x >= d.originX &&
-        actual.x < d.originX + d.width &&
-        actual.y >= d.originY &&
-        actual.y < d.originY + d.height,
-    );
-    if (
-      cursorDisplay &&
-      cursorDisplay.originX !== undefined &&
-      cursorDisplay.originY !== undefined
-    ) {
-      toDisplayLabel = cursorDisplay.label;
-      const longEdge = Math.max(cursorDisplay.width, cursorDisplay.height);
-      const ratio = longEdge <= 1920 ? 1 : 1920 / longEdge;
-      const virtualW = Math.round(cursorDisplay.width * ratio);
-      const virtualH = Math.round(cursorDisplay.height * ratio);
-      const localX = actual.x - cursorDisplay.originX;
-      const localY = actual.y - cursorDisplay.originY;
-      actualScreenX = Math.round(localX * (virtualW / cursorDisplay.width));
-      actualScreenY = Math.round(localY * (virtualH / cursorDisplay.height));
-      if (
-        shot?.displayId !== undefined &&
-        cursorDisplay.displayId !== shot.displayId
-      ) {
-        displayChanged = true;
-        const fromDisplay = displays.find(
-          (d) => d.displayId === shot.displayId,
-        );
-        fromDisplayLabel =
-          fromDisplay?.label ?? `display ${shot.displayId}`;
-      }
-    }
-  } catch {
-    // fallback: shot-based mapping (single display or listDisplays unavailable)
-  }
-  if (
-    actualScreenX === undefined &&
-    shot &&
-    shot.displayWidth > 0 &&
-    shot.displayHeight > 0
-  ) {
-    const localX = actual.x - (shot.originX ?? 0);
-    const localY = actual.y - (shot.originY ?? 0);
-    if (
-      localX >= 0 &&
-      localX <= shot.displayWidth &&
-      localY >= 0 &&
-      localY <= shot.displayHeight
-    ) {
-      actualScreenX = Math.round(localX * (shot.width / shot.displayWidth));
-      actualScreenY = Math.round(
-        localY * (shot.height / shot.displayHeight),
-      );
-    }
-  }
+  const actualScreenX = rawX;
+  const actualScreenY = rawY;
 
   const CURSOR_MARGIN_IMAGE_PX = 5;
   const warnings: string[] = [];
-  const posX = actualScreenX ?? rawX;
-  const posY = actualScreenY ?? rawY;
+  const posX = actualScreenX;
+  const posY = actualScreenY;
   let xFrac: number | null = null;
   let yFrac: number | null = null;
-  let reportW = display.width;
-  let reportH = display.height;
+  const reportW = display.width;
+  const reportH = display.height;
   let marginFracX = CURSOR_MARGIN_IMAGE_PX / display.width;
   let marginFracY = CURSOR_MARGIN_IMAGE_PX / display.height;
   if (overrides.coordinateMode === "normalized_0_100") {
     xFrac = rawX / 100;
     yFrac = rawY / 100;
-  } else if (
-    overrides.coordinateMode === "pixels" &&
-    overrides.lastScreenshot
-  ) {
-    reportW = overrides.lastScreenshot.width;
-    reportH = overrides.lastScreenshot.height;
-    if (reportW > 0) {
-      xFrac = rawX / reportW;
-      marginFracX = CURSOR_MARGIN_IMAGE_PX / reportW;
-    }
+  } else if (overrides.coordinateMode === "pixels" && reportW > 0) {
+    xFrac = rawX / reportW;
+    marginFracX = CURSOR_MARGIN_IMAGE_PX / reportW;
     if (reportH > 0) {
       yFrac = rawY / reportH;
       marginFracY = CURSOR_MARGIN_IMAGE_PX / reportH;
     }
   }
-  if (!displayChanged) {
-    if (xFrac !== null && reportW > 0) {
+  if (xFrac !== null && reportW > 0) {
       if (xFrac < 0)
         warnings.push("past LEFT edge (x<0) — fully off-screen. Increase x.");
       else if (xFrac < marginFracX)
@@ -3501,13 +3439,7 @@ async function handleMoveMouse(
           `near BOTTOM edge (screen height ${reportH}px) — cursor partially clipped. Reduce y.`,
         );
     }
-  }
-  if (displayChanged) {
-    warnings.push(
-      `cursor has moved from screen "${fromDisplayLabel}" to screen "${toDisplayLabel}". Take a new screenshot to see the current screen.`,
-    );
-  }
-  const screenLabel = toDisplayLabel ? `"${toDisplayLabel}"` : "screen";
+  const screenLabel = "screen";
   const pos =
     actualScreenX !== undefined ? ` Cursor at (${posX}, ${posY}) on ${screenLabel}.` : "";
   if (warnings.length > 0) {
@@ -3813,10 +3745,9 @@ async function handleCursorPosition(
   overrides: ComputerUseOverrides,
 ): Promise<CuCallToolResult> {
   const logical = await adapter.executor.getCursorPosition();
-  const shot = overrides.lastScreenshot;
 
   // Resolve which display the cursor is physically on
-  let cursorDisplayId = shot?.displayId ?? 0;
+  let cursorDisplayId = overrides.selectedDisplayId ?? 0;
   try {
     const displays = await adapter.executor.listDisplays();
     const cursorDisplay = displays.find(
@@ -3829,35 +3760,17 @@ async function handleCursorPosition(
     if (cursorDisplay) cursorDisplayId = cursorDisplay.displayId;
   } catch { /* best-effort */ }
 
-  if (shot) {
-    // Inverse of scaleCoord: subtract capture-time origin to go from
-    // virtual-screen to display-relative before the image-px transform.
-    const localX = logical.x - shot.originX;
-    const localY = logical.y - shot.originY;
-    // Cursor off the captured display (multi-monitor): local coords go
-    // negative or exceed display dims. Don't return raw physical-px — the
-    // model works in image-px space (≤1920) and physical values on a 4K
-    // or multi-monitor setup can be 2×–4× larger (or negative). Guiding
-    // the model to re-screenshot is safer than leaking coords it can't use.
-    if (
-      localX < 0 ||
-      localX > shot.displayWidth ||
-      localY < 0 ||
-      localY > shot.displayHeight
-    ) {
-      return okJson({
-        error: "cursor is on a different monitor than your last screenshot; take a fresh screenshot first",
-        display_id: cursorDisplayId,
-      });
-    }
-    const x = Math.round(localX * (shot.width / shot.displayWidth));
-    const y = Math.round(localY * (shot.height / shot.displayHeight));
+  try {
+    const d = await adapter.executor.getDisplaySize(cursorDisplayId);
+    const ctx = screenScaleCtx(d);
+    const localX = logical.x - ctx.originX;
+    const localY = logical.y - ctx.originY;
+    const x = Math.round(localX / ctx.ratioX);
+    const y = Math.round(localY / ctx.ratioY);
     return okJson({ x, y, display_id: cursorDisplayId });
+  } catch {
+    return okJson({ x: logical.x, y: logical.y, display_id: cursorDisplayId });
   }
-  return okJson({
-    error: "take a screenshot first — cursor position is reported in screenshot pixel coordinates",
-    display_id: cursorDisplayId,
-  });
 }
 
 /**

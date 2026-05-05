@@ -63,15 +63,6 @@ export function buildSessionContext(): ComputerUseSessionContext {
     getSelectedDisplayId: () => tuc().getAppState().computerUseMcpState?.selectedDisplayId,
     getDisplayPinnedByModel: () => tuc().getAppState().computerUseMcpState?.displayPinnedByModel ?? false,
     getDisplayResolvedForApps: () => tuc().getAppState().computerUseMcpState?.displayResolvedForApps,
-    getLastScreenshotDims: (): ScreenshotDims | undefined => {
-      const d = tuc().getAppState().computerUseMcpState?.lastScreenshotDims;
-      return d ? {
-        ...d,
-        displayId: d.displayId ?? 0,
-        originX: d.originX ?? 0,
-        originY: d.originY ?? 0
-      } : undefined;
-    },
     // ── Write-backs ────────────────────────────────────────────────────────
     // `setToolJSX` is guaranteed present — the gate in `main.tsx` excludes
     // non-interactive sessions. The package's `_dialogSignal` (tool-finished
@@ -156,17 +147,6 @@ export function buildSessionContext(): ComputerUseSessionContext {
         computerUseMcpState: {
           ...cu,
           displayResolvedForApps: key
-        }
-      };
-    }),
-    onScreenshotCaptured: dims => tuc().setAppState((prev: any) => {
-      const cu = prev.computerUseMcpState;
-      const p = cu?.lastScreenshotDims;
-      return p?.width === dims.width && p?.height === dims.height && p?.displayWidth === dims.displayWidth && p?.displayHeight === dims.displayHeight && p?.displayId === dims.displayId && p?.originX === dims.originX && p?.originY === dims.originY ? prev : {
-        ...prev,
-        computerUseMcpState: {
-          ...cu,
-          lastScreenshotDims: dims
         }
       };
     }),
