@@ -1257,11 +1257,24 @@ mod windows_impl {
             // ── Regular sources (shared cap, enumerate after system chrome) ──
 
             // Source 3: Foreground window subtree — app controls in zoom region.
+            // Skip when axiomate (or its terminal host) is in the foreground —
+            // UIA on our own windows produces SoM marks that are noise to the VL.
             let fg_hwnd = GetForegroundWindow();
             if !fg_hwnd.0.is_null() {
-                if let Ok(el) = automation.ElementFromHandle(fg_hwnd) {
-                    if let Ok(arr) = el.FindAll(TreeScope_Subtree, &condition) {
-                        collect_into(&arr, &rect, &mut results, &mut seen, REGULAR_CAP);
+                let mut skip_fg = false;
+                let mut fg_pid: u32 = 0;
+                GetWindowThreadProcessId(fg_hwnd, Some(&mut fg_pid));
+                if fg_pid != 0 {
+                    let host_pids = host_pid_set();
+                    if host_pids.contains(&fg_pid) {
+                        skip_fg = true;
+                    }
+                }
+                if !skip_fg {
+                    if let Ok(el) = automation.ElementFromHandle(fg_hwnd) {
+                        if let Ok(arr) = el.FindAll(TreeScope_Subtree, &condition) {
+                            collect_into(&arr, &rect, &mut results, &mut seen, REGULAR_CAP);
+                        }
                     }
                 }
             }
