@@ -1474,7 +1474,7 @@ mod windows_impl {
             if bbox_area == 0 || (intersect_area * 2) < bbox_area {
                 continue;
             }
-            // Role-based exclusion: skip pure-container types.
+            // Role-based exclusion: skip pure-container/decorative types.
             let role_id = el
                 .CurrentControlType()
                 .unwrap_or(UIA_CustomControlTypeId);
@@ -1487,6 +1487,15 @@ mod windows_impl {
                     | UIA_TitleBarControlTypeId
                     | UIA_AppBarControlTypeId
                     | UIA_MenuBarControlTypeId
+                    | UIA_SeparatorControlTypeId
+                    | UIA_SemanticZoomControlTypeId
+                    | UIA_TreeControlTypeId
+                    | UIA_TableControlTypeId
+                    | UIA_DataGridControlTypeId
+                    | UIA_ListControlTypeId
+                    | UIA_MenuControlTypeId
+                    | UIA_TabControlTypeId
+                    | UIA_StatusBarControlTypeId
             ) {
                 continue;
             }
