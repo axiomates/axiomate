@@ -903,8 +903,7 @@ mod windows_impl {
     };
     use windows::Win32::UI::WindowsAndMessaging::{
         BringWindowToTop, DrawIconEx, EnumWindows, FindWindowExW, FindWindowW,
-        GetCursorInfo, GetCursorPos, GetForegroundWindow, GetIconInfo,
-        GetShellWindow,
+        GetClassNameW, GetCursorInfo, GetCursorPos, GetForegroundWindow, GetIconInfo,
         GetSystemMetrics, GetWindowRect, GetWindowThreadProcessId,
         IsIconic, IsWindowVisible, SetForegroundWindow, ShowWindow, WindowFromPoint,
         CURSORINFO, CURSOR_SHOWING, DI_NORMAL, ICONINFO,
@@ -1263,15 +1262,8 @@ mod windows_impl {
             }
 
             // Source 2: Desktop icons — Progman → SHELLDLL_DefView → SysListView32.
-            // Skip when any non-desktop, non-taskbar, non-host window is visible
-            // (desktop icons are covered and enumerating them produces stale data).
-            if !desktop_is_covered(&host_pid_set()) {
-                let before = results.len();
-                enumerate_desktop_icons(&automation, &condition, &rect, &mut results, &mut seen);
-                for r in &mut results[before..] {
-                    r.is_system_chrome = Some(true);
-                }
-            }
+            // Moved AFTER Source 3 (defocus) so we can check whether the desktop
+            // is actually in the foreground (all windows minimized).
 
             // ── Regular sources (shared cap, enumerate after system chrome) ──
 
@@ -1279,11 +1271,41 @@ mod windows_impl {
             // defocus_self_to_previous_foreground() is a no-op when another app
             // is already foreground (it checks host_pids internally).
             defocus_self_to_previous_foreground();
+            // Small sleep so DWM composes the new foreground state before UIA
+            // enumerates the subtree (HWND proxy provider needs the window
+            // to be active and composed).
+            std::thread::sleep(std::time::Duration::from_millis(50));
             let cur_fg = GetForegroundWindow();
             if !cur_fg.0.is_null() {
-                if let Ok(el) = automation.ElementFromHandle(cur_fg) {
-                    if let Ok(arr) = el.FindAll(TreeScope_Subtree, &condition) {
-                        collect_into(&arr, &rect, &mut results, &mut seen, REGULAR_CAP);
+                // Skip if foreground is still axiomate or its host chain
+                // (defocus failed — no suitable target window).
+                let mut fg_pid: u32 = 0;
+                GetWindowThreadProcessId(cur_fg, Some(&mut fg_pid));
+                let still_host = fg_pid != 0 && host_pid_set().contains(&fg_pid);
+                if !still_host {
+                    if let Ok(el) = automation.ElementFromHandle(cur_fg) {
+                        if let Ok(arr) = el.FindAll(TreeScope_Subtree, &condition) {
+                            collect_into(&arr, &rect, &mut results, &mut seen, REGULAR_CAP);
+                        }
+                    }
+                }
+            }
+
+            // Source 2: Desktop icons — after defocus, only enumerate if the
+            // foreground IS the desktop itself (all windows minimized).
+            {
+                let is_desktop_fg = !cur_fg.0.is_null() && {
+                    let mut class = [0u16; 32];
+                    let len = GetClassNameW(cur_fg, &mut class) as usize;
+                    let cls = String::from_utf16_lossy(&class[..len.min(32)]);
+                    let cls = cls.trim_end_matches('\0');
+                    cls == "Progman" || cls == "WorkerW"
+                };
+                if is_desktop_fg {
+                    let before = results.len();
+                    enumerate_desktop_icons(&automation, &condition, &rect, &mut results, &mut seen);
+                    for r in &mut results[before..] {
+                        r.is_system_chrome = Some(true);
                     }
                 }
             }
@@ -3637,59 +3659,6 @@ mod windows_impl {
     /// Check whether the desktop is covered by any visible, non-minimized
     /// window that isn't the desktop itself, the taskbar, or in the host
     /// chain. Returns true when desktop icons should be skipped.
-    struct DesktopCoverCheck {
-        host_pids: BTreeSet<u32>,
-        covered: bool,
-        desktop_hwnd: HWND,
-        taskbar_hwnd: HWND,
-    }
-
-    extern "system" fn desktop_cover_enum_proc(hwnd: HWND, lparam: LPARAM) -> BOOL {
-        let state = unsafe { &mut *(lparam.0 as *mut DesktopCoverCheck) };
-        if !unsafe { IsWindowVisible(hwnd).as_bool() } {
-            return BOOL(1);
-        }
-        if unsafe { IsIconic(hwnd).as_bool() } {
-            return BOOL(1);
-        }
-        // Skip desktop and taskbar by HWND comparison (not class name).
-        if hwnd.0 == state.desktop_hwnd.0 || hwnd.0 == state.taskbar_hwnd.0 {
-            return BOOL(1);
-        }
-        let mut pid: u32 = 0;
-        unsafe { GetWindowThreadProcessId(hwnd, Some(&mut pid)); }
-        if pid == 0 || state.host_pids.contains(&pid) {
-            return BOOL(1);
-        }
-        // Skip tiny overlay windows.
-        let mut rect = RECT::default();
-        if unsafe { GetWindowRect(hwnd, &mut rect).is_err() } {
-            return BOOL(1);
-        }
-        if rect.right - rect.left < MIN_TARGET_DIMENSION || rect.bottom - rect.top < MIN_TARGET_DIMENSION {
-            return BOOL(1);
-        }
-        state.covered = true;
-        BOOL(0)
-    }
-
-    unsafe fn desktop_is_covered(host_pids: &BTreeSet<u32>) -> bool {
-        let desktop_hwnd = GetShellWindow();
-        let taskbar_class = to_wide("Shell_TrayWnd");
-        let taskbar_hwnd = FindWindowW(PCWSTR(taskbar_class.as_ptr()), PCWSTR::null())
-            .unwrap_or(HWND::default());
-        let mut state = DesktopCoverCheck {
-            host_pids: host_pids.clone(),
-            covered: false,
-            desktop_hwnd,
-            taskbar_hwnd,
-        };
-        let _ = EnumWindows(
-            Some(desktop_cover_enum_proc),
-            LPARAM(&mut state as *mut DesktopCoverCheck as isize),
-        );
-        state.covered
-    }
 
     /// Z-order walk to find the first visible non-host window (no focus
     /// switch). Returns the HWND or null if none found.
@@ -3738,7 +3707,13 @@ mod windows_impl {
         // foreground from an unrelated process. We're the current
         // foreground (or our host is), so the calling process chain is
         // allowed to hand off.
-        unsafe { SetForegroundWindow(target).as_bool() }
+        let switched = unsafe { SetForegroundWindow(target).as_bool() };
+        if switched {
+            // DWM needs a frame to compose the new foreground state before
+            // UIA or screenshot capture sees the target window's content.
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        switched
     }
 
     /// Mutable accumulator passed via LPARAM through visibility_enum_proc.

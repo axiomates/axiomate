@@ -143,7 +143,7 @@ export function shouldOverlaySoM(
     (zoomRect.w * zoomRect.h) / (screenW * screenH);
   if (areaRatio > 0.15) return false;
   const nonChromeCount = elementCount - systemChromeCount;
-  if (nonChromeCount > 25) return false;
+  if (nonChromeCount > 50) return false;
   if (elementCount === 0) return false;
   return true;
 }
