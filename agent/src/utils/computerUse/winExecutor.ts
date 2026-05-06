@@ -350,6 +350,13 @@ export function createWinExecutor(): ComputerExecutor {
     // hostAppIdentifier`) never fires on the terminal naturally.
     capabilities: { ...WIN_CLI_CAPABILITIES },
 
+    /// If axiomate is foreground, switch to the previous visible non-host
+    /// window so screenshots and UIA capture the target app, not ourselves.
+    async defocusSelf(): Promise<boolean> {
+      if (!napiAvailable) return false
+      return winNapi.defocusSelfToPreviousForeground()
+    },
+
     // ── Display geometry (winFallbacks → node-screenshots) ──────────────
 
     async getDisplaySize(displayId?: number) {

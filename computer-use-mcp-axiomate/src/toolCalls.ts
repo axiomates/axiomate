@@ -2266,6 +2266,11 @@ async function handleScreenshot(
     // makes this the always-taken path now.
   }
 
+  // If axiomate itself is in the foreground, move it out of the way so
+  // the screenshot shows the target app, not our own terminal window.
+  // Matches the keyboard-input defocus pattern (type/key/holdKey).
+  await adapter.executor.defocusSelf?.();
+
   // Atomic resolve→prepare→capture (one Swift call, no scheduler gap).
   // Off → fall through to separate-calls path below.
   if (subGates.autoTargetDisplay) {
@@ -2731,6 +2736,9 @@ async function handleZoom(
       );
     }
   }
+
+  // Ensure target app is foreground before capturing (same defocus as screenshot).
+  await adapter.executor.defocusSelf?.();
 
   const zoomed = await adapter.executor.zoom(
     regionVirtual,

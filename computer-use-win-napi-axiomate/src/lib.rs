@@ -1273,50 +1273,14 @@ mod windows_impl {
             // ── Regular sources (shared cap, enumerate after system chrome) ──
 
             // Source 3: Foreground window subtree — app controls in zoom region.
-            // When axiomate (or its terminal host) is in the foreground, UIA's
-            // HWND Proxy provider for Win32 apps needs the target window to be
-            // active for full subtree enumeration. WPF/UWP apps don't have this
-            // limitation (they use framework-specific providers). Detect via
-            // CurrentFrameworkId: Win32 returns empty/"Win32", WPF returns "WPF",
-            // UWP/XAML returns "XAML". Only defocus for Win32 windows.
-            let fg_hwnd = GetForegroundWindow();
-            if !fg_hwnd.0.is_null() {
-                let mut source_hwnd = fg_hwnd;
-                let mut fg_pid: u32 = 0;
-                GetWindowThreadProcessId(fg_hwnd, Some(&mut fg_pid));
-                if fg_pid != 0 {
-                    let host_pids = host_pid_set();
-                    if host_pids.contains(&fg_pid) {
-                        // Foreground is axiomate — find next non-host window.
-                        let alt = find_non_host_hwnd(&host_pids);
-                        if !alt.0.is_null() {
-                            // Check UIA framework ID to decide if defocus needed.
-                            let needs_defocus = match automation.ElementFromHandle(alt) {
-                                Ok(el) => {
-                                    let fid = el.CurrentFrameworkId()
-                                        .ok()
-                                        .map(|s| s.to_string())
-                                        .unwrap_or_default();
-                                    fid != "WPF" && fid != "XAML"
-                                }
-                                Err(_) => true, // defensive: unknown → defocus
-                            };
-                            if needs_defocus {
-                                // Win32 app needs foreground switch for UIA.
-                                defocus_self_to_previous_foreground();
-                                source_hwnd = GetForegroundWindow();
-                            } else {
-                                // WPF/UWP work from background — enumerate directly.
-                                source_hwnd = alt;
-                            }
-                        }
-                    }
-                }
-                if !source_hwnd.0.is_null() {
-                    if let Ok(el) = automation.ElementFromHandle(source_hwnd) {
-                        if let Ok(arr) = el.FindAll(TreeScope_Subtree, &condition) {
-                            collect_into(&arr, &rect, &mut results, &mut seen, REGULAR_CAP);
-                        }
+            // defocus_self_to_previous_foreground() is a no-op when another app
+            // is already foreground (it checks host_pids internally).
+            defocus_self_to_previous_foreground();
+            let cur_fg = GetForegroundWindow();
+            if !cur_fg.0.is_null() {
+                if let Ok(el) = automation.ElementFromHandle(cur_fg) {
+                    if let Ok(arr) = el.FindAll(TreeScope_Subtree, &condition) {
+                        collect_into(&arr, &rect, &mut results, &mut seen, REGULAR_CAP);
                     }
                 }
             }

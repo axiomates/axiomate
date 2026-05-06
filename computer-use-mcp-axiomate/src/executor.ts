@@ -235,6 +235,15 @@ export interface ComputerExecutor {
     y: number,
   ): Promise<{ name?: string; role?: string } | null>;
 
+  // ── Foreground management ────────────────────────────────────────────
+  /**
+   * If axiomate (or its terminal host) is foreground, switch to the
+   * previous visible non-host window so the target app is active for
+   * screenshot capture and UIA enumeration. Returns true if a switch
+   * occurred. No-op on non-Windows platforms.
+   */
+  defocusSelf?(): Promise<boolean>;
+
   // ── OS Permissions ───────────────────────────────────────────────────
   ensureOsPermissions?(): Promise<{
     granted: boolean;
