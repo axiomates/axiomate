@@ -613,8 +613,8 @@ export function buildSchemaNotSentHint(
   const discovered = extractDiscoveredToolNames(messages)
   if (discovered.has(tool.name)) return null
   return (
-    `\n\nThis tool's schema was not sent to the API — it was not in the discovered-tool set derived from message history. ` +
-    `Without the schema in your prompt, the model cannot generate correct parameter names or types. ` +
+    `\n\nThis tool's schema was not included in your context — it was not in the discovered-tool set derived from message history. ` +
+    `Without the schema, the model cannot generate correct parameter names or types. ` +
     `Load the tool first: call ${TOOL_SEARCH_TOOL_NAME} with query "select:${tool.name}", then retry this call.`
   )
 }
