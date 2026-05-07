@@ -1257,6 +1257,7 @@ mod windows_impl {
     ///   - bbox must overlap `rect` AND ≥50% of bbox area inside `rect`.
     ///   - exclude container roles (Window, Pane, Group, Document, TitleBar).
     /// Out-of-bounds elements `continue` and don't consume the source's cap.
+
     pub fn enumerate_ui_elements_in_rect(rect: VRect) -> Vec<UiElement> {
         ensure_dpi_aware();
         let _com = ComGuard::init();
@@ -1295,28 +1296,17 @@ mod windows_impl {
                 }
             }
 
-            // Source 2: Desktop icons — Progman → SHELLDLL_DefView → SysListView32.
-            // Moved AFTER Source 3 (defocus) so we can check whether the desktop
-            // is actually in the foreground (all windows minimized).
-
-            // ── Regular sources (shared cap, enumerate after system chrome) ──
+            // ── Regular sources (enumerate after system chrome) ──
 
             // Source 3: Foreground window subtree — app controls in zoom region.
-            // defocus_self_to_previous_foreground() is a no-op when another app
-            // is already foreground (it checks host_pids internally).
             defocus_self_to_previous_foreground();
-            // Small sleep so DWM composes the new foreground state before UIA
-            // enumerates the subtree (HWND proxy provider needs the window
-            // to be active and composed).
             std::thread::sleep(std::time::Duration::from_millis(50));
             let cur_fg = GetForegroundWindow();
             if !cur_fg.0.is_null() {
-                // Skip if foreground is still axiomate or its host chain
-                // (defocus failed — no suitable target window).
                 let mut fg_pid: u32 = 0;
                 GetWindowThreadProcessId(cur_fg, Some(&mut fg_pid));
-                let still_host = fg_pid != 0 && host_pid_set().contains(&fg_pid);
-                if !still_host {
+                let is_host = fg_pid != 0 && host_pid_set().contains(&fg_pid);
+                if !is_host {
                     if let Ok(el) = automation.ElementFromHandle(cur_fg) {
                         if let Ok(arr) = el.FindAll(TreeScope_Subtree, &condition) {
                             collect_into(&arr, &rect, &mut results, &mut seen, REGULAR_CAP);
@@ -1325,23 +1315,31 @@ mod windows_impl {
                 }
             }
 
-            // Source 2: Desktop icons — after defocus, only enumerate if the
-            // foreground IS the desktop itself (all windows minimized).
+            // Source 2: Desktop icons — enumerate, then keep only icons
+            // whose center point hits the desktop itself (Progman/WorkerW)
+            // via WindowFromPoint. Icons covered by other windows are
+            // dropped. No class-name, area-ratio, or cloak heuristics.
             {
-                let is_desktop_fg = !cur_fg.0.is_null() && {
-                    let mut class = [0u16; 32];
-                    let len = GetClassNameW(cur_fg, &mut class) as usize;
-                    let cls = String::from_utf16_lossy(&class[..len.min(32)]);
-                    let cls = cls.trim_end_matches('\0');
-                    cls == "Progman" || cls == "WorkerW"
-                };
-                if is_desktop_fg {
-                    let before = results.len();
-                    enumerate_desktop_icons(&automation, &condition, &rect, &mut results, &mut seen);
-                    for r in &mut results[before..] {
-                        r.is_system_chrome = Some(true);
-                    }
+                let before = results.len();
+                enumerate_desktop_icons(&automation, &condition, &rect, &mut results, &mut seen);
+                let mut kept_new: Vec<UiElement> = results.drain(before..).filter(|el| {
+                    let cx = el.bbox.origin.x + (el.bbox.size.w as i32 / 2);
+                    let cy = el.bbox.origin.y + (el.bbox.size.h as i32 / 2);
+                    let hit = WindowFromPoint(POINT { x: cx, y: cy });
+                    if hit.0.is_null() { return false; }
+                    let mut cls = [0u16; 32];
+                    let len = GetClassNameW(hit, &mut cls) as usize;
+                    if len == 0 { return false; }
+                    let cls_str = String::from_utf16_lossy(&cls[..len.min(32)]);
+                    let cls_str = cls_str.trim_end_matches('\0');
+                    cls_str == "Progman" || cls_str == "WorkerW"
+                        || cls_str == "SHELLDLL_DefView"
+                        || cls_str == "SysListView32"
+                }).collect();
+                for r in &mut kept_new {
+                    r.is_system_chrome = Some(true);
                 }
+                results.append(&mut kept_new);
             }
 
             // Source 4 (fallback): desktop root's direct children — covers
