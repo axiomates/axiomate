@@ -7,8 +7,8 @@
  * Usage: bun run build.ts
  */
 
-import { readFileSync } from 'fs'
-import { join, dirname } from 'path'
+import { readFileSync, rmSync } from 'fs'
+import { join, dirname, resolve } from 'path'
 import { getBuildDefine, parseFeatures, printBuildFeatures } from './buildConfig.ts'
 import { makeComputerUseStubPlugin } from './bunPluginComputerUseStub.ts'
 
@@ -30,6 +30,42 @@ if (process.platform === 'darwin') defaultFeatures.push('DARWIN')
 if (process.platform === 'win32') defaultFeatures.push('WIN32')
 const features = parseFeatures(Bun.argv, process.env, defaultFeatures)
 printBuildFeatures('build', features)
+
+// ── Pre-build native NAPI modules so dev runtime loads up-to-date .node ──
+// .node files are external (not bundled), loaded from workspace dirs at
+// runtime. Without this step, changes to lib.rs would be silently ignored.
+{
+  const root = resolve(dirname(import.meta.path), '..')
+
+  function runBuildStep(label: string, command: string[], cwd: string) {
+    console.log(`  Building ${label} ...`)
+    const proc = Bun.spawnSync(command, { cwd, stdio: ['inherit', 'inherit', 'inherit'] })
+    if (proc.exitCode !== 0) {
+      console.error(`  ✗ ${label} failed`)
+      process.exit(1)
+    }
+    console.log(`  ✓ ${label}`)
+  }
+
+  function buildNapi(name: string) {
+    const generatedDts = '.napi-generated.d.ts'
+    runBuildStep(`${name} (napi build)`,
+      ['npx', 'napi', 'build', '--release', '--dts', generatedDts],
+      join(root, name))
+    rmSync(join(root, name, generatedDts), { force: true })
+  }
+
+  if (process.platform === 'win32') {
+    buildNapi('audio-capture-axiomate')
+    buildNapi('computer-use-win-napi-axiomate')
+  } else if (process.platform === 'darwin') {
+    buildNapi('clipboard-axiomate')
+    buildNapi('audio-capture-axiomate')
+    buildNapi('modifiers-mac-napi-axiomate')
+    buildNapi('url-handler-mac-napi-axiomate')
+    buildNapi('computer-use-mac-napi-axiomate')
+  }
+}
 
 const result = await Bun.build({
   entrypoints: ['src/entrypoints/cli.tsx'],

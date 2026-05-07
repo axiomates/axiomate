@@ -16,11 +16,12 @@ import {
   existsSync,
   mkdirSync,
   readFileSync,
+  readdirSync,
   rmSync,
   statSync,
   unlinkSync,
 } from 'fs'
-import { join, dirname, resolve } from 'path'
+import { basename, join, dirname, resolve } from 'path'
 import { getBuildDefine, parseFeatures, printBuildFeatures } from './buildConfig.ts'
 import { nativeExeDirPlugin } from './bunPluginNativeExeDir.ts'
 import { makeComputerUseStubPlugin } from './bunPluginComputerUseStub.ts'
@@ -58,6 +59,37 @@ function buildTscWorkspace(name: string) {
   runBuildStep(`${name} (tsc)`, ['npx', 'tsc', '-p', 'tsconfig.json'], join(root, name))
 }
 
+function buildNapiWorkspace(name: string) {
+  const generatedDts = '.napi-generated.d.ts'
+  runBuildStep(
+    `${name} (napi build)`,
+    ['npx', 'napi', 'build', '--release', '--target', 'x86_64-pc-windows-msvc', '--dts', generatedDts],
+    join(root, name),
+  )
+  rmSync(join(root, name, generatedDts), { force: true })
+}
+
+function copyIfExists(relPath: string, destName = basename(relPath)) {
+  const srcPath = join(root, relPath)
+  if (!existsSync(srcPath)) {
+    console.log(`  ⊘ ${relPath} (not found, skipping)`)
+    return false
+  }
+  copyFileSync(srcPath, join(distDir, destName))
+  console.log(`  ✓ ${destName}`)
+  return true
+}
+
+function copyWorkspaceNativeFiles(workspace: string) {
+  const workspaceDir = join(root, workspace)
+  for (const file of readdirSync(workspaceDir)) {
+    if (file.endsWith('.node')) {
+      copyFileSync(join(workspaceDir, file), join(distDir, file))
+      console.log(`  ✓ ${file}`)
+    }
+  }
+}
+
 // ── Step 0: Pre-build workspace packages ─────────────────────────────────────
 
 console.log('Step 0/4: Pre-building workspace packages ...')
@@ -77,15 +109,8 @@ buildTscWorkspace('mcpb-axiomate')
 buildTscWorkspace('computer-use-mcp-axiomate')
 buildTscWorkspace('image-processor-axiomate')
 
-// audio-capture-axiomate: Rust NAPI build for Windows.
-// `--dts .napi-generated.d.ts` redirects the auto-generated d.ts away from
-// the hand-written `index.d.ts` so napi build doesn't clobber it.
-const audioDir = join(root, 'audio-capture-axiomate')
-runBuildStep(
-  'audio-capture-axiomate (napi build)',
-  ['npx', 'napi', 'build', '--release', '--target', 'x86_64-pc-windows-msvc', '--dts', '.napi-generated.d.ts'],
-  audioDir,
-)
+buildNapiWorkspace('audio-capture-axiomate')
+buildNapiWorkspace('computer-use-win-napi-axiomate')
 
 // ── Step 1: Bundle everything into a single JS file ──────────────────────────
 
@@ -181,24 +206,12 @@ if (proc.exitCode !== 0) {
 
 console.log('\nStep 3/4: Copying native .node files ...')
 
-const nativeFiles = [
-  'node_modules/@img/sharp-win32-x64/lib/sharp-win32-x64.node',
-  'node_modules/@nut-tree-fork/libnut-win32/build/Release/libnut.node',
-  'node_modules/node-screenshots-win32-x64-msvc/node-screenshots.win32-x64-msvc.node',
-  'audio-capture-axiomate/audio-capture-axiomate.node',
-  'computer-use-win-napi-axiomate/computer-use-win-napi-axiomate.node',
-]
+copyIfExists('node_modules/@img/sharp-win32-x64/lib/sharp-win32-x64.node')
+copyIfExists('node_modules/@nut-tree-fork/libnut-win32/build/Release/libnut.node')
+copyIfExists('node_modules/node-screenshots-win32-x64-msvc/node-screenshots.win32-x64-msvc.node')
 
-for (const relPath of nativeFiles) {
-  const srcPath = join(root, relPath)
-  if (existsSync(srcPath)) {
-    const filename = relPath.split('/').pop()!
-    copyFileSync(srcPath, join(distDir, filename))
-    console.log(`  ✓ ${filename}`)
-  } else {
-    console.log(`  ⊘ ${relPath} (not found, skipping)`)
-  }
-}
+copyWorkspaceNativeFiles('audio-capture-axiomate')
+copyWorkspaceNativeFiles('computer-use-win-napi-axiomate')
 
 const bundledCliPath = join(distDir, 'cli.js')
 if (existsSync(bundledCliPath)) {
