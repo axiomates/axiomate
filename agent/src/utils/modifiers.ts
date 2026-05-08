@@ -11,13 +11,12 @@ export function prewarmModifiers(): void {
     return
   }
   prewarmed = true
-  // Load module in background
+  // Require triggers native module load (was prewarm() via hand-written wrapper)
   try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { prewarm } = require('modifiers-mac-napi-axiomate') as { prewarm: () => void }
-    prewarm()
+    require('modifiers-mac-napi-axiomate')
   } catch {
-    // Ignore errors during prewarm
+    // Ignore errors during load
   }
 }
 

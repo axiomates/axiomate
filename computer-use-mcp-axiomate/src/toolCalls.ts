@@ -39,7 +39,7 @@ import { randomUUID } from "node:crypto";
 
 import { handleScreenLocate } from "./clickTarget.js";
 import type { Mark } from "./clickTarget.js";
-import { detectElementsMultiSource, shouldOverlaySoM } from "./detection.js";
+import { detectElementsMultiSource, overlaySoMLimit } from "./detection.js";
 import { getDefaultTierForApp, getDeniedCategoryForApp, isPolicyDenied } from "./deniedApps.js";
 
 /**
@@ -2502,9 +2502,10 @@ async function handleScreenshotWindow(
   // marks if the density gate passes. The window rect (originX/Y,
   // displayWidth/Height) is only known after capture.
   //
-  // No hideSelf here — PrintWindow captures the target HWND directly,
-  // so axiomate's own window doesn't interfere. The Rust UIA code inside
-  // enumerateUiElementsInRect handles foreground switching internally.
+  // PrintWindow captures the target HWND directly (no hideSelf needed
+  // for the capture). hideSelf is applied before the UIA enumeration
+  // step below so that foreground detection inside Rust's Source 3
+  // sees the target window, not axiomate.
   const prelim = await adapter.executor.screenshotWindow(appIdentifier, gridMode);
   if (!prelim) {
     let runningHint = "";
@@ -2531,7 +2532,9 @@ async function handleScreenshotWindow(
   const ratioX = prelim.displayWidth ? prelim.displayWidth / prelim.width : 1;
   const ratioY = prelim.displayHeight ? prelim.displayHeight / prelim.height : 1;
   let drawMarks = false;
+  let circleLimit = 0;
   if (somEnabled) {
+    await adapter.executor.hideSelf?.();
     try {
       const ox = prelim.originX ?? 0;
       const oy = prelim.originY ?? 0;
@@ -2541,24 +2544,38 @@ async function handleScreenshotWindow(
         { ratioX, ratioY, originX: ox, originY: oy, windowOnly: true },
         ["uia"],
       );
-      // Window screenshot — the entire image IS the window, so the 15% area
-      // gate from shouldOverlaySoM doesn't apply. Only use element count gate.
-      const sysChromeCount = marks.filter(m => m.isSystemChrome).length;
-      const nonChromeCount = marks.length - sysChromeCount;
-      drawMarks = marks.length > 0 && nonChromeCount <= 25;
+      circleLimit = overlaySoMLimit(marks);
+      drawMarks = circleLimit > 0;
     } catch {
       // UIA detection failed — proceed without marks.
+    } finally {
+      adapter.executor.showSelf?.();
     }
   }
-  
+
   // Re-capture with marks if needed, or use prelim capture as-is.
   let result: typeof prelim;
   let somText = "";
-  if (drawMarks && marks.length > 0) {
+
+  const shownMarks = marks.slice(0, circleLimit);
+  if (shownMarks.length > 0) {
+    somText = `\n\nDetected ${shownMarks.length} UI element${shownMarks.length === 1 ? "" : "s"} via UIAutomation (red numbered circles overlaid on the image):`;
+    for (const m of shownMarks) {
+      const nameLabel = m.name ? `"${m.name}"` : "(unnamed)";
+      const idLabel = m.automationId ? ` id=${m.automationId}` : "";
+      somText += `\n  #${m.id} ${m.role || "?"} ${nameLabel}${idLabel} center=(${m.x}, ${m.y})`;
+    }
+    if (marks.length > shownMarks.length) {
+      somText += `\n(${marks.length - shownMarks.length} more elements not shown — zoom into a smaller region for more precision.)`;
+    }
+    somText += `\nPass \`mark_id: N\` to mouse_move to jump cursor to mark N's center.`;
+  }
+
+  if (drawMarks && shownMarks.length > 0) {
     // Marks are in image-pixel coords after detectElementsInRect divides
     // by ratioX/Y. Convert back to physical window-local px for Rust
     // draw_marks_on_rgb which expects physical coordinates.
-    const markOverlays = marks.map((m) => ({
+    const markOverlays = shownMarks.map((m) => ({
       id: m.id,
       x: Math.round(m.x * ratioX),
       y: Math.round(m.y * ratioY),
@@ -2567,14 +2584,6 @@ async function handleScreenshotWindow(
     if (!result) {
       // Fallback to prelim capture if re-capture failed.
       result = prelim;
-    } else {
-      somText = `\n\nDetected ${marks.length} UI element${marks.length === 1 ? "" : "s"} via UIAutomation (red numbered circles overlaid on the image):`;
-      for (const m of marks) {
-        const nameLabel = m.name ? `"${m.name}"` : "(unnamed)";
-        const idLabel = m.automationId ? ` id=${m.automationId}` : "";
-        somText += `\n  #${m.id} ${m.role || "?"} ${nameLabel}${idLabel} center=(${m.x}, ${m.y})`;
-      }
-      somText += `\nPass \`mark_id: N\` to mouse_move to jump cursor to mark N's center.`;
     }
   } else {
     result = prelim;
@@ -2719,6 +2728,7 @@ async function handleZoom(
   try {
     let marks: Mark[] = [];
     let drawMarks = false;
+    let circleLimit = 0;
     if (!somDisabled) {
       const ratioX = zoomCtx.ratioX;
       const ratioY = zoomCtx.ratioY;
@@ -2731,17 +2741,13 @@ async function handleZoom(
           { ratioX, ratioY, originX, originY },
           ["uia"],
         );
-        const sysChromeCount = marks.filter(m => m.isSystemChrome).length;
-        drawMarks = shouldOverlaySoM(
-          regionVirtual,
-          screenW,
-          screenH,
-          marks.length,
-          sysChromeCount,
-        );
+        const fgCount = marks.filter(m => m.uiaSource === "foreground").length;
+        const chromeCount = marks.filter(m => m.uiaSource !== "foreground").length;
+        circleLimit = overlaySoMLimit(marks);
+        drawMarks = circleLimit > 0;
         overrides.onLocateMarksUpdated?.(marks);
         adapter.logger.debug(
-          `[zoom-som] stored ${marks.length} marks${sysChromeCount > 0 ? ` (${sysChromeCount} system chrome)` : ''} for mark_id resolution: ${marks.map((m) => `#${m.id}(${m.name})`.slice(0, 40)).join(", ")}`,
+          `[zoom-som] stored ${marks.length} marks (fg=${fgCount} chrome=${chromeCount} circles: ${circleLimit}): ${marks.map((m) => `#${m.id}(${m.name})`.slice(0, 40)).join(", ")}`,
         );
       } catch (e) {
         adapter.logger.debug(
@@ -2755,7 +2761,7 @@ async function handleZoom(
       allowedIds,
       display.displayId,
       coordinateGrid,
-      drawMarks ? marks.map((m) => ({ id: m.id, x: m.x, y: m.y })) : undefined,
+      drawMarks ? marks.slice(0, circleLimit).map((m) => ({ id: m.id, x: m.x, y: m.y })) : undefined,
     );
   
     // ── Build feedback text ──
@@ -2802,15 +2808,18 @@ async function handleZoom(
     // when detection ran and produced results — even when the image overlay
     // was suppressed by the density gate, so AI can still resolve mark_id
     // against names/roles in the text.
-    if (marks.length > 0) {
-      const overlayNote = drawMarks
-        ? "red numbered circles overlaid on the image"
-        : `image overlay suppressed (${marks.length > 25 ? ">25 elements" : "region too large"}) — text-only`;
-      text += `\n\nDetected ${marks.length} UI element${marks.length === 1 ? "" : "s"} via UIAutomation (${overlayNote}):`;
-      for (const m of marks) {
+    // Text listing and red circles share the same cap so mark_id is consistent.
+    const shownCount = circleLimit > 0 ? circleLimit : marks.length;
+    const shownMarks = marks.slice(0, shownCount);
+    if (shownMarks.length > 0) {
+      text += `\n\nDetected ${shownMarks.length} UI element${shownMarks.length === 1 ? "" : "s"} via UIAutomation (red numbered circles overlaid on the image):`;
+      for (const m of shownMarks) {
         const nameLabel = m.name ? `"${m.name}"` : "(unnamed)";
         const idLabel = m.automationId ? ` id=${m.automationId}` : "";
         text += `\n  #${m.id} ${m.role || "?"} ${nameLabel}${idLabel} center=(${m.x}, ${m.y})`;
+      }
+      if (marks.length > shownMarks.length) {
+        text += `\n(${marks.length - shownMarks.length} more elements not shown — zoom into a smaller region for more precision.)`;
       }
       text += `\nPass \`mark_id: N\` to mouse_move to jump cursor to mark N's center. If your target isn't listed, fall back to reading coordinates from the rulers.`;
     } else if (somDisabled) {

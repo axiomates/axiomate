@@ -375,6 +375,16 @@ export function buildComputerUseTools(
             description:
               "(x0, y0, x1, y1): Rectangle to zoom into, in the coordinate space of the most recent full-screen screenshot. x0,y0 = top-left, x1,y1 = bottom-right.",
           },
+          coordinate_grid: {
+            type: "string" as const,
+            enum: ["none", "edge", "full"],
+            description:
+              "Overlay coordinate rulers on all four edges of the zoomed region. " +
+              "Numbers on rulers show pixel coordinates. " +
+              "'none' (default): no rulers. " +
+              "'edge': four-edge rulers only (no crossing lines). " +
+              "'full': four-edge rulers + semi-transparent grid lines across the image.",
+          },
           som: {
             type: "boolean",
             description:

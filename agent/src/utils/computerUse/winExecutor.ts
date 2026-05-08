@@ -65,7 +65,6 @@ import {
 function inputUnavailable(method: string): never {
   throw new Error(
     `Win NAPI not available for ${method} — input requires Win32 SendInput. ` +
-      `Check loadError via computer-use-win-napi-axiomate.getLoadError(). ` +
       `(Historical nut.js fallback was dropped: silent-fails in Bun-compiled exes.)`,
   )
 }
@@ -84,7 +83,7 @@ export function createWinExecutor(): ComputerExecutor {
   // AI clicks can interact with UAC prompts so the user should know.
   if (!elevationWarned) {
     elevationWarned = true
-    if (winNapi.isAvailable() && winNapi.isRunningElevated()) {
+    if (winNapi.isRunningElevated()) {
       logForDebugging(
         '[computer-use] axiomate running elevated (admin); AI mouse/keyboard ' +
         'events can confirm UAC dialogs. Run as a normal user when possible.',
@@ -93,7 +92,8 @@ export function createWinExecutor(): ComputerExecutor {
     }
   }
 
-  const napiAvailable = winNapi.isAvailable()
+  // auto-generated index.js throws on load failure; we're past the import
+  const napiAvailable = true
 
   // 1080p-ish screenshot ceiling. Long edge ≤ 1920 covers 16:9 (1920×1080),
   // 16:10 (1920×1200 — slightly over short edge but cap is on long), 21:9
@@ -534,7 +534,7 @@ export function createWinExecutor(): ComputerExecutor {
       if (!napiAvailable) {
         throw new Error(
           `Win NAPI not available for zoom — ruler/grid/marks/cursor-circle require the NAPI's ` +
-            `captureDisplayScaled pipeline. Check loadError via computer-use-win-napi-axiomate.getLoadError().`,
+            `captureDisplayScaled pipeline.`,
         )
       }
       const display = getWinDisplaySize(displayId)
@@ -623,7 +623,7 @@ export function createWinExecutor(): ComputerExecutor {
         name: e.name,
         role: e.role,
         automationId: e.automationId ?? undefined,
-        isSystemChrome: e.isSystemChrome ?? false,
+        uiaSource: e.uiaSource ?? undefined,
       }))
     },
 

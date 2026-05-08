@@ -74,7 +74,7 @@ function loadMacNative(): MacNativeBinding | null {
   try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const mod = require('computer-use-mac-napi-axiomate') as MacNativeBinding
-    macNativeCached = mod.isAvailable() ? mod : null
+    macNativeCached = mod
   } catch {
     macNativeCached = null
   }

@@ -36,6 +36,3 @@ module.exports.isModifierPressed = function isModifierPressed(modifier) {
   return mod ? mod.isModifierPressed(modifier) : false
 }
 
-module.exports.prewarm = function prewarm() {
-  loadNative()
-}

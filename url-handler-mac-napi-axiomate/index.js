@@ -27,12 +27,6 @@ module.exports.getLoadError = function getLoadError() {
   return loadError
 }
 
-module.exports.configure = function configure(config) {
-  if (config.scheme) {
-    scheme = config.scheme
-  }
-}
-
 module.exports.waitForUrlEvent = function waitForUrlEvent(timeoutMs) {
   const mod = loadNative()
   if (!mod) return null

@@ -219,8 +219,8 @@ export interface ComputerExecutor {
       name?: string;
       role?: string;
       automationId?: string;
-      /** True for taskbar & desktop icon elements (system chrome). */
-      isSystemChrome?: boolean;
+      /** Which UIA source produced this element: "taskbar", "desktop", "foreground". */
+      uiaSource?: string;
     }>
   >;
 

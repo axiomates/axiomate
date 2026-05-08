@@ -17,8 +17,8 @@ export interface DetectedElement {
   /** UIAutomation ControlType (Button, Edit, MenuItem, ...). */
   role?: string;
   automationId?: string;
-  /** True for taskbar & desktop icon elements (system chrome). */
-  isSystemChrome?: boolean;
+  /** Which UIA source produced this element: "taskbar", "desktop", "foreground". */
+  uiaSource?: string;
 }
 
 export interface Rect {
@@ -67,7 +67,7 @@ export async function detectElementsInRect(
       rawName: el.name ?? "",
       role: el.role,
       automationId: el.automationId,
-      isSystemChrome: el.isSystemChrome ?? false,
+      uiaSource: el.uiaSource,
     };
   });
 }
@@ -117,7 +117,7 @@ export async function detectElementsMultiSource(
         automationId: el.automationId,
         source: "uia",
         confidence: 1.0,
-        isSystemChrome: el.isSystemChrome,
+        uiaSource: el.uiaSource ?? "foreground",
       });
     }
   }
@@ -127,25 +127,24 @@ export async function detectElementsMultiSource(
 }
 
 /**
- * Whether to overlay SoM markers on a zoomed screenshot.
- * System chrome elements (taskbar + desktop icons) don't count toward
- * the ≤25 element limit — they should always get red circles when present
- * in the zoom region, even if many regular elements are also there.
+ * Maximum number of SoM red circles to overlay. Returns 0 only when
+ * there are no elements. Text listing and circles share the same limit
+ * so mark_id numbering is consistent.
+ *
+ * Per-source caps (mirror Rust enumeration caps):
  */
-export function shouldOverlaySoM(
-  zoomRect: Rect,
-  screenW: number,
-  screenH: number,
-  elementCount: number,
-  systemChromeCount = 0,
-): boolean {
-  const areaRatio =
-    (zoomRect.w * zoomRect.h) / (screenW * screenH);
-  if (areaRatio > 0.15) return false;
-  const nonChromeCount = elementCount - systemChromeCount;
-  if (nonChromeCount > 50) return false;
-  if (elementCount === 0) return false;
-  return true;
+const TASKBAR_LIMIT = 20;
+const DESKTOP_LIMIT = 30;
+const FOREGROUND_LIMIT = 50;
+
+export function overlaySoMLimit(marks: Mark[]): number {
+  if (marks.length === 0) return 0;
+  const taskbarCount = marks.filter(m => m.uiaSource === "taskbar").length;
+  const desktopCount = marks.filter(m => m.uiaSource === "desktop").length;
+  const fgCount = marks.filter(m => m.uiaSource === "foreground").length;
+  return Math.min(taskbarCount, TASKBAR_LIMIT)
+       + Math.min(desktopCount, DESKTOP_LIMIT)
+       + Math.min(fgCount, FOREGROUND_LIMIT);
 }
 
 /**

@@ -222,10 +222,9 @@ pub struct UiElement {
     /// UIAutomation `CurrentAutomationId` — stable per-control identifier
     /// when the app sets one. None when empty.
     pub automation_id: Option<String>,
-    /// True for elements from system-chrome sources (taskbar, desktop icons).
-    /// Used by the TS overlay-density gate to exclude these from the ≤25
-    /// element limit — system chrome should always get red circles.
-    pub is_system_chrome: Option<bool>,
+    /// Which enumeration source produced this element:
+    /// "taskbar", "desktop", or "foreground".
+    pub uia_source: Option<String>,
 }
 
 // ───────────────────────────────────────────────────────────────────────────
@@ -1239,8 +1238,8 @@ mod windows_impl {
     /// "no marks available, fall back to ruler positioning".
     /// System-chrome element caps — independent from regular cap so a
     /// dense foreground window doesn't starve taskbar/desktop icon detection.
-    const TASKBAR_CAP: usize = 100;
-    const DESKTOP_CAP: usize = 250;
+    const TASKBAR_CAP: usize = 20;
+    const DESKTOP_CAP: usize = 30;
     const REGULAR_CAP: usize = 50;
 
     /// Enumerate UI elements whose bounding rect is mostly contained in
@@ -1297,7 +1296,7 @@ mod windows_impl {
                                     TASKBAR_CAP,
                                 );
                                 for r in &mut results[before..] {
-                                    r.is_system_chrome = Some(true);
+                                    r.uia_source = Some("taskbar".to_string());
                                 }
                             }
                         }
@@ -1318,6 +1317,7 @@ mod windows_impl {
                 if !is_host {
                     if let Ok(el) = automation.ElementFromHandle(cur_fg) {
                         if let Ok(arr) = el.FindAll(TreeScope_Subtree, &condition) {
+                            let before = results.len();
                             collect_into(
                                 &automation,
                                 &arr,
@@ -1326,6 +1326,9 @@ mod windows_impl {
                                 &mut seen,
                                 REGULAR_CAP,
                             );
+                            for r in &mut results[before..] {
+                                r.uia_source = Some("foreground".to_string());
+                            }
                         }
                     }
                 }
@@ -1368,7 +1371,7 @@ mod windows_impl {
                         })
                         .collect();
                     for r in &mut kept_new {
-                        r.is_system_chrome = Some(true);
+                        r.uia_source = Some("desktop".to_string());
                     }
                     results.append(&mut kept_new);
                 }
@@ -1378,6 +1381,7 @@ mod windows_impl {
                 // aren't subtrees of the foreground app or the above sources.
                 if let Ok(root) = automation.GetRootElement() {
                     if let Ok(arr) = root.FindAll(TreeScope_Children, &condition) {
+                        let before = results.len();
                         collect_into(
                             &automation,
                             &arr,
@@ -1386,6 +1390,9 @@ mod windows_impl {
                             &mut seen,
                             REGULAR_CAP,
                         );
+                        for r in &mut results[before..] {
+                            r.uia_source = Some("foreground".to_string());
+                        }
                     }
                 }
             } // !window_only
@@ -1655,7 +1662,7 @@ mod windows_impl {
                 name,
                 role,
                 automation_id,
-                is_system_chrome: None, // set by caller via slice
+                uia_source: None, // set by caller via slice
             });
         }
     }

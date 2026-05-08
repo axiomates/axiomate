@@ -39,8 +39,8 @@ export interface Mark {
   automationId?: string;
   source: "uia";
   confidence: number;
-  /** True for taskbar & desktop icon marks — excluded from overlay density gate. */
-  isSystemChrome?: boolean;
+  /** Which UIA source produced this mark: "taskbar", "desktop", "foreground". */
+  uiaSource?: string;
 }
 
 export interface LocateState {

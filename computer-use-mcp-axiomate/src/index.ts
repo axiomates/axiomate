@@ -71,7 +71,7 @@ export {
   computeRulerIntervals,
   computeZoomRect,
   detectElementsInRect,
-  shouldOverlaySoM,
+  overlaySoMLimit,
 } from "./detection.js";
 
 /** Permission mode for Chrome bridge integration */
