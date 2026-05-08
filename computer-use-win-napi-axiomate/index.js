@@ -56,12 +56,12 @@ module.exports.appUnderPoint = function appUnderPoint(x, y) {
  * height()). The agent layer maps these to displayIds via origin coord
  * match — see winExecutor.findWindowDisplays.
  */
-module.exports.findWindowMonitorRects = function findWindowMonitorRects(bundleIds) {
+module.exports.findWindowMonitorRects = function findWindowMonitorRects(appIdentifiers) {
   const mod = loadNative()
   if (!mod) {
-    return bundleIds.map(bundleId => ({ bundleId, monitorRects: [] }))
+    return appIdentifiers.map(appIdentifier => ({ appIdentifier, monitorRects: [] }))
   }
-  return mod.findWindowMonitorRects(bundleIds)
+  return mod.findWindowMonitorRects(appIdentifiers)
 }
 
 // ── Elevation probe (TokenElevation read) ──────────────────────────────────
@@ -88,16 +88,16 @@ module.exports.getForegroundWindow = function getForegroundWindow() {
 
 // ── Hide / unhide app windows (ShowWindow) ─────────────────────────────────
 
-module.exports.hideApp = function hideApp(bundleId) {
+module.exports.hideApp = function hideApp(appIdentifier) {
   const mod = loadNative()
   if (!mod) return false
-  return mod.hideApp(bundleId)
+  return mod.hideApp(appIdentifier)
 }
 
-module.exports.unhideApp = function unhideApp(bundleId) {
+module.exports.unhideApp = function unhideApp(appIdentifier) {
   const mod = loadNative()
   if (!mod) return false
-  return mod.unhideApp(bundleId)
+  return mod.unhideApp(appIdentifier)
 }
 
 module.exports.listRunningApps = function listRunningApps() {
@@ -108,7 +108,7 @@ module.exports.listRunningApps = function listRunningApps() {
 
 // ── Per-window screenshot via PrintWindow (DWM-aware) ──────────────────────
 
-module.exports.captureWindow = function captureWindow(bundleId) {
+module.exports.captureWindow = function captureWindow(appIdentifier, gridMode, marks) {
   const mod = loadNative()
   if (!mod) {
     return {
@@ -116,7 +116,7 @@ module.exports.captureWindow = function captureWindow(bundleId) {
       diagnostic: `native binding load failed: ${loadError ?? 'unknown'}`,
     }
   }
-  return mod.captureWindow(bundleId)
+  return mod.captureWindow(appIdentifier, gridMode, marks)
 }
 
 // ── Full-screen BitBlt + Lanczos resize + JPEG (mac-parity capture path) ───
@@ -143,10 +143,10 @@ module.exports.captureDisplayScaled = function captureDisplayScaled(
 // Returns up to 50 visible UI elements whose bbox intersects the input rect.
 // Empty Vec on COM failure / non-Windows / native binding load failure —
 // agent treats empty as "no marks; fall back to ruler positioning".
-module.exports.enumerateUiElementsInRect = function enumerateUiElementsInRect(rect) {
+module.exports.enumerateUiElementsInRect = function enumerateUiElementsInRect(rect, windowOnly) {
   const mod = loadNative()
   if (!mod) return []
-  return mod.enumerateUiElementsInRect(rect)
+  return mod.enumerateUiElementsInRect(rect, windowOnly)
 }
 
 // ── WGC allowlist-filtered capture (Stage 3 skeleton, returns None) ────────

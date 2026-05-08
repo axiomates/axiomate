@@ -39,7 +39,7 @@ export interface Rect {
 export async function detectElementsInRect(
   executor: ComputerExecutor,
   rect: Rect,
-  virtualToPhysical: { ratioX: number; ratioY: number; originX: number; originY: number },
+  virtualToPhysical: { ratioX: number; ratioY: number; originX: number; originY: number; windowOnly?: boolean },
 ): Promise<DetectedElement[]> {
   if (!executor.enumerateVisibleElements) return [];
 
@@ -51,7 +51,7 @@ export async function detectElementsInRect(
     h: rect.h * virtualToPhysical.ratioY,
   };
 
-  const rawElements = await executor.enumerateVisibleElements(physRect);
+  const rawElements = await executor.enumerateVisibleElements(physRect, virtualToPhysical.windowOnly);
 
   return rawElements.map((el, i) => {
     // Physical → virtual coordinates (inverse of scaleCoord)
@@ -101,7 +101,7 @@ export type DetectionSource = "uia" | "yolo" | "grounder" | "ocr";
 export async function detectElementsMultiSource(
   executor: ComputerExecutor,
   rect: Rect,
-  virtualToPhysical: { ratioX: number; ratioY: number; originX: number; originY: number },
+  virtualToPhysical: { ratioX: number; ratioY: number; originX: number; originY: number; windowOnly?: boolean },
   sources: DetectionSource[] = ["uia"],
 ): Promise<Mark[]> {
   const all: Mark[] = [];

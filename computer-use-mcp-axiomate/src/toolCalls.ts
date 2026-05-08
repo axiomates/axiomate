@@ -2526,31 +2526,43 @@ async function handleScreenshotWindow(
   }
   
   // Run UIA detection on the window's screen rect.
+  const somEnabled = args.som !== false;
   let marks: Mark[] = [];
+  const ratioX = prelim.displayWidth ? prelim.displayWidth / prelim.width : 1;
+  const ratioY = prelim.displayHeight ? prelim.displayHeight / prelim.height : 1;
   let drawMarks = false;
-  try {
-    const ratioX = prelim.displayWidth ? prelim.displayWidth / prelim.width : 1;
-    const ratioY = prelim.displayHeight ? prelim.displayHeight / prelim.height : 1;
-    marks = await detectElementsMultiSource(
-      adapter.executor,
-      { x: 0, y: 0, w: prelim.width, h: prelim.height },
-      { ratioX, ratioY, originX: prelim.originX ?? 0, originY: prelim.originY ?? 0 },
-      ["uia"],
-    );
-    // Window screenshot — the entire image IS the window, so the 15% area
-    // gate from shouldOverlaySoM doesn't apply. Only use element count gate.
-    const sysChromeCount = marks.filter(m => m.isSystemChrome).length;
-    const nonChromeCount = marks.length - sysChromeCount;
-    drawMarks = marks.length > 0 && nonChromeCount <= 25;
-  } catch {
-    // UIA detection failed — proceed without marks.
+  if (somEnabled) {
+    try {
+      const ox = prelim.originX ?? 0;
+      const oy = prelim.originY ?? 0;
+      marks = await detectElementsMultiSource(
+        adapter.executor,
+        { x: 0, y: 0, w: prelim.width, h: prelim.height },
+        { ratioX, ratioY, originX: ox, originY: oy, windowOnly: true },
+        ["uia"],
+      );
+      // Window screenshot — the entire image IS the window, so the 15% area
+      // gate from shouldOverlaySoM doesn't apply. Only use element count gate.
+      const sysChromeCount = marks.filter(m => m.isSystemChrome).length;
+      const nonChromeCount = marks.length - sysChromeCount;
+      drawMarks = marks.length > 0 && nonChromeCount <= 25;
+    } catch {
+      // UIA detection failed — proceed without marks.
+    }
   }
   
   // Re-capture with marks if needed, or use prelim capture as-is.
   let result: typeof prelim;
   let somText = "";
   if (drawMarks && marks.length > 0) {
-    const markOverlays = marks.map((m) => ({ id: m.id, x: m.x, y: m.y }));
+    // Marks are in image-pixel coords after detectElementsInRect divides
+    // by ratioX/Y. Convert back to physical window-local px for Rust
+    // draw_marks_on_rgb which expects physical coordinates.
+    const markOverlays = marks.map((m) => ({
+      id: m.id,
+      x: Math.round(m.x * ratioX),
+      y: Math.round(m.y * ratioY),
+    }));
     result = await adapter.executor.screenshotWindow(appIdentifier, gridMode, markOverlays);
     if (!result) {
       // Fallback to prelim capture if re-capture failed.
@@ -2692,7 +2704,7 @@ async function handleZoom(
   };
 
   const allowedIds = allowedAppsOf(overrides).map((g) => g.appIdentifier);
-  const coordinateGrid = (args.coordinate_grid as string) ?? "full";
+  const coordinateGrid = (args.coordinate_grid as string) ?? "none";
 
   // ── SoM (Set-of-Mark) enrichment ──
   const somDisabled = args.som === false;

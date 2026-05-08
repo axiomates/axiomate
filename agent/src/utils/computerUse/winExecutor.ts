@@ -509,10 +509,10 @@ export function createWinExecutor(): ComputerExecutor {
         width: image.width,
         height: image.height,
         displayId: 0,
-        displayWidth: image.display_width,
-        displayHeight: image.display_height,
-        originX: image.origin_x,
-        originY: image.origin_y,
+        displayWidth: image.displayWidth,
+        displayHeight: image.displayHeight,
+        originX: image.originX,
+        originY: image.originY,
       }
     },
 
@@ -524,7 +524,7 @@ export function createWinExecutor(): ComputerExecutor {
       // Non-atomic path — toolCalls.ts handleScreenshot calls this when
       // autoTargetDisplay sub-gate is OFF. Hide loop (if enabled) runs
       // separately via prepareForAction; here we only do the capture.
-      const gridMode = opts.coordinateGrid === 'none' ? 0 : opts.coordinateGrid === 'edge' ? 1 : 2
+      const gridMode = opts.coordinateGrid === "none" ? 0 : opts.coordinateGrid === "edge" ? 1 : 0
       const r = await captureScaledDisplay(opts.displayId, gridMode)
       if (!r) return winFallbackScreenshot(opts)
       return r
@@ -547,7 +547,7 @@ export function createWinExecutor(): ComputerExecutor {
         w: Math.round(region.w * ratioX),
         h: Math.round(region.h * ratioY),
       }
-      const gridMode = coordinateGrid === 'none' ? 0 : coordinateGrid === 'edge' ? 1 : 2
+      const gridMode = coordinateGrid === "none" ? 0 : coordinateGrid === "edge" ? 1 : 0
       // SoM markers: passed through verbatim — coords are in the same
       // virtual-coord space as `region` (rulers' label space), which is
       // exactly what the napi's draw_marks_on_rgb expects.
@@ -582,7 +582,7 @@ export function createWinExecutor(): ComputerExecutor {
       // land and Win11 shell handles target activation". Empty `hidden`
       // returned regardless of `opts.doHide`. See COORDINATES.md / the
       // platform-divergence note in computer-use-mcp-axiomate/executor.ts.
-      const gridMode = opts.coordinateGrid === 'none' ? 0 : opts.coordinateGrid === 'edge' ? 1 : 2
+      const gridMode = opts.coordinateGrid === "none" ? 0 : opts.coordinateGrid === "edge" ? 1 : 0
       const r = await captureScaledDisplay(opts.preferredDisplayId, gridMode)
       if (!r) {
         return await winFallbackResolvePrepareCapture(opts)
@@ -607,12 +607,12 @@ export function createWinExecutor(): ComputerExecutor {
     // Returns [] when the napi isn't available (non-Windows / load failure)
     // or when COM init / IUIAutomation creation failed inside Rust — the
     // dispatcher treats empty as "no marks; fall back to ruler positioning".
-    async enumerateVisibleElements(rect) {
+    async enumerateVisibleElements(rect, windowOnly?: boolean) {
       if (!napiAvailable) return []
       const raw = await winNapi.enumerateUiElementsInRect({
         origin: { x: Math.round(rect.x), y: Math.round(rect.y) },
         size:   { w: Math.round(rect.w), h: Math.round(rect.h) },
-      })
+      }, windowOnly)
       return raw.map(e => ({
         bbox: {
           x: e.bbox.origin.x,

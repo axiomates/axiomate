@@ -94,7 +94,10 @@ pub struct VRect {
 
 impl VRect {
     pub fn new(x: i32, y: i32, w: u32, h: u32) -> Self {
-        VRect { origin: VPoint { x, y }, size: VSize { w, h } }
+        VRect {
+            origin: VPoint { x, y },
+            size: VSize { w, h },
+        }
     }
 
     /// Half-open `[x, x+w) × [y, y+h)` overlap test against another VRect.
@@ -105,10 +108,7 @@ impl VRect {
         let b1 = self.origin.y + self.size.h as i32;
         let r2 = other.origin.x + other.size.w as i32;
         let b2 = other.origin.y + other.size.h as i32;
-        self.origin.x < r2
-            && r1 > other.origin.x
-            && self.origin.y < b2
-            && b1 > other.origin.y
+        self.origin.x < r2 && r1 > other.origin.x && self.origin.y < b2 && b1 > other.origin.y
     }
 }
 
@@ -122,7 +122,10 @@ impl From<windows::Win32::Foundation::RECT> for VRect {
         let w = (r.right - r.left).max(0) as u32;
         let h = (r.bottom - r.top).max(0) as u32;
         VRect {
-            origin: VPoint { x: r.left, y: r.top },
+            origin: VPoint {
+                x: r.left,
+                y: r.top,
+            },
             size: VSize { w, h },
         }
     }
@@ -478,7 +481,18 @@ pub fn capture_display_scaled(
     }
     #[cfg(not(target_os = "windows"))]
     {
-        let _ = (src, target_w, target_h, jpeg_quality, grid_mode, grid_origin_x, grid_origin_y, grid_range_w, grid_range_h, marks);
+        let _ = (
+            src,
+            target_w,
+            target_h,
+            jpeg_quality,
+            grid_mode,
+            grid_origin_x,
+            grid_origin_y,
+            grid_range_w,
+            grid_range_h,
+            marks,
+        );
         Ok(None)
     }
 }
@@ -505,14 +519,20 @@ pub fn capture_display_scaled(
 /// `[]` as "no marks available, fall back to ruler-based positioning"
 /// gracefully.
 #[napi]
-pub async fn enumerate_ui_elements_in_rect(rect: VRect) -> napi::Result<Vec<UiElement>> {
+pub async fn enumerate_ui_elements_in_rect(
+    rect: VRect,
+    window_only: Option<bool>,
+) -> napi::Result<Vec<UiElement>> {
     #[cfg(target_os = "windows")]
     {
-        Ok(windows_impl::enumerate_ui_elements_in_rect(rect))
+        Ok(windows_impl::enumerate_ui_elements_in_rect(
+            rect,
+            window_only.unwrap_or(false),
+        ))
     }
     #[cfg(not(target_os = "windows"))]
     {
-        let _ = rect;
+        let _ = (rect, window_only);
         Ok(Vec::new())
     }
 }
@@ -604,8 +624,7 @@ pub fn capture_excluding(
 pub fn move_cursor(p: VPoint) -> napi::Result<VPoint> {
     #[cfg(target_os = "windows")]
     {
-        windows_impl::move_cursor(p)
-            .map_err(|e| napi::Error::from_reason(e))
+        windows_impl::move_cursor(p).map_err(|e| napi::Error::from_reason(e))
     }
     #[cfg(not(target_os = "windows"))]
     {
@@ -628,8 +647,7 @@ pub fn move_cursor(p: VPoint) -> napi::Result<VPoint> {
 pub fn click_mouse(button: u32, count: u32) -> napi::Result<()> {
     #[cfg(target_os = "windows")]
     {
-        windows_impl::click_mouse(button, count)
-            .map_err(|e| napi::Error::from_reason(e))
+        windows_impl::click_mouse(button, count).map_err(|e| napi::Error::from_reason(e))
     }
     #[cfg(not(target_os = "windows"))]
     {
@@ -648,8 +666,7 @@ pub fn click_mouse(button: u32, count: u32) -> napi::Result<()> {
 pub fn mouse_button_event(button: u32, down: bool) -> napi::Result<()> {
     #[cfg(target_os = "windows")]
     {
-        windows_impl::mouse_button_event(button, down)
-            .map_err(|e| napi::Error::from_reason(e))
+        windows_impl::mouse_button_event(button, down).map_err(|e| napi::Error::from_reason(e))
     }
     #[cfg(not(target_os = "windows"))]
     {
@@ -667,8 +684,7 @@ pub fn mouse_button_event(button: u32, down: bool) -> napi::Result<()> {
 pub fn mouse_scroll(dx: i32, dy: i32) -> napi::Result<()> {
     #[cfg(target_os = "windows")]
     {
-        windows_impl::mouse_scroll(dx, dy)
-            .map_err(|e| napi::Error::from_reason(e))
+        windows_impl::mouse_scroll(dx, dy).map_err(|e| napi::Error::from_reason(e))
     }
     #[cfg(not(target_os = "windows"))]
     {
@@ -697,8 +713,7 @@ pub fn mouse_scroll(dx: i32, dy: i32) -> napi::Result<()> {
 pub fn key_event(vk: u32, down: bool, extended: bool) -> napi::Result<()> {
     #[cfg(target_os = "windows")]
     {
-        windows_impl::key_event(vk, down, extended)
-            .map_err(|e| napi::Error::from_reason(e))
+        windows_impl::key_event(vk, down, extended).map_err(|e| napi::Error::from_reason(e))
     }
     #[cfg(not(target_os = "windows"))]
     {
@@ -718,8 +733,7 @@ pub fn key_event(vk: u32, down: bool, extended: bool) -> napi::Result<()> {
 pub fn type_text_unicode(text: String) -> napi::Result<()> {
     #[cfg(target_os = "windows")]
     {
-        windows_impl::type_text_unicode(&text)
-            .map_err(|e| napi::Error::from_reason(e))
+        windows_impl::type_text_unicode(&text).map_err(|e| napi::Error::from_reason(e))
     }
     #[cfg(not(target_os = "windows"))]
     {
@@ -735,8 +749,7 @@ pub fn type_text_unicode(text: String) -> napi::Result<()> {
 pub fn get_cursor_pos() -> napi::Result<VPoint> {
     #[cfg(target_os = "windows")]
     {
-        windows_impl::get_cursor_pos()
-            .map_err(|e| napi::Error::from_reason(e))
+        windows_impl::get_cursor_pos().map_err(|e| napi::Error::from_reason(e))
     }
     #[cfg(not(target_os = "windows"))]
     {
@@ -785,9 +798,7 @@ pub fn list_running_apps() -> napi::Result<Vec<AppHitInfo>> {
 /// and returns true. Pair every successful register with `unregister` at
 /// CU turn end so the worker thread + hook are released.
 #[napi(ts_args_type = "callback: () => void")]
-pub fn register_escape_hotkey(
-    callback: napi::threadsafe_function::ThreadsafeFunction<()>,
-) -> bool {
+pub fn register_escape_hotkey(callback: napi::threadsafe_function::ThreadsafeFunction<()>) -> bool {
     #[cfg(target_os = "windows")]
     {
         esc_hook::register(callback)
@@ -899,76 +910,67 @@ pub fn show_self_windows() {
 #[cfg(target_os = "windows")]
 mod windows_impl {
     use super::{
-        AppHitInfo, CaptureWindowImage, CaptureWindowOutcome,
-        DisplayCaptureResult, InstalledApp, MarkOverlay, UiElement,
-        VPoint, VRect, WindowMonitorInfo,
+        AppHitInfo, CaptureWindowImage, CaptureWindowOutcome, DisplayCaptureResult, InstalledApp,
+        MarkOverlay, UiElement, VPoint, VRect, WindowMonitorInfo,
     };
     use base64::Engine;
     use std::collections::{BTreeMap, BTreeSet};
     use std::path::Path;
 
+    use windows::core::{GUID, PROPVARIANT, VARIANT};
     use windows::core::{PCWSTR, PWSTR};
     use windows::Win32::Foundation::{
         CloseHandle, BOOL, ERROR_NO_MORE_ITEMS, HANDLE, HWND, LPARAM, POINT, RECT,
     };
+    use windows::Win32::Graphics::Dwm::{DwmFlush, DwmGetWindowAttribute, DWMWA_CLOAKED};
     use windows::Win32::Graphics::Gdi::{
-        BitBlt, CreateCompatibleBitmap, CreateCompatibleDC, DeleteDC,
-        DeleteObject, EnumDisplayMonitors, GetDC, GetDIBits,
-        ReleaseDC, SelectObject, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS,
-        HDC, HMONITOR, SRCCOPY,
+        BitBlt, CreateCompatibleBitmap, CreateCompatibleDC, DeleteDC, DeleteObject,
+        EnumDisplayMonitors, GetDC, GetDIBits, ReleaseDC, SelectObject, BITMAPINFO,
+        BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS, HDC, HMONITOR, SRCCOPY,
     };
-    use windows::Win32::Security::{GetTokenInformation, TokenElevation, TOKEN_ELEVATION, TOKEN_QUERY};
-    use windows::Win32::System::Registry::{
-        RegCloseKey, RegEnumKeyExW, RegOpenKeyExW, RegQueryValueExW, HKEY,
-        HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, KEY_READ, KEY_WOW64_32KEY, KEY_WOW64_64KEY,
-        REG_VALUE_TYPE,
+    use windows::Win32::Security::{
+        GetTokenInformation, TokenElevation, TOKEN_ELEVATION, TOKEN_QUERY,
+    };
+    use windows::Win32::Storage::Xps::{PrintWindow, PRINT_WINDOW_FLAGS};
+    use windows::Win32::System::Com::StructuredStorage::PropVariantToStringAlloc;
+    use windows::Win32::System::Com::{
+        CoCreateInstance, CoInitializeEx, CoTaskMemFree, CoUninitialize, CLSCTX_INPROC_SERVER,
+        COINIT_APARTMENTTHREADED,
     };
     use windows::Win32::System::Diagnostics::ToolHelp::{
         CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W,
         TH32CS_SNAPPROCESS,
     };
+    use windows::Win32::System::Registry::{
+        RegCloseKey, RegEnumKeyExW, RegOpenKeyExW, RegQueryValueExW, HKEY, HKEY_CURRENT_USER,
+        HKEY_LOCAL_MACHINE, KEY_READ, KEY_WOW64_32KEY, KEY_WOW64_64KEY, REG_VALUE_TYPE,
+    };
     use windows::Win32::System::Threading::{
-        AttachThreadInput, GetCurrentProcess, GetCurrentProcessId,
-        GetCurrentThreadId, OpenProcess, OpenProcessToken,
-        QueryFullProcessImageNameW, PROCESS_NAME_FORMAT,
+        AttachThreadInput, GetCurrentProcess, GetCurrentProcessId, GetCurrentThreadId, OpenProcess,
+        OpenProcessToken, QueryFullProcessImageNameW, PROCESS_NAME_FORMAT,
         PROCESS_QUERY_LIMITED_INFORMATION,
     };
-    use windows::Win32::UI::WindowsAndMessaging::{
-        BringWindowToTop, DrawIconEx, EnumWindows, FindWindowExW, FindWindowW,
-        GetClassNameW, GetCursorInfo, GetCursorPos, GetForegroundWindow, GetIconInfo,
-        GetSystemMetrics, GetWindowRect, GetWindowThreadProcessId,
-        IsIconic, IsWindowVisible, SetForegroundWindow, SetWindowPos,
-        ShowWindow, WindowFromPoint,
-        CURSORINFO, CURSOR_SHOWING, DI_NORMAL, HWND_TOP, ICONINFO,
-        SHOW_WINDOW_CMD, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN,
-        SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN, SW_HIDE, SWP_NOACTIVATE,
-        SWP_NOZORDER, SW_SHOWNOACTIVATE,
-    };
-    use windows::Win32::UI::Input::KeyboardAndMouse::{
-        SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, INPUT_MOUSE, KEYBDINPUT,
-        KEYBD_EVENT_FLAGS, KEYEVENTF_EXTENDEDKEY, KEYEVENTF_KEYUP,
-        KEYEVENTF_UNICODE, MOUSEEVENTF_ABSOLUTE, MOUSEEVENTF_HWHEEL,
-        MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP, MOUSEEVENTF_MIDDLEDOWN,
-        MOUSEEVENTF_MIDDLEUP, MOUSEEVENTF_MOVE, MOUSEEVENTF_RIGHTDOWN,
-        MOUSEEVENTF_RIGHTUP, MOUSEEVENTF_VIRTUALDESK, MOUSEEVENTF_WHEEL,
-        MOUSEINPUT, MOUSE_EVENT_FLAGS, VIRTUAL_KEY,
-    };
-    use windows::Win32::Storage::Xps::{PrintWindow, PRINT_WINDOW_FLAGS};
-    use windows::core::{GUID, PROPVARIANT, VARIANT};
-    use windows::Win32::System::Com::{
-        CoCreateInstance, CoInitializeEx, CoTaskMemFree, CoUninitialize,
-        CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED,
-    };
-    use windows::Win32::System::Com::StructuredStorage::PropVariantToStringAlloc;
-    use windows::Win32::UI::Shell::PropertiesSystem::{
-        SHGetPropertyStoreForWindow, IPropertyStore, PROPERTYKEY,
-    };
-    use windows::Win32::UI::Shell::{
-        SHCreateItemFromParsingName, IShellItem, SIGDN_NORMALDISPLAY,
-    };
-    use windows::Win32::Graphics::Dwm::{DwmFlush, DwmGetWindowAttribute, DWMWA_CLOAKED};
     use windows::Win32::UI::HiDpi::{
         SetProcessDpiAwarenessContext, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2,
+    };
+    use windows::Win32::UI::Input::KeyboardAndMouse::{
+        SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, INPUT_MOUSE, KEYBDINPUT, KEYBD_EVENT_FLAGS,
+        KEYEVENTF_EXTENDEDKEY, KEYEVENTF_KEYUP, KEYEVENTF_UNICODE, MOUSEEVENTF_ABSOLUTE,
+        MOUSEEVENTF_HWHEEL, MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP, MOUSEEVENTF_MIDDLEDOWN,
+        MOUSEEVENTF_MIDDLEUP, MOUSEEVENTF_MOVE, MOUSEEVENTF_RIGHTDOWN, MOUSEEVENTF_RIGHTUP,
+        MOUSEEVENTF_VIRTUALDESK, MOUSEEVENTF_WHEEL, MOUSEINPUT, MOUSE_EVENT_FLAGS, VIRTUAL_KEY,
+    };
+    use windows::Win32::UI::Shell::PropertiesSystem::{
+        IPropertyStore, SHGetPropertyStoreForWindow, PROPERTYKEY,
+    };
+    use windows::Win32::UI::Shell::{IShellItem, SHCreateItemFromParsingName, SIGDN_NORMALDISPLAY};
+    use windows::Win32::UI::WindowsAndMessaging::{
+        BringWindowToTop, DrawIconEx, EnumWindows, FindWindowExW, FindWindowW, GetClassNameW,
+        GetCursorInfo, GetCursorPos, GetForegroundWindow, GetIconInfo, GetSystemMetrics,
+        GetWindowRect, GetWindowThreadProcessId, IsIconic, IsWindowVisible, SetForegroundWindow,
+        SetWindowPos, ShowWindow, WindowFromPoint, CURSORINFO, CURSOR_SHOWING, DI_NORMAL, HWND_TOP,
+        ICONINFO, SHOW_WINDOW_CMD, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN,
+        SM_YVIRTUALSCREEN, SWP_NOACTIVATE, SWP_NOZORDER, SW_HIDE, SW_SHOWNOACTIVATE,
     };
     // UIAutomation — IUIAutomation::FindAll path used by enumerate_ui_elements_in_rect
     // for the SoM (Set-of-Mark) overlay. CUIAutomation is the COM CLSID;
@@ -976,29 +978,26 @@ mod windows_impl {
     // are typed constants windows-rs generated from the UIA TLB. We root at
     // GetRootElement (the desktop) so taskbar / Shell_TrayWnd are included —
     // foreground-window-scoped FindAll would miss them.
+    use std::sync::{Mutex, OnceLock};
     use windows::Win32::UI::Accessibility::{
-        CUIAutomation, ExpandCollapseState_Collapsed, IUIAutomation,
-        IUIAutomationCondition, IUIAutomationElement, IUIAutomationElementArray,
-        IUIAutomationExpandCollapsePattern, TreeScope_Children, TreeScope_Subtree,
-        UIA_ExpandCollapsePatternId,
-        UIA_AppBarControlTypeId,
-        UIA_ButtonControlTypeId, UIA_CalendarControlTypeId, UIA_CheckBoxControlTypeId,
-        UIA_ComboBoxControlTypeId, UIA_CustomControlTypeId, UIA_DataGridControlTypeId,
-        UIA_DataItemControlTypeId, UIA_DocumentControlTypeId, UIA_EditControlTypeId,
+        CUIAutomation, ExpandCollapseState_Collapsed, IUIAutomation, IUIAutomationCondition,
+        IUIAutomationElement, IUIAutomationElementArray, IUIAutomationExpandCollapsePattern,
+        TreeScope_Children, TreeScope_Subtree, UIA_AppBarControlTypeId, UIA_ButtonControlTypeId,
+        UIA_CalendarControlTypeId, UIA_CheckBoxControlTypeId, UIA_ComboBoxControlTypeId,
+        UIA_CustomControlTypeId, UIA_DataGridControlTypeId, UIA_DataItemControlTypeId,
+        UIA_DocumentControlTypeId, UIA_EditControlTypeId, UIA_ExpandCollapsePatternId,
         UIA_GroupControlTypeId, UIA_HeaderControlTypeId, UIA_HeaderItemControlTypeId,
         UIA_HyperlinkControlTypeId, UIA_ImageControlTypeId, UIA_IsControlElementPropertyId,
         UIA_ListControlTypeId, UIA_ListItemControlTypeId, UIA_MenuBarControlTypeId,
         UIA_MenuControlTypeId, UIA_MenuItemControlTypeId, UIA_PaneControlTypeId,
-        UIA_ProgressBarControlTypeId, UIA_RadioButtonControlTypeId,
-        UIA_ScrollBarControlTypeId, UIA_SemanticZoomControlTypeId,
-        UIA_SeparatorControlTypeId, UIA_SliderControlTypeId, UIA_SpinnerControlTypeId,
-        UIA_SplitButtonControlTypeId, UIA_StatusBarControlTypeId, UIA_TabControlTypeId,
-        UIA_TabItemControlTypeId, UIA_TableControlTypeId, UIA_TextControlTypeId,
-        UIA_TitleBarControlTypeId, UIA_ToolBarControlTypeId, UIA_ToolTipControlTypeId,
-        UIA_TreeControlTypeId, UIA_TreeItemControlTypeId, UIA_WindowControlTypeId,
-        UIA_CONTROLTYPE_ID,
+        UIA_ProgressBarControlTypeId, UIA_RadioButtonControlTypeId, UIA_ScrollBarControlTypeId,
+        UIA_SemanticZoomControlTypeId, UIA_SeparatorControlTypeId, UIA_SliderControlTypeId,
+        UIA_SpinnerControlTypeId, UIA_SplitButtonControlTypeId, UIA_StatusBarControlTypeId,
+        UIA_TabControlTypeId, UIA_TabItemControlTypeId, UIA_TableControlTypeId,
+        UIA_TextControlTypeId, UIA_TitleBarControlTypeId, UIA_ToolBarControlTypeId,
+        UIA_ToolTipControlTypeId, UIA_TreeControlTypeId, UIA_TreeItemControlTypeId,
+        UIA_WindowControlTypeId, UIA_CONTROLTYPE_ID,
     };
-    use std::sync::{Mutex, OnceLock};
 
     // VPoint / VSize / VRect are crate-root #[napi(object)] types — see
     // top of file for the canonical-coord-system contract and the two
@@ -1012,12 +1011,8 @@ mod windows_impl {
     /// touch coords call `ensure_dpi_aware()` first.
     static DPI_INITIALIZED: OnceLock<()> = OnceLock::new();
     pub fn ensure_dpi_aware() {
-        DPI_INITIALIZED.get_or_init(|| {
-            unsafe {
-                let _ = SetProcessDpiAwarenessContext(
-                    DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2,
-                );
-            }
+        DPI_INITIALIZED.get_or_init(|| unsafe {
+            let _ = SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
         });
     }
 
@@ -1088,7 +1083,9 @@ mod windows_impl {
             COM_REFCOUNT.with(|c| {
                 let mut n = c.borrow_mut();
                 if *n == 0 {
-                    unsafe { let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED); }
+                    unsafe {
+                        let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
+                    }
                 }
                 *n += 1;
             });
@@ -1102,7 +1099,9 @@ mod windows_impl {
                 let mut n = c.borrow_mut();
                 *n -= 1;
                 if *n == 0 {
-                    unsafe { CoUninitialize(); }
+                    unsafe {
+                        CoUninitialize();
+                    }
                 }
             });
         }
@@ -1147,8 +1146,7 @@ mod windows_impl {
         let _com = ComGuard::init();
         let wide = to_wide(parsing_name);
         unsafe {
-            let item: IShellItem =
-                SHCreateItemFromParsingName(PCWSTR(wide.as_ptr()), None).ok()?;
+            let item: IShellItem = SHCreateItemFromParsingName(PCWSTR(wide.as_ptr()), None).ok()?;
             let pwstr = item.GetDisplayName(SIGDN_NORMALDISPLAY).ok()?;
             if pwstr.0.is_null() {
                 return None;
@@ -1260,7 +1258,7 @@ mod windows_impl {
     ///   - exclude container roles (Window, Pane, Group, Document, TitleBar).
     /// Out-of-bounds elements `continue` and don't consume the source's cap.
 
-    pub fn enumerate_ui_elements_in_rect(rect: VRect) -> Vec<UiElement> {
+    pub fn enumerate_ui_elements_in_rect(rect: VRect, window_only: bool) -> Vec<UiElement> {
         ensure_dpi_aware();
         let _com = ComGuard::init();
         unsafe {
@@ -1282,21 +1280,30 @@ mod windows_impl {
 
             // ── System chrome sources (enumerate first, independent caps) ──
 
-            // Source 1: Taskbar icons — Shell_TrayWnd.
-            let taskbar_class = to_wide("Shell_TrayWnd");
-            if let Ok(hwnd) = FindWindowW(PCWSTR(taskbar_class.as_ptr()), PCWSTR::null()) {
-                if !hwnd.0.is_null() {
-                    if let Ok(el) = automation.ElementFromHandle(hwnd) {
-                        if let Ok(arr) = el.FindAll(TreeScope_Subtree, &condition) {
-                            let before = results.len();
-                            collect_into(&automation, &arr, &rect, &mut results, &mut seen, TASKBAR_CAP);
-                            for r in &mut results[before..] {
-                                r.is_system_chrome = Some(true);
+            if !window_only {
+                // Source 1: Taskbar icons — Shell_TrayWnd.
+                let taskbar_class = to_wide("Shell_TrayWnd");
+                if let Ok(hwnd) = FindWindowW(PCWSTR(taskbar_class.as_ptr()), PCWSTR::null()) {
+                    if !hwnd.0.is_null() {
+                        if let Ok(el) = automation.ElementFromHandle(hwnd) {
+                            if let Ok(arr) = el.FindAll(TreeScope_Subtree, &condition) {
+                                let before = results.len();
+                                collect_into(
+                                    &automation,
+                                    &arr,
+                                    &rect,
+                                    &mut results,
+                                    &mut seen,
+                                    TASKBAR_CAP,
+                                );
+                                for r in &mut results[before..] {
+                                    r.is_system_chrome = Some(true);
+                                }
                             }
                         }
                     }
                 }
-            }
+            } // !window_only
 
             // ── Regular sources (enumerate after system chrome) ──
 
@@ -1311,47 +1318,77 @@ mod windows_impl {
                 if !is_host {
                     if let Ok(el) = automation.ElementFromHandle(cur_fg) {
                         if let Ok(arr) = el.FindAll(TreeScope_Subtree, &condition) {
-                            collect_into(&automation, &arr, &rect, &mut results, &mut seen, REGULAR_CAP);
+                            collect_into(
+                                &automation,
+                                &arr,
+                                &rect,
+                                &mut results,
+                                &mut seen,
+                                REGULAR_CAP,
+                            );
                         }
                     }
                 }
             }
 
-            // Source 2: Desktop icons — enumerate, then keep only icons
-            // whose center point hits the desktop itself (Progman/WorkerW)
-            // via WindowFromPoint. Icons covered by other windows are
-            // dropped. No class-name, area-ratio, or cloak heuristics.
-            {
-                let before = results.len();
-                enumerate_desktop_icons(&automation, &condition, &rect, &mut results, &mut seen);
-                let mut kept_new: Vec<UiElement> = results.drain(before..).filter(|el| {
-                    let cx = el.bbox.origin.x + (el.bbox.size.w as i32 / 2);
-                    let cy = el.bbox.origin.y + (el.bbox.size.h as i32 / 2);
-                    let hit = WindowFromPoint(POINT { x: cx, y: cy });
-                    if hit.0.is_null() { return false; }
-                    let mut cls = [0u16; 32];
-                    let len = GetClassNameW(hit, &mut cls) as usize;
-                    if len == 0 { return false; }
-                    let cls_str = String::from_utf16_lossy(&cls[..len.min(32)]);
-                    let cls_str = cls_str.trim_end_matches('\0');
-                    cls_str == "Progman" || cls_str == "WorkerW"
-                        || cls_str == "SHELLDLL_DefView"
-                        || cls_str == "SysListView32"
-                }).collect();
-                for r in &mut kept_new {
-                    r.is_system_chrome = Some(true);
+            if !window_only {
+                // Source 2: Desktop icons — enumerate, then keep only icons
+                // whose center point hits the desktop itself (Progman/WorkerW)
+                // via WindowFromPoint. Icons covered by other windows are
+                // dropped. No class-name, area-ratio, or cloak heuristics.
+                {
+                    let before = results.len();
+                    enumerate_desktop_icons(
+                        &automation,
+                        &condition,
+                        &rect,
+                        &mut results,
+                        &mut seen,
+                    );
+                    let mut kept_new: Vec<UiElement> = results
+                        .drain(before..)
+                        .filter(|el| {
+                            let cx = el.bbox.origin.x + (el.bbox.size.w as i32 / 2);
+                            let cy = el.bbox.origin.y + (el.bbox.size.h as i32 / 2);
+                            let hit = WindowFromPoint(POINT { x: cx, y: cy });
+                            if hit.0.is_null() {
+                                return false;
+                            }
+                            let mut cls = [0u16; 32];
+                            let len = GetClassNameW(hit, &mut cls) as usize;
+                            if len == 0 {
+                                return false;
+                            }
+                            let cls_str = String::from_utf16_lossy(&cls[..len.min(32)]);
+                            let cls_str = cls_str.trim_end_matches('\0');
+                            cls_str == "Progman"
+                                || cls_str == "WorkerW"
+                                || cls_str == "SHELLDLL_DefView"
+                                || cls_str == "SysListView32"
+                        })
+                        .collect();
+                    for r in &mut kept_new {
+                        r.is_system_chrome = Some(true);
+                    }
+                    results.append(&mut kept_new);
                 }
-                results.append(&mut kept_new);
-            }
 
-            // Source 4 (fallback): desktop root's direct children — covers
-            // floating popups / context menus / system tray flyouts that
-            // aren't subtrees of the foreground app or the above sources.
-            if let Ok(root) = automation.GetRootElement() {
-                if let Ok(arr) = root.FindAll(TreeScope_Children, &condition) {
-                    collect_into(&automation, &arr, &rect, &mut results, &mut seen, REGULAR_CAP);
+                // Source 4 (fallback): desktop root's direct children — covers
+                // floating popups / context menus / system tray flyouts that
+                // aren't subtrees of the foreground app or the above sources.
+                if let Ok(root) = automation.GetRootElement() {
+                    if let Ok(arr) = root.FindAll(TreeScope_Children, &condition) {
+                        collect_into(
+                            &automation,
+                            &arr,
+                            &rect,
+                            &mut results,
+                            &mut seen,
+                            REGULAR_CAP,
+                        );
+                    }
                 }
-            }
+            } // !window_only
 
             results
         }
@@ -1375,11 +1412,17 @@ mod windows_impl {
         if let Ok(hwnd) = FindWindowW(PCWSTR(progman_class.as_ptr()), PCWSTR::null()) {
             if !hwnd.0.is_null() {
                 let defview_class = to_wide("SHELLDLL_DefView");
-                let child = FindWindowExW(hwnd, HWND::default(),
-                    PCWSTR(defview_class.as_ptr()), PCWSTR::null());
+                let child = FindWindowExW(
+                    hwnd,
+                    HWND::default(),
+                    PCWSTR(defview_class.as_ptr()),
+                    PCWSTR::null(),
+                );
                 if let Ok(child_hwnd) = child {
                     if !child_hwnd.0.is_null() {
-                        if enumerate_listview_icons(automation, condition, rect, results, seen, hwnd) {
+                        if enumerate_listview_icons(
+                            automation, condition, rect, results, seen, hwnd,
+                        ) {
                             return; // Progman worked.
                         }
                     }
@@ -1391,10 +1434,16 @@ mod windows_impl {
         let worker_class = to_wide("WorkerW");
         let mut hwnd = FindWindowW(PCWSTR(worker_class.as_ptr()), PCWSTR::null());
         while let Ok(cur) = hwnd {
-            if cur.0.is_null() { break; }
+            if cur.0.is_null() {
+                break;
+            }
             let defview_class = to_wide("SHELLDLL_DefView");
-            let child = FindWindowExW(cur, HWND::default(),
-                PCWSTR(defview_class.as_ptr()), PCWSTR::null());
+            let child = FindWindowExW(
+                cur,
+                HWND::default(),
+                PCWSTR(defview_class.as_ptr()),
+                PCWSTR::null(),
+            );
             if let Ok(child_hwnd) = child {
                 if !child_hwnd.0.is_null() {
                     if enumerate_listview_icons(automation, condition, rect, results, seen, cur) {
@@ -1402,8 +1451,12 @@ mod windows_impl {
                     }
                 }
             }
-            hwnd = FindWindowExW(HWND::default(), cur,
-                PCWSTR(worker_class.as_ptr()), PCWSTR::null());
+            hwnd = FindWindowExW(
+                HWND::default(),
+                cur,
+                PCWSTR(worker_class.as_ptr()),
+                PCWSTR::null(),
+            );
         }
     }
 
@@ -1419,14 +1472,22 @@ mod windows_impl {
     ) -> bool {
         // Walk: host → SHELLDLL_DefView → SysListView32
         let defview_class = to_wide("SHELLDLL_DefView");
-        let defview = match FindWindowExW(host_hwnd, HWND::default(),
-            PCWSTR(defview_class.as_ptr()), PCWSTR::null()) {
+        let defview = match FindWindowExW(
+            host_hwnd,
+            HWND::default(),
+            PCWSTR(defview_class.as_ptr()),
+            PCWSTR::null(),
+        ) {
             Ok(h) if !h.0.is_null() => h,
             _ => return false,
         };
         let listview_class = to_wide("SysListView32");
-        let listview = match FindWindowExW(defview, HWND::default(),
-            PCWSTR(listview_class.as_ptr()), PCWSTR::null()) {
+        let listview = match FindWindowExW(
+            defview,
+            HWND::default(),
+            PCWSTR(listview_class.as_ptr()),
+            PCWSTR::null(),
+        ) {
             Ok(h) if !h.0.is_null() => h,
             _ => return false,
         };
@@ -1488,18 +1549,22 @@ mod windows_impl {
             let intersect_w = ((bbox.origin.x + bbox.size.w as i32)
                 .min(rect.origin.x + rect.size.w as i32)
                 - bbox.origin.x.max(rect.origin.x))
-                .max(0) as u64;
+            .max(0) as u64;
             let intersect_h = ((bbox.origin.y + bbox.size.h as i32)
                 .min(rect.origin.y + rect.size.h as i32)
                 - bbox.origin.y.max(rect.origin.y))
-                .max(0) as u64;
+            .max(0) as u64;
             let intersect_area = intersect_w * intersect_h;
             let bbox_area = (bbox.size.w as u64) * (bbox.size.h as u64);
             if bbox_area == 0 || (intersect_area * 2) < bbox_area {
                 continue;
             }
             // CurrentIsOffscreen catches scrolled-out-of-view items.
-            if el.CurrentIsOffscreen().map(|v| v.as_bool()).unwrap_or(false) {
+            if el
+                .CurrentIsOffscreen()
+                .map(|v| v.as_bool())
+                .unwrap_or(false)
+            {
                 continue;
             }
             // Walk ancestors: if any has ExpandCollapseState.Collapsed,
@@ -1513,8 +1578,10 @@ mod windows_impl {
             // ExpandCollapse ancestor check — only for dropdown/expand types.
             if matches!(
                 role_id,
-                UIA_DataItemControlTypeId | UIA_ListItemControlTypeId
-                    | UIA_MenuItemControlTypeId | UIA_TreeItemControlTypeId
+                UIA_DataItemControlTypeId
+                    | UIA_ListItemControlTypeId
+                    | UIA_MenuItemControlTypeId
+                    | UIA_TreeItemControlTypeId
             ) {
                 let mut ancestor = el.clone();
                 let mut collapsed = false;
@@ -1663,8 +1730,7 @@ mod windows_impl {
             let sub_w = to_wide(&sub_path);
             let mut sub_hkey = HKEY::default();
             unsafe {
-                if RegOpenKeyExW(root, PCWSTR(sub_w.as_ptr()), 0, access, &mut sub_hkey).is_err()
-                {
+                if RegOpenKeyExW(root, PCWSTR(sub_w.as_ptr()), 0, access, &mut sub_hkey).is_err() {
                     continue;
                 }
             }
@@ -1721,7 +1787,7 @@ mod windows_impl {
                 "unins001.exe",
                 "unins002.exe",
                 "uninstaller.exe",
-                "setup.exe",       // sometimes installers self-register their setup as DisplayIcon
+                "setup.exe", // sometimes installers self-register their setup as DisplayIcon
             ];
             if UNINSTALLER_BASENAMES.contains(&lower_basename.as_str()) {
                 continue;
@@ -1733,10 +1799,7 @@ mod windows_impl {
             // NOT the actual app exe. Many drivers / SDKs / RGB-fan
             // utilities show up under DisplayName for their installer
             // there, which would launch the installer not the app.
-            if path
-                .to_lowercase()
-                .contains("\\package cache\\")
-            {
+            if path.to_lowercase().contains("\\package cache\\") {
                 continue;
             }
             // Dedupe by exe path (case-insensitive). Same app can have
@@ -1816,7 +1879,11 @@ mod windows_impl {
         if let Some(pos) = s.rfind(',') {
             // Only strip if the suffix looks like an integer (avoids
             // mangling paths that legitimately contain commas).
-            if s[pos + 1..].trim().chars().all(|c| c.is_ascii_digit() || c == '-') {
+            if s[pos + 1..]
+                .trim()
+                .chars()
+                .all(|c| c.is_ascii_digit() || c == '-')
+            {
                 s.truncate(pos);
             }
         }
@@ -1907,8 +1974,8 @@ mod windows_impl {
             if !aumid.is_empty() && aumid.contains('!') {
                 let app_identifier = format!("shell:AppsFolder\\{}", aumid);
                 if state.seen.insert(app_identifier.clone()) {
-                    let display_name = get_shell_display_name(&app_identifier)
-                        .unwrap_or_else(|| aumid.clone());
+                    let display_name =
+                        get_shell_display_name(&app_identifier).unwrap_or_else(|| aumid.clone());
                     state.results.push(AppHitInfo {
                         display_name,
                         app_identifier,
@@ -1995,9 +2062,7 @@ mod windows_impl {
     /// Lowercased basename of a Win path. Returns None if path is empty
     /// or has no separator-separated component.
     fn basename_lower(path: &str) -> Option<String> {
-        let last = path
-            .rsplit(|c| c == '\\' || c == '/')
-            .next()?;
+        let last = path.rsplit(|c| c == '\\' || c == '/').next()?;
         if last.is_empty() {
             return None;
         }
@@ -2038,15 +2103,14 @@ mod windows_impl {
     ) -> (Option<WindowMatch>, Vec<(String, String)>) {
         // Detect UWP form: AI passed `shell:AppsFolder\<AUMID>` (from
         // listInstalledApps merged output) or a bare AUMID (contains `!`).
-        let aumid_target: Option<String> = if let Some(s) =
-            app_identifier.strip_prefix("shell:AppsFolder\\")
-        {
-            Some(s.to_string())
-        } else if app_identifier.contains('!') {
-            Some(app_identifier.to_string())
-        } else {
-            None
-        };
+        let aumid_target: Option<String> =
+            if let Some(s) = app_identifier.strip_prefix("shell:AppsFolder\\") {
+                Some(s.to_string())
+            } else if app_identifier.contains('!') {
+                Some(app_identifier.to_string())
+            } else {
+                None
+            };
 
         if let Some(aumid) = aumid_target {
             return find_window_by_aumid(&aumid);
@@ -2095,9 +2159,7 @@ mod windows_impl {
     /// the first whose AUMID matches `target` (case-insensitive). The
     /// HWND returned is the ApplicationFrameWindow — PrintWindow on it
     /// captures the composited UWP content correctly (PW_RENDERFULLCONTENT).
-    fn find_window_by_aumid(
-        target: &str,
-    ) -> (Option<WindowMatch>, Vec<(String, String)>) {
+    fn find_window_by_aumid(target: &str) -> (Option<WindowMatch>, Vec<(String, String)>) {
         let mut state = AumidFindState {
             target_lower: target.to_lowercase(),
             matched: None,
@@ -2131,10 +2193,7 @@ mod windows_impl {
         visible_seen: Vec<(String, String)>,
     }
 
-    unsafe extern "system" fn aumid_find_enum_proc(
-        hwnd: HWND,
-        lparam: LPARAM,
-    ) -> BOOL {
+    unsafe extern "system" fn aumid_find_enum_proc(hwnd: HWND, lparam: LPARAM) -> BOOL {
         let state_ptr = lparam.0 as *mut AumidFindState;
         let state = match state_ptr.as_mut() {
             Some(s) => s,
@@ -2163,7 +2222,9 @@ mod windows_impl {
         // Bound the visible_seen list so a long EnumWindows pass with
         // many UWP windows doesn't blow up the diagnostic string.
         if state.visible_seen.len() < 24 {
-            state.visible_seen.push((aumid.clone(), "<uwp>".to_string()));
+            state
+                .visible_seen
+                .push((aumid.clone(), "<uwp>".to_string()));
         }
         if aumid.to_lowercase() == state.target_lower {
             state.matched = Some((hwnd.0 as isize, aumid));
@@ -2220,9 +2281,7 @@ mod windows_impl {
         // Record visible-window diagnostic up to a cap.
         if state.visible_seen.len() < 24 {
             let bn = basename_lower(&path).unwrap_or_else(|| path.clone());
-            state
-                .visible_seen
-                .push((bn, String::new()));
+            state.visible_seen.push((bn, String::new()));
         }
 
         // Step 1: exact match.
@@ -2249,7 +2308,11 @@ mod windows_impl {
     /// path with PW_RENDERFULLCONTENT for DWM compatibility. Returns a
     /// CaptureWindowOutcome with image=None and a diagnostic on any
     /// failure step.
-    pub fn capture_window(app_identifier: &str, grid_mode: u8, marks: Option<Vec<MarkOverlay>>) -> CaptureWindowOutcome {
+    pub fn capture_window(
+        app_identifier: &str,
+        grid_mode: u8,
+        marks: Option<Vec<MarkOverlay>>,
+    ) -> CaptureWindowOutcome {
         ensure_dpi_aware();
         let (matched, visible_seen) = find_first_visible_window_for_app(app_identifier);
         let m = match matched {
@@ -2299,8 +2362,7 @@ mod windows_impl {
                 "basename-match: input='{app_identifier}' → matched path='{}' \
                  (lowercased basename {})",
                 m.matched_path,
-                make_basename_needle(app_identifier)
-                    .unwrap_or_else(|| "<n/a>".to_string()),
+                make_basename_needle(app_identifier).unwrap_or_else(|| "<n/a>".to_string()),
             ),
             AppMatchKind::Aumid => format!(
                 "aumid-match: input='{app_identifier}' → matched AUMID='{}' \
@@ -2405,7 +2467,10 @@ mod windows_impl {
             (width, height)
         } else {
             let ratio = long_edge_cap as f64 / long_edge as f64;
-            ((width as f64 * ratio).round() as i32, (height as f64 * ratio).round() as i32)
+            (
+                (width as f64 * ratio).round() as i32,
+                (height as f64 * ratio).round() as i32,
+            )
         };
 
         // Set up DC + bitmap. RAII via early-return + manual cleanup
@@ -2413,7 +2478,9 @@ mod windows_impl {
         // a guard pattern by tracking what's been created and DeleteDC /
         // DeleteObject in the right order on each exit.
         let result = unsafe {
-            capture_window_inner(hwnd, rect.left, rect.top, width, height, target_w, target_h, 92, grid_mode, marks)
+            capture_window_inner(
+                hwnd, rect.left, rect.top, width, height, target_w, target_h, 92, grid_mode, marks,
+            )
         };
         match result {
             Ok(image) => CaptureWindowOutcome {
@@ -2477,9 +2544,9 @@ mod windows_impl {
                     let py = cy + dy;
                     if px >= 0 && px < w as i32 && py >= 0 && py < h as i32 {
                         let idx = ((py as usize) * (w as usize) + (px as usize)) * 3;
-                        buf[idx] = 0;       // R
+                        buf[idx] = 0; // R
                         buf[idx + 1] = 255; // G
-                        buf[idx + 2] = 0;   // B
+                        buf[idx + 2] = 0; // B
                     }
                 }
             }
@@ -2518,7 +2585,7 @@ mod windows_impl {
         if x >= 0 && x < w as i32 && y >= 0 && y < h as i32 {
             let idx = ((y as usize) * (w as usize) + (x as usize)) * 3;
             let inv = 1.0 - alpha;
-            buf[idx]     = (buf[idx]     as f32 * inv + r as f32 * alpha) as u8;
+            buf[idx] = (buf[idx] as f32 * inv + r as f32 * alpha) as u8;
             buf[idx + 1] = (buf[idx + 1] as f32 * inv + g as f32 * alpha) as u8;
             buf[idx + 2] = (buf[idx + 2] as f32 * inv + b as f32 * alpha) as u8;
         }
@@ -2526,7 +2593,7 @@ mod windows_impl {
 
     fn darken_px(buf: &mut [u8], w: u32, _h: u32, x: i32, y: i32) {
         let idx = ((y as usize) * (w as usize) + (x as usize)) * 3;
-        buf[idx]     = buf[idx]     / 2;
+        buf[idx] = buf[idx] / 2;
         buf[idx + 1] = buf[idx + 1] / 2;
         buf[idx + 2] = buf[idx + 2] / 2;
     }
@@ -2555,14 +2622,20 @@ mod windows_impl {
     }
 
     fn number_pixel_width(num: u32) -> i32 {
-        let digits = if num == 0 { 1 } else { (num as f64).log10() as i32 + 1 };
+        let digits = if num == 0 {
+            1
+        } else {
+            (num as f64).log10() as i32 + 1
+        };
         digits * (FONT_W + 1) - 1
     }
 
     const NICE_VALUES: [f64; 5] = [1.0, 2.0, 2.5, 5.0, 10.0];
 
     fn nice_round(raw: f64) -> f64 {
-        if raw <= 0.0 { return 1.0; }
+        if raw <= 0.0 {
+            return 1.0;
+        }
         let exp = 10.0_f64.powf(raw.log10().floor());
         let frac = raw / exp;
         let mut best = NICE_VALUES[0];
@@ -2589,9 +2662,16 @@ mod windows_impl {
     /// and draws tick marks; pass 2 resolves corner conflicts (when two adjacent
     /// rulers both want to place a number near the same corner, only the one
     /// with the smaller pixel-distance to the corner point survives).
-    fn draw_grid_on_rgb(buf: &mut [u8], w: u32, h: u32, mode: u8,
-                        coord_origin_x: i32, coord_origin_y: i32,
-                        coord_range_w: u32, coord_range_h: u32) {
+    fn draw_grid_on_rgb(
+        buf: &mut [u8],
+        w: u32,
+        h: u32,
+        mode: u8,
+        coord_origin_x: i32,
+        coord_origin_y: i32,
+        coord_range_w: u32,
+        coord_range_h: u32,
+    ) {
         let w_i = w as i32;
         let h_i = h as i32;
         let tb = 14_i32;
@@ -2639,16 +2719,21 @@ mod windows_impl {
             let lv = vx.round() as u32;
             let is_label = is_multiple(vx, label_ivl_x);
             let tl = if is_label { label_tick } else { plain_tick };
-            for y in 0..tl { blend_px(buf, w, h, cx, y, 255, 0, 0, 0.5); }
+            for y in 0..tl {
+                blend_px(buf, w, h, cx, y, 255, 0, 0, 0.5);
+            }
             if is_label {
                 let nw = number_pixel_width(lv);
                 let tx0 = (cx - nw / 2).max(0);
                 let ty0 = tb - FONT_H;
                 labels.push(LabelInfo {
                     kind: 0,
-                    text_x0: tx0, text_y0: ty0,
-                    text_x1: tx0 + nw, text_y1: tb,
-                    value: lv, nw,
+                    text_x0: tx0,
+                    text_y0: ty0,
+                    text_x1: tx0 + nw,
+                    text_y1: tb,
+                    value: lv,
+                    nw,
                 });
             }
             vx += tick_ivl_x;
@@ -2661,16 +2746,21 @@ mod windows_impl {
             let lv = vy.round() as u32;
             let is_label = is_multiple(vy, label_ivl_y) && vy > oy + 0.01;
             let tl = if is_label { label_tick } else { plain_tick };
-            for x in 0..tl { blend_px(buf, w, h, x, cy, 255, 0, 0, 0.5); }
+            for x in 0..tl {
+                blend_px(buf, w, h, x, cy, 255, 0, 0, 0.5);
+            }
             if is_label {
                 let nw = number_pixel_width(lv);
                 let tx0 = label_tick + 2;
                 let ty0 = cy - FONT_H / 2;
                 labels.push(LabelInfo {
                     kind: 1,
-                    text_x0: tx0, text_y0: ty0,
-                    text_x1: tx0 + nw, text_y1: ty0 + FONT_H,
-                    value: lv, nw,
+                    text_x0: tx0,
+                    text_y0: ty0,
+                    text_x1: tx0 + nw,
+                    text_y1: ty0 + FONT_H,
+                    value: lv,
+                    nw,
                 });
             }
             vy += tick_ivl_y;
@@ -2683,16 +2773,21 @@ mod windows_impl {
             let lv = vx.round() as u32;
             let is_label = is_multiple(vx, label_ivl_x);
             let tl = if is_label { label_tick } else { plain_tick };
-            for y in (h_i - tl)..h_i { blend_px(buf, w, h, cx, y, 255, 0, 0, 0.5); }
+            for y in (h_i - tl)..h_i {
+                blend_px(buf, w, h, cx, y, 255, 0, 0, 0.5);
+            }
             if is_label {
                 let nw = number_pixel_width(lv);
                 let tx0 = (cx - nw / 2).max(0);
                 let ty0 = h_i - tb;
                 labels.push(LabelInfo {
                     kind: 2,
-                    text_x0: tx0, text_y0: ty0,
-                    text_x1: tx0 + nw, text_y1: ty0 + FONT_H,
-                    value: lv, nw,
+                    text_x0: tx0,
+                    text_y0: ty0,
+                    text_x1: tx0 + nw,
+                    text_y1: ty0 + FONT_H,
+                    value: lv,
+                    nw,
                 });
             }
             vx += tick_ivl_x;
@@ -2705,16 +2800,21 @@ mod windows_impl {
             let lv = vy.round() as u32;
             let is_label = is_multiple(vy, label_ivl_y) && vy > oy + 0.01;
             let tl = if is_label { label_tick } else { plain_tick };
-            for x in (w_i - tl)..w_i { blend_px(buf, w, h, x, cy, 255, 0, 0, 0.5); }
+            for x in (w_i - tl)..w_i {
+                blend_px(buf, w, h, x, cy, 255, 0, 0, 0.5);
+            }
             if is_label {
                 let nw = number_pixel_width(lv);
                 let tx0 = w_i - label_tick - 2 - nw;
                 let ty0 = cy - FONT_H / 2;
                 labels.push(LabelInfo {
                     kind: 3,
-                    text_x0: tx0, text_y0: ty0,
-                    text_x1: tx0 + nw, text_y1: ty0 + FONT_H,
-                    value: lv, nw,
+                    text_x0: tx0,
+                    text_y0: ty0,
+                    text_x1: tx0 + nw,
+                    text_y1: ty0 + FONT_H,
+                    value: lv,
+                    nw,
                 });
             }
             vy += tick_ivl_y;
@@ -2739,19 +2839,31 @@ mod windows_impl {
         ];
 
         for &(_ka, _kb) in CORNER_PAIRS.iter() {
-            let indices_h: Vec<usize> = labels.iter().enumerate()
-                .filter(|(_, l)| l.kind == _ka).map(|(i, _)| i).collect();
-            let indices_v: Vec<usize> = labels.iter().enumerate()
-                .filter(|(_, l)| l.kind == _kb).map(|(i, _)| i).collect();
+            let indices_h: Vec<usize> = labels
+                .iter()
+                .enumerate()
+                .filter(|(_, l)| l.kind == _ka)
+                .map(|(i, _)| i)
+                .collect();
+            let indices_v: Vec<usize> = labels
+                .iter()
+                .enumerate()
+                .filter(|(_, l)| l.kind == _kb)
+                .map(|(i, _)| i)
+                .collect();
 
             for &hi in &indices_h {
                 for &vi in &indices_v {
-                    if skip[vi] { continue; }
+                    if skip[vi] {
+                        continue;
+                    }
                     let h = &labels[hi];
                     let v = &labels[vi];
                     // AABB overlap check
-                    if h.text_x0 < v.text_x1 && h.text_x1 > v.text_x0
-                        && h.text_y0 < v.text_y1 && h.text_y1 > v.text_y0
+                    if h.text_x0 < v.text_x1
+                        && h.text_x1 > v.text_x0
+                        && h.text_y0 < v.text_y1
+                        && h.text_y1 > v.text_y0
                     {
                         // Horizontal always wins, skip the vertical label.
                         skip[vi] = true;
@@ -2762,9 +2874,12 @@ mod windows_impl {
 
         // Pass 2: draw label backgrounds and text (skipping corner-losers).
         for (li, lbl) in labels.iter().enumerate() {
-            if skip[li] { continue; }
+            if skip[li] {
+                continue;
+            }
             match lbl.kind {
-                0 => { // top
+                0 => {
+                    // top
                     let pad = lbl.nw / 2 + 2;
                     let cx = lbl.text_x0 + lbl.nw / 2;
                     for y in (tb - FONT_H - 1).max(0)..tb.min(h_i) {
@@ -2774,7 +2889,8 @@ mod windows_impl {
                     }
                     draw_number(buf, w, h, lbl.value, lbl.text_x0, lbl.text_y0);
                 }
-                1 => { // left
+                1 => {
+                    // left
                     let pad = FONT_H / 2 + 2;
                     let cy = lbl.text_y0 + FONT_H / 2;
                     for y in (cy - pad).max(0)..(cy + pad + 1).min(h_i) {
@@ -2784,7 +2900,8 @@ mod windows_impl {
                     }
                     draw_number(buf, w, h, lbl.value, lbl.text_x0, lbl.text_y0);
                 }
-                2 => { // bottom
+                2 => {
+                    // bottom
                     let pad = lbl.nw / 2 + 2;
                     let cx = lbl.text_x0 + lbl.nw / 2;
                     for y in (h_i - tb).max(0)..(h_i - tb + FONT_H + 1).min(h_i) {
@@ -2794,7 +2911,8 @@ mod windows_impl {
                     }
                     draw_number(buf, w, h, lbl.value, lbl.text_x0, lbl.text_y0);
                 }
-                3 => { // right
+                3 => {
+                    // right
                     let pad = FONT_H / 2 + 2;
                     let cy = lbl.text_y0 + FONT_H / 2;
                     for y in (cy - pad).max(0)..(cy + pad + 1).min(h_i) {
@@ -2814,7 +2932,9 @@ mod windows_impl {
             while vx < end_x {
                 let gx = vx_to_px(vx);
                 if gx > 0 && gx < w_i {
-                    for y in tb..(h_i - tb) { blend_px(buf, w, h, gx, y, 255, 0, 0, 0.25); }
+                    for y in tb..(h_i - tb) {
+                        blend_px(buf, w, h, gx, y, 255, 0, 0, 0.25);
+                    }
                 }
                 vx += label_ivl_x;
             }
@@ -2822,7 +2942,9 @@ mod windows_impl {
             while vy < end_y {
                 let gy = vy_to_px(vy);
                 if gy > 0 && gy < h_i {
-                    for x in sb..(w_i - sb) { blend_px(buf, w, h, x, gy, 255, 0, 0, 0.25); }
+                    for x in sb..(w_i - sb) {
+                        blend_px(buf, w, h, x, gy, 255, 0, 0, 0.25);
+                    }
                 }
                 vy += label_ivl_y;
             }
@@ -2837,7 +2959,15 @@ mod windows_impl {
     // pixels lie behind it.
 
     fn draw_digit_color(
-        buf: &mut [u8], w: u32, h: u32, digit: u8, ox: i32, oy: i32, r: u8, g: u8, b: u8,
+        buf: &mut [u8],
+        w: u32,
+        h: u32,
+        digit: u8,
+        ox: i32,
+        oy: i32,
+        r: u8,
+        g: u8,
+        b: u8,
     ) {
         let glyph = &DIGITS[digit as usize % 10];
         for row in 0..FONT_H {
@@ -2851,7 +2981,15 @@ mod windows_impl {
     }
 
     fn draw_number_color(
-        buf: &mut [u8], w: u32, h: u32, num: u32, ox: i32, oy: i32, r: u8, g: u8, b: u8,
+        buf: &mut [u8],
+        w: u32,
+        h: u32,
+        num: u32,
+        ox: i32,
+        oy: i32,
+        r: u8,
+        g: u8,
+        b: u8,
     ) {
         let s = num.to_string();
         let mut x = ox;
@@ -2889,10 +3027,8 @@ mod windows_impl {
         }
         for mark in marks {
             // Virtual coord → image px (inverse of the grid projection).
-            let px_x = ((mark.x - coord_origin_x) as i64 * w as i64
-                / coord_range_w as i64) as i32;
-            let px_y = ((mark.y - coord_origin_y) as i64 * h as i64
-                / coord_range_h as i64) as i32;
+            let px_x = ((mark.x - coord_origin_x) as i64 * w as i64 / coord_range_w as i64) as i32;
+            let px_y = ((mark.y - coord_origin_y) as i64 * h as i64 / coord_range_h as i64) as i32;
             // Tight radius — just a digit-background pill. Use the longer
             // glyph axis as the bound so multi-digit numbers (≥10) don't
             // spill outside the disc.
@@ -2914,9 +3050,7 @@ mod windows_impl {
             let num_ox = px_x - num_w / 2;
             let num_oy = px_y - num_h / 2;
             for &(odx, ody) in &[(-1_i32, 0_i32), (1, 0), (0, -1), (0, 1)] {
-                draw_number_color(
-                    buf, w, h, mark.id, num_ox + odx, num_oy + ody, 0, 0, 0,
-                );
+                draw_number_color(buf, w, h, mark.id, num_ox + odx, num_oy + ody, 0, 0, 0);
             }
             draw_number_color(buf, w, h, mark.id, num_ox, num_oy, 255, 255, 255);
         }
@@ -2944,17 +3078,7 @@ mod windows_impl {
         let tip_y = info.ptScreenPos.y - bitmap_origin.y;
         let draw_x = tip_x - icon_info.xHotspot as i32;
         let draw_y = tip_y - icon_info.yHotspot as i32;
-        let _ = DrawIconEx(
-            dc,
-            draw_x,
-            draw_y,
-            info.hCursor,
-            0,
-            0,
-            0,
-            None,
-            DI_NORMAL,
-        );
+        let _ = DrawIconEx(dc, draw_x, draw_y, info.hCursor, 0, 0, 0, None, DI_NORMAL);
         if !icon_info.hbmMask.0.is_null() {
             let _ = DeleteObject(icon_info.hbmMask);
         }
@@ -2986,7 +3110,10 @@ mod windows_impl {
         // Screen DC for compat-bitmap creation.
         let screen_dc = GetDC(HWND::default());
         if screen_dc.0.is_null() {
-            return Err(format!("GetDC(HWND::default()) returned null: {}", last_win_error()));
+            return Err(format!(
+                "GetDC(HWND::default()) returned null: {}",
+                last_win_error()
+            ));
         }
         struct ScreenDcGuard(HDC);
         impl Drop for ScreenDcGuard {
@@ -2998,19 +3125,27 @@ mod windows_impl {
 
         let mem_dc = CreateCompatibleDC(screen_dc);
         if mem_dc.0.is_null() {
-            return Err(format!("CreateCompatibleDC returned null: {}", last_win_error()));
+            return Err(format!(
+                "CreateCompatibleDC returned null: {}",
+                last_win_error()
+            ));
         }
         struct MemDcGuard(HDC);
         impl Drop for MemDcGuard {
             fn drop(&mut self) {
-                unsafe { let _ = DeleteDC(self.0); };
+                unsafe {
+                    let _ = DeleteDC(self.0);
+                };
             }
         }
         let _mem_dc_guard = MemDcGuard(mem_dc);
 
         let bitmap = CreateCompatibleBitmap(screen_dc, src_w, src_h);
         if bitmap.0.is_null() {
-            return Err(format!("CreateCompatibleBitmap returned null: {}", last_win_error()));
+            return Err(format!(
+                "CreateCompatibleBitmap returned null: {}",
+                last_win_error()
+            ));
         }
         struct BitmapGuard(windows::Win32::Graphics::Gdi::HBITMAP);
         impl Drop for BitmapGuard {
@@ -3050,7 +3185,10 @@ mod windows_impl {
         // Composite cursor on top of captured window pixels.
         let cursor_tip = compose_cursor_into_dc(
             mem_dc,
-            VPoint { x: window_left, y: window_top },
+            VPoint {
+                x: window_left,
+                y: window_top,
+            },
         );
 
         // Extract pixels via GetDIBits.
@@ -3116,15 +3254,18 @@ mod windows_impl {
         }
 
         // SoM (Set-of-Mark) overlay — drawn AFTER the grid so marks land
-        // on top, matching the layer order of `capture_display_scaled_inner`.
+        // on top. Marks arrive in physical window-local px (TS converts
+        // UIA physical coords → image coords → back to physical via
+        // ratioX/Y multiplication before passing them). Use (0, 0) as
+        // the coordinate origin since marks are window-relative.
         if let Some(ref m) = marks {
             draw_marks_on_rgb(
                 &mut final_rgb,
                 final_w,
                 final_h,
                 m,
-                window_left,
-                window_top,
+                0,
+                0,
                 src_w as u32,
                 src_h as u32,
             );
@@ -3138,14 +3279,10 @@ mod windows_impl {
         }
 
         let mut jpeg = Vec::new();
-        let mut encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut jpeg, jpeg_quality);
+        let mut encoder =
+            image::codecs::jpeg::JpegEncoder::new_with_quality(&mut jpeg, jpeg_quality);
         encoder
-            .encode(
-                &final_rgb,
-                final_w,
-                final_h,
-                image::ExtendedColorType::Rgb8,
-            )
+            .encode(&final_rgb, final_w, final_h, image::ExtendedColorType::Rgb8)
             .map_err(|e| format!("jpeg encode failed: {e}"))?;
 
         let base64 = base64::engine::general_purpose::STANDARD.encode(&jpeg);
@@ -3250,7 +3387,9 @@ mod windows_impl {
         struct MemDcGuard(HDC);
         impl Drop for MemDcGuard {
             fn drop(&mut self) {
-                unsafe { let _ = DeleteDC(self.0); };
+                unsafe {
+                    let _ = DeleteDC(self.0);
+                };
             }
         }
         let _mem_dc_guard = MemDcGuard(mem_dc);
@@ -3262,7 +3401,9 @@ mod windows_impl {
         struct BitmapGuard(windows::Win32::Graphics::Gdi::HBITMAP);
         impl Drop for BitmapGuard {
             fn drop(&mut self) {
-                unsafe { let _ = DeleteObject(self.0); };
+                unsafe {
+                    let _ = DeleteObject(self.0);
+                };
             }
         }
         let _bitmap_guard = BitmapGuard(bitmap);
@@ -3276,10 +3417,7 @@ mod windows_impl {
         // from capture_window_inner. For the primary monitor it's (0,0);
         // for a secondary monitor positioned to the left of primary it
         // can be negative. Virtual-screen space.
-        let blt_ok = BitBlt(
-            mem_dc, 0, 0, src_w, src_h, screen_dc, src_x, src_y, SRCCOPY,
-        )
-        .is_ok();
+        let blt_ok = BitBlt(mem_dc, 0, 0, src_w, src_h, screen_dc, src_x, src_y, SRCCOPY).is_ok();
         if !blt_ok {
             return Err("BitBlt failed".to_string());
         }
@@ -3323,29 +3461,37 @@ mod windows_impl {
             rgb.push(px[0]);
         }
 
-        let (mut final_rgb, final_w, final_h) = if target_w as i32 == src_w
-            && target_h as i32 == src_h
-        {
-            (rgb, src_w as u32, src_h as u32)
-        } else {
-            let src_img: image::ImageBuffer<image::Rgb<u8>, Vec<u8>> =
-                image::ImageBuffer::from_raw(src_w as u32, src_h as u32, rgb)
-                    .ok_or_else(|| "ImageBuffer::from_raw size mismatch".to_string())?;
-            let resized = image::imageops::resize(
-                &src_img,
-                target_w,
-                target_h,
-                image::imageops::FilterType::Lanczos3,
-            );
-            (resized.into_raw(), target_w, target_h)
-        };
+        let (mut final_rgb, final_w, final_h) =
+            if target_w as i32 == src_w && target_h as i32 == src_h {
+                (rgb, src_w as u32, src_h as u32)
+            } else {
+                let src_img: image::ImageBuffer<image::Rgb<u8>, Vec<u8>> =
+                    image::ImageBuffer::from_raw(src_w as u32, src_h as u32, rgb)
+                        .ok_or_else(|| "ImageBuffer::from_raw size mismatch".to_string())?;
+                let resized = image::imageops::resize(
+                    &src_img,
+                    target_w,
+                    target_h,
+                    image::imageops::FilterType::Lanczos3,
+                );
+                (resized.into_raw(), target_w, target_h)
+            };
 
         if grid_mode > 0 {
             let gox = grid_origin_x.unwrap_or(0);
             let goy = grid_origin_y.unwrap_or(0);
             let grw = grid_range_w.unwrap_or(final_w);
             let grh = grid_range_h.unwrap_or(final_h);
-            draw_grid_on_rgb(&mut final_rgb, final_w, final_h, grid_mode, gox, goy, grw, grh);
+            draw_grid_on_rgb(
+                &mut final_rgb,
+                final_w,
+                final_h,
+                grid_mode,
+                gox,
+                goy,
+                grw,
+                grh,
+            );
         }
 
         // SoM (Set-of-Mark) overlay — drawn AFTER the grid so marks land
@@ -3359,7 +3505,16 @@ mod windows_impl {
                 let goy = grid_origin_y.unwrap_or(0);
                 let grw = grid_range_w.unwrap_or(final_w);
                 let grh = grid_range_h.unwrap_or(final_h);
-                draw_marks_on_rgb(&mut final_rgb, final_w, final_h, marks_vec, gox, goy, grw, grh);
+                draw_marks_on_rgb(
+                    &mut final_rgb,
+                    final_w,
+                    final_h,
+                    marks_vec,
+                    gox,
+                    goy,
+                    grw,
+                    grh,
+                );
             }
         }
 
@@ -3371,14 +3526,10 @@ mod windows_impl {
         }
 
         let mut jpeg = Vec::new();
-        let mut encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut jpeg, jpeg_quality);
+        let mut encoder =
+            image::codecs::jpeg::JpegEncoder::new_with_quality(&mut jpeg, jpeg_quality);
         encoder
-            .encode(
-                &final_rgb,
-                final_w,
-                final_h,
-                image::ExtendedColorType::Rgb8,
-            )
+            .encode(&final_rgb, final_w, final_h, image::ExtendedColorType::Rgb8)
             .map_err(|e| format!("jpeg encode failed: {e}"))?;
 
         let base64 = base64::engine::general_purpose::STANDARD.encode(&jpeg);
@@ -3666,8 +3817,7 @@ mod windows_impl {
         let our_pid = unsafe { GetCurrentProcessId() };
         set.insert(our_pid);
 
-        let snapshot = match unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) }
-        {
+        let snapshot = match unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) } {
             Ok(s) => s,
             Err(_) => return set, // best-effort: at least our own PID
         };
@@ -3823,18 +3973,25 @@ mod windows_impl {
         let w = r.right - r.left;
         let h = r.bottom - r.top;
         let saved = (hwnd.0 as isize, r.left, r.top, w, h);
-        let off_x = GetSystemMetrics(SM_XVIRTUALSCREEN)
-            + GetSystemMetrics(SM_CXVIRTUALSCREEN) + 100;
-        let off_y = GetSystemMetrics(SM_YVIRTUALSCREEN)
-            + GetSystemMetrics(SM_CYVIRTUALSCREEN) + 100;
-        SetWindowPos(hwnd, HWND_TOP, off_x, off_y, w, h,
-            SWP_NOACTIVATE | SWP_NOZORDER).ok()?;
+        let off_x =
+            GetSystemMetrics(SM_XVIRTUALSCREEN) + GetSystemMetrics(SM_CXVIRTUALSCREEN) + 100;
+        let off_y =
+            GetSystemMetrics(SM_YVIRTUALSCREEN) + GetSystemMetrics(SM_CYVIRTUALSCREEN) + 100;
+        SetWindowPos(
+            hwnd,
+            HWND_TOP,
+            off_x,
+            off_y,
+            w,
+            h,
+            SWP_NOACTIVATE | SWP_NOZORDER,
+        )
+        .ok()?;
         Some(saved)
     }
 
     unsafe fn move_back(hwnd: HWND, x: i32, y: i32, w: i32, h: i32) {
-        let _ = SetWindowPos(hwnd, HWND_TOP, x, y, w, h,
-            SWP_NOACTIVATE | SWP_NOZORDER);
+        let _ = SetWindowPos(hwnd, HWND_TOP, x, y, w, h, SWP_NOACTIVATE | SWP_NOZORDER);
     }
 
     pub fn hide_self_windows() -> u32 {
@@ -3844,7 +4001,10 @@ mod windows_impl {
             list.clear();
         }
         let hwnds: Vec<HWND> = unsafe {
-            struct CollectState { host_pids: BTreeSet<u32>, hwnds: Vec<HWND> }
+            struct CollectState {
+                host_pids: BTreeSet<u32>,
+                hwnds: Vec<HWND>,
+            }
             extern "system" fn collect_proc(hwnd: HWND, lparam: LPARAM) -> BOOL {
                 let state = unsafe { &mut *(lparam.0 as *mut CollectState) };
                 if !unsafe { IsWindowVisible(hwnd).as_bool() }
@@ -3853,20 +4013,33 @@ mod windows_impl {
                     return BOOL(1);
                 }
                 let mut pid: u32 = 0;
-                unsafe { GetWindowThreadProcessId(hwnd, Some(&mut pid)); }
-                if pid == 0 || !state.host_pids.contains(&pid) { return BOOL(1); }
+                unsafe {
+                    GetWindowThreadProcessId(hwnd, Some(&mut pid));
+                }
+                if pid == 0 || !state.host_pids.contains(&pid) {
+                    return BOOL(1);
+                }
                 let mut rect = RECT::default();
-                if unsafe { GetWindowRect(hwnd, &mut rect).is_err() } { return BOOL(1); }
+                if unsafe { GetWindowRect(hwnd, &mut rect).is_err() } {
+                    return BOOL(1);
+                }
                 let w = rect.right - rect.left;
                 let h = rect.bottom - rect.top;
-                if w < MIN_TARGET_DIMENSION || h < MIN_TARGET_DIMENSION { return BOOL(1); }
+                if w < MIN_TARGET_DIMENSION || h < MIN_TARGET_DIMENSION {
+                    return BOOL(1);
+                }
                 if let Some(ref p) = exe_path_for_pid(pid) {
-                    if is_protected_system_process(p) { return BOOL(1); }
+                    if is_protected_system_process(p) {
+                        return BOOL(1);
+                    }
                 }
                 state.hwnds.push(hwnd);
                 BOOL(1)
             }
-            let mut cs = CollectState { host_pids: host_pids.clone(), hwnds: Vec::new() };
+            let mut cs = CollectState {
+                host_pids: host_pids.clone(),
+                hwnds: Vec::new(),
+            };
             let _ = EnumWindows(Some(collect_proc), LPARAM(&mut cs as *mut _ as isize));
             cs.hwnds
         };
@@ -3884,7 +4057,9 @@ mod windows_impl {
                 }
             }
         }
-        unsafe { let _ = DwmFlush(); }
+        unsafe {
+            let _ = DwmFlush();
+        }
         std::thread::sleep(std::time::Duration::from_millis(30));
         count
     }
@@ -3901,7 +4076,9 @@ mod windows_impl {
         };
         for (h, x, y, w, h2) in placements {
             if h != 0 {
-                unsafe { move_back(HWND(h as *mut _), x, y, w, h2); }
+                unsafe {
+                    move_back(HWND(h as *mut _), x, y, w, h2);
+                }
             }
         }
     }
@@ -3933,24 +4110,24 @@ mod windows_impl {
     /// versions of Windows. Path varies by install location / SystemApps
     /// nesting / WoW64 / etc.
     const SYSTEM_HIDE_DENY_LIST: &[&str] = &[
-        "explorer.exe",                  // Taskbar, desktop, File Explorer
-        "dwm.exe",                       // Desktop Window Manager (compositor)
-        "sihost.exe",                    // Shell Infrastructure Host
-        "ctfmon.exe",                    // Text services framework
-        "csrss.exe",                     // Client Server Runtime (kernel-adjacent)
-        "winlogon.exe",                  // Logon manager
-        "logonui.exe",                   // Lock screen / login UI
-        "lockapp.exe",                   // Win11 lock screen
-        "searchhost.exe",                // Win11 search overlay
-        "startmenuexperiencehost.exe",   // Win11 Start menu
-        "shellexperiencehost.exe",       // Win10/11 shell experience
-        "textinputhost.exe",             // Win11 IME / handwriting
-        "applicationframehost.exe",      // UWP frame host
-        "systemsettings.exe",            // Windows Settings (UWP)
-        "fontdrvhost.exe",               // Font driver host
-        "wininit.exe",                   // Boot init
-        "smss.exe",                      // Session Manager
-        "services.exe",                  // SCM (won't have windows but defensive)
+        "explorer.exe",                // Taskbar, desktop, File Explorer
+        "dwm.exe",                     // Desktop Window Manager (compositor)
+        "sihost.exe",                  // Shell Infrastructure Host
+        "ctfmon.exe",                  // Text services framework
+        "csrss.exe",                   // Client Server Runtime (kernel-adjacent)
+        "winlogon.exe",                // Logon manager
+        "logonui.exe",                 // Lock screen / login UI
+        "lockapp.exe",                 // Win11 lock screen
+        "searchhost.exe",              // Win11 search overlay
+        "startmenuexperiencehost.exe", // Win11 Start menu
+        "shellexperiencehost.exe",     // Win10/11 shell experience
+        "textinputhost.exe",           // Win11 IME / handwriting
+        "applicationframehost.exe",    // UWP frame host
+        "systemsettings.exe",          // Windows Settings (UWP)
+        "fontdrvhost.exe",             // Font driver host
+        "wininit.exe",                 // Boot init
+        "smss.exe",                    // Session Manager
+        "services.exe",                // SCM (won't have windows but defensive)
     ];
 
     fn is_protected_system_process(path: &str) -> bool {
@@ -4026,7 +4203,11 @@ mod windows_impl {
         if path.is_empty() || path != state.target_path {
             return true.into();
         }
-        let cmd: SHOW_WINDOW_CMD = if state.show { SW_SHOWNOACTIVATE } else { SW_HIDE };
+        let cmd: SHOW_WINDOW_CMD = if state.show {
+            SW_SHOWNOACTIVATE
+        } else {
+            SW_HIDE
+        };
         let _ = ShowWindow(hwnd, cmd);
         state.changed = true;
         true.into()
@@ -4037,8 +4218,7 @@ mod windows_impl {
     /// None on access denied (target is elevated and we're not).
     fn exe_path_for_pid(pid: u32) -> Option<String> {
         unsafe {
-            let handle: HANDLE =
-                OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid).ok()?;
+            let handle: HANDLE = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid).ok()?;
             let mut buf: [u16; 1024] = [0; 1024];
             let mut size: u32 = buf.len() as u32;
             let res = QueryFullProcessImageNameW(
@@ -4233,8 +4413,7 @@ mod windows_impl {
     /// system processes (services.exe, svchost.exe, ...) so adding them
     /// to the allowlist is harmless.
     pub fn get_host_ancestor_paths() -> Vec<String> {
-        let snapshot = match unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) }
-        {
+        let snapshot = match unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) } {
             Ok(s) => s,
             Err(_) => return Vec::new(),
         };
@@ -4330,9 +4509,7 @@ mod windows_impl {
             // Locale-tolerant: en-US "Access is denied", zh-CN "拒绝访问",
             // and the HRESULT hex form is always present.
             assert!(
-                msg.contains("0x")
-                    || msg.to_lowercase().contains("access")
-                    || msg.contains("拒绝"),
+                msg.contains("0x") || msg.to_lowercase().contains("access") || msg.contains("拒绝"),
                 "last_win_error missing expected token: {}",
                 msg
             );
@@ -4386,8 +4563,7 @@ mod windows_impl {
         #[test]
         fn get_shell_display_name_resolves_calculator_aumid() {
             // Calculator's AUMID is stable across Win 10/11 installs.
-            let aumid =
-                "shell:AppsFolder\\Microsoft.WindowsCalculator_8wekyb3d8bbwe!App";
+            let aumid = "shell:AppsFolder\\Microsoft.WindowsCalculator_8wekyb3d8bbwe!App";
             let name = get_shell_display_name(aumid);
             match name {
                 Some(n) => {
@@ -4403,18 +4579,15 @@ mod windows_impl {
                     );
                 }
                 None => {
-                    eprintln!(
-                        "Calculator AUMID did not resolve; treating as env-skip"
-                    );
+                    eprintln!("Calculator AUMID did not resolve; treating as env-skip");
                 }
             }
         }
 
         #[test]
         fn get_shell_display_name_invalid_aumid_returns_none() {
-            let name = get_shell_display_name(
-                "shell:AppsFolder\\Definitely.NotAReal_NoSuchHash!Nope",
-            );
+            let name =
+                get_shell_display_name("shell:AppsFolder\\Definitely.NotAReal_NoSuchHash!Nope");
             assert!(
                 name.is_none(),
                 "invalid AUMID should resolve to None, got {:?}",
@@ -4424,9 +4597,8 @@ mod windows_impl {
 
         #[test]
         fn find_window_by_aumid_no_match_for_fake_aumid() {
-            let (m, _visible) = find_window_by_aumid(
-                "DefinitelyFake.NotARealApp_xxxxxxxxxxxxx!Nope",
-            );
+            let (m, _visible) =
+                find_window_by_aumid("DefinitelyFake.NotARealApp_xxxxxxxxxxxxx!Nope");
             assert!(m.is_none(), "fake AUMID should not match any window");
         }
 
@@ -4446,8 +4618,7 @@ mod windows_impl {
                 return;
             }
             // Top-left of virtual screen → (0, 0).
-            let tl = vpoint_to_normalized_absolute(VPoint { x: vx, y: vy })
-                .expect("tl ok");
+            let tl = vpoint_to_normalized_absolute(VPoint { x: vx, y: vy }).expect("tl ok");
             assert_eq!(tl, (0, 0));
             // Bottom-right pixel (vx + vw - 1, vy + vh - 1) → (65535, 65535).
             let br = vpoint_to_normalized_absolute(VPoint {

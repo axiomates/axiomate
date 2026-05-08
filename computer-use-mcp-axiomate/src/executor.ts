@@ -213,7 +213,7 @@ export interface ComputerExecutor {
     y: number;
     w: number;
     h: number;
-  }): Promise<
+  }, windowOnly?: boolean): Promise<
     Array<{
       bbox: { x: number; y: number; w: number; h: number };
       name?: string;

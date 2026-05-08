@@ -295,9 +295,9 @@ export function buildComputerUseTools(
             description:
               "Overlay coordinate rulers on all four edges of the screenshot. " +
               "Numbers on rulers show pixel coordinates. " +
-              "'full' (default): four-edge rulers + semi-transparent grid lines across the image. " +
+              "'none' (default): clean screenshot without any overlay. " +
               "'edge': four-edge rulers only (no crossing lines). " +
-              "'none': clean screenshot without any overlay.",
+              "'full': four-edge rulers + semi-transparent grid lines across the image.",
           },
         },
         required: [],
@@ -311,6 +311,7 @@ export function buildComputerUseTools(
         "Use this when the user names a specific app — e.g. \"show me Slack\", \"截 Chrome\", \"capture iTerm\" — and you do not need surrounding context. Use plain `screenshot` for full-screen / multi-app context. " +
         "**Before calling this with an app identifier you only know by user-facing name (e.g. \"WeChat\", \"QQ\"), call `list_running_apps` first to get the exact id.** The bare display name is often wrong: \"WeChat\" is now `Weixin.exe`, \"Visual Studio Code\" is `Code.exe`, etc. Do NOT guess installation paths from memory. " +
         "The returned image shows only the target app's window — no surrounding desktop or other windows. " +
+        "SoM (Set-of-Mark) auto-detects interactive elements INSIDE the window (buttons, text fields, icons, links) and overlays red numbered circles; pass `som: false` to suppress. " +
         "**Optional `coordinate_grid`** adds rulers to the window screenshot, using the window's screen position so coordinates match the global screenshot coordinate space — useful for precise positioning reference within the window. Default: `none` (no rulers).",
       inputSchema: {
         type: "object" as const,
@@ -322,9 +323,14 @@ export function buildComputerUseTools(
           },
           coordinate_grid: {
             type: "string" as const,
-            enum: ["full", "edge", "none"],
+            enum: ["none", "edge", "full"],
             description:
               "Overlay coordinate rulers on the window screenshot. 'edge' = rulers on edges only, 'full' = full grid with interior lines, 'none' = no rulers (default). Ruler numbers use the window's screen position so they match the global coordinate space.",
+          },
+          som: {
+            type: "boolean",
+            description:
+              "Whether to run SoM (Set-of-Mark) detection on the captured window — red numbered circles overlaid on interactive elements (buttons, text fields, icons, links) inside the window. Default true (auto-detects when ≤25 elements are found). Set to false to suppress element detection.",
           },
         },
         required: ["app_identifier"],
