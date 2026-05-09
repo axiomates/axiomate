@@ -163,7 +163,13 @@ async function createReportHtml(
     )
     .join('')
 
-  const pairCards = report.pairs.map(renderPairCardHtml).join('')
+  const pairCards = [...report.pairs]
+    .sort(
+      (left, right) =>
+        left.final.sameProbability - right.final.sameProbability,
+    )
+    .map(renderPairCardHtml)
+    .join('')
 
   return template
     .replaceAll('__REPORT_TITLE__', escapeHtml('Headless Subprocess Integration Report'))
@@ -1162,13 +1168,13 @@ function fuseScores(
     ).toFixed(4),
   )
 
-  if (sameProbability >= 0.8) {
+  if (sameProbability >= 0.85) {
     return { label: 'same', sameProbability }
   }
-  if (sameProbability <= 0.2) {
-    return { label: 'different', sameProbability }
+  if (sameProbability > 0.4) {
+    return { label: 'uncertain', sameProbability }
   }
-  return { label: 'uncertain', sameProbability }
+  return { label: 'different', sameProbability }
 }
 
 function normalizeOcrText(text: string): string {
