@@ -705,7 +705,7 @@ mod macos {
         use super::running_app;
         use crate::{AppHitInfo, WindowDisplayInfo};
         use std::collections::{BTreeMap, BTreeSet};
-        use std::os::raw::c_void;
+        use std::os::raw::{c_double, c_void};
 
         type CFArrayRef = *const c_void;
         type CFDictionaryRef = *const c_void;
@@ -1690,7 +1690,7 @@ mod macos {
         use super::running_app;
         use crate::{CaptureWindowImage, CaptureWindowOutcome};
         use base64::Engine;
-        use std::os::raw::{c_double, c_void};
+        use std::os::raw::c_void;
 
         type CFArrayRef = *const c_void;
         type CFDictionaryRef = *const c_void;
