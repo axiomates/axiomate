@@ -8,7 +8,7 @@ The sample program:
 - pairs images by array order or by same filename in two directories
 - computes a local pixel similarity score with `sharp`
 - calls Axiomate in `--print` mode for a VL comparison
-- optionally calls Axiomate again with an OCR model key for text extraction
+- optionally calls an OCR model directly through its OpenAI-compatible endpoint
 - merges the three signals into a JSON report
 
 ## What This Is Called
@@ -26,12 +26,12 @@ It is not an SDK import.
 - Install dependencies for this sample project.
 - Have `axiomate` available on your `PATH`, or pass `--axiomate-bin`.
 - Configure your model keys in `~/.axiomate.json`.
-- Ensure your VL and OCR model configs have `supportsImages: true`.
+- Ensure the remote VL and OCR services you reference support image input.
 
 Example model key usage:
 
 - `visionModel`: a vision-capable model key from `~/.axiomate.json`
-- `ocrModel`: for example `deepseek-ocr`
+- `ocrModel`: an OCR-capable model key from `~/.axiomate.json` whose config uses `protocol: "openai"`
 
 ## Copy Elsewhere
 
@@ -85,7 +85,8 @@ Mode 1: explicit arrays
   "left": ["C:/imgs/left/a.png", "C:/imgs/left/b.png"],
   "right": ["C:/imgs/right/a.png", "C:/imgs/right/b.png"],
   "visionModel": "your-vl-model-key",
-  "ocrModel": "deepseek-ocr",
+  "ocrModel": "your-ocr-model-key",
+  "ocrTask": "ocr",
   "visionImageScaleFactor": 0.5,
   "ocrImageScaleFactor": 0.15,
   "pixelCompareScaleFactor": 0.5,
@@ -100,7 +101,8 @@ Mode 2: directories
   "leftDir": "C:/imgs/left",
   "rightDir": "C:/imgs/right",
   "visionModel": "your-vl-model-key",
-  "ocrModel": "deepseek-ocr",
+  "ocrModel": "your-ocr-model-key",
+  "ocrTask": "ocr",
   "visionImageScaleFactor": 0.5,
   "ocrImageScaleFactor": 0.15,
   "pixelCompareScaleFactor": 0.5,
@@ -140,9 +142,12 @@ For easier review, the HTML view sorts pairs by `sameProbability` ascending so t
 
 ## Notes
 
-- `ocrModel` is passed explicitly via `--model`; this sample does not rely on any special built-in OCR routing.
-- The sample uses Axiomate's headless `stream-json` protocol because images are sent through stdin as content blocks.
+- `ocrModel` is resolved from `~/.axiomate.json`, just like `visionModel`.
+- The sample uses Axiomate's headless `stream-json` protocol for VL only.
+- OCR no longer goes through Axiomate. The sample reads the OCR model's OpenAI-compatible config from `~/.axiomate.json` and sends a direct non-streaming request to that endpoint.
+- The OCR model key must resolve to a config with `protocol: "openai"` and a valid `baseUrl`. `apiKey` may be omitted for self-hosted services that do not require authentication.
 - If you only want VL, omit `ocrModel`.
+- `ocrTask` maps to task prompts such as `OCR:` and `Table Recognition:` for OCR-oriented VLMs.
 - `visionImageScaleFactor` scales images before sending them to VL, preserving original aspect ratio.
 - `ocrImageScaleFactor` scales images before sending them to OCR, preserving original aspect ratio.
 - `pixelCompareScaleFactor` scales images for local pixel comparison, preserving original aspect ratio and remaining independent from the VL/OCR image scale factors.

@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { promises as fs } from 'node:fs'
 import { existsSync } from 'node:fs'
+import { homedir } from 'node:os'
 import { basename, dirname, extname, isAbsolute, join, resolve } from 'node:path'
 import sharp from 'sharp'
 
@@ -12,6 +13,7 @@ type SampleInput = {
   rightDir?: string
   visionModel?: string
   ocrModel?: string
+  ocrTask?: 'ocr' | 'table' | 'chart' | 'formula' | 'spotting' | 'seal'
   visionImageScaleFactor?: number
   ocrImageScaleFactor?: number
   pixelCompareScaleFactor?: number
@@ -92,6 +94,18 @@ type SummaryReport = {
   uncertainCount: number
   outputPath: string
   pairs: PairReport[]
+}
+
+type SampleModelConfig = {
+  model: string
+  protocol: 'openai' | 'anthropic'
+  baseUrl: string
+  apiKey?: string
+  supportsImages?: boolean
+}
+
+type SampleGlobalConfig = {
+  models?: Record<string, SampleModelConfig>
 }
 
 type ContentBlock =
@@ -318,6 +332,7 @@ async function main(): Promise<void> {
   const axiomateBinary = resolveAxiomateBinary(
     args.axiomateBin ?? input.axiomateBin,
   )
+  const globalConfig = await loadAxiomateGlobalConfig()
 
   const pairs = await pairImages(input, inputPath)
   const reports: PairReport[] = []
@@ -358,10 +373,11 @@ async function main(): Promise<void> {
             errors,
             () =>
               runOcrComparison(
-                axiomateBinary,
+                globalConfig,
                 input.ocrModel!,
                 leftPath,
                 rightPath,
+                input.ocrTask ?? 'ocr',
                 input.ocrImageScaleFactor,
               ),
           )
@@ -797,23 +813,26 @@ async function runVisionComparison(
 }
 
 async function runOcrComparison(
-  axiomateBinary: string,
+  globalConfig: SampleGlobalConfig,
   model: string,
   leftPath: string,
   rightPath: string,
+  task: 'ocr' | 'table' | 'chart' | 'formula' | 'spotting' | 'seal',
   ocrImageScaleFactor?: number,
 ): Promise<OcrComparison> {
   const [left, right] = await Promise.all([
     runOcrExtraction(
-      axiomateBinary,
+      globalConfig,
       model,
       leftPath,
+      task,
       ocrImageScaleFactor,
     ),
     runOcrExtraction(
-      axiomateBinary,
+      globalConfig,
       model,
       rightPath,
+      task,
       ocrImageScaleFactor,
     ),
   ])
@@ -837,42 +856,40 @@ async function runOcrComparison(
 }
 
 async function runOcrExtraction(
-  axiomateBinary: string,
+  globalConfig: SampleGlobalConfig,
   model: string,
   imagePath: string,
+  task: 'ocr' | 'table' | 'chart' | 'formula' | 'spotting' | 'seal',
   ocrImageScaleFactor?: number,
 ): Promise<OcrExtraction> {
-  const schema = {
-    type: 'object',
-    properties: {
-      text: { type: 'string' },
-      confidence: { type: 'number' },
-      language: { type: 'string' },
-    },
-    required: ['text', 'confidence'],
-    additionalProperties: false,
+  const modelConfig = resolveModelConfig(globalConfig, model)
+
+  if (modelConfig.protocol !== 'openai') {
+    throw new Error(
+      `OCR model "${model}" must use protocol "openai" for the sample's direct non-streaming OCR path.`,
+    )
   }
 
-  const result = (await runStructuredAxiomateCall({
-    axiomateBinary,
-    model,
-    systemPrompt:
-      'You are an OCR extraction tool. Read visible text from the provided image and return strict JSON only.',
-    schema,
-    content: [
-      await imageFileToBlock(imagePath, ocrImageScaleFactor),
-      {
-        type: 'text',
-        text: 'Extract visible OCR text from this image.',
-      },
-    ],
-  })) as OcrExtraction
+  const imageBlock = await imageFileToBlock(imagePath, ocrImageScaleFactor)
+  const imageUrl =
+    imageBlock.type === 'image' && imageBlock.source.type === 'base64'
+      ? `data:${imageBlock.source.media_type};base64,${imageBlock.source.data}`
+      : null
+
+  if (!imageUrl) {
+    throw new Error('Failed to prepare OCR image payload.')
+  }
+
+  const taskPrompt = getOcrTaskPrompt(task)
+  const result = (await runOpenAICompatibleOcr({
+    modelConfig,
+    imageUrl,
+    taskPrompt,
+  })) as { text?: unknown }
 
   return {
     text: String(result.text ?? ''),
-    confidence: clamp01(Number(result.confidence ?? 0)),
-    language:
-      result.language !== undefined ? String(result.language) : undefined,
+    confidence: 1,
   }
 }
 
@@ -921,6 +938,137 @@ async function resizeImageBufferForModel(
       fit: 'fill',
     })
     .toBuffer()
+}
+
+async function materializeScaledImageForWorker(
+  imagePath: string,
+  scaleFactor: number,
+): Promise<string> {
+  if (!(scaleFactor < 1)) {
+    return imagePath
+  }
+
+  const imageBuffer = await fs.readFile(imagePath)
+  const resized = await resizeImageBufferForModel(imageBuffer, scaleFactor)
+  const tempDir = join(dirname(imagePath), '.hsi-temp')
+  await fs.mkdir(tempDir, { recursive: true })
+  const outputPath = join(
+    tempDir,
+    `${basename(imagePath, extname(imagePath))}.scaled${extname(imagePath) || '.png'}`,
+  )
+  await fs.writeFile(outputPath, resized)
+  return outputPath
+}
+
+async function runOpenAICompatibleOcr(params: {
+  modelConfig: SampleModelConfig
+  imageUrl: string
+  taskPrompt: string
+}): Promise<unknown> {
+  const response = await fetch(
+    params.modelConfig.baseUrl.replace(/\/$/, '') + '/chat/completions',
+    {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        ...(params.modelConfig.apiKey
+          ? { authorization: `Bearer ${params.modelConfig.apiKey}` }
+          : {}),
+      },
+      body: JSON.stringify({
+        model: params.modelConfig.model,
+        stream: false,
+        messages: [
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'image_url',
+                image_url: {
+                  url: params.imageUrl,
+                },
+              },
+              {
+                type: 'text',
+                text: params.taskPrompt,
+              },
+            ],
+          },
+        ],
+      }),
+    },
+  )
+
+  if (!response.ok) {
+    throw new Error(
+      `OCR HTTP request failed with ${response.status} ${response.statusText}: ${await response.text()}`,
+    )
+  }
+
+  const data = (await response.json()) as {
+    choices?: Array<{
+      message?: {
+        content?: string
+      }
+    }>
+  }
+
+  const text = data.choices?.[0]?.message?.content
+  if (typeof text !== 'string') {
+    throw new Error('OCR response did not include a text content field.')
+  }
+
+  return {
+    text,
+  }
+}
+
+function getOcrTaskPrompt(
+  task: 'ocr' | 'table' | 'chart' | 'formula' | 'spotting' | 'seal',
+): string {
+  switch (task) {
+    case 'ocr':
+      return 'OCR:'
+    case 'table':
+      return 'Table Recognition:'
+    case 'chart':
+      return 'Chart Recognition:'
+    case 'formula':
+      return 'Formula Recognition:'
+    case 'spotting':
+      return 'Spotting:'
+    case 'seal':
+      return 'Seal Recognition:'
+  }
+}
+
+async function loadAxiomateGlobalConfig(): Promise<SampleGlobalConfig> {
+  const configPath = join(homedir(), '.axiomate.json')
+  const raw = await fs.readFile(configPath, 'utf8')
+  return JSON.parse(raw) as SampleGlobalConfig
+}
+
+function resolveModelConfig(
+  config: SampleGlobalConfig,
+  modelKey: string,
+): SampleModelConfig {
+  const modelConfig = config.models?.[modelKey]
+  if (!modelConfig) {
+    throw new Error(
+      `OCR model key "${modelKey}" was not found in ~/.axiomate.json.`,
+    )
+  }
+  if (!modelConfig.baseUrl) {
+    throw new Error(
+      `OCR model key "${modelKey}" does not have a baseUrl in ~/.axiomate.json.`,
+    )
+  }
+  if (!modelConfig.model) {
+    throw new Error(
+      `OCR model key "${modelKey}" does not have a provider model id in ~/.axiomate.json.`,
+    )
+  }
+  return modelConfig
 }
 
 async function renderImageForPixelCompare(
