@@ -26,7 +26,9 @@
         "meanAbsoluteDifference": 3.1284,
         "mse": 42.7712,
         "similarityScore": 0.9421,
-        "compareSize": 256
+        "comparisonMode": "explicit_scale_factor",
+        "compareWidth": 640,
+        "compareHeight": 360
       },
       "vl": {
         "same": true,
@@ -72,7 +74,9 @@
         "meanAbsoluteDifference": 19.5521,
         "mse": 911.3044,
         "similarityScore": 0.8162,
-        "compareSize": 256
+        "comparisonMode": "explicit_scale_factor",
+        "compareWidth": 512,
+        "compareHeight": 512
       },
       "vl": {
         "same": true,

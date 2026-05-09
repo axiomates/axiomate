@@ -12,7 +12,8 @@ type SampleInput = {
   rightDir?: string
   visionModel?: string
   ocrModel?: string
-  pixelCompareSize?: number
+  modelImageScaleFactor?: number
+  pixelCompareScaleFactor?: number
   outputPath?: string
   axiomateBin?: string
 }
@@ -31,7 +32,12 @@ type PixelComparison = {
   meanAbsoluteDifference: number
   mse: number
   similarityScore: number
-  compareSize: number
+  comparisonMode:
+    | 'explicit_scale_factor'
+    | 'original_dimensions'
+    | 'smallest_common_dimensions'
+  compareWidth: number
+  compareHeight: number
 }
 
 type VlResult = {
@@ -106,6 +112,7 @@ type StructuredCallOptions = {
   systemPrompt: string
   schema: Record<string, unknown>
   content: ContentBlock[]
+  modelImageScaleFactor?: number
 }
 
 const __filename = resolve(process.argv[1] ?? join(SAMPLE_ROOT_FALLBACK(), 'dist', 'index.js'))
@@ -123,7 +130,7 @@ async function main(): Promise<void> {
 
   await validateInput(input, inputPath)
 
-  const pixelCompareSize = input.pixelCompareSize ?? 256
+  const pixelCompareScaleFactor = input.pixelCompareScaleFactor
   const outputPath = resolveInputRelative(
     inputPath,
     input.outputPath ?? args.output ?? './report.json',
@@ -139,7 +146,11 @@ async function main(): Promise<void> {
     const leftPath = pair.leftPath
     const rightPath = pair.rightPath
 
-    const pixel = await comparePixels(leftPath, rightPath, pixelCompareSize)
+    const pixel = await comparePixels(
+      leftPath,
+      rightPath,
+      pixelCompareScaleFactor,
+    )
 
     const vl =
       input.visionModel !== undefined
@@ -148,6 +159,7 @@ async function main(): Promise<void> {
             input.visionModel,
             leftPath,
             rightPath,
+            input.modelImageScaleFactor,
           )
         : null
 
@@ -158,6 +170,7 @@ async function main(): Promise<void> {
             input.ocrModel,
             leftPath,
             rightPath,
+            input.modelImageScaleFactor,
           )
         : null
 
@@ -273,6 +286,28 @@ async function validateInput(input: SampleInput, inputPath: string): Promise<voi
   if (hasArrays && hasDirs) {
     throw new Error(
       'Input must use exactly one mode: arrays or directories, not both.',
+    )
+  }
+
+  if (
+    input.modelImageScaleFactor !== undefined &&
+    (!Number.isFinite(input.modelImageScaleFactor) ||
+      input.modelImageScaleFactor <= 0 ||
+      input.modelImageScaleFactor > 1)
+  ) {
+    throw new Error(
+      'modelImageScaleFactor must be a number greater than 0 and less than or equal to 1.',
+    )
+  }
+
+  if (
+    input.pixelCompareScaleFactor !== undefined &&
+    (!Number.isFinite(input.pixelCompareScaleFactor) ||
+      input.pixelCompareScaleFactor <= 0 ||
+      input.pixelCompareScaleFactor > 1)
+  ) {
+    throw new Error(
+      'pixelCompareScaleFactor must be a number greater than 0 and less than or equal to 1.',
     )
   }
 
@@ -392,7 +427,7 @@ function resolveAxiomateBinary(override?: string): string {
 async function comparePixels(
   leftPath: string,
   rightPath: string,
-  compareSize: number,
+  compareScaleFactor?: number,
 ): Promise<PixelComparison> {
   const [leftFile, rightFile] = await Promise.all([
     fs.readFile(leftPath),
@@ -404,19 +439,43 @@ async function comparePixels(
     sharp(rightFile).metadata(),
   ])
 
+  const leftWidth = leftMeta.width ?? 0
+  const leftHeight = leftMeta.height ?? 0
+  const rightWidth = rightMeta.width ?? 0
+  const rightHeight = rightMeta.height ?? 0
+
+  if (
+    leftWidth <= 0 ||
+    leftHeight <= 0 ||
+    rightWidth <= 0 ||
+    rightHeight <= 0
+  ) {
+    throw new Error(
+      `Could not read image dimensions for pixel comparison:\n${leftPath}\n${rightPath}`,
+    )
+  }
+
+  let compareWidth: number
+  let compareHeight: number
+  let comparisonMode: PixelComparison['comparisonMode']
+
+  if (compareScaleFactor !== undefined) {
+    compareWidth = Math.max(1, Math.round(Math.min(leftWidth, rightWidth) * compareScaleFactor))
+    compareHeight = Math.max(1, Math.round(Math.min(leftHeight, rightHeight) * compareScaleFactor))
+    comparisonMode = 'explicit_scale_factor'
+  } else if (leftWidth === rightWidth && leftHeight === rightHeight) {
+    compareWidth = leftWidth
+    compareHeight = leftHeight
+    comparisonMode = 'original_dimensions'
+  } else {
+    compareWidth = Math.min(leftWidth, rightWidth)
+    compareHeight = Math.min(leftHeight, rightHeight)
+    comparisonMode = 'smallest_common_dimensions'
+  }
+
   const [leftRaw, rightRaw] = await Promise.all([
-    sharp(leftFile)
-      .resize(compareSize, compareSize, { fit: 'fill' })
-      .removeAlpha()
-      .toColourspace('srgb')
-      .raw()
-      .toBuffer(),
-    sharp(rightFile)
-      .resize(compareSize, compareSize, { fit: 'fill' })
-      .removeAlpha()
-      .toColourspace('srgb')
-      .raw()
-      .toBuffer(),
+    renderImageForPixelCompare(leftFile, compareWidth, compareHeight),
+    renderImageForPixelCompare(rightFile, compareWidth, compareHeight),
   ])
 
   let mse = 0
@@ -449,19 +508,21 @@ async function comparePixels(
 
   return {
     leftDimensions: {
-      width: leftMeta.width ?? 0,
-      height: leftMeta.height ?? 0,
+      width: leftWidth,
+      height: leftHeight,
     },
     rightDimensions: {
-      width: rightMeta.width ?? 0,
-      height: rightMeta.height ?? 0,
+      width: rightWidth,
+      height: rightHeight,
     },
     fileHashEqual: sha256(leftFile) === sha256(rightFile),
     exactPixelMatch,
     meanAbsoluteDifference: Number(meanAbsoluteDifference.toFixed(4)),
     mse: Number(mse.toFixed(4)),
     similarityScore,
-    compareSize,
+    comparisonMode,
+    compareWidth,
+    compareHeight,
   }
 }
 
@@ -470,6 +531,7 @@ async function runVisionComparison(
   model: string,
   leftPath: string,
   rightPath: string,
+  modelImageScaleFactor?: number,
 ): Promise<VlResult> {
   const schema = {
     type: 'object',
@@ -485,12 +547,13 @@ async function runVisionComparison(
   const result = (await runStructuredAxiomateCall({
     axiomateBinary,
     model,
+    modelImageScaleFactor,
     systemPrompt:
       'You compare exactly two images. Return strict JSON only. Decide whether they represent the same content for the stated image type.',
     schema,
     content: [
-      await imageFileToBlock(leftPath),
-      await imageFileToBlock(rightPath),
+      await imageFileToBlock(leftPath, modelImageScaleFactor),
+      await imageFileToBlock(rightPath, modelImageScaleFactor),
       {
         type: 'text',
         text: 'Decide whether these two images are the same.',
@@ -510,10 +573,21 @@ async function runOcrComparison(
   model: string,
   leftPath: string,
   rightPath: string,
+  modelImageScaleFactor?: number,
 ): Promise<OcrComparison> {
   const [left, right] = await Promise.all([
-    runOcrExtraction(axiomateBinary, model, leftPath),
-    runOcrExtraction(axiomateBinary, model, rightPath),
+    runOcrExtraction(
+      axiomateBinary,
+      model,
+      leftPath,
+      modelImageScaleFactor,
+    ),
+    runOcrExtraction(
+      axiomateBinary,
+      model,
+      rightPath,
+      modelImageScaleFactor,
+    ),
   ])
 
   const normalizedLeftText = normalizeOcrText(left.text)
@@ -538,6 +612,7 @@ async function runOcrExtraction(
   axiomateBinary: string,
   model: string,
   imagePath: string,
+  modelImageScaleFactor?: number,
 ): Promise<OcrExtraction> {
   const schema = {
     type: 'object',
@@ -553,11 +628,12 @@ async function runOcrExtraction(
   const result = (await runStructuredAxiomateCall({
     axiomateBinary,
     model,
+    modelImageScaleFactor,
     systemPrompt:
       'You are an OCR extraction tool. Read visible text from the provided image and return strict JSON only.',
     schema,
     content: [
-      await imageFileToBlock(imagePath),
+      await imageFileToBlock(imagePath, modelImageScaleFactor),
       {
         type: 'text',
         text: 'Extract visible OCR text from this image.',
@@ -573,9 +649,16 @@ async function runOcrExtraction(
   }
 }
 
-async function imageFileToBlock(path: string): Promise<ContentBlock> {
+async function imageFileToBlock(
+  path: string,
+  scaleFactor?: number,
+): Promise<ContentBlock> {
   const mediaType = mediaTypeFromPath(path)
-  const buffer = await fs.readFile(path)
+  const originalBuffer = await fs.readFile(path)
+  const buffer =
+    scaleFactor !== undefined && scaleFactor < 1
+      ? await resizeImageBufferForModel(originalBuffer, scaleFactor)
+      : originalBuffer
   return {
     type: 'image',
     source: {
@@ -584,6 +667,55 @@ async function imageFileToBlock(path: string): Promise<ContentBlock> {
       data: buffer.toString('base64'),
     },
   }
+}
+
+async function resizeImageBufferForModel(
+  buffer: Buffer,
+  scaleFactor: number,
+): Promise<Buffer> {
+  const image = sharp(buffer)
+  const metadata = await image.metadata()
+  const width = metadata.width ?? 0
+  const height = metadata.height ?? 0
+
+  if (width <= 0 || height <= 0) {
+    return buffer
+  }
+
+  const resizedWidth = Math.max(1, Math.round(width * scaleFactor))
+  const resizedHeight = Math.max(1, Math.round(height * scaleFactor))
+
+  if (resizedWidth === width && resizedHeight === height) {
+    return buffer
+  }
+
+  return image
+    .resize(resizedWidth, resizedHeight, {
+      fit: 'fill',
+    })
+    .toBuffer()
+}
+
+async function renderImageForPixelCompare(
+  buffer: Buffer,
+  width: number,
+  height: number,
+): Promise<Buffer> {
+  const image = sharp(buffer)
+  const metadata = await image.metadata()
+  const sourceWidth = metadata.width ?? 0
+  const sourceHeight = metadata.height ?? 0
+
+  const pipeline =
+    sourceWidth === width && sourceHeight === height
+      ? image
+      : image.resize(width, height, { fit: 'fill' })
+
+  return pipeline
+    .removeAlpha()
+    .toColourspace('srgb')
+    .raw()
+    .toBuffer()
 }
 
 function mediaTypeFromPath(path: string): string {

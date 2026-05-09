@@ -59,6 +59,11 @@ pnpm run build
 pnpm run start -- --input input.example.json
 ```
 
+You can also point the sample at either dedicated example file:
+
+- [input.array.example.json](./input.array.example.json)
+- [input.directory.example.json](./input.directory.example.json)
+
 If your Axiomate binary is not at the default path, pass one of:
 
 ```powershell
@@ -82,7 +87,8 @@ Mode 1: explicit arrays
   "right": ["C:/imgs/right/a.png", "C:/imgs/right/b.png"],
   "visionModel": "your-vl-model-key",
   "ocrModel": "deepseek-ocr",
-  "pixelCompareSize": 256,
+  "modelImageScaleFactor": 0.5,
+  "pixelCompareScaleFactor": 0.5,
   "outputPath": "./report.json"
 }
 ```
@@ -95,12 +101,19 @@ Mode 2: directories
   "rightDir": "C:/imgs/right",
   "visionModel": "your-vl-model-key",
   "ocrModel": "deepseek-ocr",
-  "pixelCompareSize": 256,
+  "modelImageScaleFactor": 0.5,
+  "pixelCompareScaleFactor": 0.5,
   "outputPath": "./report.json"
 }
 ```
 
 The example input file uses placeholder image paths. Replace them with real files before running the sample.
+
+Sample input files:
+
+- [input.example.json](./input.example.json) - default directory-mode example
+- [input.array.example.json](./input.array.example.json) - explicit array mode
+- [input.directory.example.json](./input.directory.example.json) - directory mode
 
 ## Output
 
@@ -120,6 +133,10 @@ See the example output file here:
 - `ocrModel` is passed explicitly via `--model`; this sample does not rely on any special built-in OCR routing.
 - The sample uses Axiomate's headless `stream-json` protocol because images are sent through stdin as content blocks.
 - If you only want VL, omit `ocrModel`.
+- `modelImageScaleFactor` scales images before sending them to VL/OCR, preserving original aspect ratio. It does not affect local pixel comparison.
+- `pixelCompareScaleFactor` scales images for local pixel comparison, preserving original aspect ratio and remaining independent from `modelImageScaleFactor`.
 - Array mode: `left` and `right` must have the same length. The sample compares `left[0]` to `right[0]`, `left[1]` to `right[1]`, and so on.
 - Directory mode: the sample pairs files by exact same filename in `leftDir` and `rightDir`.
+- If `pixelCompareScaleFactor` is omitted, the sample compares at original image dimensions when both images have the same size. If dimensions differ, it falls back to the smallest common width and height.
+- Both the local pixel path and the model-input path always derive from the original image bytes, so there is no repeated resize-on-resize drift inside one run.
 - If `axiomate` is on your `PATH`, no repository-relative binary path is needed.

@@ -1,6 +1,12 @@
 {
-  "leftDir": "C:/imgs/left",
-  "rightDir": "C:/imgs/right",
+  "left": [
+    "C:/imgs/left/a.png",
+    "C:/imgs/left/b.png"
+  ],
+  "right": [
+    "C:/imgs/right/a.png",
+    "C:/imgs/right/b.png"
+  ],
   "visionModel": "Qwen/Qwen3.6-Plus",
   "ocrModel": "deepseek-ocr",
   "modelImageScaleFactor": 0.5,
