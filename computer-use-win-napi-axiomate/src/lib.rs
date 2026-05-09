@@ -1212,6 +1212,90 @@ mod windows_impl {
         }
     }
 
+    /// Return true when `candidate` is meaningfully visible on screen.
+    ///
+    /// UIA's `CurrentIsOffscreen=false` is too weak for some controls:
+    /// collapsed dropdown options and similar virtualized descendants can
+    /// still remain in the tree with plausible bounding boxes. To approximate
+    /// "the user can currently see this element", sample a few points inside
+    /// the bbox and require UIA hit-testing at one of those points to land on
+    /// the element itself or within its subtree.
+    ///
+    /// This intentionally rejects elements whose bbox exists only in the UIA
+    /// tree but whose pixels are not currently painted at those sample points.
+    unsafe fn is_uia_element_hit_visible(
+        automation: &IUIAutomation,
+        candidate: &IUIAutomationElement,
+        bbox: &VRect,
+    ) -> bool {
+        if bbox.size.w == 0 || bbox.size.h == 0 {
+            return false;
+        }
+
+        let sample_xs = if bbox.size.w <= 2 {
+            [bbox.origin.x, bbox.origin.x, bbox.origin.x]
+        } else {
+            let x0 = bbox.origin.x;
+            let x1 = bbox.origin.x + bbox.size.w as i32 - 1;
+            [
+                x0 + ((bbox.size.w as i32 - 1) / 2),
+                x0 + ((bbox.size.w as i32 - 1) / 4),
+                x1 - ((bbox.size.w as i32 - 1) / 4),
+            ]
+        };
+        let sample_ys = if bbox.size.h <= 2 {
+            [bbox.origin.y, bbox.origin.y, bbox.origin.y]
+        } else {
+            let y0 = bbox.origin.y;
+            let y1 = bbox.origin.y + bbox.size.h as i32 - 1;
+            [
+                y0 + ((bbox.size.h as i32 - 1) / 2),
+                y0 + ((bbox.size.h as i32 - 1) / 4),
+                y1 - ((bbox.size.h as i32 - 1) / 4),
+            ]
+        };
+
+        let walker = match automation.RawViewWalker() {
+            Ok(w) => w,
+            Err(_) => return true, // best-effort: don't drop everything if walker unavailable
+        };
+
+        for x in sample_xs {
+            for y in sample_ys {
+                let hit = match automation.ElementFromPoint(POINT { x, y }) {
+                    Ok(h) => h,
+                    Err(_) => continue,
+                };
+
+                if automation
+                    .CompareElements(&hit, candidate)
+                    .map(|same| same.as_bool())
+                    .unwrap_or(false)
+                {
+                    return true;
+                }
+
+                let mut cur = hit;
+                for _ in 0..MAX_UIA_TREE_DEPTH {
+                    if automation
+                        .CompareElements(&cur, candidate)
+                        .map(|same| same.as_bool())
+                        .unwrap_or(false)
+                    {
+                        return true;
+                    }
+                    let parent = match walker.GetParentElement(&cur) {
+                        Ok(p) => p,
+                        Err(_) => break,
+                    };
+                    cur = parent;
+                }
+            }
+        }
+
+        false
+    }
+
     /// Enumerate UI elements whose bounding rect is mostly contained in
     /// `rect`. Caps at 50 to bound latency on busy desktops.
     ///
@@ -1572,6 +1656,9 @@ mod windows_impl {
                 .map(|v| v.as_bool())
                 .unwrap_or(false)
             {
+                continue;
+            }
+            if !is_uia_element_hit_visible(automation, &el, &bbox) {
                 continue;
             }
             // Walk ancestors: if any has ExpandCollapseState.Collapsed,
