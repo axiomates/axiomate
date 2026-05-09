@@ -23,14 +23,25 @@ Multi-provider AI agent CLI with full desktop automation. Chat, code, and contro
   npm install -g pnpm
   ```
 - Git
-- [ripgrep](https://github.com/BurntSushi/ripgrep) (`rg`) — required when running from source. Search/grep/glob/`AXIOMATE.md` discovery/context budget paths shell out to it.
+- [ripgrep](https://github.com/BurntSushi/ripgrep) (`rg`) — recommended when running from source. Axiomate's search/grep/glob/`AXIOMATE.md` discovery paths use ripgrep. Release binaries bundle it; source runs prefer a system `rg` when available.
 - **Windows only**: Visual Studio 2022 Build Tools with the C++ workload — needed by Rust NAPI compilation. The bootstrap script **auto-installs it via `winget`** when missing, so most users don't need to do anything in advance. If you want it pre-installed (or your environment doesn't have winget), see the [Windows section](#windows) below.
 
 The bootstrap script will auto-install Bun, Rust, pnpm itself, and the Windows VS Build Tools (Windows only) when any of them are missing. So once you have Node + Git, `npm run bootstrap` (or `node scripts/bootstrap.mjs`) is enough for a clean machine. If pnpm is already installed, prefer `pnpm run bootstrap` — same behavior.
 
 ### Installing ripgrep
 
-The packaged `axiomate.exe` / `axiomate` binaries ship `rg` bundled inside the Bun runtime, so end users of a release build don't need to install anything. Running from source (`pnpm run start`) requires `rg` on `PATH`:
+The packaged `axiomate.exe` / `axiomate` binaries already ship `rg` bundled inside the runtime, so release users usually do not need to install anything.
+
+When running from source (`pnpm run start` / `pnpm run bootstrap`), Axiomate will:
+
+- prefer a system `rg` on `PATH` when one is available
+- otherwise fall back to the bundled / vendored ripgrep path used by the repo or packaged runtime
+
+Installing a normal system `rg` is still recommended because it makes diagnostics simpler and helps when you want to use `rg` directly in your own shell.
+
+#### Online install
+
+Install ripgrep with your normal package manager:
 
 ```bash
 # macOS
@@ -47,7 +58,48 @@ sudo dnf install ripgrep        # Fedora / RHEL
 sudo pacman -S ripgrep          # Arch
 ```
 
-Verify with `rg --version`.
+Verify with:
+
+```bash
+rg --version
+```
+
+#### Offline install
+
+If the target machine has no internet access, install ripgrep by copying a prebuilt binary from another machine.
+
+1. On a connected machine, download the correct ripgrep release archive for the target platform and CPU from the official ripgrep GitHub releases page.
+2. Transfer the archive to the offline machine using your normal internal method (USB drive, internal artifact mirror, shared folder, SCCM/Intune/Jamf, etc.).
+3. Extract it into a stable tools directory.
+4. Add that directory to `PATH`.
+5. Verify with `rg --version`.
+
+Typical offline layouts:
+
+- Windows:
+  - copy `rg.exe` to a directory such as `C:\Tools\ripgrep\`
+  - add `C:\Tools\ripgrep\` to the system or user `PATH`
+  - or distribute it through WinGet private repos / Intune / SCCM if your environment already uses them
+- macOS:
+  - extract the release tarball somewhere stable, for example `/usr/local/ripgrep/` or `/opt/ripgrep/`
+  - symlink or add that directory to `PATH`
+- Linux:
+  - extract the release tarball to `/opt/ripgrep/` or another managed tools directory
+  - symlink `rg` into `/usr/local/bin/`, or add the directory to `PATH`
+
+Example PATH updates:
+
+```powershell
+# Windows PowerShell
+$env:Path = "C:\Tools\ripgrep;$env:Path"
+```
+
+```bash
+# macOS / Linux
+export PATH="/opt/ripgrep:$PATH"
+```
+
+If you maintain an internal software mirror, the cleanest setup is to mirror the official ripgrep release artifacts and install from that mirror instead of relying on public package repositories.
 
 The repo uses pnpm workspaces. Bun is used by the build/runtime scripts, not as the primary installer.
 
