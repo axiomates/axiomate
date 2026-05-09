@@ -702,6 +702,7 @@ mod macos {
         //! (x, y) hit-test arg from JS is also logical pt (matches the
         //! agent's executor coord space), so no scaling/flipping is needed.
 
+        use super::cg_window_query::decode_window_bounds;
         use super::running_app;
         use crate::{AppHitInfo, WindowDisplayInfo};
         use std::collections::{BTreeMap, BTreeSet};
