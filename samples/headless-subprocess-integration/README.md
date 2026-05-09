@@ -123,6 +123,7 @@ The report includes:
 - VL verdict and confidence
 - OCR extracted text plus normalized similarity
 - final fused probability and label
+- per-source errors when one comparison path fails
 
 See the example output file here:
 
@@ -140,4 +141,5 @@ See the example output file here:
 - Directory mode: the sample pairs files by exact same filename in `leftDir` and `rightDir`.
 - If `pixelCompareScaleFactor` is omitted, the sample compares at original image dimensions when both images have the same size. If dimensions differ, it falls back to the smallest common width and height.
 - Both the local pixel path and the model-input path always derive from the original image bytes, so there is no repeated resize-on-resize drift inside one run.
+- Source failures are soft by default: if `pixel`, `vl`, or `ocr` fails for a pair, the sample records the error in the report and continues with the remaining sources and pairs.
 - If `axiomate` is on your `PATH`, no repository-relative binary path is needed.

@@ -41,6 +41,11 @@ type PixelComparison = {
   compareHeight: number
 }
 
+type SourceError = {
+  source: 'pixel' | 'vl' | 'ocr'
+  message: string
+}
+
 type VlResult = {
   same: boolean
   confidence: number
@@ -71,10 +76,11 @@ type PairReport = {
   imageType: string
   leftPath: string
   rightPath: string
-  pixel: PixelComparison
+  pixel: PixelComparison | null
   vl: VlResult | null
   ocr: OcrComparison | null
   final: FinalVerdict
+  errors: SourceError[]
 }
 
 type SummaryReport = {
@@ -146,31 +152,44 @@ async function main(): Promise<void> {
     const leftPath = pair.leftPath
     const rightPath = pair.rightPath
 
-    const pixel = await comparePixels(
-      leftPath,
-      rightPath,
-      pixelCompareScaleFactor,
+    const errors: SourceError[] = []
+
+    const pixel = await tryRun(
+      'pixel',
+      errors,
+      () =>
+        comparePixels(leftPath, rightPath, pixelCompareScaleFactor),
     )
 
     const vl =
       input.visionModel !== undefined
-        ? await runVisionComparison(
-            axiomateBinary,
-            input.visionModel,
-            leftPath,
-            rightPath,
-            input.visionImageScaleFactor,
+        ? await tryRun(
+            'vl',
+            errors,
+            () =>
+              runVisionComparison(
+                axiomateBinary,
+                input.visionModel!,
+                leftPath,
+                rightPath,
+                input.visionImageScaleFactor,
+              ),
           )
         : null
 
     const ocr =
       input.ocrModel !== undefined
-        ? await runOcrComparison(
-            axiomateBinary,
-            input.ocrModel,
-            leftPath,
-            rightPath,
-            input.ocrImageScaleFactor,
+        ? await tryRun(
+            'ocr',
+            errors,
+            () =>
+              runOcrComparison(
+                axiomateBinary,
+                input.ocrModel!,
+                leftPath,
+                rightPath,
+                input.ocrImageScaleFactor,
+              ),
           )
         : null
 
@@ -185,6 +204,7 @@ async function main(): Promise<void> {
       vl,
       ocr,
       final,
+      errors,
     })
   }
 
@@ -330,6 +350,22 @@ async function validateInput(input: SampleInput, inputPath: string): Promise<voi
   }
   if (!rightStat.isDirectory()) {
     throw new Error(`rightDir is not a directory: ${rightDir}`)
+  }
+}
+
+async function tryRun<T>(
+  source: SourceError['source'],
+  errors: SourceError[],
+  fn: () => Promise<T>,
+): Promise<T | null> {
+  try {
+    return await fn()
+  } catch (error) {
+    errors.push({
+      source,
+      message: error instanceof Error ? error.message : String(error),
+    })
+    return null
   }
 }
 
@@ -895,20 +931,22 @@ function tryExtractStructuredOutputFromResult(
 }
 
 function fuseScores(
-  pixel: PixelComparison,
+  pixel: PixelComparison | null,
   vl: VlResult | null,
   ocr: OcrComparison | null,
 ): FinalVerdict {
-  const weightedSignals: Array<{ weight: number; sameProbability: number }> = [
-    {
+  const weightedSignals: Array<{ weight: number; sameProbability: number }> = []
+
+  if (pixel) {
+    weightedSignals.push({
       weight: 0.45,
       sameProbability: pixel.fileHashEqual
         ? 1
         : pixel.exactPixelMatch
           ? 0.995
           : pixel.similarityScore,
-    },
-  ]
+    })
+  }
 
   if (vl) {
     weightedSignals.push({
@@ -922,6 +960,10 @@ function fuseScores(
       weight: 0.15,
       sameProbability: ocr.similarityScore,
     })
+  }
+
+  if (weightedSignals.length === 0) {
+    return { label: 'uncertain', sameProbability: 0.5 }
   }
 
   const totalWeight = weightedSignals.reduce(

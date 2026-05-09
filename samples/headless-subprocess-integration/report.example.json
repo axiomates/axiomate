@@ -53,7 +53,8 @@
       "final": {
         "label": "same",
         "sameProbability": 0.928
-      }
+      },
+      "errors": []
     },
     {
       "pairId": "b.png",
@@ -101,7 +102,13 @@
       "final": {
         "label": "uncertain",
         "sameProbability": 0.7187
-      }
+      },
+      "errors": [
+        {
+          "source": "ocr",
+          "message": "Prompt is too long"
+        }
+      ]
     }
   ]
 }
