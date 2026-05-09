@@ -123,18 +123,11 @@ pub struct CaptureExcludingResult {
 }
 
 #[napi]
-pub async fn capture_excluding(
+pub fn capture_excluding(
     opts: CaptureExcludingOpts,
 ) -> napi::Result<Option<CaptureExcludingResult>> {
-    #[cfg(target_os = "macos")]
-    {
-        macos::sc_capture::capture(opts).await
-    }
-    #[cfg(not(target_os = "macos"))]
-    {
-        let _ = opts;
-        Ok(None)
-    }
+    let _ = opts;
+    Ok(None)
 }
 
 // ───────────────────────────────────────────────────────────────────────────
@@ -318,9 +311,9 @@ mod macos {
     pub mod running_app {
         use objc2::msg_send;
         use objc2::rc::Retained;
+        use objc2::runtime::AnyObject;
         use objc2_app_kit::{NSRunningApplication, NSWorkspace};
         use objc2_foundation::NSString;
-        use std::os::raw::c_void;
 
         /// Iterate `NSWorkspace.sharedWorkspace.runningApplications`, invoke
         /// `action` on every running instance whose bundle id matches.
@@ -444,7 +437,7 @@ mod macos {
         /// first-pass structured element enumeration.
         pub unsafe fn frontmost_app_pid() -> Option<i32> {
             let workspace = NSWorkspace::sharedWorkspace();
-            let app: *mut c_void = msg_send![&workspace, frontmostApplication];
+            let app: *mut AnyObject = msg_send![&workspace, frontmostApplication];
             if app.is_null() {
                 return None;
             }
@@ -747,7 +740,7 @@ mod macos {
         }
         #[repr(C)]
         #[derive(Clone, Copy, Default)]
-        struct CGRect {
+        pub(super) struct CGRect {
             origin: CGPoint,
             size: CGSize,
         }
@@ -807,7 +800,7 @@ mod macos {
         /// Read kCGWindowBounds (CFDictionary) → CGRect via the official
         /// CG roundtrip helper. Returns None when the dict is missing the
         /// key or the conversion fails (rare).
-        unsafe fn decode_window_bounds(dict: CFDictionaryRef) -> Option<CGRect> {
+        pub(super) unsafe fn decode_window_bounds(dict: CFDictionaryRef) -> Option<CGRect> {
             let bounds_dict =
                 CFDictionaryGetValue(dict, kCGWindowBounds as *const c_void) as CFDictionaryRef;
             if bounds_dict.is_null() {
