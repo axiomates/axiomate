@@ -205,7 +205,7 @@
       <div class="topline">
         <div>
           <h1>__REPORT_TITLE__</h1>
-          <div class="muted" id="meta-line">Loading report...</div>
+          <div class="muted" id="meta-line">Rendering embedded report...</div>
         </div>
       </div>
       <div class="summary-grid" id="summary-grid"></div>
@@ -213,11 +213,10 @@
     <section class="panel">
       <h2>Pairs</h2>
       <div class="pair-list" id="pair-list"></div>
-      <div class="footer-note">This page tries to load __REPORT_JSON_FILE__ first. If that fails, it falls back to the embedded report snapshot.</div>
+      <div class="footer-note">This HTML file is self-contained and renders from embedded report data. You can open it directly from the filesystem.</div>
     </section>
   </div>
   <script>
-    const REPORT_JSON_FILE = "__REPORT_JSON_FILE__";
     const EMBEDDED_REPORT = __EMBEDDED_REPORT__;
 
     function escapeHtml(value) {
@@ -373,24 +372,14 @@
         report.pairs.map(renderPair).join('');
     }
 
-    async function loadReport() {
-      try {
-        const response = await fetch(REPORT_JSON_FILE, { cache: 'no-store' });
-        if (!response.ok) throw new Error('HTTP ' + response.status);
-        return await response.json();
-      } catch {
-        return EMBEDDED_REPORT;
-      }
+    try {
+      renderReport(EMBEDDED_REPORT);
+    } catch (error) {
+      document.getElementById('pair-list').innerHTML =
+        '<div class="error-item"><strong>Render error</strong><div class="block">' +
+        escapeHtml(String(error)) +
+        '</div></div>';
     }
-
-    loadReport()
-      .then(renderReport)
-      .catch(error => {
-        document.getElementById('pair-list').innerHTML =
-          '<div class="error-item"><strong>Render error</strong><div class="block">' +
-          escapeHtml(String(error)) +
-          '</div></div>';
-      });
   </script>
 </body>
 </html>

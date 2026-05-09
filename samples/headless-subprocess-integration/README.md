@@ -135,6 +135,8 @@ When the sample runs, it writes both:
 - `report.json`
 - `report.html`
 
+`report.html` is self-contained. You can double-click it and view the report directly from the filesystem without hosting it anywhere.
+
 ## Notes
 
 - `ocrModel` is passed explicitly via `--model`; this sample does not rely on any special built-in OCR routing.

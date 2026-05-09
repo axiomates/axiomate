@@ -145,7 +145,6 @@ async function createReportHtml(
   const template = await fs.readFile(templatePath, 'utf8')
   return template
     .replaceAll('__REPORT_TITLE__', escapeHtml('Headless Subprocess Integration Report'))
-    .replaceAll('__REPORT_JSON_FILE__', reportJsonFileName)
     .replace('__EMBEDDED_REPORT__', JSON.stringify(report))
 }
 
