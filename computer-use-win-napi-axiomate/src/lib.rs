@@ -983,10 +983,12 @@ mod windows_impl {
     use windows::Win32::UI::WindowsAndMessaging::{
         BringWindowToTop, DrawIconEx, EnumWindows, FindWindowExW, FindWindowW, GetClassNameW,
         GetCursorInfo, GetCursorPos, GetForegroundWindow, GetIconInfo, GetSystemMetrics,
-        GetWindowRect, GetWindowThreadProcessId, IsIconic, IsWindowVisible, SetForegroundWindow,
-        SetWindowPos, ShowWindow, WindowFromPoint, CURSORINFO, CURSOR_SHOWING, DI_NORMAL, HWND_TOP,
-        ICONINFO, SHOW_WINDOW_CMD, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN,
-        SM_YVIRTUALSCREEN, SWP_NOACTIVATE, SWP_NOZORDER, SW_HIDE, SW_SHOWNOACTIVATE,
+        GetWindowLongW, GetWindowRect, GetWindowThreadProcessId, IsIconic, IsWindowVisible,
+        SetForegroundWindow, SetWindowPos, ShowWindow, WindowFromPoint, GWL_EXSTYLE,
+        CURSORINFO, CURSOR_SHOWING, DI_NORMAL, HWND_TOP, ICONINFO, SHOW_WINDOW_CMD,
+        SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN,
+        SWP_NOACTIVATE, SWP_NOZORDER, SW_HIDE, SW_SHOWNOACTIVATE, WS_EX_NOACTIVATE,
+        WS_EX_TOOLWINDOW,
     };
     // UIAutomation — IUIAutomation::FindAll path used by enumerate_ui_elements_in_rect
     // for the SoM (Set-of-Mark) overlay. CUIAutomation is the COM CLSID;
@@ -2162,6 +2164,12 @@ mod windows_impl {
         pub matched_path: String,
     }
 
+    #[derive(Copy, Clone, PartialEq, Eq)]
+    enum WindowPriority {
+        Primary,
+        Ephemeral,
+    }
+
     /// Module-level state for find_window_enum_proc.
     struct FindState {
         // The AI-supplied input. Used as exact path needle.
@@ -2173,7 +2181,9 @@ mod windows_impl {
         // match we stop entirely. Basename matches stay tentative until
         // EnumWindows finishes (in case a later window is an exact match).
         exact: Option<(isize, String)>,
+        exact_ephemeral: Option<(isize, String)>,
         basename: Option<(isize, String)>,
+        basename_ephemeral: Option<(isize, String)>,
         // Visible windows we saw, for the no-match diagnostic. (basename,
         // window_text). Bounded to first ~24 to keep diagnostic short.
         visible_seen: Vec<(String, String)>,
@@ -2200,6 +2210,24 @@ mod windows_impl {
         } else {
             Some(format!("{bn}.exe"))
         }
+    }
+
+    unsafe fn capture_window_priority(hwnd: HWND) -> WindowPriority {
+        let ex_style = GetWindowLongW(hwnd, GWL_EXSTYLE) as u32;
+        if (ex_style & WS_EX_TOOLWINDOW.0) != 0 || (ex_style & WS_EX_NOACTIVATE.0) != 0 {
+            return WindowPriority::Ephemeral;
+        }
+
+        let mut cls = [0u16; 64];
+        let len = GetClassNameW(hwnd, &mut cls) as usize;
+        if len > 0 {
+            let class_name = String::from_utf16_lossy(&cls[..len.min(cls.len())]).to_lowercase();
+            if class_name.contains("tooltips_class32") || class_name.contains("tooltip") {
+                return WindowPriority::Ephemeral;
+            }
+        }
+
+        WindowPriority::Primary
     }
 
     /// Find the first visible top-level window owned by the app at
@@ -2247,7 +2275,9 @@ mod windows_impl {
             target_path: app_identifier.to_string(),
             basename_needle: make_basename_needle(app_identifier),
             exact: None,
+            exact_ephemeral: None,
             basename: None,
+            basename_ephemeral: None,
             visible_seen: Vec::new(),
             pid_to_path: BTreeMap::new(),
         };
@@ -2263,7 +2293,19 @@ mod windows_impl {
                 kind: AppMatchKind::Exact,
                 matched_path: path,
             })
+        } else if let Some((hwnd_isize, path)) = state.exact_ephemeral {
+            Some(WindowMatch {
+                hwnd: HWND(hwnd_isize as *mut std::ffi::c_void),
+                kind: AppMatchKind::Exact,
+                matched_path: path,
+            })
         } else if let Some((hwnd_isize, path)) = state.basename {
+            Some(WindowMatch {
+                hwnd: HWND(hwnd_isize as *mut std::ffi::c_void),
+                kind: AppMatchKind::Basename,
+                matched_path: path,
+            })
+        } else if let Some((hwnd_isize, path)) = state.basename_ephemeral {
             Some(WindowMatch {
                 hwnd: HWND(hwnd_isize as *mut std::ffi::c_void),
                 kind: AppMatchKind::Basename,
@@ -2284,6 +2326,7 @@ mod windows_impl {
         let mut state = AumidFindState {
             target_lower: target.to_lowercase(),
             matched: None,
+            matched_ephemeral: None,
             visible_seen: Vec::new(),
         };
         unsafe {
@@ -2293,6 +2336,12 @@ mod windows_impl {
             );
         }
         let result = if let Some((hwnd_isize, aumid)) = state.matched {
+            Some(WindowMatch {
+                hwnd: HWND(hwnd_isize as *mut std::ffi::c_void),
+                kind: AppMatchKind::Aumid,
+                matched_path: aumid,
+            })
+        } else if let Some((hwnd_isize, aumid)) = state.matched_ephemeral {
             Some(WindowMatch {
                 hwnd: HWND(hwnd_isize as *mut std::ffi::c_void),
                 kind: AppMatchKind::Aumid,
@@ -2309,6 +2358,7 @@ mod windows_impl {
         /// First matched HWND (raw isize for Send across enum-proc lifetime)
         /// + the actual AUMID string we matched.
         matched: Option<(isize, String)>,
+        matched_ephemeral: Option<(isize, String)>,
         /// Visible UWP HWNDs we saw, for the no-match diagnostic. Tuple
         /// is (aumid, "<uwp>") to match the existing visible_seen shape.
         visible_seen: Vec<(String, String)>,
@@ -2348,8 +2398,17 @@ mod windows_impl {
                 .push((aumid.clone(), "<uwp>".to_string()));
         }
         if aumid.to_lowercase() == state.target_lower {
-            state.matched = Some((hwnd.0 as isize, aumid));
-            return false.into();
+            match capture_window_priority(hwnd) {
+                WindowPriority::Primary => {
+                    state.matched = Some((hwnd.0 as isize, aumid));
+                    return false.into();
+                }
+                WindowPriority::Ephemeral => {
+                    if state.matched_ephemeral.is_none() {
+                        state.matched_ephemeral = Some((hwnd.0 as isize, aumid));
+                    }
+                }
+            }
         }
         true.into()
     }
@@ -2360,8 +2419,8 @@ mod windows_impl {
             Some(s) => s,
             None => return false.into(),
         };
-        // Once we have an exact match, stop. Basename match alone keeps
-        // looking — a later exact match should override.
+        // Once we have a primary exact match, stop. Ephemeral exact matches
+        // remain tentative so a later primary content window can override.
         if state.exact.is_some() {
             return false.into();
         }
@@ -2407,8 +2466,18 @@ mod windows_impl {
 
         // Step 1: exact match.
         if path == state.target_path {
-            state.exact = Some((hwnd.0 as isize, path));
-            return false.into();
+            match capture_window_priority(hwnd) {
+                WindowPriority::Primary => {
+                    state.exact = Some((hwnd.0 as isize, path));
+                    return false.into();
+                }
+                WindowPriority::Ephemeral => {
+                    if state.exact_ephemeral.is_none() {
+                        state.exact_ephemeral = Some((hwnd.0 as isize, path));
+                    }
+                    return true.into();
+                }
+            }
         }
 
         // Step 2: basename match (only first wins; subsequent ignored to
@@ -2417,7 +2486,16 @@ mod windows_impl {
             if let Some(needle) = &state.basename_needle {
                 if let Some(bn) = basename_lower(&path) {
                     if &bn == needle {
-                        state.basename = Some((hwnd.0 as isize, path));
+                        match capture_window_priority(hwnd) {
+                            WindowPriority::Primary => {
+                                state.basename = Some((hwnd.0 as isize, path));
+                            }
+                            WindowPriority::Ephemeral => {
+                                if state.basename_ephemeral.is_none() {
+                                    state.basename_ephemeral = Some((hwnd.0 as isize, path));
+                                }
+                            }
+                        }
                     }
                 }
             }
