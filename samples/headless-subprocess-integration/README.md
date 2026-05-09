@@ -62,7 +62,6 @@ pnpm run start -- --input input.example.json
 You can also point the sample at either dedicated example file:
 
 - [input.array.example.json](./input.array.example.json)
-- [input.directory.example.json](./input.directory.example.json)
 
 If your Axiomate binary is not at the default path, pass one of:
 
@@ -113,7 +112,6 @@ Sample input files:
 
 - [input.example.json](./input.example.json) - default directory-mode example
 - [input.array.example.json](./input.array.example.json) - explicit array mode
-- [input.directory.example.json](./input.directory.example.json) - directory mode
 
 ## Output
 
