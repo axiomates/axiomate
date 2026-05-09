@@ -38,9 +38,10 @@ import type {
 } from 'computer-use-mcp-axiomate'
 
 import { API_RESIZE_PARAMS, targetImageSize } from 'computer-use-mcp-axiomate'
-import { getConfigHomeDir, logForDebugging } from '../debug.js'
+import { logForDebugging } from '../debug.js'
 import { errorMessage } from '../errors.js'
 import { execFileNoThrow } from '../execFileNoThrow.js'
+import { getConfigHomeDir } from '../envUtils.js'
 import { sleep } from '../sleep.js'
 import { join } from 'path'
 import { overlayScreenshotArtifacts } from './imageOverlay.js'
