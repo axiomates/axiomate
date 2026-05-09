@@ -320,6 +320,7 @@ mod macos {
         use objc2::rc::Retained;
         use objc2_app_kit::{NSRunningApplication, NSWorkspace};
         use objc2_foundation::NSString;
+        use std::os::raw::c_void;
 
         /// Iterate `NSWorkspace.sharedWorkspace.runningApplications`, invoke
         /// `action` on every running instance whose bundle id matches.
@@ -443,7 +444,7 @@ mod macos {
         /// first-pass structured element enumeration.
         pub unsafe fn frontmost_app_pid() -> Option<i32> {
             let workspace = NSWorkspace::sharedWorkspace();
-            let app: *mut c_void = msg_send![workspace, frontmostApplication];
+            let app: *mut c_void = msg_send![&workspace, frontmostApplication];
             if app.is_null() {
                 return None;
             }
@@ -1029,7 +1030,6 @@ mod macos {
     }
 
     pub mod ax_query {
-        use super::cg_window_query::CGRect;
         use crate::{UiElement, VPoint, VRect, VSize};
         use std::ffi::CString;
         use std::os::raw::{c_char, c_void};
@@ -1042,11 +1042,8 @@ mod macos {
         type CFTypeRef = *const c_void;
         type CFIndex = isize;
         type AXError = i32;
-        type pid_t = i32;
-
         const K_AX_VALUE_CGPOINT_TYPE: u32 = 1;
         const K_AX_VALUE_CGSIZE_TYPE: u32 = 2;
-        const K_AX_VALUE_CGRECT_TYPE: u32 = 3;
         const K_CF_STRING_ENCODING_UTF8: u32 = 0x08000100;
         const K_AX_ERROR_SUCCESS: AXError = 0;
         const MAX_AX_TREE_DEPTH: usize = 48;
@@ -1073,7 +1070,7 @@ mod macos {
         }
 
         extern "C" {
-            fn AXUIElementCreateApplication(pid: pid_t) -> AXUIElementRef;
+            fn AXUIElementCreateApplication(pid: i32) -> AXUIElementRef;
             fn AXUIElementCopyAttributeValue(
                 element: AXUIElementRef,
                 attribute: CFStringRef,
@@ -1085,14 +1082,12 @@ mod macos {
                 y: f32,
                 element: *mut AXUIElementRef,
             ) -> AXError;
-            fn AXUIElementGetPid(element: AXUIElementRef, pid: *mut pid_t) -> AXError;
             fn AXValueGetValue(value: AXValueRef, the_type: u32, out: *mut c_void) -> bool;
             fn CFArrayGetCount(arr: CFArrayRef) -> CFIndex;
             fn CFArrayGetValueAtIndex(arr: CFArrayRef, idx: CFIndex) -> *const c_void;
             fn CFGetTypeID(cf: *const c_void) -> usize;
             fn CFStringGetTypeID() -> usize;
             fn CFArrayGetTypeID() -> usize;
-            fn AXUIElementGetTypeID() -> usize;
             fn CFRelease(cf: *const c_void);
             fn CFRetain(cf: *const c_void) -> *const c_void;
             fn CFStringGetCString(
@@ -1397,7 +1392,7 @@ mod macos {
         /// the now-+1 pointer through as usize. The receiver consumes the
         /// +1 via `Retained::from_raw`.
         async fn await_shareable_content() -> Option<Retained<AnyObject>> {
-            let cls = AnyClass::get(c"SCShareableContent")?;
+            let cls = AnyClass::get("SCShareableContent")?;
             let (tx, rx) = oneshot::channel::<PtrSend>();
             let tx = Arc::new(Mutex::new(Some(tx)));
             let block = RcBlock::new({
@@ -1440,7 +1435,7 @@ mod macos {
             filter: *mut AnyObject,
             config: *mut AnyObject,
         ) -> Option<CGImageRef> {
-            let cls = AnyClass::get(c"SCScreenshotManager")?;
+            let cls = AnyClass::get("SCScreenshotManager")?;
             let (tx, rx) = oneshot::channel::<PtrSend>();
             let tx = Arc::new(Mutex::new(Some(tx)));
             let block = RcBlock::new({
@@ -1556,7 +1551,7 @@ mod macos {
         /// `+[NSArray arrayWithObjects:count:]`. Callers transfer no
         /// ownership; the NSArray retains.
         unsafe fn ns_array_from_objects(items: &[*mut AnyObject]) -> *mut AnyObject {
-            let cls = AnyClass::get(c"NSArray").expect("NSArray class missing");
+            let cls = AnyClass::get("NSArray").expect("NSArray class missing");
             let count = items.len();
             // arrayWithObjects:count: wants a contiguous C array of id ptrs
             // (we already have one as a slice).
@@ -1568,7 +1563,7 @@ mod macos {
             display: *mut AnyObject,
             excluded_arr: *mut AnyObject,
         ) -> Option<Retained<AnyObject>> {
-            let cls = AnyClass::get(c"SCContentFilter")?;
+            let cls = AnyClass::get("SCContentFilter")?;
             let alloc: *mut AnyObject = msg_send![cls, alloc];
             if alloc.is_null() {
                 return None;
@@ -1586,7 +1581,7 @@ mod macos {
             width: i64,
             height: i64,
         ) -> Option<Retained<AnyObject>> {
-            let cls = AnyClass::get(c"SCStreamConfiguration")?;
+            let cls = AnyClass::get("SCStreamConfiguration")?;
             let alloc: *mut AnyObject = msg_send![cls, alloc];
             if alloc.is_null() {
                 return None;
@@ -1610,7 +1605,7 @@ mod macos {
             // Step 0: runtime gate. SCScreenshotManager is macOS 14+. On 13
             // and below the class is unregistered → Ok(None) → caller falls
             // back to node-screenshots full-screen.
-            if AnyClass::get(c"SCScreenshotManager").is_none() {
+            if AnyClass::get("SCScreenshotManager").is_none() {
                 return Ok(None);
             }
 
@@ -1898,6 +1893,7 @@ mod macos {
             if arr.is_null() {
                 return WindowSearch {
                     window_id: None,
+                    bounds: None,
                     diagnostic:
                         "CGWindowListCopyWindowInfo returned null. Check \
                          Screen Recording TCC permission for the host app."
