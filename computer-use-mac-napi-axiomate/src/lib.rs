@@ -1024,6 +1024,8 @@ mod macos {
 
     pub mod ax_query {
         use crate::{UiElement, VPoint, VRect, VSize};
+        use core_foundation::base::TCFType;
+        use core_foundation::string::CFString;
         use std::ffi::CString;
         use std::os::raw::{c_char, c_void};
         use std::ptr;
@@ -1089,15 +1091,10 @@ mod macos {
                 buffer_size: CFIndex,
                 encoding: u32,
             ) -> bool;
+        }
 
-            static kAXFocusedWindowAttribute: CFStringRef;
-            static kAXChildrenAttribute: CFStringRef;
-            static kAXRoleAttribute: CFStringRef;
-            static kAXTitleAttribute: CFStringRef;
-            static kAXDescriptionAttribute: CFStringRef;
-            static kAXValueAttribute: CFStringRef;
-            static kAXPositionAttribute: CFStringRef;
-            static kAXSizeAttribute: CFStringRef;
+        fn ax_attr(name: &str) -> CFString {
+            CFString::new(name)
         }
 
         fn frontmost_app_ax_root() -> Option<AXUIElementRef> {
@@ -1152,7 +1149,8 @@ mod macos {
         }
 
         unsafe fn read_children(element: AXUIElementRef) -> Vec<AXUIElementRef> {
-            let value = match copy_attr(element, kAXChildrenAttribute) {
+            let attr = ax_attr("AXChildren");
+            let value = match copy_attr(element, attr.as_concrete_TypeRef() as CFStringRef) {
                 Some(v) => v,
                 None => return Vec::new(),
             };
@@ -1175,8 +1173,10 @@ mod macos {
         }
 
         unsafe fn read_rect(element: AXUIElementRef) -> Option<CGRectNative> {
-            let pos_value = copy_attr(element, kAXPositionAttribute)?;
-            let size_value = copy_attr(element, kAXSizeAttribute)?;
+            let pos_attr = ax_attr("AXPosition");
+            let size_attr = ax_attr("AXSize");
+            let pos_value = copy_attr(element, pos_attr.as_concrete_TypeRef() as CFStringRef)?;
+            let size_value = copy_attr(element, size_attr.as_concrete_TypeRef() as CFStringRef)?;
             let mut pos = CGPoint::default();
             let mut size = CGSize::default();
             let pos_ok = AXValueGetValue(pos_value as AXValueRef, K_AX_VALUE_CGPOINT_TYPE, &mut pos as *mut _ as *mut c_void);
@@ -1250,7 +1250,12 @@ mod macos {
         }
 
         unsafe fn element_to_ui(element: AXUIElementRef, filter: &VRect) -> Option<UiElement> {
-            let role_raw = read_string_attr(element, kAXRoleAttribute)?;
+            let role_attr = ax_attr("AXRole");
+            let title_attr = ax_attr("AXTitle");
+            let desc_attr = ax_attr("AXDescription");
+            let value_attr = ax_attr("AXValue");
+            let role_raw =
+                read_string_attr(element, role_attr.as_concrete_TypeRef() as CFStringRef)?;
             if role_is_container_only(&role_raw) {
                 return None;
             }
@@ -1259,9 +1264,9 @@ mod macos {
             if bbox.size.w == 0 || bbox.size.h == 0 || !intersects_filter(&bbox, filter) {
                 return None;
             }
-            let name = read_string_attr(element, kAXTitleAttribute)
-                .or_else(|| read_string_attr(element, kAXDescriptionAttribute))
-                .or_else(|| read_string_attr(element, kAXValueAttribute))
+            let name = read_string_attr(element, title_attr.as_concrete_TypeRef() as CFStringRef)
+                .or_else(|| read_string_attr(element, desc_attr.as_concrete_TypeRef() as CFStringRef))
+                .or_else(|| read_string_attr(element, value_attr.as_concrete_TypeRef() as CFStringRef))
                 .unwrap_or_default();
             Some(UiElement {
                 bbox,
@@ -1278,7 +1283,8 @@ mod macos {
                 None => return Vec::new(),
             };
             unsafe {
-                let start = copy_attr(root, kAXFocusedWindowAttribute)
+                let focused_attr = ax_attr("AXFocusedWindow");
+                let start = copy_attr(root, focused_attr.as_concrete_TypeRef() as CFStringRef)
                     .map(|v| v as AXUIElementRef)
                     .unwrap_or(root);
                 let mut out = Vec::new();
