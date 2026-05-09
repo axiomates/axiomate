@@ -65,6 +65,9 @@ type OcrComparison = {
   right: OcrExtraction
   normalizedLeftText: string
   normalizedRightText: string
+  textEditSimilarity: number | null
+  tokenSimilarity: number | null
+  lineSimilarity: number | null
   similarityScore: number | null
 }
 
@@ -839,18 +842,40 @@ async function runOcrComparison(
 
   const normalizedLeftText = normalizeOcrText(left.text)
   const normalizedRightText = normalizeOcrText(right.text)
-  const similarityScore =
+  const textEditSimilarity =
     normalizedLeftText.length === 0 && normalizedRightText.length === 0
       ? null
       : Number(
           stringSimilarity(normalizedLeftText, normalizedRightText).toFixed(4),
         )
+  const tokenSimilarity = Number(
+    jaccardSimilarity(
+      tokenizeForSimilarity(normalizedLeftText),
+      tokenizeForSimilarity(normalizedRightText),
+    ).toFixed(4),
+  )
+  const lineSimilarity = Number(
+    jaccardSimilarity(
+      linesForSimilarity(left.text),
+      linesForSimilarity(right.text),
+    ).toFixed(4),
+  )
+  const similarityScore = Number(
+    (
+      ((textEditSimilarity ?? 1) * 0.5) +
+      (tokenSimilarity * 0.3) +
+      (lineSimilarity * 0.2)
+    ).toFixed(4),
+  )
 
   return {
     left,
     right,
     normalizedLeftText,
     normalizedRightText,
+    textEditSimilarity,
+    tokenSimilarity,
+    lineSimilarity,
     similarityScore,
   }
 }
@@ -978,6 +1003,7 @@ async function runOpenAICompatibleOcr(params: {
       body: JSON.stringify({
         model: params.modelConfig.model,
         stream: false,
+        temperature: 0,
         messages: [
           {
             role: 'user',
@@ -1332,6 +1358,41 @@ function normalizeOcrText(text: string): string {
     .replace(/\s+/g, ' ')
     .replace(/[^\p{L}\p{N}\s]/gu, '')
     .trim()
+}
+
+function tokenizeForSimilarity(text: string): string[] {
+  if (text.length === 0) return []
+  return text
+    .split(/\s+/)
+    .map(token => token.trim())
+    .filter(Boolean)
+}
+
+function linesForSimilarity(text: string): string[] {
+  return text
+    .split(/\r?\n/)
+    .map(line =>
+      line
+        .normalize('NFKC')
+        .toLowerCase()
+        .replace(/\s+/g, ' ')
+        .trim(),
+    )
+    .filter(Boolean)
+}
+
+function jaccardSimilarity(left: string[], right: string[]): number {
+  const leftSet = new Set(left)
+  const rightSet = new Set(right)
+
+  if (leftSet.size === 0 && rightSet.size === 0) {
+    return 1
+  }
+
+  const intersection = [...leftSet].filter(item => rightSet.has(item)).length
+  const union = new Set([...leftSet, ...rightSet]).size
+  if (union === 0) return 1
+  return clamp01(intersection / union)
 }
 
 function stringSimilarity(left: string, right: string): number {
