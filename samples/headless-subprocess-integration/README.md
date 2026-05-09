@@ -137,6 +137,7 @@ See the example output file here:
 - `visionImageScaleFactor` scales images before sending them to VL, preserving original aspect ratio.
 - `ocrImageScaleFactor` scales images before sending them to OCR, preserving original aspect ratio.
 - `pixelCompareScaleFactor` scales images for local pixel comparison, preserving original aspect ratio and remaining independent from the VL/OCR image scale factors.
+- If local pixel comparison proves the images are identical (`fileHashEqual` or `exactPixelMatch`), that result overrides VL/OCR confidence and the final probability becomes `1`.
 - Array mode: `left` and `right` must have the same length. The sample compares `left[0]` to `right[0]`, `left[1]` to `right[1]`, and so on.
 - Directory mode: the sample pairs files by exact same filename in `leftDir` and `rightDir`.
 - If `pixelCompareScaleFactor` is omitted, the sample compares at original image dimensions when both images have the same size. If dimensions differ, it falls back to the smallest common width and height.

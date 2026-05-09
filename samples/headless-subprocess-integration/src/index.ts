@@ -596,7 +596,7 @@ async function runVisionComparison(
     axiomateBinary,
     model,
     systemPrompt:
-      'You compare exactly two images. Return strict JSON only. Decide whether they represent the same content for the stated image type.',
+      'You compare exactly two images. Return strict JSON only. Decide whether they represent the same content. "same" is your binary decision. "confidence" must be the probability that the two images should be considered the same, from 0 to 1. Use around 0.5 when uncertain. Use values above 0.9 only when evidence is very strong. Use values below 0.1 only when evidence strongly shows they are different. Do not always return extreme values.',
     schema,
     content: [
       await imageFileToBlock(leftPath, visionImageScaleFactor),
@@ -935,6 +935,14 @@ function fuseScores(
   vl: VlResult | null,
   ocr: OcrComparison | null,
 ): FinalVerdict {
+  if (pixel?.fileHashEqual || pixel?.exactPixelMatch) {
+    return { label: 'same', sameProbability: 1 }
+  }
+
+  if (pixel && pixel.similarityScore <= 0) {
+    return { label: 'different', sameProbability: 0 }
+  }
+
   const weightedSignals: Array<{ weight: number; sameProbability: number }> = []
 
   if (pixel) {

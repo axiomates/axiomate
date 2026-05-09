@@ -52,7 +52,7 @@
       },
       "final": {
         "label": "same",
-        "sameProbability": 0.928
+        "sameProbability": 1
       },
       "errors": []
     },
