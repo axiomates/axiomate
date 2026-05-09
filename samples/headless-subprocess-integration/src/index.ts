@@ -139,13 +139,37 @@ function getHtmlOutputPath(outputPath: string): string {
 
 async function createReportHtml(
   report: SummaryReport,
-  reportJsonFileName: string,
+  _reportJsonFileName: string,
 ): Promise<string> {
   const templatePath = resolve(SAMPLE_ROOT, 'res', 'report.template.html')
   const template = await fs.readFile(templatePath, 'utf8')
+
+  const metaLine = escapeHtml(
+    `Generated at ${report.generatedAt} · Axiomate binary: ${report.axiomateBinary}`,
+  )
+
+  const summaryCards = [
+    ['Total Pairs', String(report.totalPairs)],
+    ['Same', String(report.sameCount)],
+    ['Different', String(report.differentCount)],
+    ['Uncertain', String(report.uncertainCount)],
+  ]
+    .map(
+      ([label, value]) => `
+        <div class="stat">
+          <div class="stat-label">${escapeHtml(label)}</div>
+          <div class="stat-value">${escapeHtml(value)}</div>
+        </div>`,
+    )
+    .join('')
+
+  const pairCards = report.pairs.map(renderPairCardHtml).join('')
+
   return template
     .replaceAll('__REPORT_TITLE__', escapeHtml('Headless Subprocess Integration Report'))
-    .replace('__EMBEDDED_REPORT__', escapeJsonForHtmlScript(JSON.stringify(report)))
+    .replace('__META_LINE__', metaLine)
+    .replace('__SUMMARY_CARDS__', summaryCards)
+    .replace('__PAIR_CARDS__', pairCards)
 }
 
 function escapeHtml(value: string): string {
@@ -157,12 +181,120 @@ function escapeHtml(value: string): string {
     .replaceAll("'", '&#39;')
 }
 
-function escapeJsonForHtmlScript(value: string): string {
-  return value
-    .replaceAll('</script', '<\\/script')
-    .replaceAll('<', '\\u003c')
-    .replaceAll('>', '\\u003e')
-    .replaceAll('&', '\\u0026')
+function renderPairCardHtml(pair: PairReport): string {
+  const pixelSection = pair.pixel
+    ? `
+      <div class="source-card">
+        <div class="source-title"><h3>Pixel</h3><span class="muted">${escapeHtml(pair.pixel.comparisonMode)}</span></div>
+        <div class="kv">
+          <div class="kv-row"><div class="kv-key">Similarity</div><div>${escapeHtml(formatPercent(pair.pixel.similarityScore))}</div></div>
+          <div class="kv-row"><div class="kv-key">Exact Match</div><div>${escapeHtml(String(pair.pixel.exactPixelMatch))}</div></div>
+          <div class="kv-row"><div class="kv-key">File Hash Equal</div><div>${escapeHtml(String(pair.pixel.fileHashEqual))}</div></div>
+          <div class="kv-row"><div class="kv-key">Compare Size</div><div>${escapeHtml(`${pair.pixel.compareWidth} × ${pair.pixel.compareHeight}`)}</div></div>
+          <div class="kv-row"><div class="kv-key">Left Size</div><div>${escapeHtml(`${pair.pixel.leftDimensions.width} × ${pair.pixel.leftDimensions.height}`)}</div></div>
+          <div class="kv-row"><div class="kv-key">Right Size</div><div>${escapeHtml(`${pair.pixel.rightDimensions.width} × ${pair.pixel.rightDimensions.height}`)}</div></div>
+          <div class="kv-row"><div class="kv-key">MAD</div><div>${escapeHtml(String(pair.pixel.meanAbsoluteDifference))}</div></div>
+          <div class="kv-row"><div class="kv-key">MSE</div><div>${escapeHtml(String(pair.pixel.mse))}</div></div>
+        </div>
+      </div>`
+    : `
+      <div class="source-card">
+        <div class="source-title"><h3>Pixel</h3><span class="muted">not available</span></div>
+      </div>`
+
+  const vlSection = pair.vl
+    ? `
+      <div class="source-card">
+        <div class="source-title"><h3>Vision</h3><span class="muted">${escapeHtml(formatPercent(pair.vl.confidence))}</span></div>
+        <div class="kv">
+          <div class="kv-row"><div class="kv-key">Same</div><div>${escapeHtml(String(pair.vl.same))}</div></div>
+        </div>
+        <div class="block">${escapeHtml(pair.vl.reason)}</div>
+      </div>`
+    : `
+      <div class="source-card">
+        <div class="source-title"><h3>Vision</h3><span class="muted">not available</span></div>
+      </div>`
+
+  const ocrSection = pair.ocr
+    ? `
+      <div class="source-card">
+        <div class="source-title"><h3>OCR</h3><span class="muted">${escapeHtml(pair.ocr.similarityScore == null ? 'n/a' : formatPercent(pair.ocr.similarityScore))}</span></div>
+        <div class="kv">
+          <div class="kv-row"><div class="kv-key">Left Confidence</div><div>${escapeHtml(formatPercent(pair.ocr.left.confidence))}</div></div>
+          <div class="kv-row"><div class="kv-key">Right Confidence</div><div>${escapeHtml(formatPercent(pair.ocr.right.confidence))}</div></div>
+          <div class="kv-row"><div class="kv-key">Left Language</div><div>${escapeHtml(pair.ocr.left.language || 'unknown')}</div></div>
+          <div class="kv-row"><div class="kv-key">Right Language</div><div>${escapeHtml(pair.ocr.right.language || 'unknown')}</div></div>
+        </div>
+        <div class="block"><strong>Left text</strong>\n${escapeHtml(pair.ocr.left.text || '')}</div>
+        <div class="block"><strong>Right text</strong>\n${escapeHtml(pair.ocr.right.text || '')}</div>
+      </div>`
+    : `
+      <div class="source-card">
+        <div class="source-title"><h3>OCR</h3><span class="muted">not available</span></div>
+      </div>`
+
+  const errorSection =
+    pair.errors.length > 0
+      ? `
+        <div>
+          <h3>Errors</h3>
+          <div class="error-list">
+            ${pair.errors
+              .map(
+                error => `
+                  <div class="error-item">
+                    <strong>${escapeHtml(error.source.toUpperCase())}</strong>
+                    <div class="block">${escapeHtml(error.message)}</div>
+                  </div>`,
+              )
+              .join('')}
+          </div>
+        </div>`
+      : ''
+
+  return `
+    <article class="pair-card">
+      <div class="pair-header">
+        <div class="pair-title">
+          <strong>${escapeHtml(pair.pairId)}</strong>
+          <div class="muted">${escapeHtml(pair.imageType)}</div>
+        </div>
+        <span class="badge ${escapeHtml(pair.final.label)}">${escapeHtml(pair.final.label)} · ${escapeHtml(formatPercent(pair.final.sameProbability))}</span>
+      </div>
+      <div class="pair-body">
+        <div class="two-col">
+          <div class="source-card">
+            <div class="source-title"><h3>Left Image</h3></div>
+            <div class="path">${escapeHtml(pair.leftPath)}</div>
+            <img class="image" src="${escapeHtml(toFileUrl(pair.leftPath))}" alt="">
+          </div>
+          <div class="source-card">
+            <div class="source-title"><h3>Right Image</h3></div>
+            <div class="path">${escapeHtml(pair.rightPath)}</div>
+            <img class="image" src="${escapeHtml(toFileUrl(pair.rightPath))}" alt="">
+          </div>
+        </div>
+        <div class="source-grid">
+          ${pixelSection}
+          ${vlSection}
+          ${ocrSection}
+        </div>
+        ${errorSection}
+      </div>
+    </article>`
+}
+
+function toFileUrl(path: string): string {
+  const normalized = path.replaceAll('\\', '/')
+  if (/^[A-Za-z]:\//.test(normalized)) {
+    return `file:///${encodeURI(normalized)}`
+  }
+  return encodeURI(normalized)
+}
+
+function formatPercent(value: number): string {
+  return `${(value * 100).toFixed(2)}%`
 }
 
 async function main(): Promise<void> {
