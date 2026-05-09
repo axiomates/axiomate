@@ -2,7 +2,6 @@ import { spawn } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { promises as fs } from 'node:fs'
 import { existsSync } from 'node:fs'
-import { homedir } from 'node:os'
 import { basename, dirname, extname, isAbsolute, join, resolve } from 'node:path'
 import sharp from 'sharp'
 
@@ -12,10 +11,7 @@ type SampleInput = {
   leftDir?: string
   rightDir?: string
   visionModel?: string
-  ocrModel?: string
-  ocrTask?: 'ocr' | 'table' | 'chart' | 'formula' | 'spotting' | 'seal'
   visionImageScaleFactor?: number
-  ocrImageScaleFactor?: number
   pixelCompareScaleFactor?: number
   outputPath?: string
   axiomateBin?: string
@@ -44,7 +40,7 @@ type PixelComparison = {
 }
 
 type SourceError = {
-  source: 'pixel' | 'vl' | 'ocr'
+  source: 'pixel' | 'vl'
   message: string
 }
 
@@ -52,23 +48,6 @@ type VlResult = {
   same: boolean
   confidence: number
   reason: string
-}
-
-type OcrExtraction = {
-  text: string
-  confidence: number
-  language?: string
-}
-
-type OcrComparison = {
-  left: OcrExtraction
-  right: OcrExtraction
-  normalizedLeftText: string
-  normalizedRightText: string
-  textEditSimilarity: number | null
-  tokenSimilarity: number | null
-  lineSimilarity: number | null
-  similarityScore: number | null
 }
 
 type FinalVerdict = {
@@ -83,7 +62,6 @@ type PairReport = {
   rightPath: string
   pixel: PixelComparison | null
   vl: VlResult | null
-  ocr: OcrComparison | null
   final: FinalVerdict
   errors: SourceError[]
 }
@@ -97,18 +75,6 @@ type SummaryReport = {
   uncertainCount: number
   outputPath: string
   pairs: PairReport[]
-}
-
-type SampleModelConfig = {
-  model: string
-  protocol: 'openai' | 'anthropic'
-  baseUrl: string
-  apiKey?: string
-  supportsImages?: boolean
-}
-
-type SampleGlobalConfig = {
-  models?: Record<string, SampleModelConfig>
 }
 
 type ContentBlock =
@@ -138,7 +104,9 @@ type StructuredCallOptions = {
   content: ContentBlock[]
 }
 
-const __filename = resolve(process.argv[1] ?? join(SAMPLE_ROOT_FALLBACK(), 'dist', 'index.js'))
+const __filename = resolve(
+  process.argv[1] ?? join(SAMPLE_ROOT_FALLBACK(), 'dist', 'index.js'),
+)
 const __dirname = dirname(__filename)
 const SAMPLE_ROOT = resolve(__dirname, '..')
 
@@ -189,7 +157,10 @@ async function createReportHtml(
     .join('')
 
   return template
-    .replaceAll('__REPORT_TITLE__', escapeHtml('Headless Subprocess Integration Report'))
+    .replaceAll(
+      '__REPORT_TITLE__',
+      escapeHtml('Headless Subprocess Integration Report'),
+    )
     .replace('__META_LINE__', metaLine)
     .replace('__SUMMARY_CARDS__', summaryCards)
     .replace('__PAIR_CARDS__', pairCards)
@@ -239,24 +210,6 @@ function renderPairCardHtml(pair: PairReport): string {
         <div class="source-title"><h3>Vision</h3><span class="muted">not available</span></div>
       </div>`
 
-  const ocrSection = pair.ocr
-    ? `
-      <div class="source-card">
-        <div class="source-title"><h3>OCR</h3><span class="muted">${escapeHtml(pair.ocr.similarityScore == null ? 'n/a' : formatPercent(pair.ocr.similarityScore))}</span></div>
-        <div class="kv">
-          <div class="kv-row"><div class="kv-key">Left Confidence</div><div>${escapeHtml(formatPercent(pair.ocr.left.confidence))}</div></div>
-          <div class="kv-row"><div class="kv-key">Right Confidence</div><div>${escapeHtml(formatPercent(pair.ocr.right.confidence))}</div></div>
-          <div class="kv-row"><div class="kv-key">Left Language</div><div>${escapeHtml(pair.ocr.left.language || 'unknown')}</div></div>
-          <div class="kv-row"><div class="kv-key">Right Language</div><div>${escapeHtml(pair.ocr.right.language || 'unknown')}</div></div>
-        </div>
-        <div class="block"><strong>Left text</strong>\n${escapeHtml(pair.ocr.left.text || '')}</div>
-        <div class="block"><strong>Right text</strong>\n${escapeHtml(pair.ocr.right.text || '')}</div>
-      </div>`
-    : `
-      <div class="source-card">
-        <div class="source-title"><h3>OCR</h3><span class="muted">not available</span></div>
-      </div>`
-
   const errorSection =
     pair.errors.length > 0
       ? `
@@ -301,7 +254,6 @@ function renderPairCardHtml(pair: PairReport): string {
         <div class="source-grid">
           ${pixelSection}
           ${vlSection}
-          ${ocrSection}
         </div>
         ${errorSection}
       </div>
@@ -335,7 +287,6 @@ async function main(): Promise<void> {
   const axiomateBinary = resolveAxiomateBinary(
     args.axiomateBin ?? input.axiomateBin,
   )
-  const globalConfig = await loadAxiomateGlobalConfig()
 
   const pairs = await pairImages(input, inputPath)
   const reports: PairReport[] = []
@@ -346,47 +297,24 @@ async function main(): Promise<void> {
 
     const errors: SourceError[] = []
 
-    const pixel = await tryRun(
-      'pixel',
-      errors,
-      () =>
-        comparePixels(leftPath, rightPath, pixelCompareScaleFactor),
+    const pixel = await tryRun('pixel', errors, () =>
+      comparePixels(leftPath, rightPath, pixelCompareScaleFactor),
     )
 
     const vl =
       input.visionModel !== undefined
-        ? await tryRun(
-            'vl',
-            errors,
-            () =>
-              runVisionComparison(
-                axiomateBinary,
-                input.visionModel!,
-                leftPath,
-                rightPath,
-                input.visionImageScaleFactor,
-              ),
+        ? await tryRun('vl', errors, () =>
+            runVisionComparison(
+              axiomateBinary,
+              input.visionModel!,
+              leftPath,
+              rightPath,
+              input.visionImageScaleFactor,
+            ),
           )
         : null
 
-    const ocr =
-      input.ocrModel !== undefined
-        ? await tryRun(
-            'ocr',
-            errors,
-            () =>
-              runOcrComparison(
-                globalConfig,
-                input.ocrModel!,
-                leftPath,
-                rightPath,
-                input.ocrTask ?? 'ocr',
-                input.ocrImageScaleFactor,
-              ),
-          )
-        : null
-
-    const final = fuseScores(pixel, vl, ocr)
+    const final = fuseScores(pixel, vl)
 
     reports.push({
       pairId: pair.pairId,
@@ -395,7 +323,6 @@ async function main(): Promise<void> {
       rightPath,
       pixel,
       vl,
-      ocr,
       final,
       errors,
     })
@@ -484,7 +411,10 @@ function printHelpAndExit(code: number): never {
   process.exit(code)
 }
 
-async function validateInput(input: SampleInput, inputPath: string): Promise<void> {
+async function validateInput(
+  input: SampleInput,
+  inputPath: string,
+): Promise<void> {
   const hasArrays =
     Array.isArray(input.left) &&
     input.left.length > 0 &&
@@ -509,14 +439,7 @@ async function validateInput(input: SampleInput, inputPath: string): Promise<voi
     )
   }
 
-  validateScaleFactor(
-    'visionImageScaleFactor',
-    input.visionImageScaleFactor,
-  )
-  validateScaleFactor(
-    'ocrImageScaleFactor',
-    input.ocrImageScaleFactor,
-  )
+  validateScaleFactor('visionImageScaleFactor', input.visionImageScaleFactor)
 
   if (
     input.pixelCompareScaleFactor !== undefined &&
@@ -708,8 +631,14 @@ async function comparePixels(
   let comparisonMode: PixelComparison['comparisonMode']
 
   if (compareScaleFactor !== undefined) {
-    compareWidth = Math.max(1, Math.round(Math.min(leftWidth, rightWidth) * compareScaleFactor))
-    compareHeight = Math.max(1, Math.round(Math.min(leftHeight, rightHeight) * compareScaleFactor))
+    compareWidth = Math.max(
+      1,
+      Math.round(Math.min(leftWidth, rightWidth) * compareScaleFactor),
+    )
+    compareHeight = Math.max(
+      1,
+      Math.round(Math.min(leftHeight, rightHeight) * compareScaleFactor),
+    )
     comparisonMode = 'explicit_scale_factor'
   } else if (leftWidth === rightWidth && leftHeight === rightHeight) {
     compareWidth = leftWidth
@@ -815,109 +744,6 @@ async function runVisionComparison(
   }
 }
 
-async function runOcrComparison(
-  globalConfig: SampleGlobalConfig,
-  model: string,
-  leftPath: string,
-  rightPath: string,
-  task: 'ocr' | 'table' | 'chart' | 'formula' | 'spotting' | 'seal',
-  ocrImageScaleFactor?: number,
-): Promise<OcrComparison> {
-  const [left, right] = await Promise.all([
-    runOcrExtraction(
-      globalConfig,
-      model,
-      leftPath,
-      task,
-      ocrImageScaleFactor,
-    ),
-    runOcrExtraction(
-      globalConfig,
-      model,
-      rightPath,
-      task,
-      ocrImageScaleFactor,
-    ),
-  ])
-
-  const normalizedLeftText = normalizeOcrText(left.text)
-  const normalizedRightText = normalizeOcrText(right.text)
-  const textEditSimilarity =
-    normalizedLeftText.length === 0 && normalizedRightText.length === 0
-      ? null
-      : Number(
-          stringSimilarity(normalizedLeftText, normalizedRightText).toFixed(4),
-        )
-  const tokenSimilarity = Number(
-    jaccardSimilarity(
-      tokenizeForSimilarity(normalizedLeftText),
-      tokenizeForSimilarity(normalizedRightText),
-    ).toFixed(4),
-  )
-  const lineSimilarity = Number(
-    jaccardSimilarity(
-      linesForSimilarity(left.text),
-      linesForSimilarity(right.text),
-    ).toFixed(4),
-  )
-  const similarityScore = Number(
-    (
-      ((textEditSimilarity ?? 1) * 0.5) +
-      (tokenSimilarity * 0.3) +
-      (lineSimilarity * 0.2)
-    ).toFixed(4),
-  )
-
-  return {
-    left,
-    right,
-    normalizedLeftText,
-    normalizedRightText,
-    textEditSimilarity,
-    tokenSimilarity,
-    lineSimilarity,
-    similarityScore,
-  }
-}
-
-async function runOcrExtraction(
-  globalConfig: SampleGlobalConfig,
-  model: string,
-  imagePath: string,
-  task: 'ocr' | 'table' | 'chart' | 'formula' | 'spotting' | 'seal',
-  ocrImageScaleFactor?: number,
-): Promise<OcrExtraction> {
-  const modelConfig = resolveModelConfig(globalConfig, model)
-
-  if (modelConfig.protocol !== 'openai') {
-    throw new Error(
-      `OCR model "${model}" must use protocol "openai" for the sample's direct non-streaming OCR path.`,
-    )
-  }
-
-  const imageBlock = await imageFileToBlock(imagePath, ocrImageScaleFactor)
-  const imageUrl =
-    imageBlock.type === 'image' && imageBlock.source.type === 'base64'
-      ? `data:${imageBlock.source.media_type};base64,${imageBlock.source.data}`
-      : null
-
-  if (!imageUrl) {
-    throw new Error('Failed to prepare OCR image payload.')
-  }
-
-  const taskPrompt = getOcrTaskPrompt(task)
-  const result = (await runOpenAICompatibleOcr({
-    modelConfig,
-    imageUrl,
-    taskPrompt,
-  })) as { text?: unknown }
-
-  return {
-    text: String(result.text ?? ''),
-    confidence: 1,
-  }
-}
-
 async function imageFileToBlock(
   path: string,
   scaleFactor?: number,
@@ -963,118 +789,6 @@ async function resizeImageBufferForModel(
       fit: 'fill',
     })
     .toBuffer()
-}
-
-async function runOpenAICompatibleOcr(params: {
-  modelConfig: SampleModelConfig
-  imageUrl: string
-  taskPrompt: string
-}): Promise<unknown> {
-  const response = await fetch(
-    params.modelConfig.baseUrl.replace(/\/$/, '') + '/chat/completions',
-    {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        ...(params.modelConfig.apiKey
-          ? { authorization: `Bearer ${params.modelConfig.apiKey}` }
-          : {}),
-      },
-      body: JSON.stringify({
-        model: params.modelConfig.model,
-        stream: false,
-        temperature: 0,
-        messages: [
-          {
-            role: 'user',
-            content: [
-              {
-                type: 'image_url',
-                image_url: {
-                  url: params.imageUrl,
-                },
-              },
-              {
-                type: 'text',
-                text: params.taskPrompt,
-              },
-            ],
-          },
-        ],
-      }),
-    },
-  )
-
-  if (!response.ok) {
-    throw new Error(
-      `OCR HTTP request failed with ${response.status} ${response.statusText}: ${await response.text()}`,
-    )
-  }
-
-  const data = (await response.json()) as {
-    choices?: Array<{
-      message?: {
-        content?: string
-      }
-    }>
-  }
-
-  const text = data.choices?.[0]?.message?.content
-  if (typeof text !== 'string') {
-    throw new Error('OCR response did not include a text content field.')
-  }
-
-  return {
-    text,
-  }
-}
-
-function getOcrTaskPrompt(
-  task: 'ocr' | 'table' | 'chart' | 'formula' | 'spotting' | 'seal',
-): string {
-  switch (task) {
-    case 'ocr':
-      return 'OCR:'
-    case 'table':
-      return 'Table Recognition:'
-    case 'chart':
-      return 'Chart Recognition:'
-    case 'formula':
-      return 'Formula Recognition:'
-    case 'spotting':
-      return 'Spotting:'
-    case 'seal':
-      return 'Seal Recognition:'
-  }
-}
-
-async function loadAxiomateGlobalConfig(): Promise<SampleGlobalConfig> {
-  const configPath = join(homedir(), '.axiomate.json')
-  const raw = await fs.readFile(configPath, 'utf8')
-  return JSON.parse(raw) as SampleGlobalConfig
-}
-
-function resolveModelConfig(
-  config: SampleGlobalConfig,
-  modelKey: string,
-): SampleModelConfig {
-  const modelConfig = config.models?.[modelKey]
-  if (!modelConfig) {
-    throw new Error(
-      `OCR model key "${modelKey}" was not found in ~/.axiomate.json.`,
-    )
-  }
-  if (!modelConfig.baseUrl) {
-    throw new Error(
-      `OCR model key "${modelKey}" does not have a baseUrl in ~/.axiomate.json.`,
-    )
-  }
-  if (!modelConfig.model) {
-    throw new Error(
-      `OCR model key "${modelKey}" does not have a provider model id in ~/.axiomate.json.`,
-    )
-  }
-  return modelConfig
 }
 
 async function renderImageForPixelCompare(
@@ -1189,7 +903,9 @@ async function runStructuredAxiomateCall(
     try {
       return JSON.parse(line) as Record<string, unknown>
     } catch (error) {
-      throw new Error(`Failed to parse Axiomate NDJSON line: ${line}\n${String(error)}`)
+      throw new Error(
+        `Failed to parse Axiomate NDJSON line: ${line}\n${String(error)}`,
+      )
     }
   })
 
@@ -1268,7 +984,6 @@ function tryExtractStructuredOutputFromResult(
 function fuseScores(
   pixel: PixelComparison | null,
   vl: VlResult | null,
-  ocr: OcrComparison | null,
 ): FinalVerdict {
   if (pixel?.fileHashEqual || pixel?.exactPixelMatch) {
     return { label: 'same', sameProbability: 1 }
@@ -1282,12 +997,8 @@ function fuseScores(
 
   if (pixel) {
     weightedSignals.push({
-      weight: 0.45,
-      sameProbability: pixel.fileHashEqual
-        ? 1
-        : pixel.exactPixelMatch
-          ? 0.995
-          : pixel.similarityScore,
+      weight: 0.6,
+      sameProbability: pixel.similarityScore,
     })
   }
 
@@ -1295,13 +1006,6 @@ function fuseScores(
     weightedSignals.push({
       weight: 0.4,
       sameProbability: vl.confidence,
-    })
-  }
-
-  if (ocr && ocr.similarityScore !== null) {
-    weightedSignals.push({
-      weight: 0.15,
-      sameProbability: ocr.similarityScore,
     })
   }
 
@@ -1331,89 +1035,6 @@ function fuseScores(
   return { label: 'different', sameProbability }
 }
 
-function normalizeOcrText(text: string): string {
-  return text
-    .normalize('NFKC')
-    .toLowerCase()
-    .replace(/\s+/g, ' ')
-    .replace(/[^\p{L}\p{N}\s]/gu, '')
-    .trim()
-}
-
-function tokenizeForSimilarity(text: string): string[] {
-  if (text.length === 0) return []
-  return text
-    .split(/\s+/)
-    .map(token => token.trim())
-    .filter(Boolean)
-}
-
-function linesForSimilarity(text: string): string[] {
-  return text
-    .split(/\r?\n/)
-    .map(line =>
-      line
-        .normalize('NFKC')
-        .toLowerCase()
-        .replace(/\s+/g, ' ')
-        .trim(),
-    )
-    .filter(Boolean)
-}
-
-function jaccardSimilarity(left: string[], right: string[]): number {
-  const leftSet = new Set(left)
-  const rightSet = new Set(right)
-
-  if (leftSet.size === 0 && rightSet.size === 0) {
-    return 1
-  }
-
-  const intersection = [...leftSet].filter(item => rightSet.has(item)).length
-  const union = new Set([...leftSet, ...rightSet]).size
-  if (union === 0) return 1
-  return clamp01(intersection / union)
-}
-
-function stringSimilarity(left: string, right: string): number {
-  if (left === right) {
-    return 1
-  }
-  if (left.length === 0 || right.length === 0) {
-    return 0
-  }
-
-  const distance = levenshteinDistance(left, right)
-  const maxLength = Math.max(left.length, right.length)
-  return clamp01(1 - distance / maxLength)
-}
-
-function levenshteinDistance(left: string, right: string): number {
-  const rows = left.length + 1
-  const cols = right.length + 1
-  const matrix = Array.from({ length: rows }, () => new Array<number>(cols).fill(0))
-
-  for (let row = 0; row < rows; row++) {
-    matrix[row]![0] = row
-  }
-  for (let col = 0; col < cols; col++) {
-    matrix[0]![col] = col
-  }
-
-  for (let row = 1; row < rows; row++) {
-    for (let col = 1; col < cols; col++) {
-      const cost = left[row - 1] === right[col - 1] ? 0 : 1
-      matrix[row]![col] = Math.min(
-        matrix[row - 1]![col]! + 1,
-        matrix[row]![col - 1]! + 1,
-        matrix[row - 1]![col - 1]! + cost,
-      )
-    }
-  }
-
-  return matrix[rows - 1]![cols - 1]!
-}
-
 function sha256(buffer: Buffer): string {
   return createHash('sha256').update(buffer).digest('hex')
 }
@@ -1426,6 +1047,8 @@ function clamp01(value: number): number {
 }
 
 main().catch(error => {
-  process.stderr.write(`${error instanceof Error ? error.stack ?? error.message : String(error)}\n`)
+  process.stderr.write(
+    `${error instanceof Error ? error.stack ?? error.message : String(error)}\n`,
+  )
   process.exit(1)
 })

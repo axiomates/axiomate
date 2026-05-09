@@ -35,22 +35,6 @@
         "confidence": 0.87,
         "reason": "The two images appear visually equivalent with only minor rendering differences."
       },
-      "ocr": {
-        "left": {
-          "text": "Submit Order",
-          "confidence": 1
-        },
-        "right": {
-          "text": "Submit Order",
-          "confidence": 1
-        },
-        "normalizedLeftText": "submit order",
-        "normalizedRightText": "submit order",
-        "textEditSimilarity": 1,
-        "tokenSimilarity": 1,
-        "lineSimilarity": 1,
-        "similarityScore": 1
-      },
       "final": {
         "label": "same",
         "sameProbability": 1
@@ -85,32 +69,11 @@
         "confidence": 0.58,
         "reason": "The layouts look similar, but there are visible content differences that reduce certainty."
       },
-      "ocr": {
-        "left": {
-          "text": "Invoice Total: 125.00",
-          "confidence": 1
-        },
-        "right": {
-          "text": "Invoice Total: 128.00",
-          "confidence": 1
-        },
-        "normalizedLeftText": "invoice total 12500",
-        "normalizedRightText": "invoice total 12800",
-        "textEditSimilarity": 0.8947,
-        "tokenSimilarity": 0.5,
-        "lineSimilarity": 0,
-        "similarityScore": 0.5974
-      },
       "final": {
         "label": "uncertain",
-        "sameProbability": 0.6523
+        "sameProbability": 0.7054
       },
-      "errors": [
-        {
-          "source": "ocr",
-          "message": "Prompt is too long"
-        }
-      ]
+      "errors": []
     }
   ]
 }

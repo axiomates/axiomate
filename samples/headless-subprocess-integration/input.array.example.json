@@ -8,10 +8,7 @@
     "C:/imgs/right/b.png"
   ],
   "visionModel": "Qwen/Qwen3.6-Plus",
-  "ocrModel": "paddleocr-vl",
-  "ocrTask": "ocr",
   "visionImageScaleFactor": 0.5,
-  "ocrImageScaleFactor": 0.15,
   "pixelCompareScaleFactor": 0.5,
   "outputPath": "./report.json"
 }

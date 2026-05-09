@@ -8,8 +8,7 @@ The sample program:
 - pairs images by array order or by same filename in two directories
 - computes a local pixel similarity score with `sharp`
 - calls Axiomate in `--print` mode for a VL comparison
-- optionally calls an OCR model directly through its OpenAI-compatible endpoint
-- merges the three signals into a JSON report
+- merges the two signals into a JSON report
 
 ## What This Is Called
 
@@ -31,7 +30,6 @@ It is not an SDK import.
 Example model key usage:
 
 - `visionModel`: a vision-capable model key from `~/.axiomate.json`
-- `ocrModel`: an OCR-capable model key from `~/.axiomate.json` whose config uses `protocol: "openai"`
 
 ## Copy Elsewhere
 
@@ -85,10 +83,7 @@ Mode 1: explicit arrays
   "left": ["C:/imgs/left/a.png", "C:/imgs/left/b.png"],
   "right": ["C:/imgs/right/a.png", "C:/imgs/right/b.png"],
   "visionModel": "your-vl-model-key",
-  "ocrModel": "your-ocr-model-key",
-  "ocrTask": "ocr",
   "visionImageScaleFactor": 0.5,
-  "ocrImageScaleFactor": 0.15,
   "pixelCompareScaleFactor": 0.5,
   "outputPath": "./report.json"
 }
@@ -101,10 +96,7 @@ Mode 2: directories
   "leftDir": "C:/imgs/left",
   "rightDir": "C:/imgs/right",
   "visionModel": "your-vl-model-key",
-  "ocrModel": "your-ocr-model-key",
-  "ocrTask": "ocr",
   "visionImageScaleFactor": 0.5,
-  "ocrImageScaleFactor": 0.15,
   "pixelCompareScaleFactor": 0.5,
   "outputPath": "./report.json"
 }
@@ -123,7 +115,6 @@ The report includes:
 
 - local pixel metrics
 - VL verdict and confidence
-- OCR extracted text plus output-to-output similarity metrics
 - final fused probability and label
 - per-source errors when one comparison path fails
 - a human-readable `report.html` generated alongside `report.json`
@@ -142,17 +133,9 @@ For easier review, the HTML view sorts pairs by `sameProbability` ascending so t
 
 ## Notes
 
-- `ocrModel` is resolved from `~/.axiomate.json`, just like `visionModel`.
 - The sample uses Axiomate's headless `stream-json` protocol for VL only.
-- OCR no longer goes through Axiomate. The sample reads the OCR model's OpenAI-compatible config from `~/.axiomate.json` and sends a direct non-streaming request to that endpoint.
-- The OCR model key must resolve to a config with `protocol: "openai"` and a valid `baseUrl`. `apiKey` may be omitted for self-hosted services that do not require authentication.
-- If you only want VL, omit `ocrModel`.
-- `ocrTask` maps to task prompts such as `OCR:` and `Table Recognition:` for OCR-oriented VLMs.
 - `visionImageScaleFactor` scales images before sending them to VL, preserving original aspect ratio.
-- `ocrImageScaleFactor` scales images before sending them to OCR, preserving original aspect ratio.
-- OCR similarity compares the OCR outputs themselves, using a weighted combination of normalized text edit similarity, token overlap, and line overlap.
-- OCR `confidence` is currently a placeholder value in the sample and should not be treated as a true model confidence score.
-- `pixelCompareScaleFactor` scales images for local pixel comparison, preserving original aspect ratio and remaining independent from the VL/OCR image scale factors.
+- `pixelCompareScaleFactor` scales images for local pixel comparison, preserving original aspect ratio and remaining independent from the VL image scale factor.
 - If local pixel comparison proves the images are identical (`fileHashEqual` or `exactPixelMatch`), that result overrides VL/OCR confidence and the final probability becomes `1`.
 - Final labels use these thresholds:
   - `same` when `sameProbability >= 0.85`
@@ -162,5 +145,5 @@ For easier review, the HTML view sorts pairs by `sameProbability` ascending so t
 - Directory mode: the sample pairs files by exact same filename in `leftDir` and `rightDir`.
 - If `pixelCompareScaleFactor` is omitted, the sample compares at original image dimensions when both images have the same size. If dimensions differ, it falls back to the smallest common width and height.
 - Both the local pixel path and the model-input path always derive from the original image bytes, so there is no repeated resize-on-resize drift inside one run.
-- Source failures are soft by default: if `pixel`, `vl`, or `ocr` fails for a pair, the sample records the error in the report and continues with the remaining sources and pairs.
+- Source failures are soft by default: if `pixel` or `vl` fails for a pair, the sample records the error in the report and continues with the remaining sources and pairs.
 - If `axiomate` is on your `PATH`, no repository-relative binary path is needed.
