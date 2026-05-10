@@ -157,17 +157,38 @@ async function withTerminalHiddenIfForeground<T>(
     { level: 'debug' },
   )
   try {
-    hidden = await cu.hideApp?.(terminalAppIdentifier).catch(() => false) ?? false
+    hidden = await drainRunLoop(async () => {
+      const ok = await cu.hideApp?.(terminalAppIdentifier).catch(() => false) ?? false
+      if (!ok) return false
+      // AppKit hide/unhide side effects can lag behind the async call until
+      // the runloop pumps. Give the window manager a brief settle before the
+      // capture starts, or the screenshot may still catch the terminal.
+      await sleep(120)
+      if (targetAppIdentifier && targetAppIdentifier !== terminalAppIdentifier) {
+        await cu.activateApp?.(targetAppIdentifier).catch(() => false)
+        await sleep(80)
+      }
+      return true
+    })
     if (hidden) {
       logForDebugging(
         `[computer-use] self-hide: hidden terminal surrogate for ${actionLabel}`,
+        { level: 'debug' },
+      )
+    } else {
+      logForDebugging(
+        `[computer-use] self-hide: hide returned false for ${actionLabel}`,
         { level: 'debug' },
       )
     }
     return await fn()
   } finally {
     if (hidden) {
-      const restored = await cu.unhideApp?.(terminalAppIdentifier).catch(() => false) ?? false
+      const restored = await drainRunLoop(async () => {
+        const ok = await cu.unhideApp?.(terminalAppIdentifier).catch(() => false) ?? false
+        if (ok) await sleep(50)
+        return ok
+      })
       logForDebugging(
         `[computer-use] self-hide: restored terminal surrogate for ${actionLabel} ok=${restored}`,
         { level: 'debug' },
