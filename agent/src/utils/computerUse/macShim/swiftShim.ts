@@ -180,6 +180,17 @@ function parseRegionCaptureArgs(args: any[]): {
       displayId: typeof args[4] === 'number' ? (args[4] as number) : undefined,
     }
   }
+  // Mac executor zoom path without explicit resize:
+  // (allowedAppIdentifiers, x, y, w, h, displayId)
+  if (args.length === 6) {
+    return {
+      x: args[1] as number,
+      y: args[2] as number,
+      w: args[3] as number,
+      h: args[4] as number,
+      displayId: typeof args[5] === 'number' ? (args[5] as number) : undefined,
+    }
+  }
   // Executor path: (allowedAppIdentifiers, x, y, w, h, outW, outH, quality, displayId)
   return {
     x: args[1] as number,

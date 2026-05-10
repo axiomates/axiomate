@@ -31,7 +31,6 @@ const GRID_COLOR = 'rgba(255,0,0,0.32)'
 const TICK_COLOR = 'rgba(255,0,0,0.72)'
 const TEXT_COLOR = '#ff3b30'
 const TEXT_BG = 'rgba(0,0,0,0.45)'
-const TEXT_FONT = '12px Menlo, Monaco, Consolas, monospace'
 const MARK_FILL = 'rgba(220, 38, 38, 0.82)'
 const MARK_STROKE = '#ffffff'
 const MARK_RADIUS = 12
@@ -165,7 +164,6 @@ function buildGridSvg(opts: {
       const aHorizontal = a.kind === 'top' || a.kind === 'bottom'
       const bHorizontal = b.kind === 'top' || b.kind === 'bottom'
       if (aHorizontal === bHorizontal) continue
-      // Match Win behavior: horizontal labels win over vertical labels.
       shouldSkip.add(aHorizontal ? j : i)
     }
   }

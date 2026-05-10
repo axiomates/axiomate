@@ -44,7 +44,7 @@ import { execFileNoThrow } from '../execFileNoThrow.js'
 import { getConfigHomeDir } from '../envUtils.js'
 import { sleep } from '../sleep.js'
 import { join } from 'path'
-import { overlayScreenshotArtifacts, resizeScreenshotBase64 } from './imageOverlay.js'
+import { overlayScreenshotArtifacts, resizeScreenshotBase64 } from './macShim/macImageOverlay.js'
 import {
   MAC_CLI_CAPABILITIES,
   CLI_HOST_APP_IDENTIFIER,
