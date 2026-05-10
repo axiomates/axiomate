@@ -311,9 +311,7 @@ export function buildComputerUseTools(
         "Use this when the user names a specific app — e.g. \"show me Slack\", \"截 Chrome\", \"capture iTerm\" — and you do not need surrounding context. Use plain `screenshot` for full-screen / multi-app context. " +
         "**Before calling this with an app identifier you only know by user-facing name (e.g. \"WeChat\", \"QQ\"), call `list_running_apps` first to get the exact id.** The bare display name is often wrong: \"WeChat\" is now `Weixin.exe`, \"Visual Studio Code\" is `Code.exe`, etc. Do NOT guess installation paths from memory. " +
         "The returned image shows only the target app's window — no surrounding desktop or other windows. " +
-        (isWin
-          ? "SoM (Set-of-Mark) auto-detects interactive elements INSIDE the window (buttons, text fields, icons, links) and overlays red numbered circles; pass `som: false` to suppress. "
-          : "On macOS, structured interactive elements INSIDE the window may be exposed and overlaid as red numbered circles; pass `som: false` to suppress. If no structured marks are available, fall back to visual inspection and ruler coordinates. ") +
+        "SoM (Set-of-Mark) auto-detects interactive elements INSIDE the window (buttons, text fields, icons, links) and overlays red numbered circles; pass `som: false` to suppress. If no structured marks are available, fall back to visual inspection and ruler coordinates. " +
         "**Optional `coordinate_grid`** adds rulers to the window screenshot, using the window's screen position so coordinates match the global screenshot coordinate space — useful for precise positioning reference within the window. Default: `none` (no rulers).",
       inputSchema: {
         type: "object" as const,
@@ -332,9 +330,7 @@ export function buildComputerUseTools(
           som: {
             type: "boolean",
             description:
-              isWin
-                ? "Whether to run SoM (Set-of-Mark) detection on the captured window — red numbered circles overlaid on interactive elements (buttons, text fields, icons, links) inside the window. Default true (auto-detects when ≤25 elements are found). Set to false to suppress element detection."
-                : "Whether to request SoM (Set-of-Mark) detection on the captured window. On macOS this overlays red numbered circles on interactive elements only when accessibility exposes structured elements for that window. Default true. Set to false to suppress element detection.",
+              "Whether to run SoM (Set-of-Mark) detection on the captured window — red numbered circles overlaid on interactive elements (buttons, text fields, icons, links) inside the window. Default true (auto-detects when ≤25 elements are found). Set to false to suppress element detection.",
           },
         },
         required: ["app_identifier"],

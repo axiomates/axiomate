@@ -76,10 +76,7 @@ export function buildLocateInjection(
         `[Screen Locate: "${t}"]\n` +
         `DO NOT guess coordinates.\n\n` +
         `A screenshot has been taken. Follow these steps:\n` +
-        `1. Locate "${t}" in the image. ZOOM FIRST. ` +
-        (isWin
-          ? `Zoom returns pixel-accurate rulers and auto-detects SoM marks (red numbered circles) when the region qualifies. If marks are available, jumping to one with mouse_move(mark_id: N) is much faster than estimating coordinates.\n`
-          : `Zoom returns pixel-accurate rulers and, when macOS accessibility exposes structured elements in that region, SoM marks. If marks are available, jumping to one with mouse_move(mark_id: N) is much faster than estimating coordinates.\n`) +
+        `1. Locate "${t}" in the image. ZOOM FIRST. Zoom returns pixel-accurate rulers and auto-detects SoM marks (red numbered circles) when the region qualifies. If marks are available, jumping to one with mouse_move(mark_id: N) is much faster than estimating coordinates.\n` +
         `2. Move the cursor onto the target: mouse_move(mark_id: N) if zoom found a matching mark, or mouse_move(coordinate: [x, y]) from the rulers.\n` +
         `3. Call screenshot to verify the lime-green cursor circle is on the target.\n` +
         `4. If the green circle is directly on "${t}", call accept() to snapshot the current cursor position.\n` +
@@ -93,9 +90,7 @@ export function buildLocateInjection(
         `[Screen Locate: "${t}"]\n` +
         `Cursor moved. Now call screenshot to verify the lime-green circle is on "${t}".\n` +
         `- If the green circle is directly on the target → call accept() to snapshot the current cursor position.\n` +
-        `- If off target or uncertain → ZOOM on the cursor area to see exactly where the circle landed. Use zoom rulers` +
-        (isWin ? ` or SoM marks` : ` or, when available, SoM marks`) +
-        ` to refine, then mouse_move again.\n` +
+        `- If off target or uncertain → ZOOM on the cursor area to see exactly where the circle landed. Use zoom rulers or SoM marks to refine, then mouse_move again.\n` +
         `- For small/clustered targets, zoom should have been your first step — if you skipped it and the cursor missed, zoom now.`
       );
 
