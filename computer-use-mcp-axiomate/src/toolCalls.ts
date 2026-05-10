@@ -2777,12 +2777,59 @@ async function handleZoom(
       const originX = zoomCtx.originX;
       const originY = zoomCtx.originY;
       try {
-        marks = await detectElementsMultiSource(
-          adapter.executor,
-          regionVirtual,
-          { ratioX, ratioY, originX, originY },
-          ["uia"],
-        );
+        if (
+          adapter.executor.capabilities.platform === "darwin" &&
+          adapter.executor.enumerateVisibleElementsForApp &&
+          adapter.executor.appUnderPoint
+        ) {
+          const centerLogicalX = Math.round(
+            (regionVirtual.x + regionVirtual.w / 2) * ratioX + originX,
+          );
+          const centerLogicalY = Math.round(
+            (regionVirtual.y + regionVirtual.h / 2) * ratioY + originY,
+          );
+          const hit = await adapter.executor.appUnderPoint(
+            centerLogicalX,
+            centerLogicalY,
+          );
+          if (hit) {
+            const raw = await adapter.executor.enumerateVisibleElementsForApp(
+              hit.appIdentifier,
+              {
+                x: Math.round(regionVirtual.x * ratioX + originX),
+                y: Math.round(regionVirtual.y * ratioY + originY),
+                w: Math.round(regionVirtual.w * ratioX),
+                h: Math.round(regionVirtual.h * ratioY),
+              },
+            );
+            marks = raw.map((el, i) => {
+              const vx = (el.bbox.x - originX) / ratioX;
+              const vy = (el.bbox.y - originY) / ratioY;
+              const vw = el.bbox.w / ratioX;
+              const vh = el.bbox.h / ratioY;
+              return {
+                id: i + 1,
+                x: Math.round(vx + vw / 2),
+                y: Math.round(vy + vh / 2),
+                name: el.name ?? "",
+                role: el.role ?? "",
+                automationId: el.automationId,
+                source: "uia" as const,
+                confidence: 1.0,
+                uiaSource: el.uiaSource ?? "foreground",
+              };
+            });
+          } else {
+            marks = [];
+          }
+        } else {
+          marks = await detectElementsMultiSource(
+            adapter.executor,
+            regionVirtual,
+            { ratioX, ratioY, originX, originY },
+            ["uia"],
+          );
+        }
         const fgCount = marks.filter(m => m.uiaSource === "foreground").length;
         const chromeCount = marks.filter(m => m.uiaSource !== "foreground").length;
         circleLimit = overlaySoMLimit(marks);
