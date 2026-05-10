@@ -1155,10 +1155,22 @@ mod macos {
             CFString::new(name)
         }
 
-        fn frontmost_app_ax_root() -> Option<AXUIElementRef> {
-            let app = unsafe { crate::macos::running_app::frontmost_app_pid()? };
-            let root = unsafe { AXUIElementCreateApplication(app) };
+        fn app_ax_root_for_pid(pid: i32) -> Option<AXUIElementRef> {
+            let root = unsafe { AXUIElementCreateApplication(pid) };
             if root.is_null() { None } else { Some(root) }
+        }
+
+        fn frontmost_app_ax_root() -> Option<AXUIElementRef> {
+            let pid = unsafe { crate::macos::running_app::frontmost_app_pid()? };
+            let root = unsafe { AXUIElementCreateApplication(pid) };
+            if root.is_null() { None } else { Some(root) }
+        }
+
+        fn app_pid_for_rect_center(rect: &VRect) -> Option<i32> {
+            let x = rect.origin.x + rect.size.w as i32 / 2;
+            let y = rect.origin.y + rect.size.h as i32 / 2;
+            let hit = crate::macos::cg_window_query::app_under_point(x, y)?;
+            unsafe { crate::macos::running_app::find_pid_for_app(&hit.app_identifier) }
         }
 
         unsafe fn cfstring_to_string(s: CFStringRef) -> Option<String> {
@@ -1490,8 +1502,12 @@ mod macos {
             })
         }
 
-        pub fn enumerate_ui_elements_in_rect(rect: VRect, _window_only: bool) -> Vec<UiElement> {
-            let root = match frontmost_app_ax_root() {
+        pub fn enumerate_ui_elements_in_rect(rect: VRect, window_only: bool) -> Vec<UiElement> {
+            let root = match if window_only {
+                app_pid_for_rect_center(&rect).and_then(app_ax_root_for_pid)
+            } else {
+                frontmost_app_ax_root()
+            } {
                 Some(r) => r,
                 None => return Vec::new(),
             };
