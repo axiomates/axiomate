@@ -2793,6 +2793,11 @@ async function handleZoom(
             centerLogicalY,
           );
           if (hit) {
+            adapter.logger.debug(
+              `[zoom-som-mac] hit app=${hit.appIdentifier} centerLogical=(${centerLogicalX},${centerLogicalY}) ` +
+                `rectLogical=(${Math.round(regionVirtual.x * ratioX + originX)},${Math.round(regionVirtual.y * ratioY + originY)} ` +
+                `${Math.round(regionVirtual.w * ratioX)}x${Math.round(regionVirtual.h * ratioY)})`,
+            );
             const raw = await adapter.executor.enumerateVisibleElementsForApp(
               hit.appIdentifier,
               {
@@ -2801,6 +2806,9 @@ async function handleZoom(
                 w: Math.round(regionVirtual.w * ratioX),
                 h: Math.round(regionVirtual.h * ratioY),
               },
+            );
+            adapter.logger.debug(
+              `[zoom-som-mac] raw app-bound elements=${raw.length}`,
             );
             marks = raw.map((el, i) => {
               const vx = (el.bbox.x - originX) / ratioX;
@@ -2820,6 +2828,9 @@ async function handleZoom(
               };
             });
           } else {
+            adapter.logger.debug(
+              `[zoom-som-mac] appUnderPoint miss centerLogical=(${centerLogicalX},${centerLogicalY})`,
+            );
             marks = [];
           }
         } else {
