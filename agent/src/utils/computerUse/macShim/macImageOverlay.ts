@@ -16,6 +16,11 @@ export type OverlayRange = {
   rangeH: number
 }
 
+export type OverlayCursor = {
+  x: number
+  y: number
+}
+
 type OverlayOptions = {
   base64: string
   imageWidth: number
@@ -23,6 +28,7 @@ type OverlayOptions = {
   gridMode?: GridMode
   range?: OverlayRange
   marks?: OverlayMark[]
+  cursor?: OverlayCursor
   jpegQuality?: number
 }
 
@@ -32,10 +38,12 @@ const PLAIN_TICK = 10
 const GRID_COLOR = 'rgba(255,0,0,0.32)'
 const TICK_COLOR = 'rgba(255,0,0,0.72)'
 const TEXT_COLOR = '#ff3b30'
-const TEXT_BG = 'rgba(0,0,0,0.45)'
+const TEXT_STROKE = 'rgba(0,0,0,0.9)'
+const TEXT_BG = 'rgba(0,0,0,0.62)'
 const MARK_FILL = 'rgba(220, 38, 38, 0.82)'
 const MARK_STROKE = '#ffffff'
 const MARK_RADIUS = 12
+const RING_COLOR = '#00ff00'
 
 function escapeXml(text: string): string {
   return text
@@ -173,6 +181,21 @@ function buildGridSvg(opts: {
       `<rect x="${l.x0}" y="${l.y0}" width="${Math.max(0, l.x1 - l.x0)}" height="${Math.max(0, l.y1 - l.y0)}" fill="${TEXT_BG}"/>`,
     )
     parts.push(
+      `<text x="${l.textX}" y="${l.textY}" fill="${TEXT_STROKE}" font-family="Menlo, Monaco, Consolas, monospace" font-size="12">${l.value}</text>`,
+    )
+    parts.push(
+      `<text x="${l.textX - 1}" y="${l.textY}" fill="${TEXT_STROKE}" font-family="Menlo, Monaco, Consolas, monospace" font-size="12">${l.value}</text>`,
+    )
+    parts.push(
+      `<text x="${l.textX + 1}" y="${l.textY}" fill="${TEXT_STROKE}" font-family="Menlo, Monaco, Consolas, monospace" font-size="12">${l.value}</text>`,
+    )
+    parts.push(
+      `<text x="${l.textX}" y="${l.textY - 1}" fill="${TEXT_STROKE}" font-family="Menlo, Monaco, Consolas, monospace" font-size="12">${l.value}</text>`,
+    )
+    parts.push(
+      `<text x="${l.textX}" y="${l.textY + 1}" fill="${TEXT_STROKE}" font-family="Menlo, Monaco, Consolas, monospace" font-size="12">${l.value}</text>`,
+    )
+    parts.push(
       `<text x="${l.textX}" y="${l.textY}" fill="${TEXT_COLOR}" font-family="Menlo, Monaco, Consolas, monospace" font-size="12">${l.value}</text>`,
     )
   }
@@ -214,11 +237,28 @@ function buildMarksSvg(width: number, height: number, marks: OverlayMark[]): str
   return parts.join('')
 }
 
+function buildCursorSvg(width: number, height: number, cursor: OverlayCursor): string {
+  const x = clamp(Math.round(cursor.x), 0, width)
+  const y = clamp(Math.round(cursor.y), 0, height)
+  const parts: string[] = []
+  // Simple white arrow with black outline.
+  parts.push(
+    `<path d="M ${x} ${y} L ${x} ${y + 18} L ${x + 5} ${y + 13} L ${x + 9} ${y + 22} L ${x + 12} ${y + 21} L ${x + 8} ${y + 12} L ${x + 15} ${y + 12} Z" fill="black"/>`,
+  )
+  parts.push(
+    `<path d="M ${x + 1} ${y + 1} L ${x + 1} ${y + 16} L ${x + 5} ${y + 12} L ${x + 9} ${y + 20} L ${x + 10} ${y + 19} L ${x + 6} ${y + 11} L ${x + 13} ${y + 11} Z" fill="white"/>`,
+  )
+  parts.push(
+    `<circle cx="${x}" cy="${y}" r="10" fill="none" stroke="${RING_COLOR}" stroke-width="3"/>`,
+  )
+  return parts.join('')
+}
+
 export async function overlayScreenshotArtifacts(
   opts: OverlayOptions,
 ): Promise<string> {
-  const { base64, imageWidth, imageHeight, gridMode = 'none', range, marks = [], jpegQuality = 92 } = opts
-  if (gridMode === 'none' && marks.length === 0) return base64
+  const { base64, imageWidth, imageHeight, gridMode = 'none', range, marks = [], cursor, jpegQuality = 92 } = opts
+  if (gridMode === 'none' && marks.length === 0 && !cursor) return base64
 
   const svgParts: string[] = []
   if (gridMode !== 'none' && range && range.rangeW > 0 && range.rangeH > 0) {
@@ -226,6 +266,9 @@ export async function overlayScreenshotArtifacts(
   }
   if (marks.length > 0) {
     svgParts.push(buildMarksSvg(imageWidth, imageHeight, marks))
+  }
+  if (cursor) {
+    svgParts.push(buildCursorSvg(imageWidth, imageHeight, cursor))
   }
   if (svgParts.length === 0) return base64
 

@@ -83,6 +83,27 @@ function dumpMacScreenshotForDebug(tool: string, base64: string): void {
   }
 }
 
+async function currentCursorForDisplayOverlay(
+  display: DisplayGeometry,
+  imageWidth: number,
+  imageHeight: number,
+): Promise<{ x: number; y: number } | undefined> {
+  try {
+    const cursor = await requireComputerUseInput().mouseLocation()
+    const localX = cursor.x - display.originX
+    const localY = cursor.y - display.originY
+    if (localX < 0 || localY < 0 || localX > display.width || localY > display.height) {
+      return undefined
+    }
+    return {
+      x: (localX / display.width) * imageWidth,
+      y: (localY / display.height) * imageHeight,
+    }
+  } catch {
+    return undefined
+  }
+}
+
 /** Logical → physical → API target dims. See `targetImageSize` + COORDINATES.md. */
 function computeTargetDims(
   logicalW: number,
@@ -444,6 +465,7 @@ export function createCliExecutor(opts: {
         result.height = targetH
       }
       if (opts.coordinateGrid && opts.coordinateGrid !== 'none') {
+        const cursor = await currentCursorForDisplayOverlay(d, result.width, result.height)
         result.base64 = await overlayScreenshotArtifacts({
           base64: result.base64,
           imageWidth: result.width,
@@ -455,6 +477,7 @@ export function createCliExecutor(opts: {
             rangeW: targetW,
             rangeH: targetH,
           },
+          cursor,
           jpegQuality: 85,
         })
       }
@@ -504,6 +527,7 @@ export function createCliExecutor(opts: {
         result.height = targetH
       }
       if (opts.coordinateGrid && opts.coordinateGrid !== 'none') {
+        const cursor = await currentCursorForDisplayOverlay(d, result.width, result.height)
         result.base64 = await overlayScreenshotArtifacts({
           base64: result.base64,
           imageWidth: result.width,
@@ -515,6 +539,7 @@ export function createCliExecutor(opts: {
             rangeW: targetW,
             rangeH: targetH,
           },
+          cursor,
           jpegQuality: 85,
         })
       }
@@ -552,30 +577,44 @@ export function createCliExecutor(opts: {
         { level: 'debug' },
       )
       if (!image) return null
+      const windowDisplay = {
+        displayId: 0,
+        width: image.displayWidth,
+        height: image.displayHeight,
+        originX: image.originX,
+        originY: image.originY,
+        scaleFactor: 1,
+      }
       // Pad to ScreenshotResult shape — `displayId`, `displayWidth`,
       // `displayHeight` are unused for window captures (click coords always
       // refer to the full screen).
       const result = {
-        base64: (gridMode && gridMode > 0) || (marks?.length ?? 0) > 0
-          ? await overlayScreenshotArtifacts({
-              base64: image.base64,
-              imageWidth: image.width,
-              imageHeight: image.height,
-              gridMode: gridMode === 1 ? 'edge' : gridMode && gridMode >= 2 ? 'full' : 'none',
-              range: {
-                originX: image.originX,
-                originY: image.originY,
-                rangeW: image.displayWidth,
-                rangeH: image.displayHeight,
-              },
-              marks: (marks ?? []).map(m => ({
-                id: m.id,
-                x: ((m.x - image.originX) / image.displayWidth) * image.width,
-                y: ((m.y - image.originY) / image.displayHeight) * image.height,
-              })),
-              jpegQuality: 85,
-            })
-          : image.base64,
+        ...(await (async () => {
+          const cursor = await currentCursorForDisplayOverlay(windowDisplay, image.width, image.height)
+          return {
+            base64: (gridMode && gridMode > 0) || (marks?.length ?? 0) > 0 || cursor
+              ? await overlayScreenshotArtifacts({
+                  base64: image.base64,
+                  imageWidth: image.width,
+                  imageHeight: image.height,
+                  gridMode: gridMode === 1 ? 'edge' : gridMode && gridMode >= 2 ? 'full' : 'none',
+                  range: {
+                    originX: image.originX,
+                    originY: image.originY,
+                    rangeW: image.displayWidth,
+                    rangeH: image.displayHeight,
+                  },
+                  marks: (marks ?? []).map(m => ({
+                    id: m.id,
+                    x: ((m.x - image.originX) / image.displayWidth) * image.width,
+                    y: ((m.y - image.originY) / image.displayHeight) * image.height,
+                  })),
+                  cursor,
+                  jpegQuality: 85,
+                })
+              : image.base64,
+          }
+        })()),
         width: image.width,
         height: image.height,
         displayId: 0,
@@ -625,6 +664,11 @@ export function createCliExecutor(opts: {
           y: ((m.y - regionVirtual.y) / regionVirtual.h) * shot.height,
         }))
       if ((coordinateGrid && coordinateGrid !== 'none') || overlayMarks.length > 0) {
+        const cursor = await currentCursorForDisplayOverlay(
+          { ...d, originX: regionVirtual.x, originY: regionVirtual.y, width: regionVirtual.w, height: regionVirtual.h },
+          shot.width,
+          shot.height,
+        )
         shot.base64 = await overlayScreenshotArtifacts({
           base64: shot.base64,
           imageWidth: shot.width,
@@ -637,6 +681,7 @@ export function createCliExecutor(opts: {
             rangeH: regionVirtual.h,
           },
           marks: overlayMarks,
+          cursor,
           jpegQuality: 85,
         })
       }
