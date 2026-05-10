@@ -27,9 +27,10 @@ type OverlayOptions = {
 }
 
 const RULER_BAND = 28
-const GRID_COLOR = 'rgba(255,255,255,0.22)'
-const TICK_COLOR = 'rgba(255,255,255,0.9)'
-const TEXT_COLOR = '#ffffff'
+const GRID_COLOR = 'rgba(255,0,0,0.32)'
+const TICK_COLOR = 'rgba(255,0,0,0.72)'
+const TEXT_COLOR = '#ff3b30'
+const TEXT_BG = 'rgba(0,0,0,0.45)'
 const TEXT_FONT = '12px Menlo, Monaco, Consolas, monospace'
 const MARK_FILL = 'rgba(220, 38, 38, 0.82)'
 const MARK_STROKE = '#ffffff'
@@ -60,11 +61,23 @@ function buildGridSvg(opts: {
 
   const parts: string[] = []
 
-  // Backing bands so white labels stay legible on busy screenshots.
+  // Backing bands so labels stay legible on busy screenshots.
   parts.push(`<rect x="0" y="0" width="${width}" height="${RULER_BAND}" fill="rgba(0,0,0,0.42)"/>`)
   parts.push(`<rect x="0" y="${height - RULER_BAND}" width="${width}" height="${RULER_BAND}" fill="rgba(0,0,0,0.42)"/>`)
   parts.push(`<rect x="0" y="0" width="${RULER_BAND}" height="${height}" fill="rgba(0,0,0,0.42)"/>`)
   parts.push(`<rect x="${width - RULER_BAND}" y="0" width="${RULER_BAND}" height="${height}" fill="rgba(0,0,0,0.42)"/>`)
+
+  type LabelInfo = {
+    kind: 'top' | 'left' | 'bottom' | 'right'
+    x0: number
+    y0: number
+    x1: number
+    y1: number
+    textX: number
+    textY: number
+    value: string
+  }
+  const labels: LabelInfo[] = []
 
   const pushVertical = (coord: number, labelStep: boolean) => {
     const px = clamp(Math.round(((coord - range.originX) / range.rangeW) * width), 0, width)
@@ -74,9 +87,29 @@ function buildGridSvg(opts: {
     parts.push(`<line x1="${px}" y1="0" x2="${px}" y2="${RULER_BAND}" stroke="${TICK_COLOR}" stroke-width="1"/>`)
     parts.push(`<line x1="${px}" y1="${height - RULER_BAND}" x2="${px}" y2="${height}" stroke="${TICK_COLOR}" stroke-width="1"/>`)
     if (labelStep) {
-      const label = escapeXml(String(Math.round(coord)))
-      parts.push(`<text x="${px + 2}" y="12" fill="${TEXT_COLOR}" font-family="Menlo, Monaco, Consolas, monospace" font-size="12">${label}</text>`)
-      parts.push(`<text x="${px + 2}" y="${height - 6}" fill="${TEXT_COLOR}" font-family="Menlo, Monaco, Consolas, monospace" font-size="12">${label}</text>`)
+      const value = String(Math.round(coord))
+      const label = escapeXml(value)
+      const approxW = Math.max(12, value.length * 7)
+      labels.push({
+        kind: 'top',
+        x0: clamp(px - Math.floor(approxW / 2) - 2, 0, width),
+        y0: 2,
+        x1: clamp(px + Math.ceil(approxW / 2) + 2, 0, width),
+        y1: 16,
+        textX: clamp(px - Math.floor(approxW / 2), 0, width),
+        textY: 13,
+        value: label,
+      })
+      labels.push({
+        kind: 'bottom',
+        x0: clamp(px - Math.floor(approxW / 2) - 2, 0, width),
+        y0: height - 16,
+        x1: clamp(px + Math.ceil(approxW / 2) + 2, 0, width),
+        y1: height - 2,
+        textX: clamp(px - Math.floor(approxW / 2), 0, width),
+        textY: height - 5,
+        value: label,
+      })
     }
   }
 
@@ -88,9 +121,29 @@ function buildGridSvg(opts: {
     parts.push(`<line x1="0" y1="${py}" x2="${RULER_BAND}" y2="${py}" stroke="${TICK_COLOR}" stroke-width="1"/>`)
     parts.push(`<line x1="${width - RULER_BAND}" y1="${py}" x2="${width}" y2="${py}" stroke="${TICK_COLOR}" stroke-width="1"/>`)
     if (labelStep) {
-      const label = escapeXml(String(Math.round(coord)))
-      parts.push(`<text x="3" y="${py - 3}" fill="${TEXT_COLOR}" font-family="Menlo, Monaco, Consolas, monospace" font-size="12">${label}</text>`)
-      parts.push(`<text x="${width - RULER_BAND + 3}" y="${py - 3}" fill="${TEXT_COLOR}" font-family="Menlo, Monaco, Consolas, monospace" font-size="12">${label}</text>`)
+      const value = String(Math.round(coord))
+      const label = escapeXml(value)
+      const approxW = Math.max(12, value.length * 7)
+      labels.push({
+        kind: 'left',
+        x0: 2,
+        y0: clamp(py - 7, 0, height),
+        x1: 2 + approxW + 4,
+        y1: clamp(py + 7, 0, height),
+        textX: 4,
+        textY: clamp(py + 4, 0, height),
+        value: label,
+      })
+      labels.push({
+        kind: 'right',
+        x0: width - approxW - 6,
+        y0: clamp(py - 7, 0, height),
+        x1: width - 2,
+        y1: clamp(py + 7, 0, height),
+        textX: width - approxW - 4,
+        textY: clamp(py + 4, 0, height),
+        value: label,
+      })
     }
   }
 
@@ -104,6 +157,34 @@ function buildGridSvg(opts: {
   for (let y = yStart; y <= range.originY + range.rangeH; y += tickY) {
     const isLabel = Math.abs((y / labelY) - Math.round(y / labelY)) < 1e-6
     pushHorizontal(y, isLabel)
+  }
+
+  const overlaps = (a: LabelInfo, b: LabelInfo) =>
+    a.x0 < b.x1 && a.x1 > b.x0 && a.y0 < b.y1 && a.y1 > b.y0
+
+  const shouldSkip = new Set<number>()
+  for (let i = 0; i < labels.length; i++) {
+    for (let j = i + 1; j < labels.length; j++) {
+      const a = labels[i]!
+      const b = labels[j]!
+      if (!overlaps(a, b)) continue
+      const aHorizontal = a.kind === 'top' || a.kind === 'bottom'
+      const bHorizontal = b.kind === 'top' || b.kind === 'bottom'
+      if (aHorizontal === bHorizontal) continue
+      // Match Win behavior: horizontal labels win over vertical labels.
+      shouldSkip.add(aHorizontal ? j : i)
+    }
+  }
+
+  for (let i = 0; i < labels.length; i++) {
+    if (shouldSkip.has(i)) continue
+    const l = labels[i]!
+    parts.push(
+      `<rect x="${l.x0}" y="${l.y0}" width="${Math.max(0, l.x1 - l.x0)}" height="${Math.max(0, l.y1 - l.y0)}" fill="${TEXT_BG}"/>`,
+    )
+    parts.push(
+      `<text x="${l.textX}" y="${l.textY}" fill="${TEXT_COLOR}" font-family="Menlo, Monaco, Consolas, monospace" font-size="12">${l.value}</text>`,
+    )
   }
 
   return parts.join('')
