@@ -122,6 +122,50 @@ function computeVirtualImageDim(w: number, h: number): [number, number] {
   return [Math.round(w * ratio), Math.round(h * ratio)]
 }
 
+async function withTerminalHiddenIfForeground<T>(
+  cu: ReturnType<typeof requireComputerUseSwift>,
+  terminalAppIdentifier: string | null,
+  targetAppIdentifier: string | null,
+  actionLabel: string,
+  fn: () => Promise<T>,
+): Promise<T> {
+  if (!terminalAppIdentifier) return fn()
+  if (targetAppIdentifier && targetAppIdentifier === terminalAppIdentifier) {
+    logForDebugging(
+      `[computer-use] self-hide: skip action=${actionLabel} target=${targetAppIdentifier} (target is host)`,
+      { level: 'debug' },
+    )
+    return fn()
+  }
+  const frontmost = await cu.apps.getFrontmostApp().catch(() => null)
+  if (frontmost?.appIdentifier !== terminalAppIdentifier) {
+    return fn()
+  }
+  let hidden = false
+  logForDebugging(
+    `[computer-use] self-hide: frontmost=${frontmost.appIdentifier} target=${targetAppIdentifier ?? '<none>'} action=${actionLabel}`,
+    { level: 'debug' },
+  )
+  try {
+    hidden = await cu.hideApp(terminalAppIdentifier).catch(() => false)
+    if (hidden) {
+      logForDebugging(
+        `[computer-use] self-hide: hidden terminal surrogate for ${actionLabel}`,
+        { level: 'debug' },
+      )
+    }
+    return await fn()
+  } finally {
+    if (hidden) {
+      const restored = await cu.unhideApp(terminalAppIdentifier).catch(() => false)
+      logForDebugging(
+        `[computer-use] self-hide: restored terminal surrogate for ${actionLabel} ok=${restored}`,
+        { level: 'debug' },
+      )
+    }
+  }
+}
+
 async function readClipboardViaPbpaste(): Promise<string> {
   const { stdout, code } = await execFileNoThrow('pbpaste', [], {
     useCwd: false,
@@ -501,13 +545,19 @@ export function createCliExecutor(opts: {
         `[computer-use] agent.screenshot enter: allowedAppIdentifiers=[${opts.allowedAppIdentifiers.join(',')}] displayId=${opts.displayId ?? 'undef'} targetW=${targetW} targetH=${targetH} displayW=${d.width} displayH=${d.height} scale=${d.scaleFactor}`,
         { level: 'debug' },
       )
-      const result: ScreenshotResult = await drainRunLoop(() =>
-        cu.screenshot.captureExcluding(
-          withoutTerminal(opts.allowedAppIdentifiers),
-          SCREENSHOT_JPEG_QUALITY,
-          targetW,
-          targetH,
-          opts.displayId,
+      const result: ScreenshotResult = await withTerminalHiddenIfForeground(
+        cu,
+        terminalAppIdentifier,
+        null,
+        'screenshot',
+        () => drainRunLoop(() =>
+          cu.screenshot.captureExcluding(
+            withoutTerminal(opts.allowedAppIdentifiers),
+            SCREENSHOT_JPEG_QUALITY,
+            targetW,
+            targetH,
+            opts.displayId,
+          ),
         ),
       )
       logForDebugging(
@@ -561,7 +611,13 @@ export function createCliExecutor(opts: {
         `[computer-use] agent.screenshotWindow enter: appIdentifier=${appIdentifier}`,
         { level: 'debug' },
       )
-      const outcome = await cu.captureWindow(appIdentifier)
+      const outcome = await withTerminalHiddenIfForeground(
+        cu,
+        terminalAppIdentifier,
+        appIdentifier,
+        'screenshot_window',
+        () => cu.captureWindow(appIdentifier),
+      )
       // Always log the diagnostic. On success it reads "ok" (or "ok (...)"
       // when fallback path was taken); on failure it explains which step
       // died and includes pid / candidate windowIDs / layers / TCC hints.
@@ -646,14 +702,20 @@ export function createCliExecutor(opts: {
         w: regionVirtual.w * ratioX,
         h: regionVirtual.h * ratioY,
       }
-      const shot: { base64: string; width: number; height: number } = await drainRunLoop(() =>
-        cu.screenshot.captureRegion(
-          withoutTerminal(allowedAppIdentifiers),
-          regionLogical.x,
-          regionLogical.y,
-          regionLogical.w,
-          regionLogical.h,
-          displayId,
+      const shot: { base64: string; width: number; height: number } = await withTerminalHiddenIfForeground(
+        cu,
+        terminalAppIdentifier,
+        null,
+        'zoom',
+        () => drainRunLoop(() =>
+          cu.screenshot.captureRegion(
+            withoutTerminal(allowedAppIdentifiers),
+            regionLogical.x,
+            regionLogical.y,
+            regionLogical.w,
+            regionLogical.h,
+            displayId,
+          ),
         ),
       )
       const overlayMarks = (marks ?? [])
