@@ -464,8 +464,8 @@ export function createCliExecutor(opts: {
         result.width = targetW
         result.height = targetH
       }
-      if (opts.coordinateGrid && opts.coordinateGrid !== 'none') {
-        const cursor = await currentCursorForDisplayOverlay(d, result.width, result.height)
+      const cursor = await currentCursorForDisplayOverlay(d, result.width, result.height)
+      if ((opts.coordinateGrid && opts.coordinateGrid !== 'none') || cursor) {
         result.base64 = await overlayScreenshotArtifacts({
           base64: result.base64,
           imageWidth: result.width,
@@ -478,7 +478,7 @@ export function createCliExecutor(opts: {
             rangeH: targetH,
           },
           cursor,
-          jpegQuality: 85,
+          jpegQuality: 95,
         })
       }
       dumpMacScreenshotForDebug('screenshot', result.base64)
@@ -526,8 +526,8 @@ export function createCliExecutor(opts: {
         result.width = targetW
         result.height = targetH
       }
-      if (opts.coordinateGrid && opts.coordinateGrid !== 'none') {
-        const cursor = await currentCursorForDisplayOverlay(d, result.width, result.height)
+      const cursor = await currentCursorForDisplayOverlay(d, result.width, result.height)
+      if ((opts.coordinateGrid && opts.coordinateGrid !== 'none') || cursor) {
         result.base64 = await overlayScreenshotArtifacts({
           base64: result.base64,
           imageWidth: result.width,
@@ -540,7 +540,7 @@ export function createCliExecutor(opts: {
             rangeH: targetH,
           },
           cursor,
-          jpegQuality: 85,
+          jpegQuality: 95,
         })
       }
       dumpMacScreenshotForDebug('screenshot', result.base64)
@@ -610,7 +610,7 @@ export function createCliExecutor(opts: {
                     y: ((m.y - image.originY) / image.displayHeight) * image.height,
                   })),
                   cursor,
-                  jpegQuality: 85,
+                  jpegQuality: 95,
                 })
               : image.base64,
           }
@@ -663,12 +663,12 @@ export function createCliExecutor(opts: {
           x: ((m.x - regionVirtual.x) / regionVirtual.w) * shot.width,
           y: ((m.y - regionVirtual.y) / regionVirtual.h) * shot.height,
         }))
-      if ((coordinateGrid && coordinateGrid !== 'none') || overlayMarks.length > 0) {
-        const cursor = await currentCursorForDisplayOverlay(
-          { ...d, originX: regionVirtual.x, originY: regionVirtual.y, width: regionVirtual.w, height: regionVirtual.h },
-          shot.width,
-          shot.height,
-        )
+      const cursor = await currentCursorForDisplayOverlay(
+        { ...d, originX: regionVirtual.x, originY: regionVirtual.y, width: regionVirtual.w, height: regionVirtual.h },
+        shot.width,
+        shot.height,
+      )
+      if ((coordinateGrid && coordinateGrid !== 'none') || overlayMarks.length > 0 || cursor) {
         shot.base64 = await overlayScreenshotArtifacts({
           base64: shot.base64,
           imageWidth: shot.width,
@@ -682,7 +682,7 @@ export function createCliExecutor(opts: {
           },
           marks: overlayMarks,
           cursor,
-          jpegQuality: 85,
+          jpegQuality: 95,
         })
       }
       dumpMacScreenshotForDebug('zoom', shot.base64)

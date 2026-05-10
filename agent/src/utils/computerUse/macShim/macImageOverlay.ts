@@ -257,7 +257,7 @@ function buildCursorSvg(width: number, height: number, cursor: OverlayCursor): s
 export async function overlayScreenshotArtifacts(
   opts: OverlayOptions,
 ): Promise<string> {
-  const { base64, imageWidth, imageHeight, gridMode = 'none', range, marks = [], cursor, jpegQuality = 92 } = opts
+  const { base64, imageWidth, imageHeight, gridMode = 'none', range, marks = [], cursor, jpegQuality = 95 } = opts
   if (gridMode === 'none' && marks.length === 0 && !cursor) return base64
 
   const svgParts: string[] = []
@@ -295,7 +295,7 @@ export async function resizeScreenshotBase64(opts: {
   targetHeight: number
   jpegQuality?: number
 }): Promise<string> {
-  const { base64, width, height, targetWidth, targetHeight, jpegQuality = 92 } = opts
+  const { base64, width, height, targetWidth, targetHeight, jpegQuality = 95 } = opts
   if (
     targetWidth <= 0 ||
     targetHeight <= 0 ||
