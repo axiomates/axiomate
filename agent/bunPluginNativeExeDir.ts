@@ -23,10 +23,19 @@ import type { BunPlugin } from 'bun'
 export const nativeExeDirPlugin: BunPlugin = {
   name: 'native-exe-dir',
   setup(build) {
-    build.onResolve({ filter: /\.node$/ }, args => ({
-      path: args.path,
-      namespace: 'native-exe-dir',
-    }))
+    build.onResolve({ filter: /\.node$/ }, args => {
+      // sharp has its own multi-step runtime loader and package-export
+      // resolution; rewriting its .node imports here breaks the path chain
+      // that worked in older mac package builds. Leave sharp untouched and
+      // only rewrite the simpler direct native imports we control.
+      if (/sharp/i.test(args.path)) {
+        return
+      }
+      return {
+        path: args.path,
+        namespace: 'native-exe-dir',
+      }
+    })
 
     build.onLoad({ filter: /.*/, namespace: 'native-exe-dir' }, args => {
       const file = basename(args.path)
