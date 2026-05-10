@@ -1206,6 +1206,28 @@ mod macos {
             out
         }
 
+        unsafe fn debug_element_summary(element: AXUIElementRef) -> String {
+            let role_attr = ax_attr("AXRole");
+            let title_attr = ax_attr("AXTitle");
+            let desc_attr = ax_attr("AXDescription");
+            let value_attr = ax_attr("AXValue");
+            let role = read_string_attr(element, role_attr.as_concrete_TypeRef() as CFStringRef)
+                .unwrap_or_else(|| "?".to_string());
+            let name = trim_text(
+                read_string_attr(element, title_attr.as_concrete_TypeRef() as CFStringRef)
+                    .or_else(|| read_string_attr(element, desc_attr.as_concrete_TypeRef() as CFStringRef))
+                    .or_else(|| read_string_attr(element, value_attr.as_concrete_TypeRef() as CFStringRef))
+                    .unwrap_or_default(),
+            );
+            match read_rect(element).map(|r| rect_to_public(&r)) {
+                Some(b) => format!(
+                    "role={} name={:?} bbox=({},{} {}x{})",
+                    role, name, b.origin.x, b.origin.y, b.size.w, b.size.h
+                ),
+                None => format!("role={} name={:?} bbox=<none>", role, name),
+            }
+        }
+
         unsafe fn read_children_for_attr(
             element: AXUIElementRef,
             attr_name: &str,
@@ -1247,9 +1269,10 @@ mod macos {
                 let children = read_children_for_attr(element, attr_name);
                 if !children.is_empty() {
                     super::append_ax_som_debug_log(&format!(
-                        "CHILDREN attr={} count={}",
+                        "CHILDREN attr={} count={} from {}",
                         attr_name,
-                        children.len()
+                        children.len(),
+                        debug_element_summary(element)
                     ));
                 }
                 for child in children {
@@ -1487,7 +1510,9 @@ mod macos {
                 while let Some((el, depth)) = stack.pop() {
                     if depth > MAX_AX_TREE_DEPTH {
                         super::append_ax_som_debug_log(&format!(
-                            "DROP depth_exceeded depth={depth}"
+                            "DROP depth_exceeded depth={} {}",
+                            depth,
+                            debug_element_summary(el)
                         ));
                         continue;
                     }
@@ -1517,7 +1542,8 @@ mod macos {
                         );
                             if seen.insert(key) {
                                 super::append_ax_som_debug_log(&format!(
-                                    "KEEP role={} name={:?} bbox=({},{} {}x{})",
+                                    "KEEP depth={} role={} name={:?} bbox=({},{} {}x{})",
+                                    depth,
                                     ui.role,
                                     ui.name,
                                     ui.bbox.origin.x,
@@ -1528,7 +1554,8 @@ mod macos {
                                 out.push(ui);
                             } else {
                                 super::append_ax_som_debug_log(&format!(
-                                    "DROP duplicate role={} name={:?} bbox=({},{} {}x{})",
+                                    "DROP duplicate depth={} role={} name={:?} bbox=({},{} {}x{})",
+                                    depth,
                                     ui.role,
                                     ui.name,
                                     ui.bbox.origin.x,
@@ -1539,7 +1566,12 @@ mod macos {
                             }
                         }
                         Err(reason) => {
-                            super::append_ax_som_debug_log(&format!("DROP {reason}"));
+                            super::append_ax_som_debug_log(&format!(
+                                "DROP depth={} {} {}",
+                                depth,
+                                reason,
+                                debug_element_summary(el)
+                            ));
                         }
                     }
                     for child in read_children(el).into_iter().rev() {
