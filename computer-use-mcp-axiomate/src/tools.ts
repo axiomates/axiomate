@@ -311,7 +311,9 @@ export function buildComputerUseTools(
         "Use this when the user names a specific app — e.g. \"show me Slack\", \"截 Chrome\", \"capture iTerm\" — and you do not need surrounding context. Use plain `screenshot` for full-screen / multi-app context. " +
         "**Before calling this with an app identifier you only know by user-facing name (e.g. \"WeChat\", \"QQ\"), call `list_running_apps` first to get the exact id.** The bare display name is often wrong: \"WeChat\" is now `Weixin.exe`, \"Visual Studio Code\" is `Code.exe`, etc. Do NOT guess installation paths from memory. " +
         "The returned image shows only the target app's window — no surrounding desktop or other windows. " +
-        "SoM (Set-of-Mark) auto-detects interactive elements INSIDE the window (buttons, text fields, icons, links) and overlays red numbered circles; pass `som: false` to suppress. If no structured marks are available, fall back to visual inspection and ruler coordinates. " +
+        (isWin
+          ? "SoM (Set-of-Mark) auto-detects interactive elements INSIDE the window (buttons, text fields, icons, links) and overlays red numbered circles; pass `som: false` to suppress. "
+          : "SoM (Set-of-Mark) auto-detects interactive elements INSIDE the window (buttons, text fields, icons, links) and overlays red numbered circles; pass `som: false` to suppress. If no structured marks are available, fall back to visual inspection and ruler coordinates. ") +
         "**Optional `coordinate_grid`** adds rulers to the window screenshot, using the window's screen position so coordinates match the global screenshot coordinate space — useful for precise positioning reference within the window. Default: `none` (no rulers).",
       inputSchema: {
         type: "object" as const,
