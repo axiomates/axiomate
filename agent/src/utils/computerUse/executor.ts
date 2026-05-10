@@ -44,7 +44,7 @@ import { execFileNoThrow } from '../execFileNoThrow.js'
 import { getConfigHomeDir } from '../envUtils.js'
 import { sleep } from '../sleep.js'
 import { join } from 'path'
-import { overlayScreenshotArtifacts } from './imageOverlay.js'
+import { overlayScreenshotArtifacts, resizeScreenshotBase64 } from './imageOverlay.js'
 import {
   MAC_CLI_CAPABILITIES,
   CLI_HOST_APP_IDENTIFIER,
@@ -59,6 +59,7 @@ import { requireComputerUseSwift } from './swiftLoader.js'
 
 const SCREENSHOT_JPEG_QUALITY = 0.75
 type GridMode = 'none' | 'edge' | 'full'
+const LONG_EDGE_CAP = 1920
 
 function dumpMacScreenshotForDebug(tool: string, base64: string): void {
   try {
@@ -91,6 +92,13 @@ function computeTargetDims(
   const physW = Math.round(logicalW * scaleFactor)
   const physH = Math.round(logicalH * scaleFactor)
   return targetImageSize(physW, physH, API_RESIZE_PARAMS)
+}
+
+function computeVirtualImageDim(w: number, h: number): [number, number] {
+  const longEdge = Math.max(w, h)
+  if (longEdge <= LONG_EDGE_CAP) return [w, h]
+  const ratio = LONG_EDGE_CAP / longEdge
+  return [Math.round(w * ratio), Math.round(h * ratio)]
 }
 
 async function readClipboardViaPbpaste(): Promise<string> {
@@ -402,11 +410,7 @@ export function createCliExecutor(opts: {
       coordinateGrid?: string
     }): Promise<ResolvePrepareCaptureResult> {
       const d = cu.display.getSize(opts.preferredDisplayId)
-      const [targetW, targetH] = computeTargetDims(
-        d.width,
-        d.height,
-        d.scaleFactor,
-      )
+      const [targetW, targetH] = computeVirtualImageDim(d.width, d.height)
       logForDebugging(
         `[computer-use] agent.resolvePrepareCapture enter: allowedAppIdentifiers=[${opts.allowedAppIdentifiers.join(',')}] preferredDisplayId=${opts.preferredDisplayId ?? 'undef'} autoResolve=${opts.autoResolve} doHide=${opts.doHide ?? 'undef'} targetW=${targetW} targetH=${targetH} displayW=${d.width} displayH=${d.height} scale=${d.scaleFactor}`,
         { level: 'debug' },
@@ -427,6 +431,18 @@ export function createCliExecutor(opts: {
         `[computer-use] agent.resolvePrepareCapture done: base64Len=${result?.base64?.length ?? 'undef'} width=${result?.width} height=${result?.height} displayId=${result?.displayId} hiddenCount=${result?.hidden?.length ?? 0} captureError=${result?.captureError ?? 'none'}`,
         { level: 'debug' },
       )
+      if (result.width !== targetW || result.height !== targetH) {
+        result.base64 = await resizeScreenshotBase64({
+          base64: result.base64,
+          width: result.width,
+          height: result.height,
+          targetWidth: targetW,
+          targetHeight: targetH,
+          jpegQuality: 85,
+        })
+        result.width = targetW
+        result.height = targetH
+      }
       if (opts.coordinateGrid && opts.coordinateGrid !== 'none') {
         result.base64 = await overlayScreenshotArtifacts({
           base64: result.base64,
@@ -436,8 +452,8 @@ export function createCliExecutor(opts: {
           range: {
             originX: 0,
             originY: 0,
-            rangeW: result.width,
-            rangeH: result.height,
+            rangeW: targetW,
+            rangeH: targetH,
           },
           jpegQuality: 85,
         })
@@ -457,11 +473,7 @@ export function createCliExecutor(opts: {
       coordinateGrid?: string
     }): Promise<ScreenshotResult> {
       const d = cu.display.getSize(opts.displayId)
-      const [targetW, targetH] = computeTargetDims(
-        d.width,
-        d.height,
-        d.scaleFactor,
-      )
+      const [targetW, targetH] = computeVirtualImageDim(d.width, d.height)
       logForDebugging(
         `[computer-use] agent.screenshot enter: allowedAppIdentifiers=[${opts.allowedAppIdentifiers.join(',')}] displayId=${opts.displayId ?? 'undef'} targetW=${targetW} targetH=${targetH} displayW=${d.width} displayH=${d.height} scale=${d.scaleFactor}`,
         { level: 'debug' },
@@ -479,6 +491,18 @@ export function createCliExecutor(opts: {
         `[computer-use] agent.screenshot done: base64Len=${result?.base64?.length ?? 'undef'} width=${result?.width} height=${result?.height} displayId=${result?.displayId}`,
         { level: 'debug' },
       )
+      if (result.width !== targetW || result.height !== targetH) {
+        result.base64 = await resizeScreenshotBase64({
+          base64: result.base64,
+          width: result.width,
+          height: result.height,
+          targetWidth: targetW,
+          targetHeight: targetH,
+          jpegQuality: 85,
+        })
+        result.width = targetW
+        result.height = targetH
+      }
       if (opts.coordinateGrid && opts.coordinateGrid !== 'none') {
         result.base64 = await overlayScreenshotArtifacts({
           base64: result.base64,
@@ -488,8 +512,8 @@ export function createCliExecutor(opts: {
           range: {
             originX: 0,
             originY: 0,
-            rangeW: result.width,
-            rangeH: result.height,
+            rangeW: targetW,
+            rangeH: targetH,
           },
           jpegQuality: 85,
         })
@@ -528,15 +552,27 @@ export function createCliExecutor(opts: {
         { level: 'debug' },
       )
       if (!image) return null
+      const [targetW, targetH] = computeVirtualImageDim(
+        image.displayWidth,
+        image.displayHeight,
+      )
+      const resizedBase64 = await resizeScreenshotBase64({
+        base64: image.base64,
+        width: image.width,
+        height: image.height,
+        targetWidth: targetW,
+        targetHeight: targetH,
+        jpegQuality: 85,
+      })
       // Pad to ScreenshotResult shape — `displayId`, `displayWidth`,
       // `displayHeight` are unused for window captures (click coords always
       // refer to the full screen).
       const result = {
         base64: (gridMode && gridMode > 0) || (marks?.length ?? 0) > 0
           ? await overlayScreenshotArtifacts({
-              base64: image.base64,
-              imageWidth: image.width,
-              imageHeight: image.height,
+              base64: resizedBase64,
+              imageWidth: targetW,
+              imageHeight: targetH,
               gridMode: gridMode === 1 ? 'edge' : gridMode && gridMode >= 2 ? 'full' : 'none',
               range: {
                 originX: image.originX,
@@ -546,14 +582,14 @@ export function createCliExecutor(opts: {
               },
               marks: (marks ?? []).map(m => ({
                 id: m.id,
-                x: ((m.x - image.originX) / image.displayWidth) * image.width,
-                y: ((m.y - image.originY) / image.displayHeight) * image.height,
+                x: ((m.x - image.originX) / image.displayWidth) * targetW,
+                y: ((m.y - image.originY) / image.displayHeight) * targetH,
               })),
               jpegQuality: 85,
             })
-          : image.base64,
-        width: image.width,
-        height: image.height,
+          : resizedBase64,
+        width: targetW,
+        height: targetH,
         displayId: 0,
         displayWidth: image.displayWidth,
         displayHeight: image.displayHeight,
@@ -572,8 +608,9 @@ export function createCliExecutor(opts: {
       marks?: Array<{ id: number; x: number; y: number }>,
     ): Promise<{ base64: string; width: number; height: number }> {
       const d = cu.display.getSize(displayId)
-      // Virtual (image-px) → logical (points): same ratio as screenshot downscale
-      const [imgW, imgH] = computeTargetDims(d.width, d.height, d.scaleFactor)
+      // Virtual (image-px) → logical points using the same 1920-long-edge
+      // screenshot space as the shared MCP layer.
+      const [imgW, imgH] = computeVirtualImageDim(d.width, d.height)
       const ratioX = d.width / imgW
       const ratioY = d.height / imgH
       const regionLogical = {
@@ -582,11 +619,8 @@ export function createCliExecutor(opts: {
         w: regionVirtual.w * ratioX,
         h: regionVirtual.h * ratioY,
       }
-      const [outW, outH] = computeTargetDims(
-        regionLogical.w,
-        regionLogical.h,
-        d.scaleFactor,
-      )
+      const outW = Math.round(regionLogical.w)
+      const outH = Math.round(regionLogical.h)
       const shot: { base64: string; width: number; height: number } = await drainRunLoop(() =>
         cu.screenshot.captureRegion(
           withoutTerminal(allowedAppIdentifiers),

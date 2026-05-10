@@ -233,3 +233,28 @@ export async function overlayScreenshotArtifacts(
     .toBuffer()
   return out.toString('base64')
 }
+
+export async function resizeScreenshotBase64(opts: {
+  base64: string
+  width: number
+  height: number
+  targetWidth: number
+  targetHeight: number
+  jpegQuality?: number
+}): Promise<string> {
+  const { base64, width, height, targetWidth, targetHeight, jpegQuality = 92 } = opts
+  if (
+    targetWidth <= 0 ||
+    targetHeight <= 0 ||
+    (width === targetWidth && height === targetHeight)
+  ) {
+    return base64
+  }
+  const sharp = await getImageProcessor()
+  const input = Buffer.from(base64, 'base64')
+  const out = await sharp(input)
+    .resize(targetWidth, targetHeight, { fit: 'fill' })
+    .jpeg({ quality: jpegQuality })
+    .toBuffer()
+  return out.toString('base64')
+}
