@@ -133,7 +133,12 @@ function runOptionalStep(label: string, command: string[], cwd: string) {
 const sharpMacRuntimePlugin: BunPlugin = {
   name: 'sharp-mac-runtime',
   setup(build) {
-    build.onLoad({ filter: /[\\/]sharp[\\/]lib[\\/]sharp\.js$/ }, () => ({
+    build.onResolve({ filter: /^sharp$/ }, () => ({
+      path: 'sharp',
+      namespace: 'sharp-mac-runtime',
+    }))
+
+    build.onLoad({ filter: /^sharp$/, namespace: 'sharp-mac-runtime' }, () => ({
       contents:
         "'use strict';\n" +
         "const { dirname, join } = require('node:path');\n" +
