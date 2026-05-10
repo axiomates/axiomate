@@ -1534,7 +1534,7 @@ mod macos {
                     origin: VPoint { x, y },
                     size: VSize { w: 1, h: 1 },
                 };
-                let out = element_to_ui(hit, &point_rect);
+                let out = element_to_ui(hit, &point_rect).ok();
                 CFRelease(hit as *const c_void);
                 out
             }
