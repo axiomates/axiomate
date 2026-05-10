@@ -44,6 +44,8 @@ const MARK_FILL = 'rgba(220, 38, 38, 0.82)'
 const MARK_STROKE = '#ffffff'
 const MARK_RADIUS = 12
 const RING_COLOR = '#00ff00'
+const FONT_FAMILY = 'Menlo, Monaco, Consolas, monospace'
+const FONT_SIZE = 12
 
 function escapeXml(text: string): string {
   return text
@@ -56,6 +58,29 @@ function escapeXml(text: string): string {
 
 function clamp(n: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, n))
+}
+
+function buildOutlinedText(x: number, y: number, value: string, opts?: {
+  anchor?: 'start' | 'middle' | 'end'
+  fill?: string
+  fontSize?: number
+  fontWeight?: string
+}): string[] {
+  const anchor = opts?.anchor ?? 'start'
+  const fill = opts?.fill ?? TEXT_COLOR
+  const fontSize = opts?.fontSize ?? FONT_SIZE
+  const fontWeight = opts?.fontWeight
+  const weightAttr = fontWeight ? ` font-weight="${fontWeight}"` : ''
+  const common =
+    `text-anchor="${anchor}" fill="%FILL%" font-family="${FONT_FAMILY}" font-size="${fontSize}"${weightAttr}`
+  return [
+    `<text x="${x}" y="${y}" ${common.replace('%FILL%', TEXT_STROKE)}>${value}</text>`,
+    `<text x="${x - 1}" y="${y}" ${common.replace('%FILL%', TEXT_STROKE)}>${value}</text>`,
+    `<text x="${x + 1}" y="${y}" ${common.replace('%FILL%', TEXT_STROKE)}>${value}</text>`,
+    `<text x="${x}" y="${y - 1}" ${common.replace('%FILL%', TEXT_STROKE)}>${value}</text>`,
+    `<text x="${x}" y="${y + 1}" ${common.replace('%FILL%', TEXT_STROKE)}>${value}</text>`,
+    `<text x="${x}" y="${y}" ${common.replace('%FILL%', fill)}>${value}</text>`,
+  ]
 }
 
 function buildGridSvg(opts: {
@@ -91,23 +116,24 @@ function buildGridSvg(opts: {
       const value = String(Math.round(coord))
       const label = escapeXml(value)
       const approxW = Math.max(12, value.length * 7)
+      const cx = clamp(px, Math.floor(approxW / 2), Math.max(Math.floor(approxW / 2), width - Math.ceil(approxW / 2)))
       labels.push({
         kind: 'top',
-        x0: clamp(px - Math.floor(approxW / 2) - 2, 0, width),
+        x0: clamp(cx - Math.floor(approxW / 2) - 2, 0, width),
         y0: 2,
-        x1: clamp(px + Math.ceil(approxW / 2) + 2, 0, width),
+        x1: clamp(cx + Math.ceil(approxW / 2) + 2, 0, width),
         y1: 16,
-        textX: clamp(px - Math.floor(approxW / 2), 0, width),
+        textX: clamp(cx - Math.floor(approxW / 2), 0, width),
         textY: 13,
         value: label,
       })
       labels.push({
         kind: 'bottom',
-        x0: clamp(px - Math.floor(approxW / 2) - 2, 0, width),
+        x0: clamp(cx - Math.floor(approxW / 2) - 2, 0, width),
         y0: height - 16,
-        x1: clamp(px + Math.ceil(approxW / 2) + 2, 0, width),
+        x1: clamp(cx + Math.ceil(approxW / 2) + 2, 0, width),
         y1: height - 2,
-        textX: clamp(px - Math.floor(approxW / 2), 0, width),
+        textX: clamp(cx - Math.floor(approxW / 2), 0, width),
         textY: height - 5,
         value: label,
       })
@@ -180,24 +206,7 @@ function buildGridSvg(opts: {
     parts.push(
       `<rect x="${l.x0}" y="${l.y0}" width="${Math.max(0, l.x1 - l.x0)}" height="${Math.max(0, l.y1 - l.y0)}" fill="${TEXT_BG}"/>`,
     )
-    parts.push(
-      `<text x="${l.textX}" y="${l.textY}" fill="${TEXT_STROKE}" font-family="Menlo, Monaco, Consolas, monospace" font-size="12">${l.value}</text>`,
-    )
-    parts.push(
-      `<text x="${l.textX - 1}" y="${l.textY}" fill="${TEXT_STROKE}" font-family="Menlo, Monaco, Consolas, monospace" font-size="12">${l.value}</text>`,
-    )
-    parts.push(
-      `<text x="${l.textX + 1}" y="${l.textY}" fill="${TEXT_STROKE}" font-family="Menlo, Monaco, Consolas, monospace" font-size="12">${l.value}</text>`,
-    )
-    parts.push(
-      `<text x="${l.textX}" y="${l.textY - 1}" fill="${TEXT_STROKE}" font-family="Menlo, Monaco, Consolas, monospace" font-size="12">${l.value}</text>`,
-    )
-    parts.push(
-      `<text x="${l.textX}" y="${l.textY + 1}" fill="${TEXT_STROKE}" font-family="Menlo, Monaco, Consolas, monospace" font-size="12">${l.value}</text>`,
-    )
-    parts.push(
-      `<text x="${l.textX}" y="${l.textY}" fill="${TEXT_COLOR}" font-family="Menlo, Monaco, Consolas, monospace" font-size="12">${l.value}</text>`,
-    )
+    parts.push(...buildOutlinedText(l.textX, l.textY, l.value))
   }
 
   if (mode === 'full') {
@@ -230,9 +239,7 @@ function buildMarksSvg(width: number, height: number, marks: OverlayMark[]): str
     const y = clamp(Math.round(mark.y), 0, height)
     const label = escapeXml(String(mark.id))
     parts.push(`<circle cx="${x}" cy="${y}" r="${MARK_RADIUS}" fill="${MARK_FILL}" stroke="${MARK_STROKE}" stroke-width="2"/>`)
-    parts.push(
-      `<text x="${x}" y="${y + 4}" text-anchor="middle" fill="${TEXT_COLOR}" font-family="Menlo, Monaco, Consolas, monospace" font-size="12" font-weight="700">${label}</text>`,
-    )
+    parts.push(...buildOutlinedText(x, y + 4, label, { anchor: 'middle', fill: '#ffffff', fontWeight: '700' }))
   }
   return parts.join('')
 }

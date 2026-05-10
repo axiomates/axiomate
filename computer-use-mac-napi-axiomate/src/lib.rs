@@ -1012,6 +1012,7 @@ mod macos {
         use crate::{UiElement, VPoint, VRect, VSize};
         use core_foundation::base::TCFType;
         use core_foundation::string::CFString;
+        use std::collections::BTreeSet;
         use std::ffi::CString;
         use std::os::raw::{c_char, c_void};
         use std::ptr;
@@ -1210,6 +1211,25 @@ mod macos {
             )
         }
 
+        fn role_is_actionable_or_semantic(role: &str) -> bool {
+            matches!(
+                role,
+                "AXButton"
+                    | "AXTextField"
+                    | "AXTextArea"
+                    | "AXCheckBox"
+                    | "AXRadioButton"
+                    | "AXLink"
+                    | "AXMenuItem"
+                    | "AXTabButton"
+                    | "AXScrollBar"
+                    | "AXSlider"
+                    | "AXRow"
+                    | "AXImage"
+                    | "AXStaticText"
+            )
+        }
+
         fn rect_to_public(rect: &CGRectNative) -> VRect {
             VRect {
                 origin: VPoint {
@@ -1235,6 +1255,55 @@ mod macos {
             ax1 < bx2 && ax2 > bx1 && ay1 < by2 && ay2 > by1
         }
 
+        fn intersection_area(rect: &VRect, filter: &VRect) -> u64 {
+            let ax1 = rect.origin.x;
+            let ay1 = rect.origin.y;
+            let ax2 = rect.origin.x + rect.size.w as i32;
+            let ay2 = rect.origin.y + rect.size.h as i32;
+            let bx1 = filter.origin.x;
+            let by1 = filter.origin.y;
+            let bx2 = filter.origin.x + filter.size.w as i32;
+            let by2 = filter.origin.y + filter.size.h as i32;
+            let w = (ax2.min(bx2) - ax1.max(bx1)).max(0) as u64;
+            let h = (ay2.min(by2) - ay1.max(by1)).max(0) as u64;
+            w * h
+        }
+
+        fn bbox_area(rect: &VRect) -> u64 {
+            rect.size.w as u64 * rect.size.h as u64
+        }
+
+        fn rect_center(rect: &VRect) -> (i32, i32) {
+            (
+                rect.origin.x + rect.size.w as i32 / 2,
+                rect.origin.y + rect.size.h as i32 / 2,
+            )
+        }
+
+        fn center_in_filter(rect: &VRect, filter: &VRect) -> bool {
+            let (cx, cy) = rect_center(rect);
+            cx >= filter.origin.x
+                && cy >= filter.origin.y
+                && cx < filter.origin.x + filter.size.w as i32
+                && cy < filter.origin.y + filter.size.h as i32
+        }
+
+        fn trim_text(s: String) -> String {
+            s.split_whitespace().collect::<Vec<_>>().join(" ").trim().to_string()
+        }
+
+        fn is_name_useful(name: &str, role_raw: &str) -> bool {
+            if name.is_empty() {
+                return role_raw != "AXStaticText" && role_raw != "AXImage";
+            }
+            let lower = name.to_ascii_lowercase();
+            !(lower == "image"
+                || lower == "group"
+                || lower == "toolbar"
+                || lower == "window"
+                || lower == "application")
+        }
+
         unsafe fn element_to_ui(element: AXUIElementRef, filter: &VRect) -> Option<UiElement> {
             let role_attr = ax_attr("AXRole");
             let title_attr = ax_attr("AXTitle");
@@ -1242,7 +1311,7 @@ mod macos {
             let value_attr = ax_attr("AXValue");
             let role_raw =
                 read_string_attr(element, role_attr.as_concrete_TypeRef() as CFStringRef)?;
-            if role_is_container_only(&role_raw) {
+            if role_is_container_only(&role_raw) || !role_is_actionable_or_semantic(&role_raw) {
                 return None;
             }
             let rect = read_rect(element)?;
@@ -1250,10 +1319,28 @@ mod macos {
             if bbox.size.w == 0 || bbox.size.h == 0 || !intersects_filter(&bbox, filter) {
                 return None;
             }
-            let name = read_string_attr(element, title_attr.as_concrete_TypeRef() as CFStringRef)
+            let bbox_area = bbox_area(&bbox);
+            if bbox_area == 0 {
+                return None;
+            }
+            let intersect_area = intersection_area(&bbox, filter);
+            if intersect_area * 2 < bbox_area || !center_in_filter(&bbox, filter) {
+                return None;
+            }
+            if bbox.size.w > filter.size.w.saturating_mul(9) / 10
+                && bbox.size.h > filter.size.h.saturating_mul(9) / 10
+            {
+                return None;
+            }
+            let name = trim_text(
+                read_string_attr(element, title_attr.as_concrete_TypeRef() as CFStringRef)
                 .or_else(|| read_string_attr(element, desc_attr.as_concrete_TypeRef() as CFStringRef))
                 .or_else(|| read_string_attr(element, value_attr.as_concrete_TypeRef() as CFStringRef))
-                .unwrap_or_default();
+                .unwrap_or_default(),
+            );
+            if !is_name_useful(&name, &role_raw) {
+                return None;
+            }
             Some(UiElement {
                 bbox,
                 name,
@@ -1274,13 +1361,38 @@ mod macos {
                     .map(|v| v as AXUIElementRef)
                     .unwrap_or(root);
                 let mut out = Vec::new();
+                let mut seen: BTreeSet<(i32, i32, u32, u32, &'static str)> = BTreeSet::new();
                 let mut stack: Vec<(AXUIElementRef, usize)> = vec![(start, 0)];
                 while let Some((el, depth)) = stack.pop() {
                     if depth > MAX_AX_TREE_DEPTH {
                         continue;
                     }
                     if let Some(ui) = element_to_ui(el, &rect) {
-                        out.push(ui);
+                        let role_bucket = match ui.role.as_str() {
+                            "Button" => "Button",
+                            "Edit" => "Edit",
+                            "CheckBox" => "CheckBox",
+                            "RadioButton" => "RadioButton",
+                            "Hyperlink" => "Hyperlink",
+                            "MenuItem" => "MenuItem",
+                            "TabItem" => "TabItem",
+                            "ScrollBar" => "ScrollBar",
+                            "Slider" => "Slider",
+                            "ListItem" => "ListItem",
+                            "Text" => "Text",
+                            "Image" => "Image",
+                            _ => "Other",
+                        };
+                        let key = (
+                            ui.bbox.origin.x,
+                            ui.bbox.origin.y,
+                            ui.bbox.size.w,
+                            ui.bbox.size.h,
+                            role_bucket,
+                        );
+                        if seen.insert(key) {
+                            out.push(ui);
+                        }
                     }
                     for child in read_children(el).into_iter().rev() {
                         stack.push((child, depth + 1));
