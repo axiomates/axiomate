@@ -28,6 +28,7 @@ export type ComputerUseInput =
  *  This is a complex native module with many methods — we type the known ones
  *  and use [key: string]: any for the rest to allow compilation. */
 export interface ComputerUseAPI {
+  getFrontmostApp?(): Promise<{ appIdentifier: string; displayName: string } | null>
   hotkey: {
     register(callback: () => void): void
     registerEscape(callback: () => void): any

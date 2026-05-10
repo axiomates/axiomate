@@ -234,6 +234,10 @@ export function createComputerUseSwift(): ComputerUseAPI {
         return listRunningApps()
       },
       async getFrontmostApp(): Promise<{ appIdentifier: string; displayName: string } | null> {
+        const native = loadMacNative()
+        if (native?.getFrontmostApp) {
+          return native.getFrontmostApp()
+        }
         const app = await getFrontmostApp()
         return app ? { appIdentifier: app.appIdentifier, displayName: app.displayName } : null
       },

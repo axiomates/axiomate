@@ -211,6 +211,26 @@ pub fn app_under_point(x: i32, y: i32) -> napi::Result<Option<AppHitInfo>> {
 }
 
 #[napi]
+pub fn get_frontmost_app() -> napi::Result<Option<AppHitInfo>> {
+    #[cfg(target_os = "macos")]
+    {
+        let Some(pid) = (unsafe { macos::running_app::frontmost_app_pid() }) else {
+            return Ok(None);
+        };
+        Ok(unsafe { macos::running_app::find_app_for_pid(pid) }.map(
+            |(app_identifier, display_name)| AppHitInfo {
+                app_identifier,
+                display_name,
+            },
+        ))
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        Ok(None)
+    }
+}
+
+#[napi]
 pub fn content_app_under_point(x: i32, y: i32) -> napi::Result<Option<AppHitInfo>> {
     #[cfg(target_os = "macos")]
     {
