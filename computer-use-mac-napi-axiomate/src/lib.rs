@@ -296,6 +296,38 @@ pub async fn capture_window(
 
 #[cfg(target_os = "macos")]
 mod macos {
+    fn ax_som_debug_enabled() -> bool {
+        std::env::args().any(|arg| arg == "--debug" || arg == "-d")
+            || matches!(
+                std::env::var("DEBUG"),
+                Ok(v) if matches!(v.to_ascii_lowercase().as_str(), "1" | "true" | "yes" | "on")
+            )
+    }
+
+    fn append_ax_som_debug_log(line: &str) {
+        if !ax_som_debug_enabled() {
+            return;
+        }
+        let home = std::env::var("AXIOMATE_CONFIG_DIR")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|_| {
+                std::env::var("HOME")
+                    .map(|h| std::path::PathBuf::from(h).join(".axiomate"))
+                    .unwrap_or_else(|_| std::path::PathBuf::from(".axiomate"))
+            });
+        let dir = home.join("debug");
+        let _ = std::fs::create_dir_all(&dir);
+        let path = dir.join("mac-ax-som.log");
+        let _ = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(path)
+            .and_then(|mut f| {
+                use std::io::Write;
+                writeln!(f, "{line}")
+            });
+    }
+
     pub mod running_app {
         use objc2::msg_send;
         use objc2::rc::Retained;
@@ -1343,33 +1375,45 @@ mod macos {
                 || lower == "application")
         }
 
-        unsafe fn element_to_ui(element: AXUIElementRef, filter: &VRect) -> Option<UiElement> {
+        unsafe fn element_to_ui(
+            element: AXUIElementRef,
+            filter: &VRect,
+        ) -> Result<UiElement, String> {
             let role_attr = ax_attr("AXRole");
             let title_attr = ax_attr("AXTitle");
             let desc_attr = ax_attr("AXDescription");
             let value_attr = ax_attr("AXValue");
             let role_raw =
-                read_string_attr(element, role_attr.as_concrete_TypeRef() as CFStringRef)?;
+                read_string_attr(element, role_attr.as_concrete_TypeRef() as CFStringRef)
+                    .ok_or_else(|| "missing AXRole".to_string())?;
             if role_is_container_only(&role_raw) || !role_is_actionable_or_semantic(&role_raw) {
-                return None;
+                return Err(format!("filtered role={role_raw}"));
             }
-            let rect = read_rect(element)?;
+            let rect = read_rect(element).ok_or_else(|| "missing rect".to_string())?;
             let bbox = rect_to_public(&rect);
             if bbox.size.w == 0 || bbox.size.h == 0 || !intersects_filter(&bbox, filter) {
-                return None;
+                return Err(format!(
+                    "bbox invalid/intersects=false bbox=({},{} {}x{})",
+                    bbox.origin.x, bbox.origin.y, bbox.size.w, bbox.size.h
+                ));
             }
             let bbox_area = bbox_area(&bbox);
             if bbox_area == 0 {
-                return None;
+                return Err("bbox area zero".to_string());
             }
             let intersect_area = intersection_area(&bbox, filter);
             if intersect_area * 2 < bbox_area || !center_in_filter(&bbox, filter) {
-                return None;
+                return Err(format!(
+                    "bbox containment fail intersect={} area={} center_in_filter={}",
+                    intersect_area,
+                    bbox_area,
+                    center_in_filter(&bbox, filter)
+                ));
             }
             if bbox.size.w > filter.size.w.saturating_mul(9) / 10
                 && bbox.size.h > filter.size.h.saturating_mul(9) / 10
             {
-                return None;
+                return Err("bbox too large for filter".to_string());
             }
             let name = trim_text(
                 read_string_attr(element, title_attr.as_concrete_TypeRef() as CFStringRef)
@@ -1378,9 +1422,9 @@ mod macos {
                 .unwrap_or_default(),
             );
             if !is_name_useful(&name, &role_raw) {
-                return None;
+                return Err(format!("name not useful role={role_raw} name={name:?}"));
             }
-            Some(UiElement {
+            Ok(UiElement {
                 bbox,
                 name,
                 role: ax_role_to_short(&role_raw).to_string(),
@@ -1394,6 +1438,10 @@ mod macos {
                 Some(r) => r,
                 None => return Vec::new(),
             };
+            super::append_ax_som_debug_log(&format!(
+                "BEGIN rect=({},{} {}x{})",
+                rect.origin.x, rect.origin.y, rect.size.w, rect.size.h
+            ));
             unsafe {
                 let focused_attr = ax_attr("AXFocusedWindow");
                 let start = copy_attr(root, focused_attr.as_concrete_TypeRef() as CFStringRef)
@@ -1404,10 +1452,14 @@ mod macos {
                 let mut stack: Vec<(AXUIElementRef, usize)> = vec![(start, 0)];
                 while let Some((el, depth)) = stack.pop() {
                     if depth > MAX_AX_TREE_DEPTH {
+                        super::append_ax_som_debug_log(&format!(
+                            "DROP depth_exceeded depth={depth}"
+                        ));
                         continue;
                     }
-                    if let Some(ui) = element_to_ui(el, &rect) {
-                        let role_bucket = match ui.role.as_str() {
+                    match element_to_ui(el, &rect) {
+                        Ok(ui) => {
+                            let role_bucket = match ui.role.as_str() {
                             "Button" => "Button",
                             "Edit" => "Edit",
                             "CheckBox" => "CheckBox",
@@ -1422,15 +1474,38 @@ mod macos {
                             "Image" => "Image",
                             _ => "Other",
                         };
-                        let key = (
+                            let key = (
                             ui.bbox.origin.x,
                             ui.bbox.origin.y,
                             ui.bbox.size.w,
                             ui.bbox.size.h,
                             role_bucket,
                         );
-                        if seen.insert(key) {
-                            out.push(ui);
+                            if seen.insert(key) {
+                                super::append_ax_som_debug_log(&format!(
+                                    "KEEP role={} name={:?} bbox=({},{} {}x{})",
+                                    ui.role,
+                                    ui.name,
+                                    ui.bbox.origin.x,
+                                    ui.bbox.origin.y,
+                                    ui.bbox.size.w,
+                                    ui.bbox.size.h
+                                ));
+                                out.push(ui);
+                            } else {
+                                super::append_ax_som_debug_log(&format!(
+                                    "DROP duplicate role={} name={:?} bbox=({},{} {}x{})",
+                                    ui.role,
+                                    ui.name,
+                                    ui.bbox.origin.x,
+                                    ui.bbox.origin.y,
+                                    ui.bbox.size.w,
+                                    ui.bbox.size.h
+                                ));
+                            }
+                        }
+                        Err(reason) => {
+                            super::append_ax_som_debug_log(&format!("DROP {reason}"));
                         }
                     }
                     for child in read_children(el).into_iter().rev() {
@@ -1441,6 +1516,7 @@ mod macos {
                 if start != root {
                     CFRelease(root as *const c_void);
                 }
+                super::append_ax_som_debug_log(&format!("END kept={}", out.len()));
                 out
             }
         }
