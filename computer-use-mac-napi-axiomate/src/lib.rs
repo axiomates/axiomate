@@ -1,6 +1,6 @@
 //! macOS native bindings for axiomate's computer-use suite.
 //!
-//! Exposes four feature groups via napi-rs:
+//! Exposes three feature groups via napi-rs:
 //!
 //! 1. NSRunningApplication.hide / unhide / activate — used by
 //!    `cu.apps.prepareDisplay` to clear non-allowlisted windows before a
@@ -9,10 +9,7 @@
 //!    hotkey for "abort the running computer-use turn". `notifyExpectedEscape`
 //!    sets a short-lived decay gate so the agent's own synthesized Esc
 //!    presses (via `key("escape")`) don't abort the turn.
-//! 3. SCContentFilter screenshot — capture a display with non-allowlisted
-//!    apps excluded at the compositor level (privacy + agent focus).
-//!    macOS 12.3+ ScreenCaptureKit. SKELETON — returns None pending impl.
-//! 4. CGWindowListCreateImage per-window screenshot — capture the frontmost
+//! 3. CGWindowListCreateImage per-window screenshot — capture the frontmost
 //!    window of a specific bundle id. Backs the `screenshot_window` MCP
 //!    tool. Resolves bundle id → pid → CGWindowID → JPEG.
 //!
@@ -20,15 +17,6 @@
 //! function so the JS side's existing fallbacks engage automatically.
 
 use napi_derive::napi;
-
-// Force the linker to pull in ScreenCaptureKit on macOS. The objc2 selector
-// machinery resolves classes by name at runtime, but the framework's symbols
-// (and obj-c runtime metadata) need to be linked into the .dylib first.
-// macOS 12.3+ ships SCK; older systems fall through to runtime nil checks
-// inside sc_capture::capture and return Ok(None).
-#[cfg(target_os = "macos")]
-#[link(name = "ScreenCaptureKit", kind = "framework")]
-extern "C" {}
 
 // ───────────────────────────────────────────────────────────────────────────
 // NSRunningApplication.hide / unhide / activate
@@ -103,7 +91,7 @@ pub fn notify_expected_escape() {
 }
 
 // ───────────────────────────────────────────────────────────────────────────
-// SCContentFilter — allowlist-filtered screenshot
+// Allowlist-filtered screenshot stub
 // ───────────────────────────────────────────────────────────────────────────
 
 #[napi(object)]
@@ -719,8 +707,6 @@ mod macos {
 
         // CFNumber type identifiers
         const KCF_NUMBER_SINT32_TYPE: i32 = 3;
-        const KCF_NUMBER_FLOAT64_TYPE: i32 = 13;
-
         // Max active displays we'll enumerate. macOS supports many more in
         // theory, but 16 is a reasonable practical cap (no realistic user
         // setup exceeds this).
@@ -1328,365 +1314,12 @@ mod macos {
         }
     }
 
-    #[allow(dead_code)]
-    pub mod sc_capture {
-        //! ScreenCaptureKit allowlist-filtered screenshot.
-        //!
-        //! Implementation: macOS 14+ via `SCScreenshotManager.captureImage…`
-        //! (one-shot single-frame API, no SCStream lifecycle). On macOS 13
-        //! and older `AnyClass::get(c"SCScreenshotManager")` returns None
-        //! and we fall back to `Ok(None)` — caller drops to the existing
-        //! `node-screenshots` full-screen path (no allowlist filtering).
-        //!
-        //! Pipeline:
-        //!   1. SCShareableContent.getShareableContentWithCompletionHandler:
-        //!      → Retained<SCShareableContent>  (async via block2 + oneshot)
-        //!   2. shareable.displays → pick by displayID == opts.display_id
-        //!   3. shareable.windows → exclude windows whose
-        //!      owningApplication.bundleIdentifier ∉ allowed_app_identifiers
-        //!   4. SCContentFilter.initWithDisplay:excludingWindows:
-        //!   5. SCStreamConfiguration (width/height/queueDepth/showsCursor)
-        //!   6. SCScreenshotManager.captureImageWithFilter:configuration:
-        //!      completionHandler: → CGImageRef (async)
-        //!   7. cg_window_capture::cg_image_to_jpeg_base64 (shared helper)
-        //!
-        //! When this works on a real mac, flip CLI_CU_CAPABILITIES
-        //! .screenshotFiltering from 'none' to 'native' in
-        //! agent/src/utils/computerUse/common.ts. Until then capability
-        //! stays 'none' (truthful: schema description tells the LLM no
-        //! filtering happens) — flipping prematurely would deceive the LLM
-        //! when the runtime fallback engages.
-
-        use super::super::{CaptureExcludingOpts, CaptureExcludingResult};
-        use super::cg_window_capture::cg_image_to_jpeg_base64;
-        use block2::RcBlock;
-        use objc2::msg_send;
-        use objc2::rc::Retained;
-        use objc2::runtime::{AnyClass, AnyObject};
-        use std::os::raw::c_void;
-        use std::sync::{Arc, Mutex};
-        use tokio::sync::oneshot;
-
-        type CGImageRef = *mut c_void;
-        type CGDirectDisplayID = u32;
-
-        extern "C" {
-            fn CGImageRelease(image: CGImageRef);
-        }
-
-        /// Send-able container for raw Obj-C pointers. The block runs on
-        /// SCK's internal queue; we hand off to a tokio oneshot from there.
-        /// Raw `*mut AnyObject` isn't Send, so we wrap via this newtype +
-        /// usize bridging in the closure body.
-        struct PtrSend(usize);
-        unsafe impl Send for PtrSend {}
-
-        /// Bridge `+[SCShareableContent getShareableContentWithCompletionHandler:]`
-        /// (which delivers result on an SCK background queue) into Rust async.
-        ///
-        /// Retain semantics: SCK passes the result as +0 (autoreleased) per
-        /// Obj-C convention. The autoreleasepool that owns that retain
-        /// drains when the SCK queue's runloop iteration ends — which can
-        /// happen *before* our `rx.await` resumes on the tokio thread. So
-        /// we manually `retain` synchronously inside the block, then send
-        /// the now-+1 pointer through as usize. The receiver consumes the
-        /// +1 via `Retained::from_raw`.
-        async fn await_shareable_content() -> Option<Retained<AnyObject>> {
-            let cls = AnyClass::get("SCShareableContent")?;
-            let (tx, rx) = oneshot::channel::<PtrSend>();
-            let tx = Arc::new(Mutex::new(Some(tx)));
-            let block = RcBlock::new({
-                let tx = Arc::clone(&tx);
-                move |content: *mut AnyObject, _err: *mut AnyObject| {
-                    let retained_ptr: *mut AnyObject = if !content.is_null() {
-                        // Manual +1 retain via Obj-C selector — keeps the
-                        // object alive across queue boundaries.
-                        unsafe {
-                            let _: *mut AnyObject = msg_send![content, retain];
-                        }
-                        content
-                    } else {
-                        std::ptr::null_mut()
-                    };
-                    let mut g = match tx.lock() {
-                        Ok(g) => g,
-                        Err(_) => return,
-                    };
-                    if let Some(sender) = g.take() {
-                        let _ = sender.send(PtrSend(retained_ptr as usize));
-                    }
-                }
-            });
-            unsafe {
-                let _: () = msg_send![cls, getShareableContentWithCompletionHandler: &*block];
-            }
-            let payload = rx.await.ok()?;
-            let raw = payload.0 as *mut AnyObject;
-            if raw.is_null() {
-                return None;
-            }
-            // Consumes the +1 we took inside the block. Drop releases.
-            unsafe { Retained::from_raw(raw) }
-        }
-
-        /// Bridge `+[SCScreenshotManager captureImageWithFilter:configuration:
-        /// completionHandler:]` (delivers CGImageRef on SCK queue).
-        async fn await_capture_image(
-            filter: *mut AnyObject,
-            config: *mut AnyObject,
-        ) -> Option<CGImageRef> {
-            let cls = AnyClass::get("SCScreenshotManager")?;
-            let (tx, rx) = oneshot::channel::<PtrSend>();
-            let tx = Arc::new(Mutex::new(Some(tx)));
-            let block = RcBlock::new({
-                let tx = Arc::clone(&tx);
-                move |image: CGImageRef, _err: *mut AnyObject| {
-                    let mut g = match tx.lock() {
-                        Ok(g) => g,
-                        Err(_) => return,
-                    };
-                    if let Some(sender) = g.take() {
-                        let _ = sender.send(PtrSend(image as usize));
-                    }
-                }
-            });
-            unsafe {
-                let _: () = msg_send![
-                    cls,
-                    captureImageWithFilter: filter,
-                    configuration: config,
-                    completionHandler: &*block
-                ];
-            }
-            let payload = rx.await.ok()?;
-            let raw = payload.0 as CGImageRef;
-            if raw.is_null() {
-                return None;
-            }
-            // CGImage from SCK is +1 retained per the documented contract;
-            // we own this and must CGImageRelease after encoding.
-            Some(raw)
-        }
-
-        /// Find the SCDisplay whose displayID matches `wanted`, or fall back
-        /// to the first display when `wanted == 0` / not found. Returns a
-        /// non-owning `*mut AnyObject` whose lifetime is tied to the
-        /// owning shareable-content retain.
-        unsafe fn pick_display(
-            shareable: &Retained<AnyObject>,
-            wanted: CGDirectDisplayID,
-        ) -> Option<*mut AnyObject> {
-            let displays: *mut AnyObject = msg_send![&**shareable, displays];
-            if displays.is_null() {
-                return None;
-            }
-            let count: usize = msg_send![displays, count];
-            if count == 0 {
-                return None;
-            }
-            for i in 0..count {
-                let display: *mut AnyObject = msg_send![displays, objectAtIndex: i];
-                if display.is_null() {
-                    continue;
-                }
-                let id: CGDirectDisplayID = msg_send![display, displayID];
-                if wanted != 0 && id == wanted {
-                    return Some(display);
-                }
-            }
-            // Fallback: first display.
-            let first: *mut AnyObject = msg_send![displays, objectAtIndex: 0usize];
-            if first.is_null() {
-                None
-            } else {
-                Some(first)
-            }
-        }
-
-        /// Walk shareable.windows, return the SCWindow pointers whose owning
-        /// app bundle id is NOT in `allowed`. These are the windows we want
-        /// to *exclude* from the capture so SCContentFilter blacks them out.
-        unsafe fn collect_excluded_windows(
-            shareable: &Retained<AnyObject>,
-            allowed: &[String],
-        ) -> Vec<*mut AnyObject> {
-            let windows: *mut AnyObject = msg_send![&**shareable, windows];
-            if windows.is_null() {
-                return Vec::new();
-            }
-            let count: usize = msg_send![windows, count];
-            let mut excluded = Vec::with_capacity(count);
-            for i in 0..count {
-                let window: *mut AnyObject = msg_send![windows, objectAtIndex: i];
-                if window.is_null() {
-                    continue;
-                }
-                let app: *mut AnyObject = msg_send![window, owningApplication];
-                if app.is_null() {
-                    // No owning app → safe to exclude (e.g. compositor surfaces).
-                    excluded.push(window);
-                    continue;
-                }
-                let bid: *mut AnyObject = msg_send![app, bundleIdentifier];
-                if bid.is_null() {
-                    excluded.push(window);
-                    continue;
-                }
-                // NSString.UTF8String → *const c_char. Length is unknown
-                // but null-terminated.
-                let utf8: *const std::os::raw::c_char = msg_send![bid, UTF8String];
-                if utf8.is_null() {
-                    excluded.push(window);
-                    continue;
-                }
-                let bid_str = std::ffi::CStr::from_ptr(utf8).to_string_lossy().into_owned();
-                if !allowed.iter().any(|a| a == &bid_str) {
-                    excluded.push(window);
-                }
-            }
-            excluded
-        }
-
-        /// Wrap a `&[*mut AnyObject]` into an NSArray<SCWindow> via
-        /// `+[NSArray arrayWithObjects:count:]`. Callers transfer no
-        /// ownership; the NSArray retains.
-        unsafe fn ns_array_from_objects(items: &[*mut AnyObject]) -> *mut AnyObject {
-            let cls = AnyClass::get("NSArray").expect("NSArray class missing");
-            let count = items.len();
-            // arrayWithObjects:count: wants a contiguous C array of id ptrs
-            // (we already have one as a slice).
-            let arr: *mut AnyObject = msg_send![cls, arrayWithObjects: items.as_ptr(), count: count];
-            arr
-        }
-
-        unsafe fn make_content_filter(
-            display: *mut AnyObject,
-            excluded_arr: *mut AnyObject,
-        ) -> Option<Retained<AnyObject>> {
-            let cls = AnyClass::get("SCContentFilter")?;
-            let alloc: *mut AnyObject = msg_send![cls, alloc];
-            if alloc.is_null() {
-                return None;
-            }
-            let filter: *mut AnyObject =
-                msg_send![alloc, initWithDisplay: display, excludingWindows: excluded_arr];
-            if filter.is_null() {
-                return None;
-            }
-            // initWith… takes ownership of the alloc'd +1 retain.
-            Retained::from_raw(filter)
-        }
-
-        unsafe fn make_stream_config(
-            width: i64,
-            height: i64,
-        ) -> Option<Retained<AnyObject>> {
-            let cls = AnyClass::get("SCStreamConfiguration")?;
-            let alloc: *mut AnyObject = msg_send![cls, alloc];
-            if alloc.is_null() {
-                return None;
-            }
-            let cfg: *mut AnyObject = msg_send![alloc, init];
-            if cfg.is_null() {
-                return None;
-            }
-            // setWidth: / setHeight: take NSUInteger (usize on 64-bit).
-            let _: () = msg_send![cfg, setWidth: width as usize];
-            let _: () = msg_send![cfg, setHeight: height as usize];
-            let _: () = msg_send![cfg, setQueueDepth: 1usize];
-            // showsCursor=NO so screenshots don't include the mouse pointer.
-            let _: () = msg_send![cfg, setShowsCursor: false];
-            Retained::from_raw(cfg)
-        }
-
-        pub async fn capture(
-            opts: CaptureExcludingOpts,
-        ) -> napi::Result<Option<CaptureExcludingResult>> {
-            // Step 0: runtime gate. SCScreenshotManager is macOS 14+. On 13
-            // and below the class is unregistered → Ok(None) → caller falls
-            // back to node-screenshots full-screen.
-            if AnyClass::get("SCScreenshotManager").is_none() {
-                return Ok(None);
-            }
-
-            // Step 1: shareable content (async). On TCC denial / SCK error
-            // this returns None.
-            let shareable = match await_shareable_content().await {
-                Some(s) => s,
-                None => return Ok(None),
-            };
-
-            // Step 2: pick display.
-            let display = match unsafe {
-                pick_display(&shareable, opts.display_id as CGDirectDisplayID)
-            } {
-                Some(d) => d,
-                None => return Ok(None),
-            };
-
-            // Step 3: collect excluded windows (those NOT in the allowlist).
-            let excluded =
-                unsafe { collect_excluded_windows(&shareable, &opts.allowed_app_identifiers) };
-
-            // Step 4: NSArray + SCContentFilter.
-            let excluded_arr = unsafe { ns_array_from_objects(&excluded) };
-            if excluded_arr.is_null() {
-                return Ok(None);
-            }
-            let filter = match unsafe { make_content_filter(display, excluded_arr) } {
-                Some(f) => f,
-                None => return Ok(None),
-            };
-
-            // Step 5: SCStreamConfiguration. Use opts dims when provided,
-            // else fall back to the display's native dims (read off the
-            // display object). Most callers set explicit width/height
-            // matching API_RESIZE_PARAMS so this default rarely triggers.
-            let width = opts.width.unwrap_or_else(|| {
-                let raw_w: i64 = unsafe { msg_send![display, width] };
-                if raw_w > 0 { raw_w } else { 1920 }
-            });
-            let height = opts.height.unwrap_or_else(|| {
-                let raw_h: i64 = unsafe { msg_send![display, height] };
-                if raw_h > 0 { raw_h } else { 1080 }
-            });
-            let config = match unsafe { make_stream_config(width, height) } {
-                Some(c) => c,
-                None => return Ok(None),
-            };
-
-            // Step 6: capture (async).
-            let cg_image = match await_capture_image(
-                Retained::as_ptr(&filter) as *mut AnyObject,
-                Retained::as_ptr(&config) as *mut AnyObject,
-            )
-            .await
-            {
-                Some(img) => img,
-                None => return Ok(None),
-            };
-
-            // Step 7: encode JPEG. Reuse cg_window_capture's helper — the
-            // bytes layout is identical (BGRA from CG / SCK).
-            let encoded = unsafe { cg_image_to_jpeg_base64(cg_image) };
-            unsafe { CGImageRelease(cg_image) };
-            match encoded {
-                Ok(img) => Ok(Some(CaptureExcludingResult {
-                    base64: img.base64,
-                    width: img.width,
-                    height: img.height,
-                })),
-                Err(_) => Ok(None),
-            }
-        }
-    }
-
     pub mod cg_window_capture {
         //! Per-window screenshot via the legacy CGWindowList APIs.
         //!
         //! macOS 14 deprecated CGWindowListCreateImage in favor of
-        //! ScreenCaptureKit, but the function still works and avoids the
-        //! ~200 lines of SCK plumbing needed for sc_capture. We use it for
+        //! ScreenCaptureKit, but the function still works and is sufficient
+        //! for our current needs. We use it for
         //! the `screenshot_window` tool: bundle id → pid → frontmost
         //! on-screen window id → CGImage → JPEG → base64.
         //!
@@ -1989,10 +1622,7 @@ mod macos {
         /// 32-bit BGRA pixel format CG returns for window/screen captures
         /// (bits_per_component=8, 4 bytes per pixel).
         ///
-        /// `pub(super)` so sc_capture can reuse the same encoder pipeline —
-        /// the SCK path also produces a CGImageRef and the encode shape is
-        /// identical (different wrapper struct, same bytes).
-        pub(super) unsafe fn cg_image_to_jpeg_base64(
+        unsafe fn cg_image_to_jpeg_base64(
             cg_image: CGImageRef,
         ) -> napi::Result<CaptureWindowImage> {
             let width = CGImageGetWidth(cg_image);
