@@ -88,18 +88,31 @@ function copyIfExists(relPath: string, destName = basename(relPath)) {
 
 function copyWorkspaceNativeFiles(workspace: string) {
   const workspaceDir = join(root, workspace)
-  for (const file of readdirSync(workspaceDir)) {
-    if (file.endsWith('.node')) {
-      copyFileSync(join(workspaceDir, file), join(distDir, file))
-      console.log(`  OK ${file}`)
+  const plainFile = `${workspace}.node`
+  const platformFile = `${workspace}.${nodePlatformArch}.node`
+  const preferredSource = existsSync(join(workspaceDir, platformFile))
+    ? platformFile
+    : existsSync(join(workspaceDir, plainFile))
+      ? plainFile
+      : null
 
-      const platformFile = `${workspace}.${nodePlatformArch}.node`
-      if (file !== platformFile) {
-        copyFileSync(join(workspaceDir, file), join(distDir, platformFile))
-        console.log(`  OK ${platformFile}`)
-      }
+  if (!preferredSource) {
+    const fallback = readdirSync(workspaceDir).find(file => file.endsWith('.node'))
+    if (!fallback) {
+      console.log(`  SKIP ${workspace} native .node (not found)`)
+      return
     }
+    copyFileSync(join(workspaceDir, fallback), join(distDir, plainFile))
+    console.log(`  OK ${plainFile} <- ${fallback}`)
+    return
   }
+
+  copyFileSync(join(workspaceDir, preferredSource), join(distDir, plainFile))
+  console.log(
+    preferredSource === plainFile
+      ? `  OK ${plainFile}`
+      : `  OK ${plainFile} <- ${preferredSource}`,
+  )
 }
 
 function runOptionalStep(label: string, command: string[], cwd: string) {
