@@ -21,7 +21,7 @@ const UNHIDE_TIMEOUT_MS = 5000
  * Called from three sites: natural turn end (`stopHooks.ts`), abort during
  * streaming (`query.ts` aborted_streaming), abort during tool execution
  * (`query.ts` aborted_tools). All three reach this via dynamic import gated
- * on `false`. `executor.js` (which pulls both native
+ * on `false`. `macExecutor.js` (which pulls both native
  * modules) is dynamic-imported below so non-CU turns don't load native
  * modules just to no-op.
  *
@@ -37,7 +37,7 @@ export async function cleanupComputerUseAfterTurn(
 
   const hidden = appState.computerUseMcpState?.hiddenDuringTurn
   if (hidden && hidden.size > 0) {
-    const { unhideComputerUseApps } = await import('./executor.js')
+    const { unhideComputerUseApps } = await import('./macExecutor.js')
     const unhide = unhideComputerUseApps([...hidden]).catch(err =>
       logForDebugging(
         `[Computer Use MCP] auto-unhide failed: ${errorMessage(err)}`,

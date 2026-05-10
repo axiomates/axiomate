@@ -5,7 +5,7 @@ import type {
 import { format } from 'util'
 import { logForDebugging } from '../debug.js'
 import { COMPUTER_USE_MCP_SERVER_NAME } from './common.js'
-import { createCliExecutor } from './executor.js'
+import { createCliExecutor } from './macExecutor.js'
 import { createWinExecutor } from './winExecutor.js'
 import { getChicagoEnabled, getChicagoSubGates } from './gates.js'
 import { requireComputerUseSwift } from './swiftLoader.js'
