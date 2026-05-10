@@ -341,36 +341,7 @@ pub async fn capture_window(
 
 #[cfg(target_os = "macos")]
 mod macos {
-    fn ax_som_debug_enabled() -> bool {
-        std::env::args().any(|arg| arg == "--debug" || arg == "-d")
-            || matches!(
-                std::env::var("DEBUG"),
-                Ok(v) if matches!(v.to_ascii_lowercase().as_str(), "1" | "true" | "yes" | "on")
-            )
-    }
-
-    fn append_ax_som_debug_log(line: &str) {
-        if !ax_som_debug_enabled() {
-            return;
-        }
-        let home = std::env::var("AXIOMATE_CONFIG_DIR")
-            .map(std::path::PathBuf::from)
-            .unwrap_or_else(|_| {
-                std::env::var("HOME")
-                    .map(|h| std::path::PathBuf::from(h).join(".axiomate"))
-                    .unwrap_or_else(|_| std::path::PathBuf::from(".axiomate"))
-            });
-        let dir = home.join("debug");
-        let _ = std::fs::create_dir_all(&dir);
-        let path = dir.join("mac-ax-som.log");
-        let _ = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(path)
-            .and_then(|mut f| {
-                use std::io::Write;
-                writeln!(f, "{line}")
-            });
+    fn append_ax_som_debug_log(_line: &str) {
     }
 
     pub mod running_app {
