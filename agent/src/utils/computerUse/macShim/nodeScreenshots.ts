@@ -142,8 +142,10 @@ export async function captureDisplay(displayId?: number): Promise<CaptureResult>
 
 /**
  * Capture a region of a display's screenshot.
- * Coordinates are **relative to the display's screenshot image** (0,0 = top-left of that display).
- * This matches what AI sees: screenshot pixel coordinates within a single display.
+ * Inputs are in LOGICAL display coordinates (the same point-space used by
+ * nut.js cursor positions and the MCP virtual rulers). node-screenshots'
+ * underlying image is physical pixels on macOS Retina displays, so we must
+ * scale the crop rect before slicing the image buffer.
  */
 export async function captureRegion(
   x: number,
@@ -153,8 +155,13 @@ export async function captureRegion(
   displayId?: number,
 ): Promise<CaptureResult> {
   const monitor = findMonitor(displayId)
+  const display = monitorToDisplayInfo(monitor)
   const image = await monitor.captureImage()
-  const cropped = await image.crop(x, y, w, h)
+  const cropX = Math.round(x * display.scaleFactor)
+  const cropY = Math.round(y * display.scaleFactor)
+  const cropW = Math.round(w * display.scaleFactor)
+  const cropH = Math.round(h * display.scaleFactor)
+  const cropped = await image.crop(cropX, cropY, cropW, cropH)
   const jpeg = await cropped.toJpeg()
   const base64 = Buffer.from(jpeg).toString('base64')
   return { base64, width: cropped.width, height: cropped.height }
