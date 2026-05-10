@@ -870,6 +870,13 @@ export function createCliExecutor(opts: {
       return cu.apps.appUnderPoint(x, y)
     },
 
+    async contentAppUnderPoint(
+      x: number,
+      y: number,
+    ): Promise<{ appIdentifier: string; displayName: string } | null> {
+      return cu.apps.contentAppUnderPoint?.(x, y) ?? null
+    },
+
     async listInstalledApps(): Promise<InstalledApp[]> {
       return drainRunLoop(() => cu.apps.listInstalled())
     },

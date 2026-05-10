@@ -315,6 +315,11 @@ export function createComputerUseSwift(): ComputerUseAPI {
         if (!native) return null
         return native.appUnderPoint(x, y)
       },
+      async contentAppUnderPoint(x: number, y: number): Promise<{ appIdentifier: string; displayName: string } | null> {
+        const native = loadMacNative()
+        if (!native?.contentAppUnderPoint) return null
+        return native.contentAppUnderPoint(x, y)
+      },
       async open(appIdentifier: string): Promise<void> {
         await openApp(appIdentifier)
       },

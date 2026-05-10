@@ -2785,7 +2785,7 @@ async function handleZoom(
         if (
           adapter.executor.capabilities.platform === "darwin" &&
           adapter.executor.enumerateVisibleElementsForApp &&
-          adapter.executor.appUnderPoint
+          (adapter.executor.contentAppUnderPoint || adapter.executor.appUnderPoint)
         ) {
           const probeLogicalX = Math.round(
             probeX * ratioX + originX,
@@ -2793,10 +2793,15 @@ async function handleZoom(
           const probeLogicalY = Math.round(
             probeY * ratioY + originY,
           );
-          const hit = await adapter.executor.appUnderPoint(
-            probeLogicalX,
-            probeLogicalY,
-          );
+          const hit = adapter.executor.contentAppUnderPoint
+            ? await adapter.executor.contentAppUnderPoint(
+                probeLogicalX,
+                probeLogicalY,
+              )
+            : await adapter.executor.appUnderPoint(
+                probeLogicalX,
+                probeLogicalY,
+              );
           if (hit) {
             adapter.logger.debug(
               `[zoom-som-mac] hit app=${hit.appIdentifier} probeVirtual=(${probeX},${probeY}) probeLogical=(${probeLogicalX},${probeLogicalY}) ` +

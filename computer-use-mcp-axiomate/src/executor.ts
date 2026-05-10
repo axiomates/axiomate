@@ -188,6 +188,10 @@ export interface ComputerExecutor {
   // ── App management ───────────────────────────────────────────────────
   getFrontmostApp(): Promise<FrontmostApp | null>;
   appUnderPoint(x: number, y: number): Promise<{ appIdentifier: string; displayName: string } | null>;
+  contentAppUnderPoint?(
+    x: number,
+    y: number,
+  ): Promise<{ appIdentifier: string; displayName: string } | null>;
   listInstalledApps(): Promise<InstalledApp[]>;
   listRunningApps(): Promise<RunningApp[]>;
   openApp(appIdentifier: string): Promise<void>;

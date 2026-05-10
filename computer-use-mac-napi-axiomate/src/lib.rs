@@ -211,6 +211,19 @@ pub fn app_under_point(x: i32, y: i32) -> napi::Result<Option<AppHitInfo>> {
 }
 
 #[napi]
+pub fn content_app_under_point(x: i32, y: i32) -> napi::Result<Option<AppHitInfo>> {
+    #[cfg(target_os = "macos")]
+    {
+        Ok(macos::cg_window_query::content_app_under_point(x, y))
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (x, y);
+        Ok(None)
+    }
+}
+
+#[napi]
 pub async fn enumerate_ui_elements_in_rect(
     rect: VRect,
     window_only: Option<bool>,
@@ -1133,6 +1146,121 @@ mod macos {
                     }
                 }
                 super::append_ax_som_debug_log("APP_UNDER_POINT no_selection");
+                None
+            }
+        }
+
+        pub fn content_app_under_point(x: i32, y: i32) -> Option<AppHitInfo> {
+            let px = x as f64;
+            let py = y as f64;
+            super::append_ax_som_debug_log(&format!(
+                "CONTENT_APP_UNDER_POINT begin point=({}, {})",
+                x, y
+            ));
+
+            unsafe {
+                let arr = CGWindowListCopyWindowInfo(
+                    KCG_WINDOW_LIST_ON_SCREEN_ONLY,
+                    KCG_NULL_WINDOW_ID,
+                );
+                if arr.is_null() {
+                    return None;
+                }
+
+                struct Candidate {
+                    layer: i32,
+                    index: isize,
+                    pid: i32,
+                    rect: CGRect,
+                }
+                let mut candidates: Vec<Candidate> = Vec::new();
+
+                let count = CFArrayGetCount(arr);
+                for i in 0..count {
+                    let dict = CFArrayGetValueAtIndex(arr, i) as CFDictionaryRef;
+                    if dict.is_null() {
+                        continue;
+                    }
+                    if !CFDictionaryContainsKey(dict, kCGWindowOwnerPID as *const c_void) {
+                        continue;
+                    }
+                    let Some(pid) = read_i32(dict, kCGWindowOwnerPID) else {
+                        continue;
+                    };
+                    let layer = read_i32(dict, kCGWindowLayer).unwrap_or(0);
+                    let Some(rect) = decode_window_bounds(dict) else {
+                        continue;
+                    };
+                    if rect.contains(px, py) {
+                        candidates.push(Candidate {
+                            layer,
+                            index: i,
+                            pid,
+                            rect,
+                        });
+                    }
+                }
+                CFRelease(arr);
+
+                if candidates.is_empty() {
+                    super::append_ax_som_debug_log("CONTENT_APP_UNDER_POINT no_candidates");
+                    return None;
+                }
+
+                // Content hit-test: prefer lower layer numbers (regular app
+                // content) and frontmost-within-layer first. This avoids
+                // Dock/menu-bar style system chrome stealing the probe.
+                candidates.sort_by(|a, b| {
+                    a.layer
+                        .cmp(&b.layer)
+                        .then_with(|| a.index.cmp(&b.index))
+                });
+
+                for cand in candidates {
+                    let app_dbg = running_app::find_app_for_pid(cand.pid);
+                    match &app_dbg {
+                        Some((app_identifier, display_name)) => {
+                            super::append_ax_som_debug_log(&format!(
+                                "CONTENT_APP_UNDER_POINT candidate layer={} index={} pid={} app={} name={:?} rect=({},{} {}x{})",
+                                cand.layer,
+                                cand.index,
+                                cand.pid,
+                                app_identifier,
+                                display_name,
+                                cand.rect.origin.x.round() as i32,
+                                cand.rect.origin.y.round() as i32,
+                                cand.rect.size.width.round() as i32,
+                                cand.rect.size.height.round() as i32,
+                            ));
+                            if app_identifier == "com.apple.dock" {
+                                continue;
+                            }
+                        }
+                        None => {
+                            super::append_ax_som_debug_log(&format!(
+                                "CONTENT_APP_UNDER_POINT candidate layer={} index={} pid={} app=<unknown> rect=({},{} {}x{})",
+                                cand.layer,
+                                cand.index,
+                                cand.pid,
+                                cand.rect.origin.x.round() as i32,
+                                cand.rect.origin.y.round() as i32,
+                                cand.rect.size.width.round() as i32,
+                                cand.rect.size.height.round() as i32,
+                            ));
+                        }
+                    }
+                    if let Some((app_identifier, display_name)) = app_dbg {
+                        super::append_ax_som_debug_log(&format!(
+                            "CONTENT_APP_UNDER_POINT selected app={} pid={} layer={} index={}",
+                            app_identifier, cand.pid, cand.layer, cand.index
+                        ));
+                        return Some(AppHitInfo {
+                            app_identifier,
+                            display_name,
+                        });
+                    }
+                }
+                super::append_ax_som_debug_log("CONTENT_APP_UNDER_POINT no_selection");
                 None
             }
         }
