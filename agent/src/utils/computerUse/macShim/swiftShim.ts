@@ -37,6 +37,7 @@ import type { ComputerUseAPI } from './types.js'
 // missing binary just disables native features without breaking the build.
 type MacNativeBinding = {
   isAvailable: () => boolean
+  getFrontmostApp?: () => Promise<{ appIdentifier: string; displayName: string } | null>
   hideApp: (appIdentifier: string) => Promise<boolean>
   unhideApp: (appIdentifier: string) => Promise<boolean>
   activateApp: (appIdentifier: string) => Promise<boolean>
@@ -77,6 +78,26 @@ type MacNativeBinding = {
     automationId?: string | null
     uiaSource?: string | null
   }>>
+  enumerateUiElementsInRectDetailed?: (
+    rect: {
+      origin: { x: number; y: number }
+      size: { w: number; h: number }
+    },
+    windowOnly?: boolean,
+  ) => Promise<{
+    elements: Array<{
+      bbox: { origin: { x: number; y: number }; size: { w: number; h: number } }
+      name: string
+      role: string
+      automationId?: string | null
+      uiaSource?: string | null
+    }>
+    traversedCount: number
+    matchedCount: number
+    returnedCount: number
+    truncated: boolean
+    truncationReason?: 'traversal_budget' | 'output_budget' | null
+  }>
   elementFromPoint: (
     x: number,
     y: number,
@@ -94,6 +115,43 @@ type MacNativeBinding = {
     x: number,
     y: number,
   ) => { appIdentifier: string; displayName: string } | null
+  contentAppUnderPoint?: (
+    x: number,
+    y: number,
+  ) => { appIdentifier: string; displayName: string } | null
+  enumerateUiElementsForAppInRect?: (
+    appIdentifier: string,
+    rect: {
+      origin: { x: number; y: number }
+      size: { w: number; h: number }
+    },
+  ) => Promise<Array<{
+    bbox: { origin: { x: number; y: number }; size: { w: number; h: number } }
+    name: string
+    role: string
+    automationId?: string | null
+    uiaSource?: string | null
+  }>>
+  enumerateUiElementsForAppInRectDetailed?: (
+    appIdentifier: string,
+    rect: {
+      origin: { x: number; y: number }
+      size: { w: number; h: number }
+    },
+  ) => Promise<{
+    elements: Array<{
+      bbox: { origin: { x: number; y: number }; size: { w: number; h: number } }
+      name: string
+      role: string
+      automationId?: string | null
+      uiaSource?: string | null
+    }>
+    traversedCount: number
+    matchedCount: number
+    returnedCount: number
+    truncated: boolean
+    truncationReason?: 'traversal_budget' | 'output_budget' | null
+  }>
 }
 
 let macNativeCached: MacNativeBinding | null | undefined

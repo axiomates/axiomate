@@ -161,6 +161,16 @@ pub struct UiElement {
     pub uia_source: Option<String>,
 }
 
+#[napi(object)]
+pub struct UiElementEnumerationResult {
+    pub elements: Vec<UiElement>,
+    pub traversed_count: u32,
+    pub matched_count: u32,
+    pub returned_count: u32,
+    pub truncated: bool,
+    pub truncation_reason: Option<String>,
+}
+
 /// For each requested app identifier (CFBundleIdentifier on macOS), return the set of CGDisplayIDs whose
 /// `CGDisplayBounds` rect intersects any of that app's on-screen window
 /// rects. Empty `display_ids` means the app has no visible windows on any
@@ -276,6 +286,32 @@ pub async fn enumerate_ui_elements_in_rect(
 }
 
 #[napi]
+pub async fn enumerate_ui_elements_in_rect_detailed(
+    rect: VRect,
+    window_only: Option<bool>,
+) -> napi::Result<UiElementEnumerationResult> {
+    #[cfg(target_os = "macos")]
+    {
+        Ok(macos::ax_query::enumerate_ui_elements_in_rect_detailed(
+            rect,
+            window_only.unwrap_or(false),
+        ))
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (rect, window_only);
+        Ok(UiElementEnumerationResult {
+            elements: Vec::new(),
+            traversed_count: 0,
+            matched_count: 0,
+            returned_count: 0,
+            truncated: false,
+            truncation_reason: None,
+        })
+    }
+}
+
+#[napi]
 pub async fn enumerate_ui_elements_for_app_in_rect(
     app_identifier: String,
     rect: VRect,
@@ -291,6 +327,32 @@ pub async fn enumerate_ui_elements_for_app_in_rect(
     {
         let _ = (app_identifier, rect);
         Ok(Vec::new())
+    }
+}
+
+#[napi]
+pub async fn enumerate_ui_elements_for_app_in_rect_detailed(
+    app_identifier: String,
+    rect: VRect,
+) -> napi::Result<UiElementEnumerationResult> {
+    #[cfg(target_os = "macos")]
+    {
+        Ok(macos::ax_query::enumerate_ui_elements_for_app_in_rect_detailed(
+            &app_identifier,
+            rect,
+        ))
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (app_identifier, rect);
+        Ok(UiElementEnumerationResult {
+            elements: Vec::new(),
+            traversed_count: 0,
+            matched_count: 0,
+            returned_count: 0,
+            truncated: false,
+            truncation_reason: None,
+        })
     }
 }
 
@@ -1274,7 +1336,8 @@ mod macos {
         use crate::{UiElement, VPoint, VRect, VSize};
         use core_foundation::base::TCFType;
         use core_foundation::string::CFString;
-        use std::collections::BTreeSet;
+        use std::cmp::Ordering;
+        use std::collections::{BTreeSet, BinaryHeap, VecDeque};
         use std::ffi::CString;
         use std::os::raw::{c_char, c_void};
         use std::ptr;
@@ -1291,6 +1354,9 @@ mod macos {
         const K_CF_STRING_ENCODING_UTF8: u32 = 0x08000100;
         const K_AX_ERROR_SUCCESS: AXError = 0;
         const MAX_AX_TREE_DEPTH: usize = 48;
+        const MAX_ENUM_VISITED_NODES: u32 = 300;
+        const WARMUP_MAX_DEPTH: usize = 2;
+        const WARMUP_MAX_VISITS: u32 = 80;
 
         #[repr(C)]
         #[derive(Clone, Copy, Default)]
@@ -1332,6 +1398,8 @@ mod macos {
             fn CFGetTypeID(cf: *const c_void) -> usize;
             fn CFStringGetTypeID() -> usize;
             fn CFArrayGetTypeID() -> usize;
+            fn CFBooleanGetTypeID() -> usize;
+            fn CFBooleanGetValue(boolean: *const c_void) -> bool;
             fn CFRelease(cf: *const c_void);
             fn CFRetain(cf: *const c_void) -> *const c_void;
             fn CFStringGetCString(
@@ -1408,6 +1476,17 @@ mod macos {
             let value = copy_attr(element, attr)?;
             let out = if CFGetTypeID(value) == CFStringGetTypeID() {
                 cfstring_to_string(value as CFStringRef)
+            } else {
+                None
+            };
+            CFRelease(value);
+            out
+        }
+
+        unsafe fn read_bool_attr(element: AXUIElementRef, attr: CFStringRef) -> Option<bool> {
+            let value = copy_attr(element, attr)?;
+            let out = if CFGetTypeID(value) == CFBooleanGetTypeID() {
+                Some(CFBooleanGetValue(value))
             } else {
                 None
             };
@@ -1641,6 +1720,236 @@ mod macos {
                 || lower == "application")
         }
 
+        #[derive(Clone)]
+        struct FrontierItem {
+            element: AXUIElementRef,
+            depth: usize,
+            score: i32,
+            seq: u64,
+        }
+
+        impl PartialEq for FrontierItem {
+            fn eq(&self, other: &Self) -> bool {
+                self.score == other.score && self.seq == other.seq
+            }
+        }
+
+        impl Eq for FrontierItem {}
+
+        impl PartialOrd for FrontierItem {
+            fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+                Some(self.cmp(other))
+            }
+        }
+
+        impl Ord for FrontierItem {
+            fn cmp(&self, other: &Self) -> Ordering {
+                self.score
+                    .cmp(&other.score)
+                    .then_with(|| other.seq.cmp(&self.seq))
+            }
+        }
+
+        struct TraversalState {
+            traversed_count: u32,
+            matched_count: u32,
+            truncated: bool,
+            truncation_reason: Option<String>,
+            seq: u64,
+        }
+
+        unsafe fn score_frontier_item(
+            element: AXUIElementRef,
+            filter: &VRect,
+            depth: usize,
+        ) -> i32 {
+            let role_attr = ax_attr("AXRole");
+            let title_attr = ax_attr("AXTitle");
+            let desc_attr = ax_attr("AXDescription");
+            let value_attr = ax_attr("AXValue");
+            let role_raw =
+                read_string_attr(element, role_attr.as_concrete_TypeRef() as CFStringRef)
+                    .unwrap_or_default();
+            let rect = read_rect(element).map(|r| rect_to_public(&r));
+            let name = trim_text(
+                read_string_attr(element, title_attr.as_concrete_TypeRef() as CFStringRef)
+                    .or_else(|| read_string_attr(element, desc_attr.as_concrete_TypeRef() as CFStringRef))
+                    .or_else(|| read_string_attr(element, value_attr.as_concrete_TypeRef() as CFStringRef))
+                    .unwrap_or_default(),
+            );
+
+            let mut score = 0i32;
+            if !role_raw.is_empty() {
+                if role_is_actionable_or_semantic(&role_raw) {
+                    score += 200;
+                } else if role_is_container_only(&role_raw) {
+                    score += 20;
+                } else {
+                    score += 80;
+                }
+            }
+            if is_name_useful(&name, &role_raw) {
+                score += 20;
+            }
+            score -= (depth as i32) * 12;
+
+            if let Some(bbox) = rect {
+                if intersects_filter(&bbox, filter) {
+                    score += 40;
+                } else {
+                    score -= 80;
+                }
+                if center_in_filter(&bbox, filter) {
+                    score += 25;
+                }
+                let bbox_area = bbox_area(&bbox);
+                let filter_area = bbox_area(filter);
+                if filter_area > 0 && bbox_area > (filter_area * 9) / 10 && role_is_container_only(&role_raw) {
+                    score -= 120;
+                }
+                if bbox.size.w == 0 || bbox.size.h == 0 {
+                    score -= 200;
+                }
+            } else {
+                score -= 120;
+            }
+            score
+        }
+
+        unsafe fn push_children(
+            parent: AXUIElementRef,
+            depth: usize,
+            filter: &VRect,
+            bfs: &mut VecDeque<(AXUIElementRef, usize)>,
+            heap: &mut BinaryHeap<FrontierItem>,
+            state: &mut TraversalState,
+        ) {
+            for child in read_children(parent).into_iter().rev() {
+                let next_depth = depth + 1;
+                if next_depth <= WARMUP_MAX_DEPTH && state.traversed_count < WARMUP_MAX_VISITS {
+                    bfs.push_back((child, next_depth));
+                } else {
+                    let score = score_frontier_item(child, filter, next_depth);
+                    let seq = state.seq;
+                    state.seq = state.seq.saturating_add(1);
+                    heap.push(FrontierItem {
+                        element: child,
+                        depth: next_depth,
+                        score,
+                        seq,
+                    });
+                }
+            }
+        }
+
+        unsafe fn process_node(
+            el: AXUIElementRef,
+            depth: usize,
+            rect: &VRect,
+            out: &mut Vec<UiElement>,
+            seen: &mut BTreeSet<(i32, i32, u32, u32, &'static str)>,
+            bfs: &mut VecDeque<(AXUIElementRef, usize)>,
+            heap: &mut BinaryHeap<FrontierItem>,
+            state: &mut TraversalState,
+        ) -> bool {
+            state.traversed_count = state.traversed_count.saturating_add(1);
+            if state.traversed_count > MAX_ENUM_VISITED_NODES {
+                state.truncated = true;
+                state.truncation_reason = Some("traversal_budget".to_string());
+                CFRelease(el as *const c_void);
+                return false;
+            }
+            if depth > MAX_AX_TREE_DEPTH {
+                super::append_ax_som_debug_log(&format!(
+                    "DROP depth_exceeded depth={} {}",
+                    depth,
+                    debug_element_summary(el)
+                ));
+                CFRelease(el as *const c_void);
+                return true;
+            }
+            // AXHidden: explicit "this element is hidden". Skip the whole
+            // subtree — by convention hidden parents imply hidden children,
+            // and AX trees occasionally retain hidden descendants the app
+            // intends to keep dormant (e.g., collapsed disclosure rows,
+            // off-screen tab content). Mirrors Win's is_filtered_candidate_window
+            // role of pruning visible-state-but-not-actually-shown nodes.
+            let hidden_attr = ax_attr("AXHidden");
+            if matches!(
+                read_bool_attr(el, hidden_attr.as_concrete_TypeRef() as CFStringRef),
+                Some(true)
+            ) {
+                super::append_ax_som_debug_log(&format!(
+                    "DROP ax_hidden {}",
+                    debug_element_summary(el)
+                ));
+                CFRelease(el as *const c_void);
+                return true;
+            }
+            match element_to_ui(el, rect) {
+                Ok(ui) => {
+                    state.matched_count = state.matched_count.saturating_add(1);
+                    let role_bucket = match ui.role.as_str() {
+                        "Button" => "Button",
+                        "Edit" => "Edit",
+                        "CheckBox" => "CheckBox",
+                        "RadioButton" => "RadioButton",
+                        "Hyperlink" => "Hyperlink",
+                        "MenuItem" => "MenuItem",
+                        "TabItem" => "TabItem",
+                        "ScrollBar" => "ScrollBar",
+                        "Slider" => "Slider",
+                        "ListItem" => "ListItem",
+                        "Text" => "Text",
+                        "Image" => "Image",
+                        _ => "Other",
+                    };
+                    let key = (
+                        ui.bbox.origin.x,
+                        ui.bbox.origin.y,
+                        ui.bbox.size.w,
+                        ui.bbox.size.h,
+                        role_bucket,
+                    );
+                    if seen.insert(key) {
+                        super::append_ax_som_debug_log(&format!(
+                            "KEEP depth={} role={} name={:?} bbox=({},{} {}x{})",
+                            depth,
+                            ui.role,
+                            ui.name,
+                            ui.bbox.origin.x,
+                            ui.bbox.origin.y,
+                            ui.bbox.size.w,
+                            ui.bbox.size.h
+                        ));
+                        out.push(ui);
+                    } else {
+                        super::append_ax_som_debug_log(&format!(
+                            "DROP duplicate depth={} role={} name={:?} bbox=({},{} {}x{})",
+                            depth,
+                            ui.role,
+                            ui.name,
+                            ui.bbox.origin.x,
+                            ui.bbox.origin.y,
+                            ui.bbox.size.w,
+                            ui.bbox.size.h
+                        ));
+                    }
+                }
+                Err(reason) => {
+                    super::append_ax_som_debug_log(&format!(
+                        "DROP depth={} {} {}",
+                        depth,
+                        reason,
+                        debug_element_summary(el)
+                    ));
+                }
+            }
+            push_children(el, depth, rect, bfs, heap, state);
+            CFRelease(el as *const c_void);
+            true
+        }
+
         unsafe fn element_to_ui(
             element: AXUIElementRef,
             filter: &VRect,
@@ -1700,13 +2009,29 @@ mod macos {
         }
 
         pub fn enumerate_ui_elements_in_rect(rect: VRect, window_only: bool) -> Vec<UiElement> {
+            enumerate_ui_elements_in_rect_detailed(rect, window_only).elements
+        }
+
+        pub fn enumerate_ui_elements_in_rect_detailed(
+            rect: VRect,
+            window_only: bool,
+        ) -> UiElementEnumerationResult {
             let root = match if window_only {
                 app_pid_for_rect_center(&rect).and_then(app_ax_root_for_pid)
             } else {
                 frontmost_app_ax_root()
             } {
                 Some(r) => r,
-                None => return Vec::new(),
+                None => {
+                    return UiElementEnumerationResult {
+                        elements: Vec::new(),
+                        traversed_count: 0,
+                        matched_count: 0,
+                        returned_count: 0,
+                        truncated: false,
+                        truncation_reason: None,
+                    }
+                }
             };
             super::append_ax_som_debug_log(&format!(
                 "BEGIN rect=({},{} {}x{})",
@@ -1719,84 +2044,70 @@ mod macos {
                     .unwrap_or(root);
                 let mut out = Vec::new();
                 let mut seen: BTreeSet<(i32, i32, u32, u32, &'static str)> = BTreeSet::new();
-                let mut stack: Vec<(AXUIElementRef, usize)> = vec![(start, 0)];
-                while let Some((el, depth)) = stack.pop() {
-                    if depth > MAX_AX_TREE_DEPTH {
-                        super::append_ax_som_debug_log(&format!(
-                            "DROP depth_exceeded depth={} {}",
+                let mut bfs: VecDeque<(AXUIElementRef, usize)> = VecDeque::from([(start, 0)]);
+                let mut heap: BinaryHeap<FrontierItem> = BinaryHeap::new();
+                let mut state = TraversalState {
+                    traversed_count: 0,
+                    matched_count: 0,
+                    truncated: false,
+                    truncation_reason: None,
+                    seq: 0,
+                };
+                while let Some((el, depth)) = bfs.pop_front() {
+                    if !process_node(
+                        el,
+                        depth,
+                        &rect,
+                        &mut out,
+                        &mut seen,
+                        &mut bfs,
+                        &mut heap,
+                        &mut state,
+                    ) {
+                        break;
+                    }
+                }
+                while !state.truncated {
+                    let Some(item) = heap.pop() else { break };
+                    if !process_node(
+                        item.element,
+                        item.depth,
+                        &rect,
+                        &mut out,
+                        &mut seen,
+                        &mut bfs,
+                        &mut heap,
+                        &mut state,
+                    ) {
+                        break;
+                    }
+                    while let Some((el, depth)) = bfs.pop_front() {
+                        if !process_node(
+                            el,
                             depth,
-                            debug_element_summary(el)
-                        ));
-                        continue;
-                    }
-                    match element_to_ui(el, &rect) {
-                        Ok(ui) => {
-                            let role_bucket = match ui.role.as_str() {
-                            "Button" => "Button",
-                            "Edit" => "Edit",
-                            "CheckBox" => "CheckBox",
-                            "RadioButton" => "RadioButton",
-                            "Hyperlink" => "Hyperlink",
-                            "MenuItem" => "MenuItem",
-                            "TabItem" => "TabItem",
-                            "ScrollBar" => "ScrollBar",
-                            "Slider" => "Slider",
-                            "ListItem" => "ListItem",
-                            "Text" => "Text",
-                            "Image" => "Image",
-                            _ => "Other",
-                        };
-                            let key = (
-                            ui.bbox.origin.x,
-                            ui.bbox.origin.y,
-                            ui.bbox.size.w,
-                            ui.bbox.size.h,
-                            role_bucket,
-                        );
-                            if seen.insert(key) {
-                                super::append_ax_som_debug_log(&format!(
-                                    "KEEP depth={} role={} name={:?} bbox=({},{} {}x{})",
-                                    depth,
-                                    ui.role,
-                                    ui.name,
-                                    ui.bbox.origin.x,
-                                    ui.bbox.origin.y,
-                                    ui.bbox.size.w,
-                                    ui.bbox.size.h
-                                ));
-                                out.push(ui);
-                            } else {
-                                super::append_ax_som_debug_log(&format!(
-                                    "DROP duplicate depth={} role={} name={:?} bbox=({},{} {}x{})",
-                                    depth,
-                                    ui.role,
-                                    ui.name,
-                                    ui.bbox.origin.x,
-                                    ui.bbox.origin.y,
-                                    ui.bbox.size.w,
-                                    ui.bbox.size.h
-                                ));
-                            }
-                        }
-                        Err(reason) => {
-                            super::append_ax_som_debug_log(&format!(
-                                "DROP depth={} {} {}",
-                                depth,
-                                reason,
-                                debug_element_summary(el)
-                            ));
+                            &rect,
+                            &mut out,
+                            &mut seen,
+                            &mut bfs,
+                            &mut heap,
+                            &mut state,
+                        ) {
+                            break;
                         }
                     }
-                    for child in read_children(el).into_iter().rev() {
-                        stack.push((child, depth + 1));
-                    }
-                    CFRelease(el as *const c_void);
                 }
                 if start != root {
                     CFRelease(root as *const c_void);
                 }
                 super::append_ax_som_debug_log(&format!("END kept={}", out.len()));
-                out
+                UiElementEnumerationResult {
+                    elements: out,
+                    traversed_count: state.traversed_count,
+                    matched_count: state.matched_count,
+                    returned_count: seen.len() as u32,
+                    truncated: state.truncated,
+                    truncation_reason: state.truncation_reason,
+                }
             }
         }
 
@@ -1804,9 +2115,25 @@ mod macos {
             app_identifier: &str,
             rect: VRect,
         ) -> Vec<UiElement> {
+            enumerate_ui_elements_for_app_in_rect_detailed(app_identifier, rect).elements
+        }
+
+        pub fn enumerate_ui_elements_for_app_in_rect_detailed(
+            app_identifier: &str,
+            rect: VRect,
+        ) -> UiElementEnumerationResult {
             let root = match app_ax_root_for_identifier(app_identifier) {
                 Some(r) => r,
-                None => return Vec::new(),
+                None => {
+                    return UiElementEnumerationResult {
+                        elements: Vec::new(),
+                        traversed_count: 0,
+                        matched_count: 0,
+                        returned_count: 0,
+                        truncated: false,
+                        truncation_reason: None,
+                    }
+                }
             };
             super::append_ax_som_debug_log(&format!(
                 "BEGIN app={} rect=({},{} {}x{})",
@@ -1819,84 +2146,70 @@ mod macos {
                     .unwrap_or(root);
                 let mut out = Vec::new();
                 let mut seen: BTreeSet<(i32, i32, u32, u32, &'static str)> = BTreeSet::new();
-                let mut stack: Vec<(AXUIElementRef, usize)> = vec![(start, 0)];
-                while let Some((el, depth)) = stack.pop() {
-                    if depth > MAX_AX_TREE_DEPTH {
-                        super::append_ax_som_debug_log(&format!(
-                            "DROP depth_exceeded depth={} {}",
+                let mut bfs: VecDeque<(AXUIElementRef, usize)> = VecDeque::from([(start, 0)]);
+                let mut heap: BinaryHeap<FrontierItem> = BinaryHeap::new();
+                let mut state = TraversalState {
+                    traversed_count: 0,
+                    matched_count: 0,
+                    truncated: false,
+                    truncation_reason: None,
+                    seq: 0,
+                };
+                while let Some((el, depth)) = bfs.pop_front() {
+                    if !process_node(
+                        el,
+                        depth,
+                        &rect,
+                        &mut out,
+                        &mut seen,
+                        &mut bfs,
+                        &mut heap,
+                        &mut state,
+                    ) {
+                        break;
+                    }
+                }
+                while !state.truncated {
+                    let Some(item) = heap.pop() else { break };
+                    if !process_node(
+                        item.element,
+                        item.depth,
+                        &rect,
+                        &mut out,
+                        &mut seen,
+                        &mut bfs,
+                        &mut heap,
+                        &mut state,
+                    ) {
+                        break;
+                    }
+                    while let Some((el, depth)) = bfs.pop_front() {
+                        if !process_node(
+                            el,
                             depth,
-                            debug_element_summary(el)
-                        ));
-                        continue;
-                    }
-                    match element_to_ui(el, &rect) {
-                        Ok(ui) => {
-                            let role_bucket = match ui.role.as_str() {
-                                "Button" => "Button",
-                                "Edit" => "Edit",
-                                "CheckBox" => "CheckBox",
-                                "RadioButton" => "RadioButton",
-                                "Hyperlink" => "Hyperlink",
-                                "MenuItem" => "MenuItem",
-                                "TabItem" => "TabItem",
-                                "ScrollBar" => "ScrollBar",
-                                "Slider" => "Slider",
-                                "ListItem" => "ListItem",
-                                "Text" => "Text",
-                                "Image" => "Image",
-                                _ => "Other",
-                            };
-                            let key = (
-                                ui.bbox.origin.x,
-                                ui.bbox.origin.y,
-                                ui.bbox.size.w,
-                                ui.bbox.size.h,
-                                role_bucket,
-                            );
-                            if seen.insert(key) {
-                                super::append_ax_som_debug_log(&format!(
-                                    "KEEP depth={} role={} name={:?} bbox=({},{} {}x{})",
-                                    depth,
-                                    ui.role,
-                                    ui.name,
-                                    ui.bbox.origin.x,
-                                    ui.bbox.origin.y,
-                                    ui.bbox.size.w,
-                                    ui.bbox.size.h
-                                ));
-                                out.push(ui);
-                            } else {
-                                super::append_ax_som_debug_log(&format!(
-                                    "DROP duplicate depth={} role={} name={:?} bbox=({},{} {}x{})",
-                                    depth,
-                                    ui.role,
-                                    ui.name,
-                                    ui.bbox.origin.x,
-                                    ui.bbox.origin.y,
-                                    ui.bbox.size.w,
-                                    ui.bbox.size.h
-                                ));
-                            }
-                        }
-                        Err(reason) => {
-                            super::append_ax_som_debug_log(&format!(
-                                "DROP depth={} {} {}",
-                                depth,
-                                reason,
-                                debug_element_summary(el)
-                            ));
+                            &rect,
+                            &mut out,
+                            &mut seen,
+                            &mut bfs,
+                            &mut heap,
+                            &mut state,
+                        ) {
+                            break;
                         }
                     }
-                    for child in read_children(el).into_iter().rev() {
-                        stack.push((child, depth + 1));
-                    }
-                    CFRelease(el as *const c_void);
                 }
                 if start != root {
                     CFRelease(root as *const c_void);
                 }
                 super::append_ax_som_debug_log(&format!("END kept={}", out.len()));
-                out
+                UiElementEnumerationResult {
+                    elements: out,
+                    traversed_count: state.traversed_count,
+                    matched_count: state.matched_count,
+                    returned_count: seen.len() as u32,
+                    truncated: state.truncated,
+                    truncation_reason: state.truncation_reason,
+                }
             }
         }
 

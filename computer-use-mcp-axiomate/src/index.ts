@@ -54,7 +54,7 @@ export { ALL_SUB_GATES_OFF, ALL_SUB_GATES_ON } from "./subGates.js";
 export { API_RESIZE_PARAMS, targetImageSize } from "./imageResize.js";
 export type { ResizeParams } from "./imageResize.js";
 
-export { handleScreenLocate } from "./clickTarget.js";
+export { handleVisionLocate } from "./clickTarget.js";
 export type { LocateState } from "./clickTarget.js";
 export { defersLockAcquire, handleToolCall } from "./toolCalls.js";
 export type {

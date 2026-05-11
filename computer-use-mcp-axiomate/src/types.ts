@@ -254,6 +254,12 @@ export interface ComputerUseHostAdapter {
    */
   getAutoUnhideEnabled(): boolean;
 
+  /** Whether the high-cost vision-based locate loop is globally enabled. */
+  isVisionLocateEnabled(): boolean;
+
+  /** Whether the current session model supports image input. */
+  currentModelSupportsImages(): boolean;
+
   /**
    * Sub-gates re-read on every tool call so GrowthBook flips take effect
    * mid-session without restart.
@@ -527,7 +533,7 @@ interface BaseComputerUseOverrides {
   // their pre-SoM behavior (no marks attached, mark_id resolution errors).
 
   /**
-   * Read the currently-active screen_locate loop state, or null if no loop
+   * Read the currently-active vision_locate loop state, or null if no loop
    * is in progress.
    */
   getActiveLocate?: () => import("./clickTarget.js").LocateState | null;
@@ -547,7 +553,7 @@ interface BaseComputerUseOverrides {
 
   /**
    * Global SoM marks from the most recent zoom — NOT gated by
-   * screen_locate loop state. Updated on every zoom that runs detection,
+   * vision_locate loop state. Updated on every zoom that runs detection,
    * cleared on `som: false` or when detection returns zero elements.
    * Read by handleMoveMouse for `mark_id` resolution outside a loop.
    */

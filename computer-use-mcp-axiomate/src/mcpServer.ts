@@ -95,7 +95,7 @@ export function bindSessionContext(
 ): (name: string, args: unknown) => Promise<CuCallToolResult> {
   const { logger, serverName } = adapter;
 
-  // Locate loop state — set by screen_locate, cleared by accept.
+  // Locate loop state — set by vision_locate, cleared by accept.
   let activeLocate: import("./clickTarget.js").LocateState | null = null;
   let lastZoomMarks: import("./clickTarget.js").Mark[] = [];
 
@@ -140,6 +140,13 @@ export function bindSessionContext(
         return response;
       }
     : undefined;
+
+  function canSuggestVisionLocate(): boolean {
+    return (
+      adapter.isVisionLocateEnabled() &&
+      adapter.currentModelSupportsImages()
+    );
+  }
 
   return async (name, args) => {
     // ─── Async lock gate ─────────────────────────────────────────────────
@@ -258,7 +265,7 @@ export function bindSessionContext(
       // ─── Locate loop state management ────────────────────────────────
       const { buildLocateInjection } = await import("./clickTarget.js");
 
-      if (name === "screen_locate" && (result as any).locateLoop) {
+      if (name === "vision_locate" && (result as any).locateLoop) {
         activeLocate = (result as any).locateLoop;
         delete (result as any).locateLoop;
         const injection = buildLocateInjection(activeLocate!, name);
@@ -267,7 +274,7 @@ export function bindSessionContext(
         logger.debug(`[${serverName}] locate injection:\n${injection}`);
       } else if (name === "accept") {
         if (!activeLocate) {
-          result.content.push({ type: "text", text: "No active screen_locate loop. Call screen_locate first to enter positioning mode." });
+          result.content.push({ type: "text", text: "No active vision_locate loop. Call vision_locate first to enter visual positioning mode." });
           result.isError = true;
         } else if (result.isError) {
           // accept error — stay in loop, inject guidance
@@ -276,7 +283,7 @@ export function bindSessionContext(
         } else {
           const target = activeLocate.target;
           logger.debug(`[${serverName}] locate loop EXIT: accepted "${target}"`);
-          result.content.push({ type: "text", text: `[Screen Locate] Current cursor position snapshotted for "${target}".` });
+          result.content.push({ type: "text", text: `[Vision Locate] Current cursor position snapshotted for "${target}".` });
           activeLocate = null;
         }
       } else if (activeLocate) {
@@ -288,9 +295,15 @@ export function bindSessionContext(
         result.content.push({ type: "text", text: injection });
         logger.debug(`[${serverName}] locate loop ${name}: injection appended, moved=${activeLocate.moved}`);
       } else if (["left_click", "double_click", "triple_click", "right_click", "middle_click"].includes(name) && !result.isError) {
-        result.content.push({ type: "text", text: "Tip: For reliable clicking, use screen_locate first to enter guided positioning mode." });
+        const tip = canSuggestVisionLocate()
+          ? "Tip: For reliable clicking, use vision_locate first to enter guided visual positioning mode."
+          : "Tip: For reliable clicking, prefer `screenshot`, `zoom`, or `screenshot_window`, read the text SoM list, then use `mouse_move(mark_id: N)` instead of guessing coordinates."
+        result.content.push({ type: "text", text: tip });
       } else if (name === "screenshot" && !result.isError) {
-        result.content.push({ type: "text", text: "Tip: If your next step is to click a UI element you can describe by name (e.g. 'taskbar settings icon', 'Send button'), call `screen_locate` instead of guessing coordinates — guided mode is far more reliable because it starts with zoom, then uses cursor movement and visual confirmation before taking coordinates." });
+        const tip = canSuggestVisionLocate()
+          ? "Tip: If your next step is to click a UI element you can describe by name (e.g. 'taskbar settings icon', 'Send button'), call `vision_locate` instead of guessing coordinates — guided visual positioning is far more reliable because it starts with zoom, then uses cursor movement and visual confirmation before taking coordinates."
+          : "Tip: If your next step is to click a UI element by name, prefer `screenshot`, `zoom`, or `screenshot_window`, read the text SoM list, then use `mouse_move(mark_id: N)` instead of guessing coordinates."
+        result.content.push({ type: "text", text: tip });
       }
 
       return result;

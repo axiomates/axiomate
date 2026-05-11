@@ -594,6 +594,16 @@ export function Config({
         setGlobalConfig({ ...getGlobalConfig(), copyFullResponse })
       },
     },
+    {
+      id: 'visionLocateEnabled',
+      label: 'Enable vision_locate (high-cost visual loop)',
+      value: globalConfig.visionLocateEnabled ?? false,
+      type: 'boolean' as const,
+      onChange(visionLocateEnabled: boolean) {
+        saveGlobalConfig(current => ({ ...current, visionLocateEnabled }))
+        setGlobalConfig({ ...getGlobalConfig(), visionLocateEnabled })
+      },
+    },
     // Copy-on-select is only meaningful with in-app selection (fullscreen
     // alt-screen mode). In inline mode the terminal emulator owns selection.
     ...(isFullscreenEnvEnabled()

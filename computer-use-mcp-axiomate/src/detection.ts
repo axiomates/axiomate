@@ -21,6 +21,14 @@ export interface DetectedElement {
   uiaSource?: string;
 }
 
+export interface DetectionStats {
+  traversedCount: number;
+  matchedCount: number;
+  returnedCount: number;
+  truncated: boolean;
+  truncationReason?: "traversal_budget" | "output_budget";
+}
+
 export interface Rect {
   x: number;
   y: number;
@@ -41,7 +49,18 @@ export async function detectElementsInRect(
   rect: Rect,
   virtualToPhysical: { ratioX: number; ratioY: number; originX: number; originY: number; windowOnly?: boolean },
 ): Promise<DetectedElement[]> {
-  if (!executor.enumerateVisibleElements) return [];
+  const detailed = executor.enumerateVisibleElementsDetailed
+    ? await executor.enumerateVisibleElementsDetailed(
+        {
+          x: rect.x * virtualToPhysical.ratioX + virtualToPhysical.originX,
+          y: rect.y * virtualToPhysical.ratioY + virtualToPhysical.originY,
+          w: rect.w * virtualToPhysical.ratioX,
+          h: rect.h * virtualToPhysical.ratioY,
+        },
+        virtualToPhysical.windowOnly,
+      )
+    : null;
+  if (!detailed && !executor.enumerateVisibleElements) return [];
 
   // Convert virtual rect → physical rect for UIAutomation query
   const physRect = {
@@ -51,7 +70,8 @@ export async function detectElementsInRect(
     h: rect.h * virtualToPhysical.ratioY,
   };
 
-  const rawElements = await executor.enumerateVisibleElements(physRect, virtualToPhysical.windowOnly);
+  const rawElements = detailed?.elements ??
+    await executor.enumerateVisibleElements!(physRect, virtualToPhysical.windowOnly);
 
   return rawElements.map((el, i) => {
     // Physical → virtual coordinates (inverse of scaleCoord)
@@ -72,6 +92,62 @@ export async function detectElementsInRect(
   });
 }
 
+export async function detectElementsInRectDetailed(
+  executor: ComputerExecutor,
+  rect: Rect,
+  virtualToPhysical: { ratioX: number; ratioY: number; originX: number; originY: number; windowOnly?: boolean },
+): Promise<{ elements: DetectedElement[]; stats: DetectionStats }> {
+  const physRect = {
+    x: rect.x * virtualToPhysical.ratioX + virtualToPhysical.originX,
+    y: rect.y * virtualToPhysical.ratioY + virtualToPhysical.originY,
+    w: rect.w * virtualToPhysical.ratioX,
+    h: rect.h * virtualToPhysical.ratioY,
+  };
+
+  if (executor.enumerateVisibleElementsDetailed) {
+    const detailed = await executor.enumerateVisibleElementsDetailed(
+      physRect,
+      virtualToPhysical.windowOnly,
+    );
+    const elements = detailed.elements.map((el, i) => {
+      const vx = (el.bbox.x - virtualToPhysical.originX) / virtualToPhysical.ratioX;
+      const vy = (el.bbox.y - virtualToPhysical.originY) / virtualToPhysical.ratioY;
+      const vw = el.bbox.w / virtualToPhysical.ratioX;
+      const vh = el.bbox.h / virtualToPhysical.ratioY;
+      return {
+        id: i + 1,
+        bbox: { x: Math.round(vx), y: Math.round(vy), w: Math.round(vw), h: Math.round(vh) },
+        center: { x: Math.round(vx + vw / 2), y: Math.round(vy + vh / 2) },
+        rawName: el.name ?? "",
+        role: el.role,
+        automationId: el.automationId,
+        uiaSource: el.uiaSource,
+      };
+    });
+    return {
+      elements,
+      stats: {
+        traversedCount: detailed.traversedCount,
+        matchedCount: detailed.matchedCount,
+        returnedCount: detailed.returnedCount,
+        truncated: detailed.truncated,
+        truncationReason: detailed.truncationReason,
+      },
+    };
+  }
+
+  const elements = await detectElementsInRect(executor, rect, virtualToPhysical);
+  return {
+    elements,
+    stats: {
+      traversedCount: elements.length,
+      matchedCount: elements.length,
+      returnedCount: elements.length,
+      truncated: false,
+    },
+  };
+}
+
 /**
  * Detection sources for the SoM overlay. UIAutomation is wired today; the
  * remaining entries are placeholders for future structured sources.
@@ -79,6 +155,26 @@ export async function detectElementsInRect(
  * dedup-by-IoU + confidence aggregation inside `detectElementsMultiSource`.
  */
 export type DetectionSource = "uia" | "grounder" | "ocr";
+
+export interface SoMSummaryTile {
+  id: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  count: number;
+  sampleNames: string[];
+  roleCounts: Array<{ role: string; count: number }>;
+}
+
+export interface SoMSummary {
+  totalCount: number;
+  shownCount: number;
+  hiddenCount: number;
+  roleCounts: Array<{ role: string; count: number }>;
+  queryHits: Mark[];
+  tiles: SoMSummaryTile[];
+}
 
 /**
  * Multi-source SoM detector. Today only `uia` is wired — the executor's
@@ -125,6 +221,158 @@ export async function detectElementsMultiSource(
   return all.map((m, i) => ({ ...m, id: i + 1 }));
 }
 
+export async function detectElementsMultiSourceDetailed(
+  executor: ComputerExecutor,
+  rect: Rect,
+  virtualToPhysical: { ratioX: number; ratioY: number; originX: number; originY: number; windowOnly?: boolean },
+  sources: DetectionSource[] = ["uia"],
+): Promise<{ marks: Mark[]; stats: DetectionStats }> {
+  const all: Mark[] = [];
+  let stats: DetectionStats = {
+    traversedCount: 0,
+    matchedCount: 0,
+    returnedCount: 0,
+    truncated: false,
+  };
+  if (sources.includes("uia")) {
+    const uia = await detectElementsInRectDetailed(executor, rect, virtualToPhysical);
+    stats = uia.stats;
+    for (const el of uia.elements) {
+      all.push({
+        id: 0,
+        x: el.center.x,
+        y: el.center.y,
+        name: el.rawName,
+        role: el.role ?? "",
+        automationId: el.automationId,
+        source: "uia",
+        confidence: 1.0,
+        uiaSource: el.uiaSource ?? "foreground",
+      });
+    }
+  }
+  const marks = all.map((m, i) => ({ ...m, id: i + 1 }));
+  return {
+    marks,
+    stats: {
+      ...stats,
+      returnedCount: marks.length,
+    },
+  };
+}
+
+export function summarizeMarks(
+  marks: Mark[],
+  rect: Rect,
+  opts?: {
+    shownCount?: number;
+    query?: string;
+  },
+): SoMSummary {
+  const shownCount = Math.max(0, Math.min(opts?.shownCount ?? marks.length, marks.length));
+  const hiddenCount = Math.max(0, marks.length - shownCount);
+  const q = (opts?.query ?? "").trim().toLowerCase();
+
+  const roleMap = new Map<string, number>();
+  for (const mark of marks) {
+    const role = (mark.role || "Unknown").trim() || "Unknown";
+    roleMap.set(role, (roleMap.get(role) ?? 0) + 1);
+  }
+  const roleCounts = [...roleMap.entries()]
+    .map(([role, count]) => ({ role, count }))
+    .sort((a, b) => b.count - a.count || a.role.localeCompare(b.role));
+
+  const queryHits = q
+    ? marks.filter(mark => {
+        const hay = `${mark.name ?? ""} ${mark.role ?? ""} ${mark.automationId ?? ""}`.toLowerCase();
+        return hay.includes(q);
+      })
+    : [];
+
+  const tiles = buildAdaptiveTiles(rect, marks);
+
+  return {
+    totalCount: marks.length,
+    shownCount,
+    hiddenCount,
+    roleCounts,
+    queryHits,
+    tiles,
+  };
+}
+
+function buildAdaptiveTiles(rect: Rect, marks: Mark[]): SoMSummaryTile[] {
+  if (marks.length === 0) return [];
+
+  const aspect = rect.h > 0 ? rect.w / rect.h : 1;
+  const tileDefs =
+    marks.length > 120
+      ? aspect >= 1.6
+        ? { cols: 3, rows: 2 }
+        : aspect <= 0.625
+          ? { cols: 2, rows: 3 }
+          : { cols: 3, rows: 3 }
+      : aspect >= 1.8
+        ? { cols: 3, rows: 1 }
+        : aspect <= 0.56
+          ? { cols: 1, rows: 3 }
+          : { cols: 2, rows: 2 };
+
+  const { cols, rows } = tileDefs;
+  const tileW = Math.max(1, Math.ceil(rect.w / cols));
+  const tileH = Math.max(1, Math.ceil(rect.h / rows));
+  const out: SoMSummaryTile[] = [];
+
+  for (let row = 0; row < rows; row++) {
+    for (let col = 0; col < cols; col++) {
+      const x = rect.x + col * tileW;
+      const y = rect.y + row * tileH;
+      const w = col === cols - 1 ? rect.x + rect.w - x : tileW;
+      const h = row === rows - 1 ? rect.y + rect.h - y : tileH;
+      const inTile = marks.filter(mark =>
+        mark.x >= x &&
+        mark.y >= y &&
+        mark.x < x + w &&
+        mark.y < y + h,
+      );
+      if (inTile.length === 0) continue;
+
+      const roleMap = new Map<string, number>();
+      for (const mark of inTile) {
+        const role = (mark.role || "Unknown").trim() || "Unknown";
+        roleMap.set(role, (roleMap.get(role) ?? 0) + 1);
+      }
+      const roleCounts = [...roleMap.entries()]
+        .map(([role, count]) => ({ role, count }))
+        .sort((a, b) => b.count - a.count || a.role.localeCompare(b.role))
+        .slice(0, 3);
+
+      const sampleNames = inTile
+        .map(mark => mark.name?.trim())
+        .filter((name): name is string => !!name)
+        .slice(0, 3);
+
+      out.push({
+        id: tileId(col, row, cols),
+        x,
+        y,
+        w,
+        h,
+        count: inTile.length,
+        sampleNames,
+        roleCounts,
+      });
+    }
+  }
+
+  return out.sort((a, b) => b.count - a.count || a.id.localeCompare(b.id));
+}
+
+function tileId(col: number, row: number, cols: number): string {
+  const idx = row * cols + col;
+  return `T${idx + 1}`;
+}
+
 /**
  * Maximum number of SoM red circles to overlay. Returns 0 only when
  * there are no elements. Text listing and circles share the same limit
@@ -132,18 +380,10 @@ export async function detectElementsMultiSource(
  *
  * Per-source caps (mirror Rust enumeration caps):
  */
-const TASKBAR_LIMIT = 20;
-const DESKTOP_LIMIT = 30;
-const FOREGROUND_LIMIT = 50;
+const OVERLAY_LIMIT = 20;
 
 export function overlaySoMLimit(marks: Mark[]): number {
-  if (marks.length === 0) return 0;
-  const taskbarCount = marks.filter(m => m.uiaSource === "taskbar").length;
-  const desktopCount = marks.filter(m => m.uiaSource === "desktop").length;
-  const fgCount = marks.filter(m => m.uiaSource === "foreground").length;
-  return Math.min(taskbarCount, TASKBAR_LIMIT)
-       + Math.min(desktopCount, DESKTOP_LIMIT)
-       + Math.min(fgCount, FOREGROUND_LIMIT);
+  return Math.min(marks.length, OVERLAY_LIMIT);
 }
 
 /**

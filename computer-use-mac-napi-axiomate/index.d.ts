@@ -119,10 +119,29 @@ export interface UiElement {
   uiaSource?: string | null
 }
 
+export interface UiElementEnumerationResult {
+  elements: UiElement[]
+  traversedCount: number
+  matchedCount: number
+  returnedCount: number
+  truncated: boolean
+  truncationReason?: 'traversal_budget' | 'output_budget' | null
+}
+
 export function enumerateUiElementsInRect(
   rect: VRect,
   windowOnly?: boolean | null,
 ): Promise<UiElement[]>
+
+export function enumerateUiElementsInRectDetailed(
+  rect: VRect,
+  windowOnly?: boolean | null,
+): Promise<UiElementEnumerationResult>
+
+export function enumerateUiElementsForAppInRectDetailed(
+  bundleId: string,
+  rect: VRect,
+): Promise<UiElementEnumerationResult>
 
 export function elementFromPoint(
   x: number,

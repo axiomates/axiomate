@@ -499,7 +499,22 @@ function selectWinProbeCandidates(
   baseline: VisibleWindowSnapshot[],
   targetRect: { x: number; y: number; w: number; h: number },
   cap = 2,
+  cursor: { x: number; y: number } | null = null,
 ): Array<VisibleWindowSnapshot & { visibleRects: Array<{ x: number; y: number; w: number; h: number }> }> {
+  // A window "owns the cursor" if the pointer falls inside any of its
+  // visible regions. The cursor is preserved through hideSelf (SetWindowPos
+  // only moves windows, not the pointer), so this remains the strongest
+  // "what is the user actually pointing at" signal even after axiomate
+  // jumped off-screen. It dominates the area + z-rank fallback so that
+  // probing a small but hovered widget wins over a large unattended pane.
+  const ownsCursor = (
+    win: { visibleRects: Array<{ x: number; y: number; w: number; h: number }> },
+  ): boolean => {
+    if (!cursor) return false;
+    return win.visibleRects.some(
+      r => cursor.x >= r.x && cursor.x < r.x + r.w && cursor.y >= r.y && cursor.y < r.y + r.h,
+    );
+  };
   return baseline
     .filter(win =>
       !win.isForeground &&
@@ -513,6 +528,9 @@ function selectWinProbeCandidates(
     })
     .filter(win => visibleAreaWithinTarget(win.visibleRects, targetRect) > 0)
     .sort((a, b) => {
+      const aCursor = ownsCursor(a);
+      const bCursor = ownsCursor(b);
+      if (aCursor !== bCursor) return aCursor ? -1 : 1;
       const areaDelta = visibleAreaWithinTarget(b.visibleRects, targetRect) - visibleAreaWithinTarget(a.visibleRects, targetRect);
       if (areaDelta !== 0) return areaDelta;
       return a.zRank - b.zRank;
@@ -590,7 +608,7 @@ async function collectWinContextAwareMarks(
   ratioY: number,
   originX: number,
   originY: number,
-  probeCap = 3,
+  probeCap = 2,
 ): Promise<Mark[]> {
   const baseline = await listWinVisibleWindows(adapter);
   if (baseline.length === 0) return baseMarks;
@@ -599,7 +617,16 @@ async function collectWinContextAwareMarks(
   );
 
   const originalForeground = baseline.find(w => w.isForeground);
-  const candidates = selectWinProbeCandidates(baseline, targetPhysicalRect, probeCap);
+  // Read cursor for the probe-candidate ranker — best signal we have for
+  // "which window does the user actually care about right now". Failure is
+  // not fatal: ranker falls back to area + z-rank only.
+  let cursor: { x: number; y: number } | null = null;
+  try {
+    cursor = await adapter.executor.getCursorPosition();
+  } catch {
+    cursor = null;
+  }
+  const candidates = selectWinProbeCandidates(baseline, targetPhysicalRect, probeCap, cursor);
   if (candidates.length === 0) return baseMarks;
   adapter.logger.debug?.(
     `[computer-use] win probe candidates=${candidates.map(c => `${c.displayName}@${c.zRank} rects=${c.visibleRects.length}`).join(", ")}`,

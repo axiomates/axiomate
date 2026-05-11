@@ -246,11 +246,12 @@ export function buildComputerUseTools(
     },
 
     {
-      name: "screen_locate",
+      name: "vision_locate",
       description:
-        "**Locate a UI element described in natural language** — e.g. \"Chrome icon in the taskbar\", \"Send button\", \"the X to close this dialog\". Use this when you need to find the exact position of something before clicking, scrolling, or dragging it. " +
+        "**Pure visual UI locate loop** — e.g. \"Chrome icon in the taskbar\", \"Send button\", \"the X to close this dialog\". Use this only when you have an image-capable model and need to iteratively position the cursor by visual inspection before clicking, scrolling, or dragging. " +
         "Returns a screenshot and step-by-step guidance: ZOOM FIRST to identify the target precisely, then use `mouse_move` + `screenshot` to position and visually verify the lime-green cursor ring on it, then call `accept` to snapshot the current cursor coordinates and display. " +
-        "Do NOT pre-call `screenshot` to \"look first\" — call `screen_locate` directly with the description; the screenshot comes back as part of the response." +
+        "Do NOT pre-call `screenshot` to \"look first\" — call `vision_locate` directly with the description; the screenshot comes back as part of the response. " +
+        "Requires an image-capable model. If the current model does not support image input, use `screenshot`, `zoom`, or `screenshot_window` instead and rely on text SoM + `mark_id`." +
         frontmostHint,
       inputSchema: {
         type: "object" as const,
@@ -267,7 +268,7 @@ export function buildComputerUseTools(
     {
       name: "accept",
       description:
-        "Snapshot the current cursor position and return its coordinates. Use this only after VL has visually confirmed the lime-green cursor ring is on the intended target. `accept` does not validate the target itself. Only available inside an active `screen_locate` loop — outside the loop this returns an error asking you to call `screen_locate` first.",
+        "Snapshot the current cursor position and return its coordinates. Use this only after VL has visually confirmed the lime-green cursor ring is on the intended target. `accept` does not validate the target itself. Only available inside an active `vision_locate` loop — outside the loop this returns an error asking you to call `vision_locate` first.",
       inputSchema: {
         type: "object" as const,
         properties: {},
@@ -282,7 +283,7 @@ export function buildComputerUseTools(
         (caps.screenshotFiltering === "native"
           ? " If the session allowlist is empty, the dispatch layer auto-throws a PermissionRequest (not a hard error) and the host application surfaces an interactive dialog where the user picks apps to allow; the screenshot then resumes automatically. **Do NOT pre-call request_access for the screenshot itself, and do NOT fall back to shell commands like `screencapture` if you see a permission-related result. Retry once if the call appears interrupted.** "
           : " No allowlist setup is required — just call this tool directly with no arguments. ") +
-        "\n\n**⚠ Tool selection: if the user's intent is to click or interact with a UI element they describe by name or appearance (e.g. \"click the Chrome icon in the taskbar\", \"click Send\", \"open Settings\"), call `screen_locate` instead — it ALSO returns a screenshot AND walks you through locating the target. Once found, use `accept()` to get coordinates, then any action tool (left_click, scroll, drag, etc.). Use this `screenshot` tool only when the goal is to OBSERVE or READ the screen (verifying state, reading text, planning, debugging) — not as the first step of a click.**\n\n" +
+        "\n\n**⚠ Tool selection: if the user's intent is to click or interact with a UI element they describe by name or appearance and you have an image-capable model, call `vision_locate` instead — it ALSO returns a screenshot AND walks you through locating the target. Otherwise prefer `screenshot`, `zoom`, or `screenshot_window` and use text SoM + `mark_id`. Use this `screenshot` tool only when the goal is to OBSERVE or READ the screen (verifying state, reading text, planning, debugging) — not as the first step of a click.**\n\n" +
         "**The mouse cursor IS rendered in the image with a thick lime-green CIRCLE outline drawn around it** (the ring is added so the cursor remains unmissable at any image scale / JPEG compression). The cursor's pointer tip sits at the CENTER of the green ring. Use the green ring as ground-truth for where input will land.\n\n" +
         "**Coordinate system: x increases LEFT→RIGHT, y increases TOP→BOTTOM.** (0, 0) is the top-left corner. The ruler numbers on each edge show the valid coordinate range — the largest numbers at the right/bottom edges are the screen width/height.\n\n" +
         "If the user names a specific application and just wants to SEE it (e.g. \"show me Slack\", \"截 Chrome\"), prefer `screenshot_window` to capture only that app's frontmost window.",
@@ -344,7 +345,7 @@ export function buildComputerUseTools(
       description:
         "Zoom into a region of the last screenshot to get pixel-accurate coordinates for small or clustered UI elements. " +
         "Returns a high-resolution view with coordinate rulers and auto-detected SoM (Set-of-Mark) annotations — red numbered circles overlaid on interactive elements (buttons, text fields, icons, links). When marks are available, call `mouse_move(mark_id: N)` to jump the cursor directly to a detected element — far faster and more reliable than estimating coordinates from rulers. " +
-        "Works after any `screenshot` or `screen_locate` call (both set the reference screenshot).\n\n" +
+        "Works after any `screenshot` or `vision_locate` call (both set the reference screenshot).\n\n" +
         "Use zoom as your primary precision tool when the target is small (taskbar icons, toolbar buttons, form fields, tree items) or in a dense area. For large, isolated targets the full-screen rulers may suffice, but when in doubt, zoom.\n\n" +
         "Two parameter formats:\n" +
         "1. `center: [cx, cy], size: N` — pick a center point and side length. 100-300 px is usually enough for a button row or toolbar area; use 400-800 px for a form section.\n" +

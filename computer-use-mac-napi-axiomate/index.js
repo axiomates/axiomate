@@ -132,10 +132,40 @@ module.exports.enumerateUiElementsInRect = async function enumerateUiElementsInR
   return mod.enumerateUiElementsInRect(rect, windowOnly)
 }
 
+module.exports.enumerateUiElementsInRectDetailed = async function enumerateUiElementsInRectDetailed(rect, windowOnly) {
+  const mod = loadNative()
+  if (!mod) {
+    return {
+      elements: [],
+      traversedCount: 0,
+      matchedCount: 0,
+      returnedCount: 0,
+      truncated: false,
+      truncationReason: null,
+    }
+  }
+  return mod.enumerateUiElementsInRectDetailed(rect, windowOnly)
+}
+
 module.exports.enumerateUiElementsForAppInRect = async function enumerateUiElementsForAppInRect(bundleId, rect) {
   const mod = loadNative()
   if (!mod) return []
   return mod.enumerateUiElementsForAppInRect(bundleId, rect)
+}
+
+module.exports.enumerateUiElementsForAppInRectDetailed = async function enumerateUiElementsForAppInRectDetailed(bundleId, rect) {
+  const mod = loadNative()
+  if (!mod) {
+    return {
+      elements: [],
+      traversedCount: 0,
+      matchedCount: 0,
+      returnedCount: 0,
+      truncated: false,
+      truncationReason: null,
+    }
+  }
+  return mod.enumerateUiElementsForAppInRectDetailed(bundleId, rect)
 }
 
 module.exports.elementFromPoint = async function elementFromPoint(x, y) {

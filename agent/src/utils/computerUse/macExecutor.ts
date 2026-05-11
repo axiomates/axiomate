@@ -1032,6 +1032,46 @@ export function createCliExecutor(opts: {
       }))
     },
 
+    async enumerateVisibleElementsDetailed(rect, windowOnly?: boolean) {
+      if (!cu.enumerateUiElementsInRectDetailed) {
+        const elements = await this.enumerateVisibleElements(rect, windowOnly)
+        return {
+          elements,
+          traversedCount: elements.length,
+          matchedCount: elements.length,
+          returnedCount: elements.length,
+          truncated: false,
+        }
+      }
+      const raw = await cu.enumerateUiElementsInRectDetailed(
+        {
+          origin: { x: Math.round(rect.x), y: Math.round(rect.y) },
+          size: { w: Math.round(rect.w), h: Math.round(rect.h) },
+        },
+        windowOnly,
+      )
+      const elements = raw.elements.map(e => ({
+        bbox: {
+          x: e.bbox.origin.x,
+          y: e.bbox.origin.y,
+          w: e.bbox.size.w,
+          h: e.bbox.size.h,
+        },
+        name: e.name,
+        role: e.role,
+        automationId: e.automationId ?? undefined,
+        uiaSource: e.uiaSource ?? undefined,
+      }))
+      return {
+        elements,
+        traversedCount: raw.traversedCount,
+        matchedCount: raw.matchedCount,
+        returnedCount: raw.returnedCount,
+        truncated: raw.truncated,
+        truncationReason: raw.truncationReason ?? undefined,
+      }
+    },
+
     async enumerateVisibleElementsForApp(appIdentifier, rect) {
       if (!cu.enumerateUiElementsForAppInRect) return []
       const raw = await cu.enumerateUiElementsForAppInRect(
@@ -1053,6 +1093,46 @@ export function createCliExecutor(opts: {
         automationId: e.automationId ?? undefined,
         uiaSource: e.uiaSource ?? undefined,
       }))
+    },
+
+    async enumerateVisibleElementsForAppDetailed(appIdentifier, rect) {
+      if (!cu.enumerateUiElementsForAppInRectDetailed) {
+        const elements = await this.enumerateVisibleElementsForApp(appIdentifier, rect)
+        return {
+          elements,
+          traversedCount: elements.length,
+          matchedCount: elements.length,
+          returnedCount: elements.length,
+          truncated: false,
+        }
+      }
+      const raw = await cu.enumerateUiElementsForAppInRectDetailed(
+        appIdentifier,
+        {
+          origin: { x: Math.round(rect.x), y: Math.round(rect.y) },
+          size: { w: Math.round(rect.w), h: Math.round(rect.h) },
+        },
+      )
+      const elements = raw.elements.map(e => ({
+        bbox: {
+          x: e.bbox.origin.x,
+          y: e.bbox.origin.y,
+          w: e.bbox.size.w,
+          h: e.bbox.size.h,
+        },
+        name: e.name,
+        role: e.role,
+        automationId: e.automationId ?? undefined,
+        uiaSource: e.uiaSource ?? undefined,
+      }))
+      return {
+        elements,
+        traversedCount: raw.traversedCount,
+        matchedCount: raw.matchedCount,
+        returnedCount: raw.returnedCount,
+        truncated: raw.truncated,
+        truncationReason: raw.truncationReason ?? undefined,
+      }
     },
 
     async elementFromPoint(x: number, y: number) {

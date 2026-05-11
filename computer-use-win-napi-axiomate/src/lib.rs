@@ -1086,7 +1086,7 @@ mod windows_impl {
     use windows::core::{GUID, PROPVARIANT};
     use windows::core::{PCWSTR, PWSTR};
     use windows::Win32::Foundation::{
-        CloseHandle, BOOL, ERROR_NO_MORE_ITEMS, HANDLE, HWND, LPARAM, POINT, RECT,
+        CloseHandle, BOOL, COLORREF, ERROR_NO_MORE_ITEMS, HANDLE, HWND, LPARAM, POINT, RECT,
     };
     use windows::Win32::Graphics::Dwm::{DwmFlush, DwmGetWindowAttribute, DWMWA_CLOAKED};
     use windows::Win32::Graphics::Gdi::{
@@ -1134,14 +1134,14 @@ mod windows_impl {
     use windows::Win32::UI::WindowsAndMessaging::{
         AllowSetForegroundWindow, BringWindowToTop, DrawIconEx, EnumWindows, FindWindowW,
         GetClassNameW, GetCursorInfo, GetCursorPos, GetForegroundWindow, GetIconInfo,
-        GetSystemMetrics, GetWindow, GetWindowLongW, GetWindowRect, GetWindowThreadProcessId,
-        IsIconic, IsWindowVisible, SetForegroundWindow, SetWindowPos, ShowWindow,
-        SwitchToThisWindow, WindowFromPoint, ASFW_ANY, GWL_EXSTYLE, GW_HWNDPREV, CURSORINFO,
-        CURSOR_SHOWING, DI_NORMAL, HWND_NOTOPMOST, HWND_TOP, HWND_TOPMOST, ICONINFO,
-        SHOW_WINDOW_CMD, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN,
-        SM_YVIRTUALSCREEN, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, SWP_SHOWWINDOW,
-        SW_HIDE, SW_MINIMIZE, SW_RESTORE, SW_SHOWNOACTIVATE, WS_EX_NOACTIVATE, WS_EX_TOPMOST,
-        WS_EX_TOOLWINDOW,
+        GetLayeredWindowAttributes, GetSystemMetrics, GetWindow, GetWindowLongW, GetWindowRect,
+        GetWindowThreadProcessId, IsIconic, IsWindowVisible, SetForegroundWindow, SetWindowPos,
+        ShowWindow, SwitchToThisWindow, WindowFromPoint, ASFW_ANY, GWL_EXSTYLE, GW_HWNDPREV,
+        GW_OWNER, CURSORINFO, CURSOR_SHOWING, DI_NORMAL, HWND_NOTOPMOST, HWND_TOP, HWND_TOPMOST,
+        ICONINFO, LAYERED_WINDOW_ATTRIBUTES_FLAGS, LWA_ALPHA, SHOW_WINDOW_CMD, SM_CXVIRTUALSCREEN,
+        SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN, SWP_NOACTIVATE, SWP_NOMOVE,
+        SWP_NOSIZE, SWP_NOZORDER, SWP_SHOWWINDOW, SW_HIDE, SW_MINIMIZE, SW_RESTORE,
+        SW_SHOWNOACTIVATE, WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOPMOST, WS_EX_TOOLWINDOW,
     };
     // UIAutomation — IUIAutomation::FindAll path used by enumerate_ui_elements_in_rect
     // for the SoM (Set-of-Mark) overlay. CUIAutomation is the COM CLSID;
@@ -1496,11 +1496,22 @@ mod windows_impl {
     ///
     /// Returns `Vec::new()` on any COM failure — caller treats empty as
     /// "no marks available, fall back to ruler positioning".
-    const MAX_ENUM_VISITED_NODES: u32 = 500;
+    const MAX_ENUM_VISITED_NODES: u32 = 300;
     const WARMUP_MAX_DEPTH: usize = 2;
     const WARMUP_MAX_VISITS: u32 = 80;
-    const ROOT_BASE_BUDGET: u32 = 60;
-    const MAX_SEARCH_ROOTS: usize = 8;
+    const ROOT_BASE_BUDGET: u32 = 40;
+    /// Cap on the number of "normal" (app) windows admitted as search roots.
+    /// Taskbar (`Shell_TrayWnd`) and desktop (`Progman`/`WorkerW`) are
+    /// special-cased — they're appended unconditionally on top of this cap so
+    /// taskbar icons / desktop shortcuts don't get evicted by a busy screen
+    /// (which used to happen: normal windows scored +140/+220 always beat
+    /// taskbar's −80 and desktop's −120 in the previous truncate).
+    const MAX_NORMAL_SEARCH_ROOTS: usize = 5;
+    /// Cursor proximity bonus: if the cursor falls inside a root rect, the
+    /// root scores +200. Strongest "what the user currently cares about"
+    /// signal we have without intrusive sensors. Matches the +180 center-hit
+    /// bonus magnitude so it dominates intersect-area for hovered windows.
+    const CURSOR_PROXIMITY_BONUS: i32 = 200;
 
     #[derive(Clone)]
     struct SearchRoot {
@@ -1558,6 +1569,23 @@ mod windows_impl {
         seq: u64,
     }
 
+    /// Decide if a UIA element's name carries actual semantic information.
+    /// Mirrors Mac's `is_name_useful` — empty names are useful only for
+    /// text-input controls (Edit), and names that simply restate the role
+    /// (e.g. "Image", "Group", "Toolbar", "Window") add no signal and
+    /// shouldn't earn the bonus.
+    fn is_name_useful_win(name: &str, role_id: UIA_CONTROLTYPE_ID) -> bool {
+        if name.is_empty() {
+            return role_id == UIA_EditControlTypeId;
+        }
+        let lower = name.to_ascii_lowercase();
+        !(lower == "image"
+            || lower == "group"
+            || lower == "toolbar"
+            || lower == "window"
+            || lower == "application")
+    }
+
     unsafe fn score_element_shallow(
         el: &IUIAutomationElement,
         rect: &VRect,
@@ -1587,6 +1615,19 @@ mod windows_impl {
         } else {
             score += 80;
         }
+        // Useful name bonus — mirrors Mac's +20 for non-empty, non-role-echo
+        // names. Names like "Send" / "OK" / "user@example.com" are signal;
+        // a Group element named "Group" isn't.
+        let name = el
+            .CurrentName()
+            .ok()
+            .map(|s| s.to_string())
+            .unwrap_or_default();
+        let trimmed_name: String =
+            name.split_whitespace().collect::<Vec<_>>().join(" ").trim().to_string();
+        if is_name_useful_win(&trimmed_name, role_id) {
+            score += 20;
+        }
         score -= (depth as i32) * 12;
 
         if let Ok(r) = el.CurrentBoundingRectangle() {
@@ -1596,9 +1637,24 @@ mod windows_impl {
             } else {
                 score -= 80;
             }
+            // Center-in-filter bonus — mirrors Mac's +25. Elements whose
+            // *centroid* lies inside the target rect get a boost over those
+            // that merely overlap at the edge.
+            let bbox_cx = bbox.origin.x + bbox.size.w as i32 / 2;
+            let bbox_cy = bbox.origin.y + bbox.size.h as i32 / 2;
+            if rect_contains_point(rect, bbox_cx, bbox_cy) {
+                score += 25;
+            }
             let bbox_area = (bbox.size.w as u64) * (bbox.size.h as u64);
             let rect_area = (rect.size.w as u64) * (rect.size.h as u64);
-            if rect_area > 0 && bbox_area > (rect_area * 9) / 10 {
+            // Whole-screen container penalty — only for actual container
+            // roles. A Button or ListItem that happens to fill ≥90% of the
+            // filter (rare but possible — full-screen call-to-action) is
+            // genuine signal and shouldn't be dragged down. Matches Mac.
+            if rect_area > 0
+                && bbox_area > (rect_area * 9) / 10
+                && is_containerish_role
+            {
                 score -= 120;
             }
             if bbox.size.w == 0 || bbox.size.h == 0 {
@@ -1634,7 +1690,15 @@ mod windows_impl {
         )
     }
 
-    fn root_weight(kind_window: bool, kind_taskbar: bool, z_rank: usize, root_rect: &VRect, filter: &VRect, is_foreground: bool) -> i32 {
+    fn root_weight(
+        kind_window: bool,
+        kind_taskbar: bool,
+        z_rank: usize,
+        root_rect: &VRect,
+        filter: &VRect,
+        is_foreground: bool,
+        cursor: Option<POINT>,
+    ) -> i32 {
         let mut score = 0i32;
         let intersect_area = rect_intersection_area(root_rect, filter);
         let filter_area = (filter.size.w as u64) * (filter.size.h as u64);
@@ -1644,6 +1708,11 @@ mod windows_impl {
         let (cx, cy) = rect_center(filter);
         if rect_contains_point(root_rect, cx, cy) {
             score += 180;
+        }
+        if let Some(c) = cursor {
+            if rect_contains_point(root_rect, c.x, c.y) {
+                score += CURSOR_PROXIMITY_BONUS;
+            }
         }
         if is_foreground {
             score += 220;
@@ -1674,6 +1743,7 @@ mod windows_impl {
         z_rank: usize,
         is_foreground: bool,
         filter: &VRect,
+        cursor: Option<POINT>,
     ) {
         let rect = match search_root_rect(&element) {
             Some(r) if r.size.w > 0 && r.size.h > 0 && r.intersects(filter) => r,
@@ -1693,6 +1763,7 @@ mod windows_impl {
             &rect,
             filter,
             is_foreground,
+            cursor,
         );
         roots.push(SearchRoot {
             element,
@@ -1713,14 +1784,18 @@ mod windows_impl {
         roots: *mut Vec<SearchRoot>,
         seen_hwnds: *mut BTreeSet<isize>,
         z_rank: usize,
+        cursor: Option<POINT>,
     }
 
     unsafe extern "system" fn collect_window_roots_proc(hwnd: HWND, lparam: LPARAM) -> BOOL {
         let payload = &mut *(lparam.0 as *mut WindowRootCollector);
-        if payload.z_rank >= MAX_SEARCH_ROOTS {
+        if payload.z_rank >= MAX_NORMAL_SEARCH_ROOTS {
             return false.into();
         }
         if !IsWindowVisible(hwnd).as_bool() || IsIconic(hwnd).as_bool() || is_window_cloaked(hwnd) {
+            return true.into();
+        }
+        if is_filtered_candidate_window(hwnd) {
             return true.into();
         }
         let mut pid: u32 = 0;
@@ -1744,6 +1819,7 @@ mod windows_impl {
                 &rect,
                 &payload.filter,
                 is_foreground,
+                payload.cursor,
             );
             let native = el
                 .CurrentNativeWindowHandle()
@@ -1789,6 +1865,19 @@ mod windows_impl {
         let mut seen_hwnds: BTreeSet<isize> = BTreeSet::new();
         let foreground = GetForegroundWindow();
         let host_pids = host_pid_set();
+        // Read the cursor once up-front. It's preserved through hideSelf
+        // (SetWindowPos moves windows, not the cursor), so the position still
+        // indicates the user's last attention point even after axiomate
+        // jumped off-screen. Used by root_weight as a strong "what the user
+        // is looking at" signal.
+        let cursor = {
+            let mut p = POINT::default();
+            if GetCursorPos(&mut p).is_ok() {
+                Some(p)
+            } else {
+                None
+            }
+        };
 
         if window_only {
             let center = POINT {
@@ -1814,6 +1903,7 @@ mod windows_impl {
                             0,
                             true,
                             filter,
+                            cursor,
                         );
                     }
                 }
@@ -1829,6 +1919,7 @@ mod windows_impl {
             roots: &mut roots as *mut _,
             seen_hwnds: &mut seen_hwnds as *mut _,
             z_rank: 0,
+            cursor,
         };
         let _ = EnumWindows(
             Some(collect_window_roots_proc),
@@ -1847,6 +1938,7 @@ mod windows_impl {
                         payload.z_rank + 1,
                         false,
                         filter,
+                        cursor,
                     );
                 }
             }
@@ -1865,6 +1957,7 @@ mod windows_impl {
                         payload.z_rank + 2,
                         false,
                         filter,
+                        cursor,
                     );
                 }
             }
@@ -1879,13 +1972,19 @@ mod windows_impl {
                         payload.z_rank + 2,
                         false,
                         filter,
+                        cursor,
                     );
                 }
             }
         }
 
+        // Re-sort by score for the budget allocator's preference order, but
+        // intentionally NO truncate here: normal windows are already capped
+        // at MAX_NORMAL_SEARCH_ROOTS by the EnumWindows early-break, and
+        // taskbar / desktop are special-cased above so they're guaranteed a
+        // root slot when present. Worst-case `roots.len()` = 5 normal + 1
+        // taskbar + 1 desktop = 7.
         roots.sort_by(|a, b| b.score.cmp(&a.score).then_with(|| a.z_rank.cmp(&b.z_rank)));
-        roots.truncate(MAX_SEARCH_ROOTS);
         roots
     }
 
@@ -2336,6 +2435,14 @@ mod windows_impl {
             let mut seen_hwnds = BTreeSet::new();
             if let Ok(el) = automation.ElementFromHandle(hwnd) {
                 let is_foreground = GetForegroundWindow().0 == hwnd.0;
+                let cursor = {
+                    let mut p = POINT::default();
+                    if GetCursorPos(&mut p).is_ok() {
+                        Some(p)
+                    } else {
+                        None
+                    }
+                };
                 push_search_root(
                     &mut roots,
                     &mut seen_hwnds,
@@ -2344,6 +2451,7 @@ mod windows_impl {
                     0,
                     is_foreground,
                     &rect,
+                    cursor,
                 );
             }
             if roots.is_empty() {
@@ -2753,6 +2861,9 @@ mod windows_impl {
             None => return false.into(),
         };
         if !IsWindowVisible(hwnd).as_bool() || IsIconic(hwnd).as_bool() || is_window_cloaked(hwnd) {
+            return true.into();
+        }
+        if is_filtered_candidate_window(hwnd) {
             return true.into();
         }
         let rect = match get_window_rect(hwnd) {
@@ -5273,6 +5384,82 @@ mod windows_impl {
     /// flag, class). Use to diagnose "axiomate is FG but visually buried"
     /// cases — the offender is almost always either a TOPMOST utility or a
     /// shell overlay we can't legitimately rise above.
+    /// Class names that look "visible-state" to the OS but practically
+    /// represent infrastructure / hidden UI elements that we should never
+    /// promote as SoM candidates or UIA search roots. Match is
+    /// case-insensitive against the result of GetClassNameW.
+    const CANDIDATE_BLOCKED_CLASSES: &[&str] = &[
+        "NotifyIconOverflowWindow",       // taskbar overflow flyout
+        "SysShadow",                       // drop-shadow scaffolding
+        "tooltips_class32",                // tooltips
+        "MSCTFIME UI",                     // IME bookkeeping
+        "IME",                             // IME bookkeeping
+        "Default IME",                     // IME default
+        "ApplicationFrameInputSinkWindow", // UWP frame helper
+    ];
+
+    /// Reject windows that pass the cheap visibility filters (IsWindowVisible
+    /// / !IsIconic / !cloaked / non-tiny rect) but are still **not legitimate
+    /// SoM / candidate targets**. Catches the common ways apps "hide"
+    /// windows without flipping the visible bit, plus utility / scaffolding
+    /// windows the OS designs to stay out of normal Alt-Tab. Without this
+    /// the FG-stealing candidate loop in collectWinContextAwareMarks can
+    /// drag those windows on-screen via SW_RESTORE.
+    unsafe fn is_filtered_candidate_window(hwnd: HWND) -> bool {
+        let exstyle = GetWindowLongW(hwnd, GWL_EXSTYLE);
+        // Tool windows: by design "not in Alt-Tab". Floating IDE panels,
+        // IME candidate UIs, transient toolbars.
+        if (exstyle & WS_EX_TOOLWINDOW.0 as i32) != 0 {
+            return true;
+        }
+        // Explicitly not-activatable. Tooltips, overlays, accessibility
+        // banners — focusing them is either a no-op or surfaces something
+        // the OS intended to keep dormant.
+        if (exstyle & WS_EX_NOACTIVATE.0 as i32) != 0 {
+            return true;
+        }
+        // Owned popups (dialogs, property panels, owner-tracked tooltips).
+        // Their visibility is owner-driven; promoting them out of band can
+        // strand them after the owner closes.
+        if let Ok(owner) = GetWindow(hwnd, GW_OWNER) {
+            if !owner.0.is_null() {
+                return true;
+            }
+        }
+        // Layered window pinned at alpha=0 — visually absent but technically
+        // visible per IsWindowVisible. Some apps "hide" the main window this
+        // way; focusing it would force a repaint and make it pop in.
+        if (exstyle & WS_EX_LAYERED.0 as i32) != 0 {
+            let mut color_key = COLORREF(0);
+            let mut alpha: u8 = 0;
+            let mut flags = LAYERED_WINDOW_ATTRIBUTES_FLAGS(0);
+            if GetLayeredWindowAttributes(
+                hwnd,
+                Some(&mut color_key),
+                Some(&mut alpha),
+                Some(&mut flags),
+            )
+            .is_ok()
+                && (flags & LWA_ALPHA).0 != 0
+                && alpha == 0
+            {
+                return true;
+            }
+        }
+        // Class-name blocklist for known infrastructure windows.
+        let mut buf = [0u16; 64];
+        let n = GetClassNameW(hwnd, &mut buf);
+        if n > 0 {
+            let class = String::from_utf16_lossy(&buf[..n as usize]);
+            for &blocked in CANDIDATE_BLOCKED_CLASSES {
+                if class.eq_ignore_ascii_case(blocked) {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
     /// True if hwnd is *visually* at the top — no real, user-visible
     /// window above it in z-order. Windows in z-order that won't render
     /// pixels (invisible / cloaked / too small / minimized) and windows

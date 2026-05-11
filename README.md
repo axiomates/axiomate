@@ -5,7 +5,7 @@ Multi-provider AI agent CLI with full desktop automation. Chat, code, and contro
 ## Features
 
 - **Bring your own model** — OpenAI-compatible or Anthropic-compatible APIs. Any provider, any model.
-- **Computer Use** — 25+ desktop automation tools: screenshot with coordinate rulers, zoom with Set-of-Mark overlays, mouse/keyboard control, natural-language UI element targeting (`screen_locate` + `accept`), batch actions, and teachable macros. Windows UIAutomation integration for pixel-accurate element detection.
+- **Computer Use** — 25+ desktop automation tools: screenshot with coordinate rulers, zoom with Set-of-Mark overlays, mouse/keyboard control, natural-language UI element targeting (`vision_locate` + `accept`), batch actions, and teachable macros. Windows UIAutomation integration for pixel-accurate element detection.
 - **Coding Tools** — Read, Write, Edit, Bash, Grep (ripgrep), Glob, Notebook. Full codebase exploration and modification.
 - **Skills** — 11 built-in skills (`/verify`, `/simplify`, `/remember`, `/batch`, `/stuck`, `/loop`, etc.) plus user-defined skills via `SKILL.md` files.
 - **Plugins** — Full marketplace system with browse/install/manage UI, autoupdate, blocklist, and dependency resolution.

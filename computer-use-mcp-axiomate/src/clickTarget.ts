@@ -1,5 +1,5 @@
 /**
- * screen_locate — enter guided element-locating mode.
+ * vision_locate — enter guided visual element-locating mode.
  *
  * When called, sets an active locate session and returns a screenshot with
  * guidance. The AI first uses zoom to identify the target precisely, then
@@ -71,9 +71,9 @@ export function buildLocateInjection(
   const isWin = state.platform === "win32";
 
   switch (toolName) {
-    case "screen_locate":
+    case "vision_locate":
       return (
-        `[Screen Locate: "${t}"]\n` +
+        `[Vision Locate: "${t}"]\n` +
         `DO NOT guess coordinates.\n\n` +
         `A screenshot has been taken. Follow these steps:\n` +
         `1. Locate "${t}" in the image. ZOOM FIRST. Zoom returns pixel-accurate rulers and auto-detects SoM marks (red numbered circles) when the region qualifies. If marks are available, jumping to one with mouse_move(mark_id: N) is much faster than estimating coordinates.\n` +
@@ -87,7 +87,7 @@ export function buildLocateInjection(
 
     case "mouse_move":
       return (
-        `[Screen Locate: "${t}"]\n` +
+        `[Vision Locate: "${t}"]\n` +
         `Cursor moved. Now call screenshot to verify the lime-green circle is on "${t}".\n` +
         `- If the green circle is directly on the target → call accept() to snapshot the current cursor position.\n` +
         `- If off target or uncertain → ZOOM on the cursor area to see exactly where the circle landed. Use zoom rulers or SoM marks to refine, then mouse_move again.\n` +
@@ -99,7 +99,7 @@ export function buildLocateInjection(
         ? `Briefly describe what the green circle is currently on. `
         : ``;
       return (
-        `[Screen Locate: "${t}"]\n` +
+        `[Vision Locate: "${t}"]\n` +
         `${verifyPrompt}Check the lime-green circle in this screenshot:\n` +
         `- GREEN CIRCLE VISIBLE AND ON "${t}" → call accept() to snapshot the current cursor position.\n` +
         `- GREEN CIRCLE VISIBLE BUT OFF TARGET → zoom on the cursor area to see the offset precisely, then mouse_move with refined coordinates.\n` +
@@ -115,29 +115,29 @@ export function buildLocateInjection(
           ? `\nDETECTED ${markCount} structured UI element${markCount === 1 ? "" : "s"} — see the red numbered circles on the image and the "Marks" text block above. To jump to one of them, call \`mouse_move\` with \`mark_id: N\` (no coordinates needed) — that jumps the cursor to mark N's recorded center. If your target ISN'T marked, fall back to reading coordinates from the rulers.`
           : `\nNo structured marks were detected in this region (or the region is too dense for a useful overlay). Read coordinates from the rulers and call mouse_move with explicit coordinates.`;
       return (
-        `[Screen Locate: "${t}"]\n` +
+        `[Vision Locate: "${t}"]\n` +
         `Use the zoomed view to identify the target precisely.${markHint}\n` +
         `Note: coordinates in mouse_move always refer to the full-screen coordinate space (same numbers shown on the zoom rulers).`
       );
     }
 
     default:
-      return `[Screen Locate: "${t}"]`;
+      return `[Vision Locate: "${t}"]`;
   }
 }
 
 // ── Init handler ───────────────────────────────────────────────────────
 
 /**
- * Handle screen_locate tool call: take a screenshot and return it with guidance.
+ * Handle vision_locate tool call: take a screenshot and return it with guidance.
  * The caller (mcpServer.ts dispatch) sets the active locate session.
  */
-export async function handleScreenLocate(
+export async function handleVisionLocate(
   adapter: ComputerUseHostAdapter,
   args: { description: string },
   overrides: ComputerUseOverrides,
 ): Promise<CuCallToolResult & { locateLoop: LocateState }> {
-  adapter.logger.debug(`[screen_locate] INIT target="${args.description}"`);
+  adapter.logger.debug(`[vision_locate] INIT target="${args.description}"`);
 
   const shot = await adapter.executor.screenshot({
     allowedAppIdentifiers: screenshotAllowlist(adapter, overrides),

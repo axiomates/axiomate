@@ -4,11 +4,13 @@ import type {
 } from 'computer-use-mcp-axiomate'
 import { format } from 'util'
 import { logForDebugging } from '../debug.js'
+import { getGlobalConfig } from '../config.js'
 import { COMPUTER_USE_MCP_SERVER_NAME } from './common.js'
 import { createCliExecutor } from './macExecutor.js'
 import { createWinExecutor } from './winExecutor.js'
 import { getChicagoEnabled, getChicagoSubGates } from './gates.js'
 import { requireComputerUseSwift } from './swiftLoader.js'
+import { getMainLoopModel } from '../model/model.js'
 
 class DebugLogger implements Logger {
   silly(message: string, ...args: unknown[]): void {
@@ -66,6 +68,15 @@ export function getComputerUseHostAdapter(): ComputerUseHostAdapter {
       }
     },
     isDisabled: () => !getChicagoEnabled(),
+    isVisionLocateEnabled: () => getGlobalConfig().visionLocateEnabled === true,
+    currentModelSupportsImages: () => {
+      try {
+        const model = getMainLoopModel()
+        return getGlobalConfig().models?.[model]?.supportsImages !== false
+      } catch {
+        return true
+      }
+    },
     getSubGates: getChicagoSubGates,
     // cleanup.ts always unhides at turn end — no user preference to disable it.
     getAutoUnhideEnabled: () => true,
