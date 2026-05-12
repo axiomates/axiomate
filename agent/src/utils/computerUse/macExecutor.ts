@@ -62,6 +62,21 @@ type GridMode = 'none' | 'edge' | 'full'
 const LONG_EDGE_CAP = 1920
 const FINDER_APP_IDENTIFIER = 'com.apple.finder'
 
+// Mirror of the toolCalls.ts threshold used by takeScreenshotWithRetry on
+// the non-atomic path. The atomic resolvePrepareCapture below applies the
+// same single-retry policy so sleep/wake / display-switch glitches don't
+// leak through to the model. Kept inline (not imported) to avoid widening
+// the MCP package's public surface — Windows is unaffected.
+const MIN_SCREENSHOT_BYTES = 1024
+const ATOMIC_CAPTURE_RETRY_DELAY_MS = 150
+
+function decodedBase64ByteLength(base64: string): number {
+  // 3 bytes per 4 chars, minus base64 padding. Threshold check only — not
+  // exact.
+  const padding = base64.endsWith('==') ? 2 : base64.endsWith('=') ? 1 : 0
+  return Math.floor((base64.length * 3) / 4) - padding
+}
+
 function dumpMacScreenshotForDebug(tool: string, base64: string): void {
   try {
     if (!isDebugMode()) return
@@ -532,12 +547,8 @@ export function createCliExecutor(opts: {
         `[computer-use] agent.resolvePrepareCapture enter: allowedAppIdentifiers=[${opts.allowedAppIdentifiers.join(',')}] preferredDisplayId=${opts.preferredDisplayId ?? 'undef'} autoResolve=${opts.autoResolve} doHide=${opts.doHide ?? 'undef'} targetW=${targetW} targetH=${targetH} displayW=${d.width} displayH=${d.height} scale=${d.scaleFactor}`,
         { level: 'debug' },
       )
-      const result: ResolvePrepareCaptureResult = await withTerminalHiddenIfForeground(
-        cu,
-        terminalAppIdentifier,
-        null,
-        'resolvePrepareCapture',
-        () => drainRunLoop(() =>
+      const invokeNative = (): Promise<ResolvePrepareCaptureResult> =>
+        drainRunLoop(() =>
           cu.resolvePrepareCapture(
             withoutTerminal(opts.allowedAppIdentifiers),
             surrogateHost,
@@ -548,7 +559,37 @@ export function createCliExecutor(opts: {
             opts.autoResolve,
             opts.doHide,
           ),
-        ),
+        ) as Promise<ResolvePrepareCaptureResult>
+      const result: ResolvePrepareCaptureResult = await withTerminalHiddenIfForeground(
+        cu,
+        terminalAppIdentifier,
+        null,
+        'resolvePrepareCapture',
+        async () => {
+          const first = await invokeNative()
+          // Retry exactly once on implausibly-small payload (transient
+          // sleep/wake or display-switch state). Skip retry when the native
+          // side reports a real captureError — that's not a glitch, surface
+          // it as-is. Mirrors takeScreenshotWithRetry on the non-atomic path.
+          if (
+            first?.captureError === undefined &&
+            first?.base64 &&
+            decodedBase64ByteLength(first.base64) < MIN_SCREENSHOT_BYTES
+          ) {
+            logForDebugging(
+              `[computer-use] agent.resolvePrepareCapture implausibly small (${decodedBase64ByteLength(first.base64)} bytes decoded), retrying once after ${ATOMIC_CAPTURE_RETRY_DELAY_MS}ms`,
+              { level: 'warn' },
+            )
+            await sleep(ATOMIC_CAPTURE_RETRY_DELAY_MS)
+            const second = await invokeNative()
+            // Take whichever is larger — second isn't guaranteed to be
+            // better, but if it's larger it's strictly more informative.
+            const firstLen = first?.base64 ? decodedBase64ByteLength(first.base64) : 0
+            const secondLen = second?.base64 ? decodedBase64ByteLength(second.base64) : 0
+            return secondLen >= firstLen ? second : first
+          }
+          return first
+        },
       )
       logForDebugging(
         `[computer-use] agent.resolvePrepareCapture done: base64Len=${result?.base64?.length ?? 'undef'} width=${result?.width} height=${result?.height} displayId=${result?.displayId} hiddenCount=${result?.hidden?.length ?? 0} captureError=${result?.captureError ?? 'none'}`,

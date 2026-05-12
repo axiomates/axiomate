@@ -2478,6 +2478,108 @@ mod macos {
             !intersects_filter(&info.rect, filter)
         }
 
+        /// Build the menu bar SearchRoot from the frontmost app.
+        ///
+        /// CGWindowList does include a window for `com.apple.systemuiserver` /
+        /// the focused app's menu bar surface, but its bounds (≈24px tall)
+        /// trip `should_skip_visible_window`'s 100×100 minimum filter — so
+        /// the main loop never produces this root. We add it unconditionally
+        /// here, mirroring Windows' hardcoded `Shell_TrayWnd` root.
+        ///
+        /// AX path: frontmost app pid → `AXUIElementCreateApplication` →
+        /// `kAXMenuBarAttribute`. The element's own AXPosition/AXSize give
+        /// its on-screen rect for scoring.
+        unsafe fn discover_menu_bar_root(filter: &VRect, cursor: Option<VPoint>) -> Option<SearchRoot> {
+            let pid = crate::macos::running_app::frontmost_app_pid()?;
+            let app_root = AXUIElementCreateApplication(pid);
+            if app_root.is_null() {
+                return None;
+            }
+            let menu_bar_attr = ax_attr("AXMenuBar");
+            let menu_bar = copy_attr(app_root, menu_bar_attr.as_concrete_TypeRef() as CFStringRef)
+                .map(|v| v as AXUIElementRef);
+            CFRelease(app_root as *const c_void);
+            let menu_bar = menu_bar?;
+            let rect = read_rect(menu_bar).map(|r| VRect {
+                origin: VPoint { x: r.origin.x.round() as i32, y: r.origin.y.round() as i32 },
+                size: VSize {
+                    w: r.size.width.max(0.0).round() as u32,
+                    h: r.size.height.max(0.0).round() as u32,
+                },
+            });
+            let menu_rect = match rect {
+                Some(r) if r.size.w > 0 && r.size.h > 0 => r,
+                _ => {
+                    CFRelease(menu_bar as *const c_void);
+                    return None;
+                }
+            };
+            let score = mac_root_weight(0, &menu_rect, filter, false, cursor);
+            super::append_ax_som_debug_log(&format!(
+                "ADD root menu_bar rect=({},{} {}x{}) score={}",
+                menu_rect.origin.x, menu_rect.origin.y, menu_rect.size.w, menu_rect.size.h, score,
+            ));
+            Some(SearchRoot {
+                element: menu_bar,
+                source_label: "menu_bar",
+                z_rank: 0,
+                score,
+                base_budget: 0,
+                extra_budget: 0,
+                exhausted: false,
+            })
+        }
+
+        /// Build the Dock SearchRoot.
+        ///
+        /// Dock is a single process (`com.apple.dock`) that owns its own AX
+        /// tree. Its on-screen surface is variable-size and usually fails the
+        /// 100×100 size filter (vertical Dock can be 64px wide). Mirrors
+        /// Windows' hardcoded `Progman` root.
+        unsafe fn discover_dock_root(filter: &VRect, cursor: Option<VPoint>) -> Option<SearchRoot> {
+            let pid = crate::macos::running_app::find_pid_for_app("com.apple.dock")?;
+            let dock_root = AXUIElementCreateApplication(pid);
+            if dock_root.is_null() {
+                return None;
+            }
+            let rect = read_rect(dock_root).map(|r| VRect {
+                origin: VPoint { x: r.origin.x.round() as i32, y: r.origin.y.round() as i32 },
+                size: VSize {
+                    w: r.size.width.max(0.0).round() as u32,
+                    h: r.size.height.max(0.0).round() as u32,
+                },
+            });
+            // AXApplication's own rect isn't always reliable; fall back to the
+            // Dock entry in CGWindowList if AX returned nothing.
+            let dock_rect = match rect {
+                Some(r) if r.size.w > 0 && r.size.h > 0 => r,
+                _ => {
+                    let windows = crate::macos::cg_window_query::list_visible_windows_including_desktop();
+                    match windows.iter().find(|w| w.app_identifier == "com.apple.dock") {
+                        Some(w) => w.rect,
+                        None => {
+                            CFRelease(dock_root as *const c_void);
+                            return None;
+                        }
+                    }
+                }
+            };
+            let score = mac_root_weight(0, &dock_rect, filter, false, cursor);
+            super::append_ax_som_debug_log(&format!(
+                "ADD root dock rect=({},{} {}x{}) score={}",
+                dock_rect.origin.x, dock_rect.origin.y, dock_rect.size.w, dock_rect.size.h, score,
+            ));
+            Some(SearchRoot {
+                element: dock_root,
+                source_label: "dock",
+                z_rank: 0,
+                score,
+                base_budget: 0,
+                extra_budget: 0,
+                exhausted: false,
+            })
+        }
+
         unsafe fn discover_search_roots(filter: &VRect) -> Vec<SearchRoot> {
             let windows = crate::macos::cg_window_query::list_visible_windows_including_desktop();
             let cursor = current_cursor();
@@ -2511,16 +2613,22 @@ mod macos {
                     CFRelease(start as *const c_void);
                     continue;
                 }
+                let is_foreground = Some(win.window_id) == foreground;
                 let score = mac_root_weight(
                     win.z_rank as usize,
                     &win.rect,
                     filter,
-                    Some(win.window_id) == foreground,
+                    is_foreground,
                     cursor,
                 );
+                // Distinguish frontmost-app window from other visible app
+                // windows so the model can reason about chrome vs content.
+                // Per-app/per-window probe paths keep "foreground" since
+                // they're always querying one specific window by intent.
+                let source_label: &'static str = if is_foreground { "foreground" } else { "background" };
                 roots.push(SearchRoot {
                     element: start,
-                    source_label: "foreground",
+                    source_label,
                     z_rank: win.z_rank as usize,
                     score,
                     base_budget: 0,
@@ -2529,6 +2637,19 @@ mod macos {
                 });
                 if roots.len() >= MAX_NORMAL_SEARCH_ROOTS {
                     break;
+                }
+            }
+            // Unconditional system-chrome roots. Insert sentinel keys into
+            // seen_roots so a hypothetical duplicate (e.g. com.apple.dock
+            // somehow surviving the main loop) won't be re-added.
+            if seen_roots.insert("__sentinel__:menu_bar".to_string()) {
+                if let Some(root) = discover_menu_bar_root(filter, cursor) {
+                    roots.push(root);
+                }
+            }
+            if seen_roots.insert("__sentinel__:dock".to_string()) {
+                if let Some(root) = discover_dock_root(filter, cursor) {
+                    roots.push(root);
                 }
             }
             roots.sort_by(|a, b| b.score.cmp(&a.score).then_with(|| a.z_rank.cmp(&b.z_rank)));
