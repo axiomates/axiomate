@@ -57,7 +57,7 @@ import { requireComputerUseSwift } from './swiftLoader.js'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-const SCREENSHOT_JPEG_QUALITY = 0.75
+const SCREENSHOT_JPEG_QUALITY = 0.92
 type GridMode = 'none' | 'edge' | 'full'
 const LONG_EDGE_CAP = 1920
 const FINDER_APP_IDENTIFIER = 'com.apple.finder'
@@ -540,6 +540,7 @@ export function createCliExecutor(opts: {
       autoResolve: boolean
       doHide?: boolean
       coordinateGrid?: string
+      marks?: Array<{ id: number; x: number; y: number }>
     }): Promise<ResolvePrepareCaptureResult> {
       const d = cu.display.getSize(opts.preferredDisplayId)
       const [targetW, targetH] = computeVirtualImageDim(d.width, d.height)
@@ -608,7 +609,9 @@ export function createCliExecutor(opts: {
         result.height = targetH
       }
       const cursor = await currentCursorForDisplayOverlay(d, result.width, result.height)
-      if ((opts.coordinateGrid && opts.coordinateGrid !== 'none') || cursor) {
+      const hasGrid = opts.coordinateGrid && opts.coordinateGrid !== 'none'
+      const hasMarks = opts.marks && opts.marks.length > 0
+      if (hasGrid || cursor || hasMarks) {
         result.base64 = await overlayScreenshotArtifacts({
           base64: result.base64,
           imageWidth: result.width,
@@ -621,6 +624,7 @@ export function createCliExecutor(opts: {
             rangeH: targetH,
           },
           cursor,
+          marks: opts.marks,
           jpegQuality: 95,
         })
       }
@@ -665,6 +669,7 @@ export function createCliExecutor(opts: {
       allowedAppIdentifiers: string[]
       displayId?: number
       coordinateGrid?: string
+      marks?: Array<{ id: number; x: number; y: number }>
     }): Promise<ScreenshotResult> {
       const d = cu.display.getSize(opts.displayId)
       const [targetW, targetH] = computeVirtualImageDim(d.width, d.height)
@@ -704,7 +709,9 @@ export function createCliExecutor(opts: {
         result.height = targetH
       }
       const cursor = await currentCursorForDisplayOverlay(d, result.width, result.height)
-      if ((opts.coordinateGrid && opts.coordinateGrid !== 'none') || cursor) {
+      const hasGrid = opts.coordinateGrid && opts.coordinateGrid !== 'none'
+      const hasMarks = opts.marks && opts.marks.length > 0
+      if (hasGrid || cursor || hasMarks) {
         result.base64 = await overlayScreenshotArtifacts({
           base64: result.base64,
           imageWidth: result.width,
@@ -717,6 +724,7 @@ export function createCliExecutor(opts: {
             rangeH: targetH,
           },
           cursor,
+          marks: opts.marks,
           jpegQuality: 95,
         })
       }

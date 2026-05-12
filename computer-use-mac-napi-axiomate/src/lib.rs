@@ -3342,10 +3342,10 @@ mod macos {
             }
             CFRelease(data);
 
-            // Encode JPEG at quality 85 (matches node-screenshots default).
+            // Encode JPEG at quality 92 (matches Win captureDisplayScaled).
             let mut jpeg = Vec::new();
             let mut encoder =
-                image::codecs::jpeg::JpegEncoder::new_with_quality(&mut jpeg, 85);
+                image::codecs::jpeg::JpegEncoder::new_with_quality(&mut jpeg, 92);
             encoder
                 .encode(
                     &rgb,
