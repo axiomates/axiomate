@@ -1048,56 +1048,66 @@ mod macos {
             })
         }
 
-        pub fn list_visible_windows_detailed() -> Vec<VisibleMacWindowInfo> {
+        unsafe fn list_visible_windows_detailed_inner(
+            exclude_desktop: bool,
+        ) -> Vec<VisibleMacWindowInfo> {
             let mut out = Vec::new();
-            unsafe {
-                let arr = CGWindowListCopyWindowInfo(
-                    KCG_WINDOW_LIST_ON_SCREEN_ONLY | KCG_WINDOW_LIST_EXCLUDE_DESKTOP,
-                    KCG_NULL_WINDOW_ID,
-                );
-                if arr.is_null() {
-                    return out;
-                }
-                let count = CFArrayGetCount(arr);
-                for i in 0..count {
-                    let dict = CFArrayGetValueAtIndex(arr, i) as CFDictionaryRef;
-                    if dict.is_null() {
-                        continue;
-                    }
-                    let Some(pid) = read_i32(dict, kCGWindowOwnerPID) else {
-                        continue;
-                    };
-                    let Some((app_identifier, display_name)) = running_app::find_app_for_pid(pid) else {
-                        continue;
-                    };
-                    let Some(rect) = decode_window_bounds(dict) else {
-                        continue;
-                    };
-                    let Some(window_id_raw) = read_i32(dict, kCGWindowNumber) else {
-                        continue;
-                    };
-                    let layer = read_i32(dict, kCGWindowLayer).unwrap_or(0);
-                    out.push(VisibleMacWindowInfo {
-                        window_id: window_id_raw as u32,
-                        app_identifier,
-                        display_name,
-                        rect: VRect {
-                            origin: VPoint {
-                                x: rect.origin.x.round() as i32,
-                                y: rect.origin.y.round() as i32,
-                            },
-                            size: VSize {
-                                w: rect.size.width.max(0.0).round() as u32,
-                                h: rect.size.height.max(0.0).round() as u32,
-                            },
-                        },
-                        layer,
-                        z_rank: i as u32,
-                    });
-                }
-                CFRelease(arr);
+            let options = if exclude_desktop {
+                KCG_WINDOW_LIST_ON_SCREEN_ONLY | KCG_WINDOW_LIST_EXCLUDE_DESKTOP
+            } else {
+                KCG_WINDOW_LIST_ON_SCREEN_ONLY
+            };
+            let arr = CGWindowListCopyWindowInfo(options, KCG_NULL_WINDOW_ID);
+            if arr.is_null() {
+                return out;
             }
+            let count = CFArrayGetCount(arr);
+            for i in 0..count {
+                let dict = CFArrayGetValueAtIndex(arr, i) as CFDictionaryRef;
+                if dict.is_null() {
+                    continue;
+                }
+                let Some(pid) = read_i32(dict, kCGWindowOwnerPID) else {
+                    continue;
+                };
+                let Some((app_identifier, display_name)) = running_app::find_app_for_pid(pid) else {
+                    continue;
+                };
+                let Some(rect) = decode_window_bounds(dict) else {
+                    continue;
+                };
+                let Some(window_id_raw) = read_i32(dict, kCGWindowNumber) else {
+                    continue;
+                };
+                let layer = read_i32(dict, kCGWindowLayer).unwrap_or(0);
+                out.push(VisibleMacWindowInfo {
+                    window_id: window_id_raw as u32,
+                    app_identifier,
+                    display_name,
+                    rect: VRect {
+                        origin: VPoint {
+                            x: rect.origin.x.round() as i32,
+                            y: rect.origin.y.round() as i32,
+                        },
+                        size: VSize {
+                            w: rect.size.width.max(0.0).round() as u32,
+                            h: rect.size.height.max(0.0).round() as u32,
+                        },
+                    },
+                    layer,
+                    z_rank: i as u32,
+                });
+            }
+            CFRelease(arr);
             out
+        }
+
+        pub fn list_visible_windows_detailed() -> Vec<VisibleMacWindowInfo> {
+            unsafe { list_visible_windows_detailed_inner(true) }
+        }
+
+        pub fn list_visible_windows_including_desktop() -> Vec<VisibleMacWindowInfo> {
+            unsafe { list_visible_windows_detailed_inner(false) }
         }
 
         pub fn find_window_displays(app_identifiers: &[String]) -> Vec<WindowDisplayInfo> {
@@ -1439,8 +1449,10 @@ mod macos {
         use crate::{UiElement, VPoint, VRect, VSize, VisibleMacWindowInfo};
         use core_foundation::base::TCFType;
         use core_foundation::string::CFString;
+        use std::borrow::Cow;
         use std::cmp::Ordering;
         use std::collections::{BTreeSet, BinaryHeap, VecDeque};
+        use std::env;
         use std::ffi::CString;
         use std::os::raw::{c_char, c_void};
         use std::ptr;
@@ -1487,6 +1499,7 @@ mod macos {
 
         extern "C" {
             fn AXUIElementCreateApplication(pid: i32) -> AXUIElementRef;
+            fn AXUIElementCreateSystemWide() -> AXUIElementRef;
             fn AXUIElementCopyAttributeValue(
                 element: AXUIElementRef,
                 attribute: CFStringRef,
@@ -1552,21 +1565,40 @@ mod macos {
             unsafe { crate::macos::running_app::find_pid_for_app(&hit.app_identifier) }
         }
 
+        fn terminal_app_identifier() -> Option<Cow<'static, str>> {
+            if let Ok(bundle_id) = env::var("__CFBundleIdentifier") {
+                if !bundle_id.is_empty() {
+                    return Some(Cow::Owned(bundle_id));
+                }
+            }
+            match env::var("TERM_PROGRAM").ok().as_deref() {
+                Some("Apple_Terminal") => Some(Cow::Borrowed("com.apple.Terminal")),
+                Some("iTerm.app") => Some(Cow::Borrowed("com.googlecode.iterm2")),
+                Some("ghostty") => Some(Cow::Borrowed("com.mitchellh.ghostty")),
+                Some("kitty") => Some(Cow::Borrowed("net.kovidgoyal.kitty")),
+                Some("WarpTerminal") => Some(Cow::Borrowed("dev.warp.Warp-Stable")),
+                Some("vscode") => Some(Cow::Borrowed("com.microsoft.VSCode")),
+                _ => None,
+            }
+        }
+
         unsafe fn app_window_root_for_rect(
+            window_id: Option<u32>,
             app_identifier: &str,
             target_rect: &VRect,
-        ) -> Option<AXUIElementRef> {
+        ) -> Option<(AXUIElementRef, VRect)> {
             let root = app_ax_root_for_identifier(app_identifier)?;
             let window_attr = ax_attr("AXWindows");
             let focused_attr = ax_attr("AXFocusedWindow");
             let focused = copy_attr(root, focused_attr.as_concrete_TypeRef() as CFStringRef)
                 .map(|v| v as AXUIElementRef);
-            let mut best: Option<(AXUIElementRef, i64)> = None;
+            let mut best: Option<(AXUIElementRef, VRect, i64)> = None;
 
             if let Some(focused_window) = focused {
                 if let Some(rect) = read_rect(focused_window).map(|r| rect_to_public(&r)) {
                     if intersection_area(&rect, target_rect) > 0 {
-                        best = Some((focused_window, rect_distance(&rect, target_rect)));
+                        let penalty = if window_id.is_some() { 50 } else { 0 };
+                        best = Some((focused_window, rect, rect_distance(&rect, target_rect) + penalty));
                     }
                 }
             }
@@ -1584,14 +1616,14 @@ mod macos {
                             if intersection_area(&rect, target_rect) > 0 {
                                 let score = rect_distance(&rect, target_rect);
                                 match best {
-                                    Some((_, best_score)) if score >= best_score => {
+                                    Some((_, _, best_score)) if score >= best_score => {
                                         CFRelease(retained as *const c_void);
                                     }
-                                    Some((best_win, _)) => {
+                                    Some((best_win, _, _)) => {
                                         CFRelease(best_win as *const c_void);
-                                        best = Some((retained, score));
+                                        best = Some((retained, rect, score));
                                     }
-                                    None => best = Some((retained, score)),
+                                    None => best = Some((retained, rect, score)),
                                 }
                             } else {
                                 CFRelease(retained as *const c_void);
@@ -1604,7 +1636,7 @@ mod macos {
                 CFRelease(value);
             }
             CFRelease(root as *const c_void);
-            best.map(|(window, _)| window)
+            best.map(|(window, rect, _)| (window, rect))
         }
 
         unsafe fn cfstring_to_string(s: CFStringRef) -> Option<String> {
@@ -1742,6 +1774,91 @@ mod macos {
                 }
             }
             out
+        }
+
+        unsafe fn ax_element_ptr_key(element: AXUIElementRef) -> usize {
+            element as usize
+        }
+
+        unsafe fn ax_parent(element: AXUIElementRef) -> Option<AXUIElementRef> {
+            let parent_attr = ax_attr("AXParent");
+            copy_attr(element, parent_attr.as_concrete_TypeRef() as CFStringRef)
+                .map(|v| v as AXUIElementRef)
+        }
+
+        unsafe fn ax_is_same_or_descendant_of(
+            mut current: AXUIElementRef,
+            ancestor: AXUIElementRef,
+        ) -> bool {
+            let ancestor_key = ax_element_ptr_key(ancestor);
+            let mut depth = 0usize;
+            while !current.is_null() && depth < MAX_AX_TREE_DEPTH {
+                if ax_element_ptr_key(current) == ancestor_key {
+                    return true;
+                }
+                let parent = ax_parent(current);
+                if depth > 0 {
+                    CFRelease(current as *const c_void);
+                }
+                current = match parent {
+                    Some(p) => p,
+                    None => ptr::null(),
+                };
+                depth += 1;
+            }
+            if !current.is_null() && depth > 0 {
+                CFRelease(current as *const c_void);
+            }
+            false
+        }
+
+        unsafe fn is_ax_element_hit_visible(
+            candidate: AXUIElementRef,
+            bbox: &VRect,
+        ) -> bool {
+            if bbox.size.w == 0 || bbox.size.h == 0 {
+                return false;
+            }
+            let system = AXUIElementCreateSystemWide();
+            if system.is_null() {
+                return true;
+            }
+            let sample_points = [
+                (
+                    bbox.origin.x + bbox.size.w as i32 / 2,
+                    bbox.origin.y + bbox.size.h as i32 / 2,
+                ),
+                (
+                    bbox.origin.x + (bbox.size.w as i32 / 4),
+                    bbox.origin.y + bbox.size.h as i32 / 2,
+                ),
+                (
+                    bbox.origin.x + ((bbox.size.w as i32 * 3) / 4),
+                    bbox.origin.y + bbox.size.h as i32 / 2,
+                ),
+                (
+                    bbox.origin.x + bbox.size.w as i32 / 2,
+                    bbox.origin.y + (bbox.size.h as i32 / 4),
+                ),
+                (
+                    bbox.origin.x + bbox.size.w as i32 / 2,
+                    bbox.origin.y + ((bbox.size.h as i32 * 3) / 4),
+                ),
+            ];
+            for (x, y) in sample_points {
+                let mut hit: AXUIElementRef = ptr::null();
+                let err = AXUIElementCopyElementAtPosition(system, x as f32, y as f32, &mut hit as *mut _);
+                if err == K_AX_ERROR_SUCCESS && !hit.is_null() {
+                    let visible = ax_is_same_or_descendant_of(hit, candidate);
+                    CFRelease(hit as *const c_void);
+                    if visible {
+                        CFRelease(system as *const c_void);
+                        return true;
+                    }
+                }
+            }
+            CFRelease(system as *const c_void);
+            false
         }
 
         unsafe fn read_rect(element: AXUIElementRef) -> Option<CGRectNative> {
@@ -2234,6 +2351,9 @@ mod macos {
             {
                 return Err("bbox too large for filter".to_string());
             }
+            if !is_ax_element_hit_visible(element, &bbox) {
+                return Err("hit-test visibility failed".to_string());
+            }
             let name = trim_text(
                 read_string_attr(element, title_attr.as_concrete_TypeRef() as CFStringRef)
                 .or_else(|| read_string_attr(element, desc_attr.as_concrete_TypeRef() as CFStringRef))
@@ -2359,20 +2479,38 @@ mod macos {
         }
 
         unsafe fn discover_search_roots(filter: &VRect) -> Vec<SearchRoot> {
-            let windows = crate::macos::cg_window_query::list_visible_windows_detailed();
+            let windows = crate::macos::cg_window_query::list_visible_windows_including_desktop();
             let cursor = current_cursor();
             let foreground = windows.first().map(|w| w.window_id);
+            let terminal_app = terminal_app_identifier();
             let mut roots = Vec::new();
+            let mut seen_roots = BTreeSet::<String>::new();
             for win in windows.iter().take(MAX_NORMAL_SEARCH_ROOTS * 3) {
                 if should_skip_visible_window(win, filter) {
                     continue;
                 }
-                if win.app_identifier == "com.apple.dock" || win.app_identifier == "com.axiomate.cli-no-window" {
+                if win.app_identifier == "com.axiomate.cli-no-window"
+                    || terminal_app.as_deref() == Some(win.app_identifier.as_str())
+                {
                     continue;
                 }
-                let Some(start) = app_window_root_for_rect(&win.app_identifier, &win.rect) else {
+                let Some((start, matched_rect)) =
+                    app_window_root_for_rect(Some(win.window_id), &win.app_identifier, &win.rect)
+                else {
                     continue;
                 };
+                let key = format!(
+                    "{}:{}:{}:{}:{}",
+                    win.app_identifier,
+                    matched_rect.origin.x,
+                    matched_rect.origin.y,
+                    matched_rect.size.w,
+                    matched_rect.size.h,
+                );
+                if !seen_roots.insert(key) {
+                    CFRelease(start as *const c_void);
+                    continue;
+                }
                 let score = mac_root_weight(
                     win.z_rank as usize,
                     &win.rect,
@@ -2653,11 +2791,11 @@ mod macos {
         }
 
         pub fn enumerate_ui_elements_for_window_in_rect_detailed(
-            _window_id: u32,
+            window_id: u32,
             app_identifier: &str,
             rect: VRect,
         ) -> UiElementEnumerationResult {
-            let start = match unsafe { app_window_root_for_rect(app_identifier, &rect) } {
+            let (start, _) = match unsafe { app_window_root_for_rect(Some(window_id), app_identifier, &rect) } {
                 Some(s) => s,
                 None => {
                     return UiElementEnumerationResult {
