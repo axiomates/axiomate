@@ -371,8 +371,31 @@ async function restoreWinVisibleWindowOrder(
   }).focusAppWindow;
   if (!focusApp) return;
   const touched = new Set(touchedAppIdentifiers.filter(Boolean));
-  const restoreOrder = baseline
+  if (touched.size === 0) return;
+  // Ensure the original foreground (user-side OR host) ends up on top after
+  // restoring. Without this, focusing only the probed apps leaves the
+  // lowest-zRank probed window foreground — and the originally-foreground
+  // window stays buried. Host is treated the same as user apps here; the
+  // caller is responsible for adding host appIdentifiers to `touched` when
+  // it has manipulated host placement (i.e. after hideSelf).
+  const originalFg = baseline.find(w => w.isForeground);
+  if (originalFg) touched.add(originalFg.appIdentifier);
+  // Focusing a touched window during probing brings it from its baseline
+  // zRank=k up to zRank=0, pushing every window that was at zRank<k down
+  // by 1. So the disturbed range is [0..max(touched zRank)] — windows at
+  // zRank > max_touched stayed put. To undo, re-focus the WHOLE disturbed
+  // range in baseline zRank-desc order (deepest first, originally-fg last).
+  // Touching only the explicitly-touched windows is not enough: an untouched
+  // window sandwiched between two touched ones at different zRanks ends up
+  // in the wrong slot (it was displaced by the deeper-touched window but
+  // we never put it back).
+  const touchedZRanks = baseline
     .filter(w => touched.has(w.appIdentifier))
+    .map(w => w.zRank);
+  if (touchedZRanks.length === 0) return;
+  const maxTouchedZRank = Math.max(...touchedZRanks);
+  const restoreOrder = baseline
+    .filter(w => w.zRank <= maxTouchedZRank)
     .sort((a, b) => b.zRank - a.zRank);
   adapter.logger.debug?.(
     `[computer-use] win restore window order touched=${JSON.stringify([...touched])} order=${restoreOrder.map(w => `${w.displayName}@${w.zRank}`).join(" -> ")}`,
@@ -873,6 +896,7 @@ async function collectWinContextAwareMarks(
   originX: number,
   originY: number,
   probeCap = 2,
+  touched?: Set<string>,
 ): Promise<Mark[]> {
   const baseline = await listWinVisibleWindows(adapter);
   if (baseline.length === 0) return baseMarks;
@@ -911,6 +935,7 @@ async function collectWinContextAwareMarks(
         });
         await sleep(150);
       }
+      if (candidate.appIdentifier) touched?.add(candidate.appIdentifier);
       await adapter.executor.screenshotWindow(candidate.appIdentifier, 0);
       adapter.logger.debug?.(
         `[computer-use] win probe screenshotWindow app=${candidate.displayName}`,
@@ -3045,11 +3070,24 @@ async function handleScreenshot(
   // appear in the screenshot. Repairs must run in finally so a failed
   // capture doesn't leave axiomate minimized permanently.
   const initialFgToken = await captureWinForegroundRestoreToken(adapter);
+  // Snapshot the full top-level window order (including axiomate's host
+  // windows) BEFORE hideSelf. Anything the screenshot pipeline touches —
+  // host hide/show, SoM probing of user apps — gets undone uniformly in
+  // finally via showSelf (position) + restoreWinVisibleWindowOrder (z-order).
+  const isWin = adapter.executor.capabilities.platform === "win32";
+  const winBaseline: VisibleWindowSnapshot[] = isWin
+    ? await listWinVisibleWindows(adapter)
+    : [];
+  const winTouched = new Set<string>();
   const shouldRestoreHostToFront =
-    adapter.executor.capabilities.platform === "win32" &&
-    initialFgToken?.isHost === true;
+    isWin && initialFgToken?.isHost === true;
   if (shouldRestoreHostToFront) {
     await adapter.executor.hideSelf?.(initialFgToken?.hwnd);
+    // Host is touched too — treat axiomate the same as a probed user app
+    // in the z-order restore.
+    for (const w of winBaseline) {
+      if (w.isHost && w.appIdentifier) winTouched.add(w.appIdentifier);
+    }
   }
   try {
     // Atomic resolve→prepare→capture (one Swift call, no scheduler gap).
@@ -3189,6 +3227,8 @@ async function handleScreenshot(
               ratioY,
               originX,
               originY,
+              undefined,
+              winTouched,
             );
           }
           const shownCount = Math.min(
@@ -3321,6 +3361,8 @@ async function handleScreenshot(
             ratioY,
             originX,
             originY,
+            undefined,
+            winTouched,
           );
         }
         const shownCount = Math.min(
@@ -3359,8 +3401,14 @@ async function handleScreenshot(
       screenshot: shot,
     };
   } finally {
+    // showSelf first: moves axiomate's host windows back on-screen so
+    // they're focusable. The uniform z-order restore below treats them
+    // as just more entries in the baseline.
     if (shouldRestoreHostToFront) {
       await adapter.executor.showSelf?.();
+    }
+    if (isWin && winTouched.size > 0 && winBaseline.length > 0) {
+      await restoreWinVisibleWindowOrder(adapter, winBaseline, [...winTouched]);
     }
   }
 }
@@ -3470,36 +3518,6 @@ async function handleScreenshotWindow(
           truncated: detailed.truncated,
           truncationReason: detailed.truncationReason,
         };
-      } else if (
-        adapter.executor.capabilities.platform === "darwin" &&
-        adapter.executor.enumerateVisibleElementsForApp
-      ) {
-        const raw = await adapter.executor.enumerateVisibleElementsForApp(
-          appIdentifier,
-          {
-            x: ox,
-            y: oy,
-            w: prelim.displayWidth ?? Math.round(prelim.width * ratioX),
-            h: prelim.displayHeight ?? Math.round(prelim.height * ratioY),
-          },
-        );
-        marks = raw.map((el, i) => {
-          const vx = (el.bbox.x - ox) / ratioX;
-          const vy = (el.bbox.y - oy) / ratioY;
-          const vw = el.bbox.w / ratioX;
-          const vh = el.bbox.h / ratioY;
-          return {
-            id: i + 1,
-            x: Math.round(vx + vw / 2),
-            y: Math.round(vy + vh / 2),
-            name: el.name ?? "",
-            role: el.role ?? "",
-            automationId: el.automationId,
-            source: "uia" as const,
-            confidence: 1.0,
-            uiaSource: el.uiaSource ?? "foreground",
-          };
-        });
       } else {
         const detection = await detectElementsMultiSourceDetailed(
           adapter.executor,
@@ -3715,11 +3733,20 @@ async function handleZoom(
   // Move axiomate off-screen before UIA detection AND zoom capture
   // so neither step sees our terminal window.
   const initialFgToken = await captureWinForegroundRestoreToken(adapter);
+  // Snapshot the full top-level window order (including axiomate's host
+  // windows) BEFORE hideSelf — same uniform restore as handleScreenshot.
+  const isWin = adapter.executor.capabilities.platform === "win32";
+  const winBaseline: VisibleWindowSnapshot[] = isWin
+    ? await listWinVisibleWindows(adapter)
+    : [];
+  const winTouched = new Set<string>();
   const shouldRestoreHostToFront =
-    adapter.executor.capabilities.platform === "win32" &&
-    initialFgToken?.isHost === true;
+    isWin && initialFgToken?.isHost === true;
   if (shouldRestoreHostToFront) {
     await adapter.executor.hideSelf?.(initialFgToken?.hwnd);
+    for (const w of winBaseline) {
+      if (w.isHost && w.appIdentifier) winTouched.add(w.appIdentifier);
+    }
   }
   try {
     let marks: Mark[] = [];
@@ -3756,6 +3783,7 @@ async function handleZoom(
               });
               await sleep(150);
             }
+            if (candidate.appIdentifier) winTouched.add(candidate.appIdentifier);
             const detailed = candidate.hwnd
               ? await enumerateWinWindowMarksDetailed(
                   adapter,
@@ -3931,6 +3959,9 @@ async function handleZoom(
   } finally {
     if (shouldRestoreHostToFront) {
       await adapter.executor.showSelf?.();
+    }
+    if (isWin && winTouched.size > 0 && winBaseline.length > 0) {
+      await restoreWinVisibleWindowOrder(adapter, winBaseline, [...winTouched]);
     }
   }
 }

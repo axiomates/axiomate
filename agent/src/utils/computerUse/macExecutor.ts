@@ -1090,32 +1090,32 @@ export function createCliExecutor(opts: {
       }
     },
 
-    async enumerateVisibleElementsForApp(appIdentifier, rect) {
-      if (!cu.enumerateUiElementsForAppInRect) return []
-      const raw = await cu.enumerateUiElementsForAppInRect(
-        appIdentifier,
-        {
-          origin: { x: Math.round(rect.x), y: Math.round(rect.y) },
-          size: { w: Math.round(rect.w), h: Math.round(rect.h) },
-        },
-      )
-      return raw.map(e => ({
-        bbox: {
-          x: e.bbox.origin.x,
-          y: e.bbox.origin.y,
-          w: e.bbox.size.w,
-          h: e.bbox.size.h,
-        },
-        name: e.name,
-        role: e.role,
-        automationId: e.automationId ?? undefined,
-        uiaSource: e.uiaSource ?? undefined,
-      }))
-    },
-
     async enumerateVisibleElementsForAppDetailed(appIdentifier, rect) {
       if (!cu.enumerateUiElementsForAppInRectDetailed) {
-        const elements = await this.enumerateVisibleElementsForApp(appIdentifier, rect)
+        // Native side only exposes the non-detailed variant — synthesize
+        // stats so callers depending on the Detailed shape keep working.
+        if (!cu.enumerateUiElementsForAppInRect) {
+          return { elements: [], traversedCount: 0, matchedCount: 0, returnedCount: 0, truncated: false }
+        }
+        const rawElements = await cu.enumerateUiElementsForAppInRect(
+          appIdentifier,
+          {
+            origin: { x: Math.round(rect.x), y: Math.round(rect.y) },
+            size: { w: Math.round(rect.w), h: Math.round(rect.h) },
+          },
+        )
+        const elements = rawElements.map(e => ({
+          bbox: {
+            x: e.bbox.origin.x,
+            y: e.bbox.origin.y,
+            w: e.bbox.size.w,
+            h: e.bbox.size.h,
+          },
+          name: e.name,
+          role: e.role,
+          automationId: e.automationId ?? undefined,
+          uiaSource: e.uiaSource ?? undefined,
+        }))
         return {
           elements,
           traversedCount: elements.length,

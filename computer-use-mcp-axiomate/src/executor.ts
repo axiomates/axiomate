@@ -255,28 +255,12 @@ export interface ComputerExecutor {
   }>;
 
   /**
-   * macOS-only specialized variant for screenshot_window SoM: enumerate
-   * structured elements for a specific target app/window identity, rather
-   * than relying on frontmost-app or rect hit-test heuristics.
+   * Enumerate structured UI elements for a specific target app/window
+   * identity, rather than relying on frontmost-app or rect hit-test
+   * heuristics. Used by screenshot_window SoM on both Win and Mac. The
+   * Detailed variant is the only public API — non-detailed natives are
+   * an executor-internal fallback inside the implementation.
    */
-  enumerateVisibleElementsForApp?(
-    appIdentifier: string,
-    rect: {
-      x: number;
-      y: number;
-      w: number;
-      h: number;
-    },
-  ): Promise<
-    Array<{
-      bbox: { x: number; y: number; w: number; h: number };
-      name?: string;
-      role?: string;
-      automationId?: string;
-      uiaSource?: string;
-    }>
-  >;
-
   enumerateVisibleElementsForAppDetailed?(
     appIdentifier: string,
     rect: {

@@ -434,6 +434,11 @@ export function createWinExecutor(): ComputerExecutor {
       return await winNapi.focusWindowHandle(Math.trunc(hwnd))
     },
 
+    async focusAppWindow(appIdentifier: string): Promise<boolean> {
+      if (!napiAvailable || !winNapi.focusAppWindow) return false
+      return await winNapi.focusAppWindow(appIdentifier)
+    },
+
     async captureForegroundRestoreToken() {
       if (!napiAvailable || !winNapi.listVisibleWindows) return null
       const wins = winNapi.listVisibleWindows()
