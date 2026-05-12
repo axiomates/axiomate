@@ -5105,9 +5105,22 @@ mod windows_impl {
             our_tid, fg_tid, attached
         ));
 
-        dlog("bring.attempt1.calling ShowWindow(SW_RESTORE)");
-        let _ = ShowWindow(hwnd, SW_RESTORE);
-        dlog("bring.attempt1.returned ShowWindow(SW_RESTORE)");
+        // Only un-minimize. SW_RESTORE has a destructive secondary
+        // behavior: when called on a MAXIMIZED window it un-maximizes
+        // it to its normalized rect. Probing during screenshot/zoom
+        // calls bring_hwnd_to_foreground on every touched user app
+        // during restoreWinVisibleWindowOrder, so unconditional
+        // SW_RESTORE was clobbering the maximized state of user windows.
+        // Guard with IsIconic so only genuinely-minimized windows get
+        // restored; maximized + normal stay as-is.
+        let was_iconic = IsIconic(hwnd).as_bool();
+        dlog(format!(
+            "bring.attempt1.maybe_un_minimize iconic={} (SW_RESTORE only when iconic)",
+            was_iconic,
+        ));
+        if was_iconic {
+            let _ = ShowWindow(hwnd, SW_RESTORE);
+        }
         dlog("bring.attempt1.calling SetWindowPos(TOPMOST)");
         let _ = SetWindowPos(
             hwnd,
@@ -5949,9 +5962,17 @@ mod windows_impl {
                 unsafe { GetForegroundWindow().0 as usize }
             ));
             unsafe {
-                dlog("show.calling ShowWindow(SW_RESTORE)");
-                let _ = ShowWindow(hwnd, SW_RESTORE);
-                dlog("show.returned ShowWindow(SW_RESTORE)");
+                // Same guard as bring_hwnd_to_foreground: only SW_RESTORE
+                // on minimized windows. axiomate's host being maximized
+                // is rare (terminal host) but we defend anyway.
+                let was_iconic = IsIconic(hwnd).as_bool();
+                dlog(format!(
+                    "show.maybe_un_minimize host iconic={} (SW_RESTORE only when iconic)",
+                    was_iconic,
+                ));
+                if was_iconic {
+                    let _ = ShowWindow(hwnd, SW_RESTORE);
+                }
                 let _ = DwmFlush();
                 std::thread::sleep(std::time::Duration::from_millis(50));
                 // Re-assert the saved geometry after SW_RESTORE because the
