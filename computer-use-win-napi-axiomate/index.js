@@ -179,6 +179,21 @@ module.exports.enumerateUiElementsForAppInRectDetailed = function enumerateUiEle
   return mod.enumerateUiElementsForAppInRectDetailed(appIdentifier, rect)
 }
 
+module.exports.enumerateUiElementsForWindowInRectDetailed = function enumerateUiElementsForWindowInRectDetailed(hwnd, rect) {
+  const mod = loadNative()
+  if (!mod) {
+    return {
+      elements: [],
+      traversedCount: 0,
+      matchedCount: 0,
+      returnedCount: 0,
+      truncated: false,
+      truncationReason: null,
+    }
+  }
+  return mod.enumerateUiElementsForWindowInRectDetailed(hwnd, rect)
+}
+
 module.exports.listVisibleWindows = function listVisibleWindows() {
   const mod = loadNative()
   if (!mod) return []

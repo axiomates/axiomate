@@ -411,6 +411,29 @@ export function createWinExecutor(): ComputerExecutor {
       })
     },
 
+    async listVisibleWindows() {
+      if (!napiAvailable || !winNapi.listVisibleWindows) return []
+      return winNapi.listVisibleWindows().map(w => ({
+        appIdentifier: w.appIdentifier,
+        displayName: w.displayName,
+        hwnd: w.hwnd,
+        rect: {
+          x: w.rect.origin.x,
+          y: w.rect.origin.y,
+          w: w.rect.size.w,
+          h: w.rect.size.h,
+        },
+        zRank: w.zRank,
+        isForeground: w.isForeground,
+        isHost: w.isHost,
+      }))
+    },
+
+    async focusWindowHandle(hwnd: number): Promise<boolean> {
+      if (!napiAvailable || !winNapi.focusWindowHandle) return false
+      return await winNapi.focusWindowHandle(Math.trunc(hwnd))
+    },
+
     async captureForegroundRestoreToken() {
       if (!napiAvailable || !winNapi.listVisibleWindows) return null
       const wins = winNapi.listVisibleWindows()
@@ -797,6 +820,45 @@ export function createWinExecutor(): ComputerExecutor {
         origin: { x: Math.round(rect.x), y: Math.round(rect.y) },
         size: { w: Math.round(rect.w), h: Math.round(rect.h) },
       })
+      const elements = raw.elements.map(e => ({
+        bbox: {
+          x: e.bbox.origin.x,
+          y: e.bbox.origin.y,
+          w: e.bbox.size.w,
+          h: e.bbox.size.h,
+        },
+        name: e.name,
+        role: e.role,
+        automationId: e.automationId ?? undefined,
+        uiaSource: e.uiaSource ?? undefined,
+      }))
+      return {
+        elements,
+        traversedCount: raw.traversedCount,
+        matchedCount: raw.matchedCount,
+        returnedCount: raw.returnedCount,
+        truncated: raw.truncated,
+        truncationReason: raw.truncationReason ?? undefined,
+      }
+    },
+
+    async enumerateVisibleElementsForWindowDetailed(windowHandle, rect) {
+      if (!napiAvailable || !winNapi.enumerateUiElementsForWindowInRectDetailed) {
+        return {
+          elements: [],
+          traversedCount: 0,
+          matchedCount: 0,
+          returnedCount: 0,
+          truncated: false,
+        }
+      }
+      const raw = await winNapi.enumerateUiElementsForWindowInRectDetailed(
+        Math.trunc(windowHandle),
+        {
+          origin: { x: Math.round(rect.x), y: Math.round(rect.y) },
+          size: { w: Math.round(rect.w), h: Math.round(rect.h) },
+        },
+      )
       const elements = raw.elements.map(e => ({
         bbox: {
           x: e.bbox.origin.x,

@@ -357,6 +357,46 @@ pub async fn enumerate_ui_elements_for_app_in_rect_detailed(
 }
 
 #[napi]
+pub async fn list_visible_windows_detailed() -> napi::Result<Vec<VisibleMacWindowInfo>> {
+    #[cfg(target_os = "macos")]
+    {
+        Ok(macos::cg_window_query::list_visible_windows_detailed())
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        Ok(Vec::new())
+    }
+}
+
+#[napi]
+pub async fn enumerate_ui_elements_for_window_in_rect_detailed(
+    window_id: u32,
+    app_identifier: String,
+    rect: VRect,
+) -> napi::Result<UiElementEnumerationResult> {
+    #[cfg(target_os = "macos")]
+    {
+        Ok(macos::ax_query::enumerate_ui_elements_for_window_in_rect_detailed(
+            window_id,
+            &app_identifier,
+            rect,
+        ))
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (window_id, app_identifier, rect);
+        Ok(UiElementEnumerationResult {
+            elements: Vec::new(),
+            traversed_count: 0,
+            matched_count: 0,
+            returned_count: 0,
+            truncated: false,
+            truncation_reason: None,
+        })
+    }
+}
+
+#[napi]
 pub async fn element_from_point(x: i32, y: i32) -> napi::Result<Option<UiElement>> {
     #[cfg(target_os = "macos")]
     {
@@ -397,6 +437,16 @@ pub struct CaptureWindowOutcome {
     /// otherwise names the failed step and includes pid / candidate
     /// windowIDs / layers / TCC hints as applicable.
     pub diagnostic: String,
+}
+
+#[napi(object)]
+pub struct VisibleMacWindowInfo {
+    pub window_id: u32,
+    pub app_identifier: String,
+    pub display_name: String,
+    pub rect: VRect,
+    pub layer: i32,
+    pub z_rank: u32,
 }
 
 #[napi]
@@ -916,6 +966,7 @@ mod macos {
             fn CGDisplayBounds(display_id: CGDirectDisplayID) -> CGRect;
 
             // Window dict keys (CFStringRef constants exported by CG framework).
+            static kCGWindowNumber: CFStringRef;
             static kCGWindowOwnerPID: CFStringRef;
             static kCGWindowLayer: CFStringRef;
             static kCGWindowBounds: CFStringRef;
@@ -995,6 +1046,58 @@ mod macos {
                     height: (max_y - min_y).max(0.0),
                 },
             })
+        }
+
+        pub fn list_visible_windows_detailed() -> Vec<VisibleMacWindowInfo> {
+            let mut out = Vec::new();
+            unsafe {
+                let arr = CGWindowListCopyWindowInfo(
+                    KCG_WINDOW_LIST_ON_SCREEN_ONLY | KCG_WINDOW_LIST_EXCLUDE_DESKTOP,
+                    KCG_NULL_WINDOW_ID,
+                );
+                if arr.is_null() {
+                    return out;
+                }
+                let count = CFArrayGetCount(arr);
+                for i in 0..count {
+                    let dict = CFArrayGetValueAtIndex(arr, i) as CFDictionaryRef;
+                    if dict.is_null() {
+                        continue;
+                    }
+                    let Some(pid) = read_i32(dict, kCGWindowOwnerPID) else {
+                        continue;
+                    };
+                    let Some((app_identifier, display_name)) = running_app::find_app_for_pid(pid) else {
+                        continue;
+                    };
+                    let Some(rect) = decode_window_bounds(dict) else {
+                        continue;
+                    };
+                    let Some(window_id_raw) = read_i32(dict, kCGWindowNumber) else {
+                        continue;
+                    };
+                    let layer = read_i32(dict, kCGWindowLayer).unwrap_or(0);
+                    out.push(VisibleMacWindowInfo {
+                        window_id: window_id_raw as u32,
+                        app_identifier,
+                        display_name,
+                        rect: VRect {
+                            origin: VPoint {
+                                x: rect.origin.x.round() as i32,
+                                y: rect.origin.y.round() as i32,
+                            },
+                            size: VSize {
+                                w: rect.size.width.max(0.0).round() as u32,
+                                h: rect.size.height.max(0.0).round() as u32,
+                            },
+                        },
+                        layer,
+                        z_rank: i as u32,
+                    });
+                }
+                CFRelease(arr);
+            }
+            out
         }
 
         pub fn find_window_displays(app_identifiers: &[String]) -> Vec<WindowDisplayInfo> {
@@ -1333,7 +1436,7 @@ mod macos {
     }
 
     pub mod ax_query {
-        use crate::{UiElement, VPoint, VRect, VSize};
+        use crate::{UiElement, VPoint, VRect, VSize, VisibleMacWindowInfo};
         use core_foundation::base::TCFType;
         use core_foundation::string::CFString;
         use std::cmp::Ordering;
@@ -1357,6 +1460,9 @@ mod macos {
         const MAX_ENUM_VISITED_NODES: u32 = 300;
         const WARMUP_MAX_DEPTH: usize = 2;
         const WARMUP_MAX_VISITS: u32 = 80;
+        const ROOT_BASE_BUDGET: u32 = 40;
+        const MAX_NORMAL_SEARCH_ROOTS: usize = 5;
+        const CURSOR_PROXIMITY_BONUS: i32 = 200;
 
         #[repr(C)]
         #[derive(Clone, Copy, Default)]
@@ -1431,11 +1537,74 @@ mod macos {
             if root.is_null() { None } else { Some(root) }
         }
 
+        fn rect_distance(a: &VRect, b: &VRect) -> i64 {
+            let dx = i64::from((a.origin.x - b.origin.x).abs());
+            let dy = i64::from((a.origin.y - b.origin.y).abs());
+            let dw = i64::from((a.size.w as i32 - b.size.w as i32).abs());
+            let dh = i64::from((a.size.h as i32 - b.size.h as i32).abs());
+            dx + dy + dw + dh
+        }
+
         fn app_pid_for_rect_center(rect: &VRect) -> Option<i32> {
             let x = rect.origin.x + rect.size.w as i32 / 2;
             let y = rect.origin.y + rect.size.h as i32 / 2;
             let hit = crate::macos::cg_window_query::app_under_point(x, y)?;
             unsafe { crate::macos::running_app::find_pid_for_app(&hit.app_identifier) }
+        }
+
+        unsafe fn app_window_root_for_rect(
+            app_identifier: &str,
+            target_rect: &VRect,
+        ) -> Option<AXUIElementRef> {
+            let root = app_ax_root_for_identifier(app_identifier)?;
+            let window_attr = ax_attr("AXWindows");
+            let focused_attr = ax_attr("AXFocusedWindow");
+            let focused = copy_attr(root, focused_attr.as_concrete_TypeRef() as CFStringRef)
+                .map(|v| v as AXUIElementRef);
+            let mut best: Option<(AXUIElementRef, i64)> = None;
+
+            if let Some(focused_window) = focused {
+                if let Some(rect) = read_rect(focused_window).map(|r| rect_to_public(&r)) {
+                    if intersection_area(&rect, target_rect) > 0 {
+                        best = Some((focused_window, rect_distance(&rect, target_rect)));
+                    }
+                }
+            }
+
+            if let Some(value) = copy_attr(root, window_attr.as_concrete_TypeRef() as CFStringRef) {
+                if CFGetTypeID(value) == CFArrayGetTypeID() {
+                    let count = CFArrayGetCount(value as CFArrayRef);
+                    for idx in 0..count {
+                        let win = CFArrayGetValueAtIndex(value as CFArrayRef, idx) as AXUIElementRef;
+                        if win.is_null() {
+                            continue;
+                        }
+                        let retained = CFRetain(win as *const c_void) as AXUIElementRef;
+                        if let Some(rect) = read_rect(retained).map(|r| rect_to_public(&r)) {
+                            if intersection_area(&rect, target_rect) > 0 {
+                                let score = rect_distance(&rect, target_rect);
+                                match best {
+                                    Some((_, best_score)) if score >= best_score => {
+                                        CFRelease(retained as *const c_void);
+                                    }
+                                    Some((best_win, _)) => {
+                                        CFRelease(best_win as *const c_void);
+                                        best = Some((retained, score));
+                                    }
+                                    None => best = Some((retained, score)),
+                                }
+                            } else {
+                                CFRelease(retained as *const c_void);
+                            }
+                        } else {
+                            CFRelease(retained as *const c_void);
+                        }
+                    }
+                }
+                CFRelease(value);
+            }
+            CFRelease(root as *const c_void);
+            best.map(|(window, _)| window)
         }
 
         unsafe fn cfstring_to_string(s: CFStringRef) -> Option<String> {
@@ -1728,6 +1897,24 @@ mod macos {
             seq: u64,
         }
 
+        #[derive(Clone)]
+        struct SearchRoot {
+            element: AXUIElementRef,
+            source_label: &'static str,
+            z_rank: usize,
+            score: i32,
+            base_budget: u32,
+            extra_budget: u32,
+            exhausted: bool,
+        }
+
+        struct RootState {
+            root: SearchRoot,
+            bfs: VecDeque<(AXUIElementRef, usize)>,
+            heap: BinaryHeap<FrontierItem>,
+            visited: u32,
+        }
+
         impl PartialEq for FrontierItem {
             fn eq(&self, other: &Self) -> bool {
                 self.score == other.score && self.seq == other.seq
@@ -1756,6 +1943,63 @@ mod macos {
             truncated: bool,
             truncation_reason: Option<String>,
             seq: u64,
+        }
+
+        fn rect_contains_point(rect: &VRect, x: i32, y: i32) -> bool {
+            x >= rect.origin.x
+                && y >= rect.origin.y
+                && x < rect.origin.x + rect.size.w as i32
+                && y < rect.origin.y + rect.size.h as i32
+        }
+
+        fn rect_center(rect: &VRect) -> (i32, i32) {
+            (
+                rect.origin.x + rect.size.w as i32 / 2,
+                rect.origin.y + rect.size.h as i32 / 2,
+            )
+        }
+
+        fn rect_intersection_area_rect(a: &VRect, b: &VRect) -> u64 {
+            let w = ((a.origin.x + a.size.w as i32).min(b.origin.x + b.size.w as i32)
+                - a.origin.x.max(b.origin.x))
+            .max(0) as u64;
+            let h = ((a.origin.y + a.size.h as i32).min(b.origin.y + b.size.h as i32)
+                - a.origin.y.max(b.origin.y))
+            .max(0) as u64;
+            w * h
+        }
+
+        fn mac_root_weight(
+            z_rank: usize,
+            root_rect: &VRect,
+            filter: &VRect,
+            is_foreground: bool,
+            cursor: Option<VPoint>,
+        ) -> i32 {
+            let mut score = 0i32;
+            let intersect_area = rect_intersection_area_rect(root_rect, filter);
+            let filter_area = (filter.size.w as u64) * (filter.size.h as u64);
+            if filter_area > 0 {
+                score += ((intersect_area.saturating_mul(240)) / filter_area.min(u64::MAX)) as i32;
+            }
+            let (cx, cy) = rect_center(filter);
+            if rect_contains_point(root_rect, cx, cy) {
+                score += 180;
+            }
+            if let Some(c) = cursor {
+                if rect_contains_point(root_rect, c.x, c.y) {
+                    score += CURSOR_PROXIMITY_BONUS;
+                }
+            }
+            if is_foreground {
+                score += 220;
+            }
+            score -= (z_rank.min(12) as i32) * 18;
+            score += 140;
+            if root_rect.size.w == 0 || root_rect.size.h == 0 {
+                score -= 500;
+            }
+            score
         }
 
         unsafe fn score_frontier_item(
@@ -2012,102 +2256,357 @@ mod macos {
             enumerate_ui_elements_in_rect_detailed(rect, window_only).elements
         }
 
+        unsafe fn run_enumeration_from_start(
+            start: AXUIElementRef,
+            rect: &VRect,
+        ) -> UiElementEnumerationResult {
+            let mut out = Vec::new();
+            let mut seen: BTreeSet<(i32, i32, u32, u32, &'static str)> = BTreeSet::new();
+            let mut bfs: VecDeque<(AXUIElementRef, usize)> = VecDeque::from([(start, 0)]);
+            let mut heap: BinaryHeap<FrontierItem> = BinaryHeap::new();
+            let mut state = TraversalState {
+                traversed_count: 0,
+                matched_count: 0,
+                truncated: false,
+                truncation_reason: None,
+                seq: 0,
+            };
+            while let Some((el, depth)) = bfs.pop_front() {
+                if !process_node(
+                    el,
+                    depth,
+                    rect,
+                    &mut out,
+                    &mut seen,
+                    &mut bfs,
+                    &mut heap,
+                    &mut state,
+                ) {
+                    break;
+                }
+            }
+            while !state.truncated {
+                let Some(item) = heap.pop() else { break };
+                if !process_node(
+                    item.element,
+                    item.depth,
+                    rect,
+                    &mut out,
+                    &mut seen,
+                    &mut bfs,
+                    &mut heap,
+                    &mut state,
+                ) {
+                    break;
+                }
+                while let Some((el, depth)) = bfs.pop_front() {
+                    if !process_node(
+                        el,
+                        depth,
+                        rect,
+                        &mut out,
+                        &mut seen,
+                        &mut bfs,
+                        &mut heap,
+                        &mut state,
+                    ) {
+                        break;
+                    }
+                }
+            }
+            UiElementEnumerationResult {
+                elements: out,
+                traversed_count: state.traversed_count,
+                matched_count: state.matched_count,
+                returned_count: seen.len() as u32,
+                truncated: state.truncated,
+                truncation_reason: state.truncation_reason,
+            }
+        }
+
+        #[repr(C)]
+        #[derive(Clone, Copy, Default)]
+        struct CGCursorPoint {
+            x: f64,
+            y: f64,
+        }
+
+        extern "C" {
+            fn CGEventCreate(source: *const c_void) -> *const c_void;
+            fn CGEventGetLocation(event: *const c_void) -> CGCursorPoint;
+        }
+
+        fn current_cursor() -> Option<VPoint> {
+            unsafe {
+                let event = CGEventCreate(ptr::null());
+                if event.is_null() {
+                    return None;
+                }
+                let point = CGEventGetLocation(event);
+                CFRelease(event);
+                Some(VPoint {
+                    x: point.x.round() as i32,
+                    y: point.y.round() as i32,
+                })
+            }
+        }
+
+        fn should_skip_visible_window(info: &VisibleMacWindowInfo, filter: &VRect) -> bool {
+            if info.rect.size.w < 100 || info.rect.size.h < 100 {
+                return true;
+            }
+            !intersects_filter(&info.rect, filter)
+        }
+
+        unsafe fn discover_search_roots(filter: &VRect) -> Vec<SearchRoot> {
+            let windows = crate::macos::cg_window_query::list_visible_windows_detailed();
+            let cursor = current_cursor();
+            let foreground = windows.first().map(|w| w.window_id);
+            let mut roots = Vec::new();
+            for win in windows.iter().take(MAX_NORMAL_SEARCH_ROOTS * 3) {
+                if should_skip_visible_window(win, filter) {
+                    continue;
+                }
+                if win.app_identifier == "com.apple.dock" || win.app_identifier == "com.axiomate.cli-no-window" {
+                    continue;
+                }
+                let Some(start) = app_window_root_for_rect(&win.app_identifier, &win.rect) else {
+                    continue;
+                };
+                let score = mac_root_weight(
+                    win.z_rank as usize,
+                    &win.rect,
+                    filter,
+                    Some(win.window_id) == foreground,
+                    cursor,
+                );
+                roots.push(SearchRoot {
+                    element: start,
+                    source_label: "foreground",
+                    z_rank: win.z_rank as usize,
+                    score,
+                    base_budget: 0,
+                    extra_budget: 0,
+                    exhausted: false,
+                });
+                if roots.len() >= MAX_NORMAL_SEARCH_ROOTS {
+                    break;
+                }
+            }
+            roots.sort_by(|a, b| b.score.cmp(&a.score).then_with(|| a.z_rank.cmp(&b.z_rank)));
+            roots
+        }
+
+        fn allocate_root_budgets(roots: &mut [SearchRoot]) {
+            if roots.is_empty() {
+                return;
+            }
+            let total = MAX_ENUM_VISITED_NODES;
+            let mut remaining = total;
+            for root in roots.iter_mut() {
+                let base = ROOT_BASE_BUDGET.min(remaining);
+                root.base_budget = base;
+                remaining = remaining.saturating_sub(base);
+            }
+            if remaining == 0 {
+                return;
+            }
+            let total_weight: i64 = roots.iter().map(|r| i64::from(r.score.max(1))).sum();
+            if total_weight <= 0 {
+                let bonus = remaining / roots.len() as u32;
+                for root in roots.iter_mut() {
+                    root.extra_budget += bonus;
+                }
+                return;
+            }
+            let mut assigned = 0u32;
+            for root in roots.iter_mut() {
+                let share =
+                    ((remaining as u64) * (root.score.max(1) as u64) / (total_weight as u64)) as u32;
+                root.extra_budget = share;
+                assigned = assigned.saturating_add(share);
+            }
+            let mut left = remaining.saturating_sub(assigned);
+            let mut i = 0usize;
+            while left > 0 && !roots.is_empty() {
+                roots[i % roots.len()].extra_budget =
+                    roots[i % roots.len()].extra_budget.saturating_add(1);
+                left -= 1;
+                i += 1;
+            }
+        }
+
+        fn budget_for_phase(root: &SearchRoot, base_phase: bool) -> u32 {
+            if base_phase {
+                root.base_budget
+            } else {
+                root.base_budget.saturating_add(root.extra_budget)
+            }
+        }
+
+        unsafe fn drive_root_until_budget(
+            rect: &VRect,
+            results: &mut Vec<UiElement>,
+            seen: &mut BTreeSet<(i32, i32, u32, u32, &'static str)>,
+            root_state: &mut RootState,
+            global: &mut TraversalState,
+            target_budget: u32,
+        ) {
+            while root_state.visited < target_budget && !global.truncated {
+                let next = if let Some(item) = root_state.bfs.pop_front() {
+                    Some((item.0, item.1))
+                } else if let Some(item) = root_state.heap.pop() {
+                    Some((item.element, item.depth))
+                } else {
+                    None
+                };
+                let Some((el, depth)) = next else {
+                    root_state.root.exhausted = true;
+                    break;
+                };
+                let before = global.traversed_count;
+                let keep_going = process_node(
+                    el,
+                    depth,
+                    rect,
+                    results,
+                    seen,
+                    &mut root_state.bfs,
+                    &mut root_state.heap,
+                    global,
+                );
+                if global.traversed_count > before {
+                    root_state.visited = root_state
+                        .visited
+                        .saturating_add(global.traversed_count - before);
+                }
+                if !keep_going {
+                    break;
+                }
+            }
+            if root_state.bfs.is_empty() && root_state.heap.is_empty() {
+                root_state.root.exhausted = true;
+            }
+        }
+
+        unsafe fn run_root_enumeration(rect: &VRect, roots: Vec<SearchRoot>) -> UiElementEnumerationResult {
+            let mut results: Vec<UiElement> = Vec::new();
+            let mut seen: BTreeSet<(i32, i32, u32, u32, &'static str)> = BTreeSet::new();
+            let mut global_state = TraversalState {
+                traversed_count: 0,
+                matched_count: 0,
+                truncated: false,
+                truncation_reason: None,
+                seq: 0,
+            };
+            let mut root_states: Vec<RootState> = roots
+                .into_iter()
+                .map(|root| RootState {
+                    bfs: VecDeque::from([(root.element, 0)]),
+                    heap: BinaryHeap::new(),
+                    visited: 0,
+                    root,
+                })
+                .collect();
+
+            for base_phase in [true, false] {
+                loop {
+                    let mut progressed = false;
+                    for root_state in root_states.iter_mut() {
+                        if root_state.root.exhausted {
+                            continue;
+                        }
+                        let budget = budget_for_phase(&root_state.root, base_phase);
+                        if root_state.visited >= budget {
+                            continue;
+                        }
+                        let before = results.len();
+                        drive_root_until_budget(
+                            rect,
+                            &mut results,
+                            &mut seen,
+                            root_state,
+                            &mut global_state,
+                            budget,
+                        );
+                        for r in &mut results[before..] {
+                            r.uia_source = Some(root_state.root.source_label.to_string());
+                        }
+                        if global_state.truncated {
+                            break;
+                        }
+                        if root_state.visited > 0 || root_state.root.exhausted {
+                            progressed = true;
+                        }
+                    }
+                    if global_state.truncated || !progressed {
+                        break;
+                    }
+                }
+                if global_state.truncated {
+                    break;
+                }
+            }
+
+            UiElementEnumerationResult {
+                elements: results,
+                traversed_count: global_state.traversed_count,
+                matched_count: global_state.matched_count,
+                returned_count: seen.len() as u32,
+                truncated: global_state.truncated,
+                truncation_reason: global_state.truncation_reason,
+            }
+        }
+
         pub fn enumerate_ui_elements_in_rect_detailed(
             rect: VRect,
             window_only: bool,
         ) -> UiElementEnumerationResult {
-            let root = match if window_only {
-                app_pid_for_rect_center(&rect).and_then(app_ax_root_for_pid)
-            } else {
-                frontmost_app_ax_root()
-            } {
-                Some(r) => r,
-                None => {
-                    return UiElementEnumerationResult {
-                        elements: Vec::new(),
-                        traversed_count: 0,
-                        matched_count: 0,
-                        returned_count: 0,
-                        truncated: false,
-                        truncation_reason: None,
-                    }
-                }
-            };
             super::append_ax_som_debug_log(&format!(
                 "BEGIN rect=({},{} {}x{})",
                 rect.origin.x, rect.origin.y, rect.size.w, rect.size.h
             ));
             unsafe {
-                let focused_attr = ax_attr("AXFocusedWindow");
-                let start = copy_attr(root, focused_attr.as_concrete_TypeRef() as CFStringRef)
-                    .map(|v| v as AXUIElementRef)
-                    .unwrap_or(root);
-                let mut out = Vec::new();
-                let mut seen: BTreeSet<(i32, i32, u32, u32, &'static str)> = BTreeSet::new();
-                let mut bfs: VecDeque<(AXUIElementRef, usize)> = VecDeque::from([(start, 0)]);
-                let mut heap: BinaryHeap<FrontierItem> = BinaryHeap::new();
-                let mut state = TraversalState {
-                    traversed_count: 0,
-                    matched_count: 0,
-                    truncated: false,
-                    truncation_reason: None,
-                    seq: 0,
-                };
-                while let Some((el, depth)) = bfs.pop_front() {
-                    if !process_node(
-                        el,
-                        depth,
-                        &rect,
-                        &mut out,
-                        &mut seen,
-                        &mut bfs,
-                        &mut heap,
-                        &mut state,
-                    ) {
-                        break;
-                    }
-                }
-                while !state.truncated {
-                    let Some(item) = heap.pop() else { break };
-                    if !process_node(
-                        item.element,
-                        item.depth,
-                        &rect,
-                        &mut out,
-                        &mut seen,
-                        &mut bfs,
-                        &mut heap,
-                        &mut state,
-                    ) {
-                        break;
-                    }
-                    while let Some((el, depth)) = bfs.pop_front() {
-                        if !process_node(
-                            el,
-                            depth,
-                            &rect,
-                            &mut out,
-                            &mut seen,
-                            &mut bfs,
-                            &mut heap,
-                            &mut state,
-                        ) {
-                            break;
+                let result = if window_only {
+                    let root = match app_pid_for_rect_center(&rect).and_then(app_ax_root_for_pid) {
+                        Some(r) => r,
+                        None => {
+                            return UiElementEnumerationResult {
+                                elements: Vec::new(),
+                                traversed_count: 0,
+                                matched_count: 0,
+                                returned_count: 0,
+                                truncated: false,
+                                truncation_reason: None,
+                            }
                         }
+                    };
+                    let focused_attr = ax_attr("AXFocusedWindow");
+                    let start = copy_attr(root, focused_attr.as_concrete_TypeRef() as CFStringRef)
+                        .map(|v| v as AXUIElementRef)
+                        .unwrap_or(root);
+                    let result = run_enumeration_from_start(start, &rect);
+                    if start != root {
+                        CFRelease(root as *const c_void);
                     }
-                }
-                if start != root {
-                    CFRelease(root as *const c_void);
-                }
-                super::append_ax_som_debug_log(&format!("END kept={}", out.len()));
-                UiElementEnumerationResult {
-                    elements: out,
-                    traversed_count: state.traversed_count,
-                    matched_count: state.matched_count,
-                    returned_count: seen.len() as u32,
-                    truncated: state.truncated,
-                    truncation_reason: state.truncation_reason,
-                }
+                    result
+                } else {
+                    let mut roots = discover_search_roots(&rect);
+                    if roots.is_empty() {
+                        return UiElementEnumerationResult {
+                            elements: Vec::new(),
+                            traversed_count: 0,
+                            matched_count: 0,
+                            returned_count: 0,
+                            truncated: false,
+                            truncation_reason: None,
+                        };
+                    }
+                    allocate_root_budgets(&mut roots);
+                    run_root_enumeration(&rect, roots)
+                };
+                super::append_ax_som_debug_log(&format!("END kept={}", result.elements.len()));
+                result
             }
         }
 
@@ -2144,72 +2643,42 @@ mod macos {
                 let start = copy_attr(root, focused_attr.as_concrete_TypeRef() as CFStringRef)
                     .map(|v| v as AXUIElementRef)
                     .unwrap_or(root);
-                let mut out = Vec::new();
-                let mut seen: BTreeSet<(i32, i32, u32, u32, &'static str)> = BTreeSet::new();
-                let mut bfs: VecDeque<(AXUIElementRef, usize)> = VecDeque::from([(start, 0)]);
-                let mut heap: BinaryHeap<FrontierItem> = BinaryHeap::new();
-                let mut state = TraversalState {
-                    traversed_count: 0,
-                    matched_count: 0,
-                    truncated: false,
-                    truncation_reason: None,
-                    seq: 0,
-                };
-                while let Some((el, depth)) = bfs.pop_front() {
-                    if !process_node(
-                        el,
-                        depth,
-                        &rect,
-                        &mut out,
-                        &mut seen,
-                        &mut bfs,
-                        &mut heap,
-                        &mut state,
-                    ) {
-                        break;
-                    }
-                }
-                while !state.truncated {
-                    let Some(item) = heap.pop() else { break };
-                    if !process_node(
-                        item.element,
-                        item.depth,
-                        &rect,
-                        &mut out,
-                        &mut seen,
-                        &mut bfs,
-                        &mut heap,
-                        &mut state,
-                    ) {
-                        break;
-                    }
-                    while let Some((el, depth)) = bfs.pop_front() {
-                        if !process_node(
-                            el,
-                            depth,
-                            &rect,
-                            &mut out,
-                            &mut seen,
-                            &mut bfs,
-                            &mut heap,
-                            &mut state,
-                        ) {
-                            break;
-                        }
-                    }
-                }
+                let result = run_enumeration_from_start(start, &rect);
                 if start != root {
                     CFRelease(root as *const c_void);
                 }
-                super::append_ax_som_debug_log(&format!("END kept={}", out.len()));
-                UiElementEnumerationResult {
-                    elements: out,
-                    traversed_count: state.traversed_count,
-                    matched_count: state.matched_count,
-                    returned_count: seen.len() as u32,
-                    truncated: state.truncated,
-                    truncation_reason: state.truncation_reason,
+                super::append_ax_som_debug_log(&format!("END kept={}", result.elements.len()));
+                result
+            }
+        }
+
+        pub fn enumerate_ui_elements_for_window_in_rect_detailed(
+            _window_id: u32,
+            app_identifier: &str,
+            rect: VRect,
+        ) -> UiElementEnumerationResult {
+            let start = match unsafe { app_window_root_for_rect(app_identifier, &rect) } {
+                Some(s) => s,
+                None => {
+                    return UiElementEnumerationResult {
+                        elements: Vec::new(),
+                        traversed_count: 0,
+                        matched_count: 0,
+                        returned_count: 0,
+                        truncated: false,
+                        truncation_reason: None,
+                    }
                 }
+            };
+            super::append_ax_som_debug_log(&format!(
+                "BEGIN window app={} rect=({},{} {}x{})",
+                app_identifier, rect.origin.x, rect.origin.y, rect.size.w, rect.size.h
+            ));
+            unsafe {
+                let result = run_enumeration_from_start(start, &rect);
+                CFRelease(start as *const c_void);
+                super::append_ax_som_debug_log(&format!("END kept={}", result.elements.len()));
+                result
             }
         }
 

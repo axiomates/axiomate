@@ -660,6 +660,32 @@ pub async fn enumerate_ui_elements_for_app_in_rect_detailed(
     }
 }
 
+#[napi]
+pub async fn enumerate_ui_elements_for_window_in_rect_detailed(
+    hwnd: i64,
+    rect: VRect,
+) -> napi::Result<UiElementEnumerationResult> {
+    #[cfg(target_os = "windows")]
+    {
+        Ok(windows_impl::enumerate_ui_elements_for_window_in_rect_detailed(
+            hwnd,
+            rect,
+        ))
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = (hwnd, rect);
+        Ok(UiElementEnumerationResult {
+            elements: Vec::new(),
+            traversed_count: 0,
+            matched_count: 0,
+            returned_count: 0,
+            truncated: false,
+            truncation_reason: None,
+        })
+    }
+}
+
 /// Allowlist-filtered full-screen capture. Windows analog of mac's
 /// SCContentFilter (computer-use-mac-napi-axiomate's sc_capture). Both
 /// are skeletons today — they return None so the agent's screenshot
@@ -2465,6 +2491,91 @@ mod windows_impl {
                 };
             }
 
+            allocate_root_budgets(&mut roots);
+            run_root_enumeration(&automation, &walker, &rect, roots)
+        }
+    }
+
+    pub fn enumerate_ui_elements_for_window_in_rect_detailed(
+        hwnd: i64,
+        rect: VRect,
+    ) -> UiElementEnumerationResult {
+        ensure_dpi_aware();
+        let _com = ComGuard::init();
+        if hwnd == 0 {
+            return UiElementEnumerationResult {
+                elements: Vec::new(),
+                traversed_count: 0,
+                matched_count: 0,
+                returned_count: 0,
+                truncated: false,
+                truncation_reason: None,
+            };
+        }
+        unsafe {
+            let automation: IUIAutomation =
+                match CoCreateInstance(&CUIAutomation, None, CLSCTX_INPROC_SERVER) {
+                    Ok(a) => a,
+                    Err(_) => {
+                        return UiElementEnumerationResult {
+                            elements: Vec::new(),
+                            traversed_count: 0,
+                            matched_count: 0,
+                            returned_count: 0,
+                            truncated: false,
+                            truncation_reason: None,
+                        }
+                    }
+                };
+            let walker = match automation.ControlViewWalker() {
+                Ok(w) => w,
+                Err(_) => {
+                    return UiElementEnumerationResult {
+                        elements: Vec::new(),
+                        traversed_count: 0,
+                        matched_count: 0,
+                        returned_count: 0,
+                        truncated: false,
+                        truncation_reason: None,
+                    }
+                }
+            };
+            let mut roots = Vec::new();
+            let mut seen_hwnds = BTreeSet::new();
+            let handle = HWND(hwnd as *mut _);
+            if !handle.0.is_null() {
+                if let Ok(el) = automation.ElementFromHandle(handle) {
+                    let is_foreground = GetForegroundWindow().0 == handle.0;
+                    let cursor = {
+                        let mut p = POINT::default();
+                        if GetCursorPos(&mut p).is_ok() {
+                            Some(p)
+                        } else {
+                            None
+                        }
+                    };
+                    push_search_root(
+                        &mut roots,
+                        &mut seen_hwnds,
+                        el,
+                        "foreground",
+                        0,
+                        is_foreground,
+                        &rect,
+                        cursor,
+                    );
+                }
+            }
+            if roots.is_empty() {
+                return UiElementEnumerationResult {
+                    elements: Vec::new(),
+                    traversed_count: 0,
+                    matched_count: 0,
+                    returned_count: 0,
+                    truncated: false,
+                    truncation_reason: None,
+                };
+            }
             allocate_root_budgets(&mut roots);
             run_root_enumeration(&automation, &walker, &rect, roots)
         }

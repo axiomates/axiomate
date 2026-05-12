@@ -168,6 +168,27 @@ module.exports.enumerateUiElementsForAppInRectDetailed = async function enumerat
   return mod.enumerateUiElementsForAppInRectDetailed(bundleId, rect)
 }
 
+module.exports.listVisibleWindowsDetailed = async function listVisibleWindowsDetailed() {
+  const mod = loadNative()
+  if (!mod) return []
+  return mod.listVisibleWindowsDetailed()
+}
+
+module.exports.enumerateUiElementsForWindowInRectDetailed = async function enumerateUiElementsForWindowInRectDetailed(windowId, bundleId, rect) {
+  const mod = loadNative()
+  if (!mod) {
+    return {
+      elements: [],
+      traversedCount: 0,
+      matchedCount: 0,
+      returnedCount: 0,
+      truncated: false,
+      truncationReason: null,
+    }
+  }
+  return mod.enumerateUiElementsForWindowInRectDetailed(windowId, bundleId, rect)
+}
+
 module.exports.elementFromPoint = async function elementFromPoint(x, y) {
   const mod = loadNative()
   if (!mod) return null

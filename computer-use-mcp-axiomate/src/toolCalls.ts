@@ -261,9 +261,27 @@ function buildToolModeHint(
 type VisibleWindowSnapshot = {
   appIdentifier: string;
   displayName: string;
+  hwnd?: number;
   rect: { x: number; y: number; w: number; h: number };
   zRank: number;
   isForeground: boolean;
+  isHost?: boolean;
+};
+
+type ZoomWindowSnapshot = VisibleWindowSnapshot & {
+  visibleRects: Array<{ x: number; y: number; w: number; h: number }>;
+  visibleAreaInTarget: number;
+  rawIntersectArea: number;
+  totalArea: number;
+};
+
+type MacVisibleWindowSnapshot = {
+  windowId: number;
+  appIdentifier: string;
+  displayName: string;
+  rect: { x: number; y: number; w: number; h: number };
+  layer: number;
+  zRank: number;
 };
 
 async function listWinVisibleWindows(
@@ -273,12 +291,30 @@ async function listWinVisibleWindows(
     listVisibleWindows?: () => Promise<Array<{
       appIdentifier: string;
       displayName: string;
+      hwnd?: number;
       rect: { x: number; y: number; w: number; h: number };
       zRank: number;
       isForeground: boolean;
+      isHost?: boolean;
     }>>;
   };
   return (await anyExecutor.listVisibleWindows?.()) ?? [];
+}
+
+async function listMacVisibleWindows(
+  adapter: ComputerUseHostAdapter,
+): Promise<MacVisibleWindowSnapshot[]> {
+  const anyExecutor = adapter.executor as typeof adapter.executor & {
+    listVisibleMacWindows?: () => Promise<Array<{
+      windowId: number;
+      appIdentifier: string;
+      displayName: string;
+      rect: { x: number; y: number; w: number; h: number };
+      layer: number;
+      zRank: number;
+    }>>;
+  };
+  return (await anyExecutor.listVisibleMacWindows?.()) ?? [];
 }
 
 async function captureWinForegroundRestoreToken(
@@ -476,6 +512,14 @@ function windowRectArea(rect: { x: number; y: number; w: number; h: number }): n
   return Math.max(0, rect.w) * Math.max(0, rect.h);
 }
 
+function rectIntersectionArea(
+  a: { x: number; y: number; w: number; h: number },
+  b: { x: number; y: number; w: number; h: number },
+): number {
+  const hit = rectIntersection(a, b);
+  return hit ? windowRectArea(hit) : 0;
+}
+
 function rectsIntersect(
   a: { x: number; y: number; w: number; h: number },
   b: { x: number; y: number; w: number; h: number },
@@ -493,6 +537,99 @@ function visibleAreaWithinTarget(
     if (hit) total += windowRectArea(hit);
   }
   return total;
+}
+
+function sortZoomWindowCandidates<T extends ZoomWindowSnapshot>(windows: T[]): T[] {
+  return [...windows].sort((a, b) =>
+    b.visibleAreaInTarget - a.visibleAreaInTarget ||
+    b.rawIntersectArea - a.rawIntersectArea ||
+    a.zRank - b.zRank ||
+    b.totalArea - a.totalArea,
+  );
+}
+
+function selectZoomWindowCandidates<T extends ZoomWindowSnapshot>(
+  windows: T[],
+  secondaryThreshold = 0.85,
+): T[] {
+  if (windows.length === 0) return [];
+  const sorted = sortZoomWindowCandidates(windows);
+  if (sorted.length === 1) return [sorted[0]!];
+  const first = sorted[0]!;
+  const second = sorted[1]!;
+  if (
+    first.visibleAreaInTarget > 0 &&
+    second.visibleAreaInTarget / first.visibleAreaInTarget >= secondaryThreshold
+  ) {
+    return [first, second];
+  }
+  return [first];
+}
+
+function buildWinZoomWindowCandidates(
+  baseline: VisibleWindowSnapshot[],
+  targetRect: { x: number; y: number; w: number; h: number },
+): ZoomWindowSnapshot[] {
+  return baseline
+    .filter(win =>
+      win.isHost !== true &&
+      win.rect.w > 0 &&
+      win.rect.h > 0 &&
+      rectsIntersect(win.rect, targetRect),
+    )
+    .map(win => {
+      const visibleRects = visibleRegionsForWindow(win, baseline);
+      return {
+        ...win,
+        visibleRects,
+        visibleAreaInTarget: visibleAreaWithinTarget(visibleRects, targetRect),
+        rawIntersectArea: rectIntersectionArea(win.rect, targetRect),
+        totalArea: windowRectArea(win.rect),
+      };
+    })
+    .filter(win => win.visibleAreaInTarget > 0);
+}
+
+function buildMacZoomWindowCandidates(
+  baseline: MacVisibleWindowSnapshot[],
+  targetRect: { x: number; y: number; w: number; h: number },
+): Array<ZoomWindowSnapshot & { windowId: number; layer: number }> {
+  let regions = baseline.map(win => ({
+    ...win,
+    visibleRects: [win.rect],
+  }));
+  for (let idx = 0; idx < regions.length; idx += 1) {
+    const target = regions[idx]!;
+    let visibleRects = [target.rect];
+    for (let ahead = 0; ahead < idx; ahead += 1) {
+      const occluder = regions[ahead]!;
+      const next: Array<{ x: number; y: number; w: number; h: number }> = [];
+      for (const rect of visibleRects) {
+        next.push(...subtractRect(rect, occluder.rect));
+      }
+      visibleRects = next;
+      if (visibleRects.length === 0) break;
+    }
+    target.visibleRects = visibleRects;
+  }
+  return regions
+    .filter(win => rectsIntersect(win.rect, targetRect))
+    .map(win => ({
+      appIdentifier: win.appIdentifier,
+      displayName: win.displayName,
+      hwnd: undefined,
+      rect: win.rect,
+      zRank: win.zRank,
+      isForeground: win.zRank === 0,
+      isHost: false,
+      visibleRects: win.visibleRects,
+      visibleAreaInTarget: visibleAreaWithinTarget(win.visibleRects, targetRect),
+      rawIntersectArea: rectIntersectionArea(win.rect, targetRect),
+      totalArea: windowRectArea(win.rect),
+      windowId: win.windowId,
+      layer: win.layer,
+    }))
+    .filter(win => win.visibleAreaInTarget > 0);
 }
 
 function selectWinProbeCandidates(
@@ -567,6 +704,133 @@ async function enumerateWinAppMarksDetailed(
     }>;
   };
   const detailed = await anyExecutor.enumerateVisibleElementsForAppDetailed?.(
+    appIdentifier,
+    physicalRect,
+  );
+  if (!detailed) return { marks: [] };
+  const marks = detailed.elements.map((el, i) => {
+    const vx = (el.bbox.x - originX) / ratioX;
+    const vy = (el.bbox.y - originY) / ratioY;
+    const vw = el.bbox.w / ratioX;
+    const vh = el.bbox.h / ratioY;
+    return {
+      id: i + 1,
+      x: Math.round(vx + vw / 2),
+      y: Math.round(vy + vh / 2),
+      name: el.name ?? "",
+      role: el.role ?? "",
+      automationId: el.automationId,
+      source: "uia" as const,
+      confidence: 1.0,
+      uiaSource: el.uiaSource ?? "foreground",
+    };
+  });
+  return {
+    marks,
+    stats: {
+      traversedCount: detailed.traversedCount,
+      matchedCount: detailed.matchedCount,
+      returnedCount: detailed.returnedCount,
+      truncated: detailed.truncated,
+      truncationReason: detailed.truncationReason,
+    },
+  };
+}
+
+async function enumerateWinWindowMarksDetailed(
+  adapter: ComputerUseHostAdapter,
+  windowHandle: number,
+  physicalRect: { x: number; y: number; w: number; h: number },
+  ratioX: number,
+  ratioY: number,
+  originX: number,
+  originY: number,
+): Promise<{ marks: Mark[]; stats?: { traversedCount: number; matchedCount: number; returnedCount: number; truncated: boolean; truncationReason?: "traversal_budget" | "output_budget" } }> {
+  const anyExecutor = adapter.executor as typeof adapter.executor & {
+    enumerateVisibleElementsForWindowDetailed?: (
+      windowHandle: number,
+      rect: { x: number; y: number; w: number; h: number },
+    ) => Promise<{
+      elements: Array<{
+        bbox: { x: number; y: number; w: number; h: number };
+        name?: string;
+        role?: string;
+        automationId?: string;
+        uiaSource?: string;
+      }>;
+      traversedCount: number;
+      matchedCount: number;
+      returnedCount: number;
+      truncated: boolean;
+      truncationReason?: "traversal_budget" | "output_budget";
+    }>;
+  };
+  const detailed = await anyExecutor.enumerateVisibleElementsForWindowDetailed?.(
+    windowHandle,
+    physicalRect,
+  );
+  if (!detailed) return { marks: [] };
+  const marks = detailed.elements.map((el, i) => {
+    const vx = (el.bbox.x - originX) / ratioX;
+    const vy = (el.bbox.y - originY) / ratioY;
+    const vw = el.bbox.w / ratioX;
+    const vh = el.bbox.h / ratioY;
+    return {
+      id: i + 1,
+      x: Math.round(vx + vw / 2),
+      y: Math.round(vy + vh / 2),
+      name: el.name ?? "",
+      role: el.role ?? "",
+      automationId: el.automationId,
+      source: "uia" as const,
+      confidence: 1.0,
+      uiaSource: el.uiaSource ?? "foreground",
+    };
+  });
+  return {
+    marks,
+    stats: {
+      traversedCount: detailed.traversedCount,
+      matchedCount: detailed.matchedCount,
+      returnedCount: detailed.returnedCount,
+      truncated: detailed.truncated,
+      truncationReason: detailed.truncationReason,
+    },
+  };
+}
+
+async function enumerateMacWindowMarksDetailed(
+  adapter: ComputerUseHostAdapter,
+  windowId: number,
+  appIdentifier: string,
+  physicalRect: { x: number; y: number; w: number; h: number },
+  ratioX: number,
+  ratioY: number,
+  originX: number,
+  originY: number,
+): Promise<{ marks: Mark[]; stats?: { traversedCount: number; matchedCount: number; returnedCount: number; truncated: boolean; truncationReason?: "traversal_budget" | "output_budget" } }> {
+  const anyExecutor = adapter.executor as typeof adapter.executor & {
+    enumerateVisibleElementsForMacWindowDetailed?: (
+      windowId: number,
+      appIdentifier: string,
+      rect: { x: number; y: number; w: number; h: number },
+    ) => Promise<{
+      elements: Array<{
+        bbox: { x: number; y: number; w: number; h: number };
+        name?: string;
+        role?: string;
+        automationId?: string;
+        uiaSource?: string;
+      }>;
+      traversedCount: number;
+      matchedCount: number;
+      returnedCount: number;
+      truncated: boolean;
+      truncationReason?: "traversal_budget" | "output_budget";
+    }>;
+  };
+  const detailed = await anyExecutor.enumerateVisibleElementsForMacWindowDetailed?.(
+    windowId,
     appIdentifier,
     physicalRect,
   );
@@ -3467,68 +3731,90 @@ async function handleZoom(
       const ratioY = zoomCtx.ratioY;
       const originX = zoomCtx.originX;
       const originY = zoomCtx.originY;
+      const targetPhysicalRect = {
+        x: Math.round(regionVirtual.x * ratioX + originX),
+        y: Math.round(regionVirtual.y * ratioY + originY),
+        w: Math.round(regionVirtual.w * ratioX),
+        h: Math.round(regionVirtual.h * ratioY),
+      };
       try {
-        if (
-          adapter.executor.capabilities.platform === "darwin" &&
-          adapter.executor.enumerateVisibleElementsForApp &&
-          (adapter.executor.contentAppUnderPoint || adapter.executor.appUnderPoint)
-        ) {
-          const probeLogicalX = Math.round(
-            probeX * ratioX + originX,
+        if (adapter.executor.capabilities.platform === "win32") {
+          const baseline = await listWinVisibleWindows(adapter);
+          const candidates = selectZoomWindowCandidates(
+            buildWinZoomWindowCandidates(baseline, targetPhysicalRect),
           );
-          const probeLogicalY = Math.round(
-            probeY * ratioY + originY,
-          );
-          const hit = adapter.executor.contentAppUnderPoint
-            ? await adapter.executor.contentAppUnderPoint(
-                probeLogicalX,
-                probeLogicalY,
-              )
-            : await adapter.executor.appUnderPoint(
-                probeLogicalX,
-                probeLogicalY,
-              );
-          if (hit) {
-            adapter.logger.debug(
-              `[zoom-som-mac] hit app=${hit.appIdentifier} probeVirtual=(${probeX},${probeY}) probeLogical=(${probeLogicalX},${probeLogicalY}) ` +
-                `rectLogical=(${Math.round(regionVirtual.x * ratioX + originX)},${Math.round(regionVirtual.y * ratioY + originY)} ` +
-                `${Math.round(regionVirtual.w * ratioX)}x${Math.round(regionVirtual.h * ratioY)})`,
+          const merged: Mark[] = [];
+          let lastStats: any = undefined;
+          for (const candidate of candidates) {
+            const probeRect = [...candidate.visibleRects]
+              .sort((a, b) => (b.w * b.h) - (a.w * a.h))[0];
+            if (!probeRect) continue;
+            if (adapter.executor.focusNonHostWindowAtPoint) {
+              await adapter.executor.focusNonHostWindowAtPoint({
+                x: probeRect.x + Math.round(probeRect.w / 2),
+                y: probeRect.y + Math.round(probeRect.h / 2),
+              });
+              await sleep(150);
+            }
+            const detailed = candidate.hwnd
+              ? await enumerateWinWindowMarksDetailed(
+                  adapter,
+                  candidate.hwnd,
+                  targetPhysicalRect,
+                  ratioX,
+                  ratioY,
+                  originX,
+                  originY,
+                )
+              : await enumerateWinAppMarksDetailed(
+                  adapter,
+                  candidate.appIdentifier,
+                  targetPhysicalRect,
+                  ratioX,
+                  ratioY,
+                  originX,
+                  originY,
+                );
+            const visibleVirtualRects = candidate.visibleRects.map(rect =>
+              physicalRectToVirtualRect(rect, ratioX, ratioY, originX, originY),
             );
-            const raw = await adapter.executor.enumerateVisibleElementsForApp(
-              hit.appIdentifier,
-              {
-                x: Math.round(regionVirtual.x * ratioX + originX),
-                y: Math.round(regionVirtual.y * ratioY + originY),
-                w: Math.round(regionVirtual.w * ratioX),
-                h: Math.round(regionVirtual.h * ratioY),
-              },
-            );
-            adapter.logger.debug(
-              `[zoom-som-mac] raw app-bound elements=${raw.length}`,
-            );
-            marks = raw.map((el, i) => {
-              const vx = (el.bbox.x - originX) / ratioX;
-              const vy = (el.bbox.y - originY) / ratioY;
-              const vw = el.bbox.w / ratioX;
-              const vh = el.bbox.h / ratioY;
-              return {
-                id: i + 1,
-                x: Math.round(vx + vw / 2),
-                y: Math.round(vy + vh / 2),
-                name: el.name ?? "",
-                role: el.role ?? "",
-                automationId: el.automationId,
-                source: "uia" as const,
-                confidence: 1.0,
-                uiaSource: el.uiaSource ?? "foreground",
-              };
-            });
-          } else {
-            adapter.logger.debug(
-              `[zoom-som-mac] appUnderPoint miss probeVirtual=(${probeX},${probeY}) probeLogical=(${probeLogicalX},${probeLogicalY})`,
-            );
-            marks = [];
+            merged.push(...filterMarksByVisibleRegions(detailed.marks, visibleVirtualRects));
+            lastStats = detailed.stats;
           }
+          marks = dedupeMarks(merged);
+          (marks as any).__somStats = {
+            ...(lastStats ?? {}),
+            returnedCount: marks.length,
+          };
+        } else if (adapter.executor.capabilities.platform === "darwin") {
+          const baseline = await listMacVisibleWindows(adapter);
+          const candidates = selectZoomWindowCandidates(
+            buildMacZoomWindowCandidates(baseline, targetPhysicalRect),
+          );
+          const merged: Mark[] = [];
+          let lastStats: any = undefined;
+          for (const candidate of candidates) {
+            const detailed = await enumerateMacWindowMarksDetailed(
+              adapter,
+              candidate.windowId,
+              candidate.appIdentifier,
+              targetPhysicalRect,
+              ratioX,
+              ratioY,
+              originX,
+              originY,
+            );
+            const visibleVirtualRects = candidate.visibleRects.map(rect =>
+              physicalRectToVirtualRect(rect, ratioX, ratioY, originX, originY),
+            );
+            merged.push(...filterMarksByVisibleRegions(detailed.marks, visibleVirtualRects));
+            lastStats = detailed.stats;
+          }
+          marks = dedupeMarks(merged);
+          (marks as any).__somStats = {
+            ...(lastStats ?? {}),
+            returnedCount: marks.length,
+          };
         } else {
           const detection = await detectElementsMultiSourceDetailed(
             adapter.executor,
@@ -3538,27 +3824,6 @@ async function handleZoom(
           );
           marks = detection.marks;
           (marks as any).__somStats = detection.stats;
-          if (adapter.executor.capabilities.platform === "win32") {
-            const targetPhysicalRect = {
-              x: Math.round(regionVirtual.x * ratioX + originX),
-              y: Math.round(regionVirtual.y * ratioY + originY),
-              w: Math.round(regionVirtual.w * ratioX),
-              h: Math.round(regionVirtual.h * ratioY),
-            };
-            marks = await collectWinContextAwareMarks(
-              adapter,
-              marks,
-              targetPhysicalRect,
-              ratioX,
-              ratioY,
-              originX,
-              originY,
-            );
-            (marks as any).__somStats = {
-              ...(marks as any).__somStats,
-              returnedCount: marks.length,
-            };
-          }
         }
         const fgCount = marks.filter(m => m.uiaSource === "foreground").length;
         const chromeCount = marks.filter(m => m.uiaSource !== "foreground").length;

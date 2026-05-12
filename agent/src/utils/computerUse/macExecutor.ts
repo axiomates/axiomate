@@ -997,6 +997,24 @@ export function createCliExecutor(opts: {
       return cu.apps.contentAppUnderPoint?.(x, y) ?? null
     },
 
+    async listVisibleMacWindows() {
+      if (!cu.listVisibleWindowsDetailed) return []
+      const raw = await cu.listVisibleWindowsDetailed()
+      return raw.map(w => ({
+        windowId: w.windowId,
+        appIdentifier: w.appIdentifier,
+        displayName: w.displayName,
+        rect: {
+          x: w.rect.origin.x,
+          y: w.rect.origin.y,
+          w: w.rect.size.w,
+          h: w.rect.size.h,
+        },
+        layer: w.layer,
+        zRank: w.zRank,
+      }))
+    },
+
     async listInstalledApps(): Promise<InstalledApp[]> {
       return drainRunLoop(() => cu.apps.listInstalled())
     },
@@ -1107,6 +1125,46 @@ export function createCliExecutor(opts: {
         }
       }
       const raw = await cu.enumerateUiElementsForAppInRectDetailed(
+        appIdentifier,
+        {
+          origin: { x: Math.round(rect.x), y: Math.round(rect.y) },
+          size: { w: Math.round(rect.w), h: Math.round(rect.h) },
+        },
+      )
+      const elements = raw.elements.map(e => ({
+        bbox: {
+          x: e.bbox.origin.x,
+          y: e.bbox.origin.y,
+          w: e.bbox.size.w,
+          h: e.bbox.size.h,
+        },
+        name: e.name,
+        role: e.role,
+        automationId: e.automationId ?? undefined,
+        uiaSource: e.uiaSource ?? undefined,
+      }))
+      return {
+        elements,
+        traversedCount: raw.traversedCount,
+        matchedCount: raw.matchedCount,
+        returnedCount: raw.returnedCount,
+        truncated: raw.truncated,
+        truncationReason: raw.truncationReason ?? undefined,
+      }
+    },
+
+    async enumerateVisibleElementsForMacWindowDetailed(windowId, appIdentifier, rect) {
+      if (!cu.enumerateUiElementsForWindowInRectDetailed) {
+        return {
+          elements: [],
+          traversedCount: 0,
+          matchedCount: 0,
+          returnedCount: 0,
+          truncated: false,
+        }
+      }
+      const raw = await cu.enumerateUiElementsForWindowInRectDetailed(
+        Math.trunc(windowId),
         appIdentifier,
         {
           origin: { x: Math.round(rect.x), y: Math.round(rect.y) },

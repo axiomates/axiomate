@@ -329,12 +329,71 @@ export interface ComputerExecutor {
   listVisibleWindows?(): Promise<Array<{
     appIdentifier: string;
     displayName: string;
+    hwnd?: number;
     rect: { x: number; y: number; w: number; h: number };
     zRank: number;
     isForeground: boolean;
+    isHost?: boolean;
   }>>;
 
   focusAppWindow?(appIdentifier: string): Promise<boolean>;
+  focusWindowHandle?(hwnd: number): Promise<boolean>;
+
+  enumerateVisibleElementsForWindowDetailed?(
+    windowHandle: number,
+    rect: {
+      x: number;
+      y: number;
+      w: number;
+      h: number;
+    },
+  ): Promise<{
+    elements: Array<{
+      bbox: { x: number; y: number; w: number; h: number };
+      name?: string;
+      role?: string;
+      automationId?: string;
+      uiaSource?: string;
+    }>;
+    traversedCount: number;
+    matchedCount: number;
+    returnedCount: number;
+    truncated: boolean;
+    truncationReason?: "traversal_budget" | "output_budget";
+  }>;
+
+  listVisibleMacWindows?(): Promise<Array<{
+    windowId: number;
+    appIdentifier: string;
+    displayName: string;
+    rect: { x: number; y: number; w: number; h: number };
+    layer: number;
+    zRank: number;
+  }>>;
+
+  enumerateVisibleElementsForMacWindowDetailed?(
+    windowId: number,
+    appIdentifier: string,
+    rect: {
+      x: number;
+      y: number;
+      w: number;
+      h: number;
+    },
+  ): Promise<{
+    elements: Array<{
+      bbox: { x: number; y: number; w: number; h: number };
+      name?: string;
+      role?: string;
+      automationId?: string;
+      uiaSource?: string;
+    }>;
+    traversedCount: number;
+    matchedCount: number;
+    returnedCount: number;
+    truncated: boolean;
+    truncationReason?: "traversal_budget" | "output_budget";
+  }>;
 
   /**
    * Snapshot the current non-host foreground window so screenshot/zoom paths

@@ -157,6 +157,35 @@ export interface ComputerUseAPI {
     truncated: boolean
     truncationReason?: 'traversal_budget' | 'output_budget' | null
   }>
+  listVisibleWindowsDetailed?(): Promise<Array<{
+    windowId: number
+    appIdentifier: string
+    displayName: string
+    rect: { origin: { x: number; y: number }; size: { w: number; h: number } }
+    layer: number
+    zRank: number
+  }>>
+  enumerateUiElementsForWindowInRectDetailed?(
+    windowId: number,
+    appIdentifier: string,
+    rect: {
+      origin: { x: number; y: number }
+      size: { w: number; h: number }
+    },
+  ): Promise<{
+    elements: Array<{
+      bbox: { origin: { x: number; y: number }; size: { w: number; h: number } }
+      name: string
+      role: string
+      automationId?: string | null
+      uiaSource?: string | null
+    }>
+    traversedCount: number
+    matchedCount: number
+    returnedCount: number
+    truncated: boolean
+    truncationReason?: 'traversal_budget' | 'output_budget' | null
+  }>
   elementFromPoint?(
     x: number,
     y: number,

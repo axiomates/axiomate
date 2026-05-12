@@ -128,6 +128,15 @@ export interface UiElementEnumerationResult {
   truncationReason?: 'traversal_budget' | 'output_budget' | null
 }
 
+export interface VisibleMacWindowInfo {
+  windowId: number
+  appIdentifier: string
+  displayName: string
+  rect: VRect
+  layer: number
+  zRank: number
+}
+
 export function enumerateUiElementsInRect(
   rect: VRect,
   windowOnly?: boolean | null,
@@ -139,6 +148,14 @@ export function enumerateUiElementsInRectDetailed(
 ): Promise<UiElementEnumerationResult>
 
 export function enumerateUiElementsForAppInRectDetailed(
+  bundleId: string,
+  rect: VRect,
+): Promise<UiElementEnumerationResult>
+
+export function listVisibleWindowsDetailed(): Promise<VisibleMacWindowInfo[]>
+
+export function enumerateUiElementsForWindowInRectDetailed(
+  windowId: number,
   bundleId: string,
   rect: VRect,
 ): Promise<UiElementEnumerationResult>
