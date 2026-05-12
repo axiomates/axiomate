@@ -1098,7 +1098,7 @@ function sortZoomWindowCandidates<T extends ZoomWindowSnapshot>(
 function selectZoomWindowCandidates<T extends ZoomWindowSnapshot>(
   windows: T[],
   cursor: { x: number; y: number } | null = null,
-  cap = 3,
+  cap = 4,
 ): T[] {
   if (windows.length === 0) return [];
   const sorted = sortZoomWindowCandidates(windows, cursor);
@@ -1200,7 +1200,7 @@ function buildMacZoomWindowCandidates(
 function selectWinProbeCandidates(
   baseline: VisibleWindowSnapshot[],
   targetRect: { x: number; y: number; w: number; h: number },
-  cap = 3,
+  cap = 4,
   cursor: { x: number; y: number } | null = null,
 ): Array<VisibleWindowSnapshot & { visibleRects: Array<{ x: number; y: number; w: number; h: number }> }> {
   // A window "owns the cursor" if the pointer falls inside any of its
@@ -1443,7 +1443,7 @@ async function collectWinContextAwareMarks(
   ratioY: number,
   originX: number,
   originY: number,
-  probeCap = 2,
+  probeCap = 3,
   touched?: Set<string>,
 ): Promise<Mark[]> {
   const baseline = await listWinVisibleWindows(adapter);
@@ -1609,7 +1609,7 @@ async function collectMacContextAwareMarks(
   ratioY: number,
   originX: number,
   originY: number,
-  probeCap = 3,
+  probeCap = 4,
 ): Promise<Mark[]> {
   const baseline = await listMacVisibleWindows(adapter);
   if (baseline.length === 0) return baseMarks;
@@ -4757,7 +4757,7 @@ async function handleZoom(
           );
           const candidates = selectZoomWindowCandidates(built, cursor);
           adapter.logger.debug?.(
-            `[computer-use] zoom selected candidates=${candidates.map(w => `${w.displayName}@${w.zRank}`).join(", ")} cap=3 cursor=${cursor ? `(${cursor.x},${cursor.y})` : "null"}`,
+            `[computer-use] zoom selected candidates=${candidates.map(w => `${w.displayName}@${w.zRank}`).join(", ")} cap=4 cursor=${cursor ? `(${cursor.x},${cursor.y})` : "null"}`,
           );
           const merged: Mark[] = [];
           let lastStats: any = undefined;
@@ -5059,7 +5059,7 @@ async function handleZoom(
       // window's reported rect is clipped to the zoom region.
       //
       // Further restricted to windows we actually UIA-probed (see
-      // selectZoomWindowCandidates cap=3). Unprobed windows are omitted
+      // selectZoomWindowCandidates cap=4). Unprobed windows are omitted
       // rather than reported with markCount=0, which would falsely
       // suggest "no interactive elements here" when we just didn't scan
       // them.
