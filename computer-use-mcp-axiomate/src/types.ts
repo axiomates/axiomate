@@ -539,23 +539,28 @@ interface BaseComputerUseOverrides {
   getActiveLocate?: () => import("./clickTarget.js").LocateState | null;
 
   /**
-   * Replace the active locate loop's `marks` with a new list. Called by
-   * handleZoom after a SoM detection pass; the new marks become the
-   * resolution target for the next `mouse_move(mark_id)`. No-op when no
-   * loop is active.
+   * Replace the stored `marks` with a new list. Called by handleZoom,
+   * handleScreenshot, and handleScreenshotWindow after each SoM detection
+   * pass; the new marks become the resolution target for the next
+   * `mouse_move(mark_id)`. Also updates the active locate loop's marks
+   * when one is open.
    *
    * `marks` is REPLACED (not appended) so id numbering on the wire matches
-   * what the AI just saw drawn on the zoomed image.
+   * what the AI just saw drawn on the image / listed in the text SoM.
    */
   onLocateMarksUpdated?: (
     marks: import("./clickTarget.js").Mark[],
   ) => void;
 
   /**
-   * Global SoM marks from the most recent zoom — NOT gated by
-   * vision_locate loop state. Updated on every zoom that runs detection,
-   * cleared on `som: false` or when detection returns zero elements.
-   * Read by handleMoveMouse for `mark_id` resolution outside a loop.
+   * Global SoM marks from the most recent SoM-producing call (zoom,
+   * screenshot, or screenshot_window) — NOT gated by vision_locate loop
+   * state. Updated on every such call that runs detection, cleared on
+   * `som: false` (zoom) or when detection returns zero elements. Read by
+   * handleMoveMouse for `mark_id` resolution outside a loop.
+   *
+   * Name retained for backwards compatibility with hosts that read this
+   * field; semantics now cover all three SoM tools.
    */
   getLastZoomMarks?: () => import("./clickTarget.js").Mark[];
 

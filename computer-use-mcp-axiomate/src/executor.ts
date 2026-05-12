@@ -95,7 +95,27 @@ export interface ComputerExecutor {
   findWindowDisplays(appIdentifiers: string[]): Promise<Array<{ appIdentifier: string; displayIds: number[] }>>;
 
   // ── Screenshots ──────────────────────────────────────────────────────
-  screenshot(opts: { allowedAppIdentifiers: string[]; displayId?: number; coordinateGrid?: string }): Promise<ScreenshotResult>;
+  screenshot(opts: {
+    allowedAppIdentifiers: string[];
+    displayId?: number;
+    coordinateGrid?: string;
+    /** Optional SoM marks — see resolvePrepareCapture's `marks` for semantics. */
+    marks?: Array<{ id: number; x: number; y: number }>;
+  }): Promise<ScreenshotResult>;
+
+  /**
+   * Mac-only post-capture SoM overlay. After the executor returns the
+   * raw JPEG with ruler/cursor annotations, toolCalls.ts builds marks
+   * via post-capture UIA and re-runs them through this method to draw
+   * red circles + IDs. Win plumbs marks through the native capture
+   * call directly and never invokes this.
+   */
+  drawMarksOnScreenshot?(opts: {
+    base64: string;
+    imageWidth: number;
+    imageHeight: number;
+    marks: Array<{ id: number; x: number; y: number }>;
+  }): Promise<string>;
   zoom(
     region: { x: number; y: number; w: number; h: number },
     allowedAppIdentifiers: string[],
@@ -115,6 +135,15 @@ export interface ComputerExecutor {
     autoResolve: boolean;
     doHide?: boolean;
     coordinateGrid?: string;
+    /**
+     * Optional SoM red-circle overlay marks. Coords are in image-local
+     * virtual pixels (same coord space as the screenshot's returned
+     * width/height). Used by Win, where pre-capture UIA produces marks
+     * before the screenshot is taken. Mac's UIA is post-capture so it
+     * ignores this param and applies marks via `drawMarksOnScreenshot`
+     * after computing them.
+     */
+    marks?: Array<{ id: number; x: number; y: number }>;
   }): Promise<ResolvePrepareCaptureResult>;
   /**
    * Capture the frontmost window of the given app. macOS uses
@@ -322,6 +351,15 @@ export interface ComputerExecutor {
 
   focusAppWindow?(appIdentifier: string): Promise<boolean>;
   focusWindowHandle?(hwnd: number): Promise<boolean>;
+
+  /**
+   * Win diagnostic helper: returns the exe paths of our ancestor
+   * processes (16-hop PPID walk via Toolhelp32Snapshot). Logged from
+   * `captureWinForegroundRestoreToken` so debug traces include the
+   * chain that produced any host-detection oddities (notably bun's
+   * tendency to drop the visible terminal from our ancestor chain).
+   */
+  getHostAncestorPaths?(): Promise<string[]>;
 
   enumerateVisibleElementsForWindowDetailed?(
     windowHandle: number,

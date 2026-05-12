@@ -629,6 +629,34 @@ export function createCliExecutor(opts: {
     },
 
     /**
+     * Post-capture SoM overlay. Mac's UIA enumeration is post-capture so
+     * marks aren't available at resolvePrepareCapture/screenshot time —
+     * toolCalls.ts computes marks first, then calls this to layer red
+     * circles + IDs over the already-captured (ruler+cursor-annotated)
+     * JPEG. Win takes a different path: marks pass through the native
+     * `captureDisplayScaled` call directly since pre-capture UIA has
+     * them ready at capture time.
+     *
+     * No-op when `marks` is empty.
+     */
+    async drawMarksOnScreenshot(opts: {
+      base64: string
+      imageWidth: number
+      imageHeight: number
+      marks: Array<{ id: number; x: number; y: number }>
+    }): Promise<string> {
+      if (opts.marks.length === 0) return opts.base64
+      return await overlayScreenshotArtifacts({
+        base64: opts.base64,
+        imageWidth: opts.imageWidth,
+        imageHeight: opts.imageHeight,
+        gridMode: 'none',
+        marks: opts.marks,
+        jpegQuality: 95,
+      })
+    },
+
+    /**
      * Pre-size to `targetImageSize` output so the API transcoder's early-return
      * fires — no server-side resize, `scaleCoord` stays coherent. See
      * packages/desktop/computer-use-mcp/COORDINATES.md.

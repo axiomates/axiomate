@@ -137,7 +137,11 @@ export function createWinExecutor(): ComputerExecutor {
   // Per-Monitor V2 DPI awareness, all coords — including scaleCoord
   // output, click targets, and cursor positions — are in physical px.
   // Image resize is purely a visual / token-budget optimization.
-  async function captureScaledDisplay(displayId?: number, gridMode?: number): Promise<ScreenshotResult | null> {
+  async function captureScaledDisplay(
+    displayId?: number,
+    gridMode?: number,
+    marks?: Array<{ id: number; x: number; y: number }>,
+  ): Promise<ScreenshotResult | null> {
     if (!napiAvailable) return null
     const display = getWinDisplaySize(displayId)
     const [tw, th] = computeImageDim(display.width, display.height)
@@ -146,9 +150,19 @@ export function createWinExecutor(): ComputerExecutor {
     // models misidentify which icon is which. 92 keeps small UI
     // elements crisp; size goes up ~2.5× (~150KB → ~370KB) which is
     // still fine for token budgets.
+    //
+    // `marks` (optional) draws SoM red circles + numeric IDs at the
+    // given (x, y) image-pixel coords on top of the JPEG before
+    // encoding. Coords are in IMAGE-LOCAL virtual pixels (0..tw,
+    // 0..th) — same coord space as `grid_range` below — so callers
+    // pass marks with x/y already converted to display-local virtual
+    // (which is what dedupeMarks produces). Caller decides shownCount /
+    // top-N before passing.
     const r = await winNapi.captureDisplayScaled(
       { origin: { x: display.originX, y: display.originY }, size: { w: display.width, h: display.height } },
       tw, th, 92, gridMode,
+      0, 0, tw, th,
+      marks,
     )
     if (!r) {
       logForDebugging(
@@ -672,12 +686,13 @@ export function createWinExecutor(): ComputerExecutor {
       allowedAppIdentifiers: string[]
       displayId?: number
       coordinateGrid?: string
+      marks?: Array<{ id: number; x: number; y: number }>
     }): Promise<ScreenshotResult> {
       // Non-atomic path — toolCalls.ts handleScreenshot calls this when
       // autoTargetDisplay sub-gate is OFF. Hide loop (if enabled) runs
       // separately via prepareForAction; here we only do the capture.
       const gridMode = opts.coordinateGrid === "none" ? 0 : opts.coordinateGrid === "edge" ? 1 : 2
-      const r = await captureScaledDisplay(opts.displayId, gridMode)
+      const r = await captureScaledDisplay(opts.displayId, gridMode, opts.marks)
       if (!r) return winFallbackScreenshot(opts)
       return r
     },
@@ -726,6 +741,7 @@ export function createWinExecutor(): ComputerExecutor {
       autoResolve: boolean
       doHide?: boolean
       coordinateGrid?: string
+      marks?: Array<{ id: number; x: number; y: number }>
     }): Promise<ResolvePrepareCaptureResult> {
       // Atomic path — toolCalls.ts handleScreenshot calls this when
       // autoTargetDisplay sub-gate is ON (the common case). On Win we
@@ -735,7 +751,7 @@ export function createWinExecutor(): ComputerExecutor {
       // returned regardless of `opts.doHide`. See COORDINATES.md / the
       // platform-divergence note in computer-use-mcp-axiomate/executor.ts.
       const gridMode = opts.coordinateGrid === "none" ? 0 : opts.coordinateGrid === "edge" ? 1 : 2
-      const r = await captureScaledDisplay(opts.preferredDisplayId, gridMode)
+      const r = await captureScaledDisplay(opts.preferredDisplayId, gridMode, opts.marks)
       if (!r) {
         return await winFallbackResolvePrepareCapture(opts)
       }

@@ -824,40 +824,64 @@ function countMarksInVirtualRect(
 }
 
 /**
- * Point-in-rect attribution: tag each mark with the source window name
- * it most likely belongs to. Iterates `windows` in priority order (the
- * caller-supplied sort = foreground > non-chrome > area desc) and tags
- * the mark with the FIRST window whose rect contains it. So a mark
- * straddling a window boundary gets attributed to the higher-priority
- * window (usually foreground), which matches user intent better than
- * "last enumerated".
+ * Compute per-window mark counts in priority order, assigning each mark
+ * to AT MOST one window (the first whose effective rect contains the
+ * mark's center). Replaces the previous raw point-in-rect counting in
+ * buildWinVisibleWindowsContext / buildMacVisibleWindowsContext where
+ * buried windows could claim overlapping foreground marks and the same
+ * mark could be double-counted across overlapping windows.
  *
- * Marks that don't fall into any window's rect stay un-tagged
- * (sourceWindowName undefined). The grouping in buildTextFirstSoMBlock
- * surfaces those under "(no window)".
- *
- * Returns a new Mark[] preserving the input order; only `sourceWindowName`
- * is added. id values are unchanged so mark_id semantics still work.
+ * `entries` MUST already be sorted in priority order (foreground first,
+ * non-chrome before chrome, area desc) — caller's responsibility.
  */
-function attributeMarksToWindows(
+function attributeMarksToEntries(
   marks: Mark[],
-  windows: VisibleWindowContext[],
-): Mark[] {
-  if (windows.length === 0) return marks;
-  return marks.map(m => {
-    if (m.sourceWindowName) return m; // already tagged
-    for (const w of windows) {
-      if (
-        m.x >= w.rect.x &&
-        m.x < w.rect.x + w.rect.w &&
-        m.y >= w.rect.y &&
-        m.y < w.rect.y + w.rect.h
-      ) {
-        return { ...m, sourceWindowName: w.name };
+  entries: Array<{ name: string; rect: { x: number; y: number; w: number; h: number } }>,
+): { counts: number[]; attributed: Mark[] } {
+  const counts = entries.map(() => 0);
+  const assignedIdx = new Array<number>(marks.length).fill(-1);
+  // Map from entry name → first-occurrence index for honoring pre-tagged
+  // marks (Win zoom's per-candidate probe pre-sets sourceWindowName).
+  const nameToFirstIdx = new Map<string, number>();
+  for (let i = 0; i < entries.length; i++) {
+    const n = entries[i]!.name;
+    if (!nameToFirstIdx.has(n)) nameToFirstIdx.set(n, i);
+  }
+  for (let mi = 0; mi < marks.length; mi++) {
+    const m = marks[mi]!;
+    // Honor pre-tag from the probe loop when the tag matches a listed
+    // window — this is more accurate than point-in-rect for overlapping
+    // windows. Falls back to point-in-rect when no pre-tag (or pre-tag
+    // names a window outside the current scope).
+    if (m.sourceWindowName !== undefined) {
+      const ei = nameToFirstIdx.get(m.sourceWindowName);
+      if (ei !== undefined) {
+        counts[ei]++;
+        assignedIdx[mi] = ei;
+        continue;
       }
     }
-    return m;
+    for (let ei = 0; ei < entries.length; ei++) {
+      const r = entries[ei]!.rect;
+      if (
+        m.x >= r.x &&
+        m.x < r.x + r.w &&
+        m.y >= r.y &&
+        m.y < r.y + r.h
+      ) {
+        counts[ei]++;
+        assignedIdx[mi] = ei;
+        break;
+      }
+    }
+  }
+  const attributed = marks.map((m, mi) => {
+    const ei = assignedIdx[mi]!;
+    if (ei < 0) return m;
+    const name = entries[ei]!.name;
+    return m.sourceWindowName === name ? m : { ...m, sourceWindowName: name };
   });
+  return { counts, attributed };
 }
 
 const VISIBLE_WINDOWS_CAP = 8;
@@ -873,6 +897,13 @@ const VISIBLE_WINDOWS_MIN_SIDE = 100;
  * Output capped at `VISIBLE_WINDOWS_CAP` entries so the SoM block stays
  * scannable for the model on dense desktops.
  */
+/**
+ * Build per-window context + attribute marks. Returns the contexts (with
+ * accurate markCount) AND the attributed marks array (each mark's
+ * sourceWindowName matches the window it was credited to). Caller should
+ * use the returned attributed marks for downstream text rendering so the
+ * "Visible windows" totals match the per-window group listings.
+ */
 function buildWinVisibleWindowsContext(
   baseline: VisibleWindowSnapshot[],
   marks: Mark[],
@@ -881,37 +912,60 @@ function buildWinVisibleWindowsContext(
   originX: number,
   originY: number,
   scope?: { x: number; y: number; w: number; h: number },
-): VisibleWindowContext[] {
-  return baseline
+  /**
+   * If supplied, restrict the output to windows whose displayName is in
+   * this set. Used by `zoom` where only a bounded candidate set is
+   * actually UIA-probed — windows we didn't probe can't honestly report
+   * a mark count, so we omit them entirely rather than claim
+   * `markCount=0` (which falsely implies "no interactive elements here").
+   */
+  probedWindowNames?: Set<string>,
+): { contexts: VisibleWindowContext[]; attributed: Mark[] } {
+  // Step 1: filter + map to effective rect, drop windows that don't
+  // intersect scope.
+  const stage1 = baseline
     .filter(
       w =>
         w.isHost !== true &&
         w.rect.w >= VISIBLE_WINDOWS_MIN_SIDE &&
-        w.rect.h >= VISIBLE_WINDOWS_MIN_SIDE,
+        w.rect.h >= VISIBLE_WINDOWS_MIN_SIDE &&
+        (probedWindowNames ? probedWindowNames.has(w.displayName) : true),
     )
     .map(w => {
       const virtual = physicalRectToVirtualRect(w.rect, ratioX, ratioY, originX, originY);
       const effective = scope ? rectIntersection(virtual, scope) : virtual;
-      return { snapshot: w, virtual, effective };
+      return { snapshot: w, effective };
     })
-    .filter(({ effective }) => effective !== null)
-    .map(({ snapshot, effective }): VisibleWindowContext => ({
-      name: snapshot.displayName,
-      rect: effective!,
-      isForeground: snapshot.isForeground,
-      isChrome: snapshot.isSystemChrome === true,
-      markCount: countMarksInVirtualRect(marks, effective!),
-    }))
-    .sort((a, b) => {
-      if ((a.isForeground === true) !== (b.isForeground === true)) {
-        return a.isForeground ? -1 : 1;
-      }
-      if ((a.isChrome === true) !== (b.isChrome === true)) {
-        return a.isChrome ? 1 : -1;
-      }
-      return windowRectArea(b.rect) - windowRectArea(a.rect);
-    })
-    .slice(0, VISIBLE_WINDOWS_CAP);
+    .filter((e): e is { snapshot: VisibleWindowSnapshot; effective: { x: number; y: number; w: number; h: number } } =>
+      e.effective !== null,
+    );
+
+  // Step 2: sort in priority order so attribution credits foreground /
+  // normal windows BEFORE buried / chrome ones for marks in overlap regions.
+  stage1.sort((a, b) => {
+    if (a.snapshot.isForeground !== b.snapshot.isForeground) {
+      return a.snapshot.isForeground ? -1 : 1;
+    }
+    const aChrome = a.snapshot.isSystemChrome === true;
+    const bChrome = b.snapshot.isSystemChrome === true;
+    if (aChrome !== bChrome) return aChrome ? 1 : -1;
+    return windowRectArea(b.effective) - windowRectArea(a.effective);
+  });
+
+  // Step 3: attribute marks (each mark → at most one window) and count.
+  const entries = stage1.map(s => ({ name: s.snapshot.displayName, rect: s.effective }));
+  const { counts, attributed } = attributeMarksToEntries(marks, entries);
+
+  // Step 4: build contexts using the attributed counts, cap to N.
+  const contexts: VisibleWindowContext[] = stage1.map((s, i) => ({
+    name: s.snapshot.displayName,
+    rect: s.effective,
+    isForeground: s.snapshot.isForeground,
+    isChrome: s.snapshot.isSystemChrome === true,
+    markCount: counts[i]!,
+  })).slice(0, VISIBLE_WINDOWS_CAP);
+
+  return { contexts, attributed };
 }
 
 function buildMacVisibleWindowsContext(
@@ -922,8 +976,10 @@ function buildMacVisibleWindowsContext(
   originX: number,
   originY: number,
   scope?: { x: number; y: number; w: number; h: number },
-): VisibleWindowContext[] {
-  return baseline
+  /** See buildWinVisibleWindowsContext for semantics. */
+  probedWindowNames?: Set<string>,
+): { contexts: VisibleWindowContext[]; attributed: Mark[] } {
+  const stage1 = baseline
     .filter(
       w =>
         // layer 0 = normal app windows; menu bar / Dock / status items
@@ -931,28 +987,37 @@ function buildMacVisibleWindowsContext(
         // already (via discover_search_roots' hardcoded roots).
         w.layer === 0 &&
         w.rect.w >= VISIBLE_WINDOWS_MIN_SIDE &&
-        w.rect.h >= VISIBLE_WINDOWS_MIN_SIDE,
+        w.rect.h >= VISIBLE_WINDOWS_MIN_SIDE &&
+        (probedWindowNames ? probedWindowNames.has(w.displayName) : true),
     )
     .map(w => {
       const virtual = physicalRectToVirtualRect(w.rect, ratioX, ratioY, originX, originY);
       const effective = scope ? rectIntersection(virtual, scope) : virtual;
-      return { snapshot: w, virtual, effective };
+      return { snapshot: w, effective };
     })
-    .filter(({ effective }) => effective !== null)
-    .map(({ snapshot, effective }): VisibleWindowContext => ({
-      name: snapshot.displayName,
-      rect: effective!,
-      isForeground: snapshot.zRank === 0,
-      isChrome: false, // Mac chrome is filtered above (layer !== 0)
-      markCount: countMarksInVirtualRect(marks, effective!),
-    }))
-    .sort((a, b) => {
-      if ((a.isForeground === true) !== (b.isForeground === true)) {
-        return a.isForeground ? -1 : 1;
-      }
-      return windowRectArea(b.rect) - windowRectArea(a.rect);
-    })
-    .slice(0, VISIBLE_WINDOWS_CAP);
+    .filter((e): e is { snapshot: MacVisibleWindowSnapshot; effective: { x: number; y: number; w: number; h: number } } =>
+      e.effective !== null,
+    );
+
+  stage1.sort((a, b) => {
+    const aFg = a.snapshot.zRank === 0;
+    const bFg = b.snapshot.zRank === 0;
+    if (aFg !== bFg) return aFg ? -1 : 1;
+    return windowRectArea(b.effective) - windowRectArea(a.effective);
+  });
+
+  const entries = stage1.map(s => ({ name: s.snapshot.displayName, rect: s.effective }));
+  const { counts, attributed } = attributeMarksToEntries(marks, entries);
+
+  const contexts: VisibleWindowContext[] = stage1.map((s, i) => ({
+    name: s.snapshot.displayName,
+    rect: s.effective,
+    isForeground: s.snapshot.zRank === 0,
+    isChrome: false,
+    markCount: counts[i]!,
+  })).slice(0, VISIBLE_WINDOWS_CAP);
+
+  return { contexts, attributed };
 }
 
 function dedupeMarks(marks: Mark[]): Mark[] {
@@ -1439,7 +1504,7 @@ async function collectWinContextAwareMarks(
       // Direct attribution: we know each kept mark came from this
       // candidate's UIA tree. Pre-tagging here is more accurate than
       // the post-hoc point-in-rect attribution in
-      // attributeMarksToWindows — overlapping windows can shadow each
+      // attributeMarksToEntries — overlapping windows can shadow each
       // other's marks under point-in-rect.
       for (const m of kept) m.sourceWindowName = candidate.displayName;
       adapter.logger.debug?.(
@@ -2189,13 +2254,14 @@ async function takeScreenshotWithRetry(
   logger: ComputerUseHostAdapter["logger"],
   displayId?: number,
   coordinateGrid?: string,
+  marks?: Array<{ id: number; x: number; y: number }>,
 ): Promise<ScreenshotResult> {
-  let shot = await executor.screenshot({ allowedAppIdentifiers, displayId, coordinateGrid });
+  let shot = await executor.screenshot({ allowedAppIdentifiers, displayId, coordinateGrid, marks });
   if (decodedByteLength(shot.base64) < MIN_SCREENSHOT_BYTES) {
     logger.warn(
       `[computer-use] screenshot implausibly small (${decodedByteLength(shot.base64)} bytes decoded), retrying once`,
     );
-    shot = await executor.screenshot({ allowedAppIdentifiers, displayId, coordinateGrid });
+    shot = await executor.screenshot({ allowedAppIdentifiers, displayId, coordinateGrid, marks });
   }
   return shot;
 }
@@ -3767,6 +3833,34 @@ async function handleScreenshot(
       );
   
       const coordinateGrid = typeof args?.coordinate_grid === "string" ? args.coordinate_grid : "none";
+      // Win: SoM marks are computed pre-capture (in runWinPreCaptureUIA)
+      // so we can hand them straight to captureDisplayScaled to draw red
+      // circles + numeric IDs onto the JPEG. Mac's UIA is post-capture
+      // (Mac AX doesn't need foreground), so its overlay is layered on
+      // post-shot via drawMarksOnScreenshot below.
+      // Red-circle overlay is drawn regardless of vision support: non-VL
+      // models have the image content stripped/replaced before send, so
+      // there's no token cost, and the dumped JPEG in
+      // ~/.axiomate/debug/screenshots/ is the only visual debugging
+      // signal for the human operator either way. Cap at 20 to match
+      // overlay density across tools.
+      //
+      // Filter to marks whose center falls inside the image extent BEFORE
+      // slicing — Rust's blend_px clips out-of-bounds pixels silently, so
+      // marks from elements on adjacent displays would consume the top-20
+      // slots while drawing nothing visible. The filter targets the
+      // expected image size from getDisplaySize (winPrecapture.dims) since
+      // the result object isn't available yet here.
+      const preMarksAll = isWin && winPrecapture ? winPrecapture.marks : [];
+      const preImgW = winPrecapture?.dims.virtualW ?? 0;
+      const preImgH = winPrecapture?.dims.virtualH ?? 0;
+      const preMarks = preImgW > 0 && preImgH > 0
+        ? preMarksAll.filter(m => m.x >= 0 && m.x < preImgW && m.y >= 0 && m.y < preImgH)
+        : preMarksAll;
+      const preShownCount = Math.min(preMarks.length, Math.min(overlaySoMLimit(preMarks), 20));
+      const preMarkOverlays = preShownCount > 0
+        ? preMarks.slice(0, preShownCount).map(m => ({ id: m.id, x: m.x, y: m.y }))
+        : undefined;
       const result = await adapter.executor.resolvePrepareCapture({
         allowedAppIdentifiers,
         preferredDisplayId: overrides.selectedDisplayId,
@@ -3776,6 +3870,7 @@ async function handleScreenshot(
         // at the prepareForAction call site.
         doHide: subGates.hideBeforeAction,
         coordinateGrid,
+        marks: preMarkOverlays,
       });
   
       adapter.logger.debug(
@@ -3931,23 +4026,55 @@ async function handleScreenshot(
         // visible in this screenshot.
         const shotScope = { x: 0, y: 0, w: shot.width, h: shot.height };
         let windowsContext: VisibleWindowContext[] | undefined;
+        let attributedMarks: Mark[] = marks;
         if (isWin) {
-          windowsContext = buildWinVisibleWindowsContext(
+          const built = buildWinVisibleWindowsContext(
             winBaseline, marks, wRatioX, wRatioY, wOriginX, wOriginY, shotScope,
           );
+          windowsContext = built.contexts;
+          attributedMarks = built.attributed;
         } else if (adapter.executor.capabilities.platform === "darwin") {
           try {
             const macBaseline = await listMacVisibleWindows(adapter);
-            windowsContext = buildMacVisibleWindowsContext(
+            const built = buildMacVisibleWindowsContext(
               macBaseline, marks, wRatioX, wRatioY, wOriginX, wOriginY, shotScope,
             );
+            windowsContext = built.contexts;
+            attributedMarks = built.attributed;
           } catch {
             // best-effort: omit windows section if baseline fetch fails
           }
         }
-        const attributedMarks = windowsContext
-          ? attributeMarksToWindows(marks, windowsContext)
-          : marks;
+        // Mac post-capture mark overlay. Win already drew marks inside
+        // resolvePrepareCapture via captureDisplayScaled's `marks` param
+        // (using preMarkOverlays computed before the screenshot). Mac's
+        // UIA is post-capture, so layer the marks on now. Drawn regardless
+        // of vision support — the image is stripped for non-VL models so
+        // there's no token cost, and the dumped JPEG is the human
+        // debugger's only visual signal. Cap at 20 circles even when the
+        // text list shows up to 50.
+        if (
+          !isWin &&
+          shownCount > 0 &&
+          adapter.executor.drawMarksOnScreenshot
+        ) {
+          try {
+            const overlayLimit = Math.min(shownCount, 20);
+            const overlayMarks = attributedMarks
+              .slice(0, overlayLimit)
+              .map(m => ({ id: m.id, x: m.x, y: m.y }));
+            shot.base64 = await adapter.executor.drawMarksOnScreenshot({
+              base64: shot.base64,
+              imageWidth: shot.width,
+              imageHeight: shot.height,
+              marks: overlayMarks,
+            });
+          } catch (e) {
+            adapter.logger.debug?.(
+              `[computer-use] mac drawMarksOnScreenshot failed: ${e instanceof Error ? e.message : String(e)}`,
+            );
+          }
+        }
         somText = buildTextFirstSoMBlock(
           attributedMarks,
           shownCount,
@@ -3958,6 +4085,12 @@ async function handleScreenshot(
             windows: windowsContext,
           },
         );
+        // Publish marks for mark_id resolution by subsequent mouse_move
+        // calls. Without this the IDs the model sees in the text SoM list
+        // would only be resolvable after a follow-up zoom. Pass
+        // attributedMarks (post-window-attribution) so mouse_move's debug
+        // log shows the source window for each jump.
+        overrides.onLocateMarksUpdated?.(attributedMarks.slice(0, shownCount));
       }
       return {
         content: [
@@ -4017,12 +4150,30 @@ async function handleScreenshot(
       `[computer-use] handleScreenshot non-atomic: calling takeScreenshotWithRetry allowedAppIdentifiers=[${allowedAppIdentifiers.join(",")}] selectedDisplayId=${overrides.selectedDisplayId ?? "undef"}`,
     );
     const coordinateGrid = typeof args?.coordinate_grid === "string" ? args.coordinate_grid : "none";
+    // Same pre-capture mark plumbing as the atomic path: Win pre-capture
+    // UIA produces marks before the screenshot, so they ride through
+    // takeScreenshotWithRetry → executor.screenshot → captureDisplayScaled
+    // for native rendering. Mac stays unset here and gets overlay
+    // post-capture via drawMarksOnScreenshot below.
+    // See atomic-path comment: overlay is drawn regardless of vision support,
+    // and out-of-image-bounds marks are filtered before slicing.
+    const naPreMarksAll = isWin && winPrecapture ? winPrecapture.marks : [];
+    const naPreImgW = winPrecapture?.dims.virtualW ?? 0;
+    const naPreImgH = winPrecapture?.dims.virtualH ?? 0;
+    const naPreMarks = naPreImgW > 0 && naPreImgH > 0
+      ? naPreMarksAll.filter(m => m.x >= 0 && m.x < naPreImgW && m.y >= 0 && m.y < naPreImgH)
+      : naPreMarksAll;
+    const naPreShownCount = Math.min(naPreMarks.length, Math.min(overlaySoMLimit(naPreMarks), 20));
+    const naPreMarkOverlays = naPreShownCount > 0
+      ? naPreMarks.slice(0, naPreShownCount).map(m => ({ id: m.id, x: m.x, y: m.y }))
+      : undefined;
     const shot = await takeScreenshotWithRetry(
       adapter.executor,
       allowedAppIdentifiers,
       adapter.logger,
       overrides.selectedDisplayId,
       coordinateGrid,
+      naPreMarkOverlays,
     );
     adapter.logger.debug(
       `[computer-use] handleScreenshot non-atomic: takeScreenshotWithRetry returned base64Len=${shot.base64?.length ?? "undef"} width=${shot.width} height=${shot.height} displayId=${shot.displayId}`,
@@ -4104,23 +4255,48 @@ async function handleScreenshot(
       const wOriginY = shot.originY ?? 0;
       const shotScope = { x: 0, y: 0, w: shot.width, h: shot.height };
       let windowsContext: VisibleWindowContext[] | undefined;
+      let attributedMarks: Mark[] = marks;
       if (isWin) {
-        windowsContext = buildWinVisibleWindowsContext(
+        const built = buildWinVisibleWindowsContext(
           winBaseline, marks, wRatioX, wRatioY, wOriginX, wOriginY, shotScope,
         );
+        windowsContext = built.contexts;
+        attributedMarks = built.attributed;
       } else if (adapter.executor.capabilities.platform === "darwin") {
         try {
           const macBaseline = await listMacVisibleWindows(adapter);
-          windowsContext = buildMacVisibleWindowsContext(
+          const built = buildMacVisibleWindowsContext(
             macBaseline, marks, wRatioX, wRatioY, wOriginX, wOriginY, shotScope,
           );
+          windowsContext = built.contexts;
+          attributedMarks = built.attributed;
         } catch {
           // best-effort
         }
       }
-      const attributedMarks = windowsContext
-        ? attributeMarksToWindows(marks, windowsContext)
-        : marks;
+      // Mac post-capture mark overlay — see atomic-path comment.
+      if (
+        !isWin &&
+        shownCount > 0 &&
+        adapter.executor.drawMarksOnScreenshot
+      ) {
+        try {
+          const overlayLimit = Math.min(shownCount, 20);
+          const overlayMarks = attributedMarks
+            .slice(0, overlayLimit)
+            .map(m => ({ id: m.id, x: m.x, y: m.y }));
+          shot.base64 = await adapter.executor.drawMarksOnScreenshot({
+            base64: shot.base64,
+            imageWidth: shot.width,
+            imageHeight: shot.height,
+            marks: overlayMarks,
+          });
+        } catch (e) {
+          adapter.logger.debug?.(
+            `[computer-use] mac drawMarksOnScreenshot failed: ${e instanceof Error ? e.message : String(e)}`,
+          );
+        }
+      }
       somText = buildTextFirstSoMBlock(
         attributedMarks,
         shownCount,
@@ -4131,6 +4307,9 @@ async function handleScreenshot(
           windows: windowsContext,
         },
       );
+      // See atomic-path comment: publish marks so mouse_move can resolve
+      // mark_id against this screenshot's IDs.
+      overrides.onLocateMarksUpdated?.(attributedMarks.slice(0, shownCount));
     }
     return {
       content: [
@@ -4181,6 +4360,7 @@ async function handleScreenshot(
 async function handleScreenshotWindow(
   adapter: ComputerUseHostAdapter,
   args: Record<string, unknown>,
+  overrides: ComputerUseOverrides,
 ): Promise<CuCallToolResult> {
   const appIdentifier = requireString(args, "app_identifier");
   if (appIdentifier instanceof Error)
@@ -4340,6 +4520,9 @@ async function handleScreenshotWindow(
         { x: 0, y: 0, w: prelim.width, h: prelim.height },
         { includePriorityHint: !visionEnabled, stats: (marks as any).__somStats },
       );
+      // Publish marks for mark_id resolution by subsequent mouse_move
+      // calls — see handleScreenshot atomic-path comment for rationale.
+      overrides.onLocateMarksUpdated?.(shownMarks);
     }
 
   if (drawMarks && shownMarks.length > 0) {
@@ -4612,7 +4795,13 @@ async function handleZoom(
             const visibleVirtualRects = candidate.visibleRects.map(rect =>
               physicalRectToVirtualRect(rect, ratioX, ratioY, originX, originY),
             );
-            merged.push(...filterMarksByVisibleRegions(detailed.marks, visibleVirtualRects));
+            const kept = filterMarksByVisibleRegions(detailed.marks, visibleVirtualRects);
+            // Pre-tag source window name so downstream attribution credits
+            // each mark to the window that was actually UIA-probed, not
+            // to whichever buried window overlaps via point-in-rect.
+            // Mirrors the pre-tag collectWinContextAwareMarks does.
+            for (const m of kept) m.sourceWindowName = candidate.displayName;
+            merged.push(...kept);
             lastStats = detailed.stats;
           }
           marks = dedupeMarks(merged);
@@ -4648,7 +4837,10 @@ async function handleZoom(
             const visibleVirtualRects = candidate.visibleRects.map(rect =>
               physicalRectToVirtualRect(rect, ratioX, ratioY, originX, originY),
             );
-            merged.push(...filterMarksByVisibleRegions(detailed.marks, visibleVirtualRects));
+            const kept = filterMarksByVisibleRegions(detailed.marks, visibleVirtualRects);
+            // Pre-tag — see Win zoom probe comment above.
+            for (const m of kept) m.sourceWindowName = candidate.displayName;
+            merged.push(...kept);
             lastStats = detailed.stats;
           }
           marks = dedupeMarks(merged);
@@ -4666,10 +4858,44 @@ async function handleZoom(
           marks = detection.marks;
           (marks as any).__somStats = detection.stats;
         }
+        // Zoom only cares about the zoom region — discard any marks whose
+        // center lies outside regionVirtual before downstream tile / text /
+        // overlay processing. The per-candidate filter clips by window
+        // visibleRects (which are NOT clipped to the zoom region) and the
+        // native enumerator returns elements that *intersect* the region
+        // bbox, so a mark center can still leak out. Final region filter
+        // makes "Visible windows" counts, tile counts, and totalCount in
+        // the SoM summary consistent with the user's mental model: only
+        // what's actually in the zoomed view.
+        const prevStats = (marks as any).__somStats ?? {};
+        const preFilterCount = marks.length;
+        const rxMax = regionVirtual.x + regionVirtual.w;
+        const ryMax = regionVirtual.y + regionVirtual.h;
+        const inRegionMarks = marks.filter(
+          m =>
+            m.x >= regionVirtual.x &&
+            m.x < rxMax &&
+            m.y >= regionVirtual.y &&
+            m.y < ryMax,
+        );
+        // Re-number ids so they're contiguous 1..N in the new list — the
+        // overlay slice and text listing both use this id sequence and
+        // we want gap-free numbering after the filter drops out-of-region
+        // marks.
+        marks = inRegionMarks.map((m, i) => ({ ...m, id: i + 1 }));
+        if (marks.length !== preFilterCount) {
+          adapter.logger.debug?.(
+            `[zoom-som] in-region filter: ${preFilterCount} → ${marks.length} marks (dropped ${preFilterCount - marks.length} outside zoom region)`,
+          );
+        }
+        (marks as any).__somStats = { ...prevStats, returnedCount: marks.length };
         const fgCount = marks.filter(m => m.uiaSource === "foreground").length;
         const chromeCount = marks.filter(m => m.uiaSource !== "foreground").length;
         circleLimit = overlaySoMLimit(marks);
-        drawMarks = visionEnabled && circleLimit > 0;
+        // Draw circles regardless of vision support: non-VL models have
+        // image content stripped before send, so there's no token cost,
+        // and the dumped JPEG is the human debugger's only visual signal.
+        drawMarks = circleLimit > 0;
         overrides.onLocateMarksUpdated?.(marks);
         adapter.logger.debug(
           `[zoom-som] stored ${marks.length} marks (fg=${fgCount} chrome=${chromeCount} circles: ${circleLimit}): ${marks.map((m) => `#${m.id}(${m.name})`.slice(0, 40)).join(", ")}`,
@@ -4831,26 +5057,39 @@ async function handleZoom(
       // Windows context scoped to the zoom region — only windows whose
       // virtual rect intersects regionVirtual contribute, and each
       // window's reported rect is clipped to the zoom region.
+      //
+      // Further restricted to windows we actually UIA-probed (see
+      // selectZoomWindowCandidates cap=3). Unprobed windows are omitted
+      // rather than reported with markCount=0, which would falsely
+      // suggest "no interactive elements here" when we just didn't scan
+      // them.
+      const probedWindowNames = new Set<string>(
+        marks.map(m => m.sourceWindowName).filter((n): n is string => !!n),
+      );
       let windowsContext: VisibleWindowContext[] | undefined;
+      let attributedMarks: Mark[] = marks;
       if (isWin) {
-        windowsContext = buildWinVisibleWindowsContext(
+        const built = buildWinVisibleWindowsContext(
           winBaseline, marks, zoomCtx.ratioX, zoomCtx.ratioY, zoomCtx.originX, zoomCtx.originY,
           regionVirtual,
+          probedWindowNames.size > 0 ? probedWindowNames : undefined,
         );
+        windowsContext = built.contexts;
+        attributedMarks = built.attributed;
       } else if (adapter.executor.capabilities.platform === "darwin") {
         try {
           const macBaseline = await listMacVisibleWindows(adapter);
-          windowsContext = buildMacVisibleWindowsContext(
+          const built = buildMacVisibleWindowsContext(
             macBaseline, marks, zoomCtx.ratioX, zoomCtx.ratioY, zoomCtx.originX, zoomCtx.originY,
             regionVirtual,
+            probedWindowNames.size > 0 ? probedWindowNames : undefined,
           );
+          windowsContext = built.contexts;
+          attributedMarks = built.attributed;
         } catch {
           // best-effort
         }
       }
-      const attributedMarks = windowsContext
-        ? attributeMarksToWindows(marks, windowsContext)
-        : marks;
       text += buildTextFirstSoMBlock(
         attributedMarks,
         shownCount,
@@ -5370,9 +5609,11 @@ async function handleMoveMouse(
   subGates: CuSubGates,
 ): Promise<CuCallToolResult> {
   // ── mark_id resolution (SoM shortcut) ──
-  // After any zoom that ran SoM detection, AI can pass `mark_id: N`
-  // instead of a coordinate. We resolve N to the recorded (x, y) of
-  // the matching mark from the most recent zoom.
+  // After any zoom, screenshot, or screenshot_window that ran SoM detection,
+  // AI can pass `mark_id: N` instead of a coordinate. We resolve N to the
+  // recorded (x, y) of the matching mark from the most recent SoM-producing
+  // call. Storage is via `overrides.onLocateMarksUpdated(marks)` which all
+  // three handlers call after building their shown-mark slice.
   const markId =
     typeof args.mark_id === "number" && Number.isInteger(args.mark_id)
       ? args.mark_id
@@ -5391,7 +5632,7 @@ async function handleMoveMouse(
     const marks = overrides.getLastZoomMarks?.() ?? [];
     if (marks.length === 0) {
       return errorResult(
-        "`mark_id` requires a prior `zoom` that produced SoM marks. No marks available — call `zoom` on the relevant region first, or use `coordinate` instead.",
+        "`mark_id` requires a recent `zoom`, `screenshot`, or `screenshot_window` that produced SoM marks. No marks available — call one of those tools on the relevant region first, or use `coordinate` instead.",
         "bad_args",
       );
     }
@@ -5399,7 +5640,7 @@ async function handleMoveMouse(
     if (!mark) {
       const known = marks.map((m) => m.id).join(", ");
       return errorResult(
-        `mark_id ${markId} not found. Available marks from the most recent zoom: ${known}. If your target isn't listed, use \`coordinate\` instead.`,
+        `mark_id ${markId} not found. Available marks from the most recent SoM call: ${known}. If your target isn't listed, use \`coordinate\` instead.`,
         "bad_args",
       );
     }
@@ -6186,7 +6427,7 @@ async function dispatchAction(
       return handleScreenshot(adapter, overrides, subGates, a);
 
     case "screenshot_window":
-      return handleScreenshotWindow(adapter, a);
+      return handleScreenshotWindow(adapter, a, overrides);
 
     case "zoom":
       return handleZoom(adapter, a, overrides);

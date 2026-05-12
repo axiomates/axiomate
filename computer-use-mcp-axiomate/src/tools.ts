@@ -86,7 +86,7 @@ const BATCH_ACTION_ITEM_SCHEMA = {
       type: "integer",
       minimum: 1,
       description:
-        "For mouse_move only — jump to SoM mark N from the most recent zoom. Do NOT pass both `coordinate` and `mark_id` on the same action.",
+        "For mouse_move only — jump to SoM mark N from the most recent `zoom`, `screenshot`, or `screenshot_window` that produced marks. Do NOT pass both `coordinate` and `mark_id` on the same action.",
     },
     start_coordinate: {
       type: "array",
@@ -286,6 +286,7 @@ export function buildComputerUseTools(
         "\n\n**⚠ Tool selection: if the user's intent is to click or interact with a UI element they describe by name or appearance and you have an image-capable model, call `vision_locate` instead — it ALSO returns a screenshot AND walks you through locating the target. Otherwise prefer `screenshot`, `zoom`, or `screenshot_window` and use text SoM + `mark_id`. Use this `screenshot` tool only when the goal is to OBSERVE or READ the screen (verifying state, reading text, planning, debugging) — not as the first step of a click.**\n\n" +
         "**The mouse cursor IS rendered in the image with a thick lime-green CIRCLE outline drawn around it** (the ring is added so the cursor remains unmissable at any image scale / JPEG compression). The cursor's pointer tip sits at the CENTER of the green ring. Use the green ring as ground-truth for where input will land.\n\n" +
         "**Coordinate system: x increases LEFT→RIGHT, y increases TOP→BOTTOM.** (0, 0) is the top-left corner. The ruler numbers on each edge show the valid coordinate range — the largest numbers at the right/bottom edges are the screen width/height.\n\n" +
+        "**SoM (Set-of-Mark)** auto-detects interactive UI elements (buttons, fields, icons, links) across all visible windows and overlays red numbered circles on the image (up to 20) plus a per-window text list of detected marks (up to 20 / 50 vision / text mode). When marks are available, call `mouse_move(mark_id: N)` to jump the cursor directly to a detected element — far faster and more reliable than estimating coordinates from rulers. The text SoM list groups marks by source window so you can quickly find controls in a specific app.\n\n" +
         "If the user names a specific application and just wants to SEE it (e.g. \"show me Slack\", \"截 Chrome\"), prefer `screenshot_window` to capture only that app's frontmost window.",
       inputSchema: {
         type: "object" as const,
@@ -351,7 +352,7 @@ export function buildComputerUseTools(
         "1. `center: [cx, cy], size: N` — pick a center point and side length. 100-300 px is usually enough for a button row or toolbar area; use 400-800 px for a form section.\n" +
         "2. `region: [x0, y0, x1, y1]` — top-left and bottom-right corners.\n\n" +
         "The region is automatically clipped to screen bounds if it extends past the edges. Coordinate rulers on the returned image reflect the actual captured area.\n\n" +
-        "SoM markers auto-overlay when the region qualifies for structured element detection. Pass `som: false` to suppress markers (clears any prior zoom's marks — `mouse_move(mark_id: N)` will error until the next zoom).",
+        "SoM markers auto-overlay when the region qualifies for structured element detection. Pass `som: false` to suppress markers (clears any prior marks — `mouse_move(mark_id: N)` will error until the next `zoom`, `screenshot`, or `screenshot_window`).",
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -390,7 +391,7 @@ export function buildComputerUseTools(
           som: {
             type: "boolean",
             description:
-              "Whether to overlay SoM (Set-of-Mark) detection markers on the zoomed image. Default true (system auto-decides based on element count + region size). Set to false if the markers feel noisy or are obscuring details — analogous to passing `coordinate_grid: 'none'` to suppress rulers. Setting false clears marks recorded by a prior zoom — `mouse_move(mark_id: N)` will error until the next zoom.",
+              "Whether to overlay SoM (Set-of-Mark) detection markers on the zoomed image. Default true (system auto-decides based on element count + region size). Set to false if the markers feel noisy or are obscuring details — analogous to passing `coordinate_grid: 'none'` to suppress rulers. Setting false clears marks recorded by a prior `zoom`, `screenshot`, or `screenshot_window` — `mouse_move(mark_id: N)` will error until the next call that produces marks.",
           },
         },
         required: [],
@@ -569,7 +570,7 @@ export function buildComputerUseTools(
         `Move the mouse cursor (no click). For hover inspection, precise positioning, or drag setup.\n\n` +
         `Pick EXACTLY ONE way to specify the destination:\n` +
         `  - \`coordinate\`: [x, y] — always available. Read from the ruler edges on any screenshot.\n` +
-        `  - \`mark_id\`: integer — shortcut that jumps to red numbered circle N from the most recent zoom. Works after any \`zoom\` that produced SoM marks (default). Errors if no zoom has been done, marks were cleared (\`som: false\`), or N doesn't match a detected mark. When unsure: use \`coordinate\`.\n` +
+        `  - \`mark_id\`: integer — shortcut that jumps to red numbered circle N from the most recent \`zoom\`, \`screenshot\`, or \`screenshot_window\` that produced SoM marks. Errors if no marks exist (no recent SoM call, marks were cleared via \`som: false\` on zoom, or N doesn't match a detected mark). When unsure: use \`coordinate\`.\n` +
         `Never pass both.\n\n` +
         `Pass \`display_id\` when coordinates came from another tool.\n\n` +
         `If the response text includes a WARNING about a screen edge, the cursor may be clipped — follow the suggested correction. No warning means the cursor is safely on-screen.${frontmostHint}`,
@@ -582,7 +583,7 @@ export function buildComputerUseTools(
             type: "integer",
             minimum: 1,
             description:
-              "Jump to red numbered circle N from the most recent zoom that produced SoM marks. Errors if no marks exist (no prior zoom, or `som: false` cleared them) or N doesn't match a detected mark. Use this INSTEAD of `coordinate` — do NOT pass both.",
+              "Jump to red numbered circle N from the most recent `zoom`, `screenshot`, or `screenshot_window` that produced SoM marks. Errors if no marks exist (no recent SoM call, or `som: false` cleared zoom marks) or N doesn't match a detected mark. Use this INSTEAD of `coordinate` — do NOT pass both.",
           },
         },
         required: [],
