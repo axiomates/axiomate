@@ -516,9 +516,19 @@ async function runWinPreCaptureUIA(
 function winLayoutRectStable(
   before: VisibleWindowSnapshot[],
   after: VisibleWindowSnapshot[],
+  scope?: { x: number; y: number; w: number; h: number },
 ): string | null {
   const filter = (wins: VisibleWindowSnapshot[]) =>
-    wins.filter(w => w.isHost !== true && w.isSystemChrome !== true);
+    wins.filter(w =>
+      w.isHost !== true &&
+      w.isSystemChrome !== true &&
+      // Optional scope: only care about windows whose rect intersects
+      // the given region. zoom passes the zoom region's physical rect
+      // so unrelated screen-corner window movements don't trigger a
+      // false-positive mark drop. screenshot passes no scope (full
+      // display matters).
+      (!scope || rectsIntersect(w.rect, scope)),
+    );
   const b = filter(before);
   const a = filter(after);
   // Index by hwnd — appIdentifier alone collides (two File Explorer
@@ -4209,13 +4219,33 @@ async function handleZoom(
       // probe loop. visibleRects we filtered marks against came from
       // `baseline` (taken at probe start) — if any tracked window
       // moved, mark coords are stale.
+      //
+      // Scope to the zoom region: a window moving in an unrelated
+      // corner of the screen doesn't affect the zoom's marks (they
+      // only cover this region). Pass `targetPhysicalRect` so
+      // winLayoutRectStable only considers windows that overlap the
+      // zoom area.
       if (marks.length > 0) {
         try {
           const winBaselineAfter = await listWinVisibleWindows(adapter);
-          const layoutDelta = winLayoutRectStable(winBaseline, winBaselineAfter);
+          // Rebuild the zoom region's physical rect from the same
+          // zoomCtx + regionVirtual the probe loop used. We can't
+          // reuse the targetPhysicalRect variable since it lives
+          // inside the `!somDisabled` block above.
+          const zoomPhysicalRect = {
+            x: Math.round(regionVirtual.x * zoomCtx.ratioX + zoomCtx.originX),
+            y: Math.round(regionVirtual.y * zoomCtx.ratioY + zoomCtx.originY),
+            w: Math.round(regionVirtual.w * zoomCtx.ratioX),
+            h: Math.round(regionVirtual.h * zoomCtx.ratioY),
+          };
+          const layoutDelta = winLayoutRectStable(
+            winBaseline,
+            winBaselineAfter,
+            zoomPhysicalRect,
+          );
           if (layoutDelta) {
             adapter.logger.warn(
-              `[computer-use] window layout drifted during zoom pipeline: ${layoutDelta} — discarding SoM marks`,
+              `[computer-use] window layout drifted in zoom region: ${layoutDelta} — discarding SoM marks`,
             );
             marks = [];
             drawMarks = false;
