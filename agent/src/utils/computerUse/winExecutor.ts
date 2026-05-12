@@ -426,6 +426,7 @@ export function createWinExecutor(): ComputerExecutor {
         zRank: w.zRank,
         isForeground: w.isForeground,
         isHost: w.isHost,
+        isSystemChrome: w.isSystemChrome,
       }))
     },
 

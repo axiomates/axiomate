@@ -179,7 +179,12 @@ describe('zoom window prioritization', () => {
       truncated: false,
     }))
     executor.zoom = vi.fn(async () => ({ base64: 'aGVsbG8=', width: 200, height: 200 }))
-    executor.getCursorPosition = vi.fn(async () => ({ x: 150, y: 150 }))
+    // Place the cursor in big-app's L-shape visible region (small-app's
+    // rect [50,50]-[170,170] is on top, so cursor at (200,200) sits in
+    // big-app's exposed area). The selector ranks cursor-ownership above
+    // area; positioning the cursor on the larger window lets this test
+    // continue to validate the area-priority branch as a tiebreaker.
+    executor.getCursorPosition = vi.fn(async () => ({ x: 200, y: 200 }))
 
     let lastMarks: any[] = []
     const overrides: ComputerUseOverrides = {

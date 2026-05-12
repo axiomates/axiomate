@@ -266,6 +266,11 @@ type VisibleWindowSnapshot = {
   zRank: number;
   isForeground: boolean;
   isHost?: boolean;
+  /// Shell-owned system chrome (taskbar / desktop on Win). Used by the zoom
+  /// candidate selector to force-include even when its visible area share
+  /// is below the area-based threshold — mirrors the full-screen path's
+  /// hardcoded Shell_TrayWnd + Progman/WorkerW search roots.
+  isSystemChrome?: boolean;
 };
 
 type ZoomWindowSnapshot = VisibleWindowSnapshot & {
@@ -296,6 +301,7 @@ async function listWinVisibleWindows(
       zRank: number;
       isForeground: boolean;
       isHost?: boolean;
+      isSystemChrome?: boolean;
     }>>;
   };
   return (await anyExecutor.listVisibleWindows?.()) ?? [];
@@ -389,12 +395,19 @@ async function restoreWinVisibleWindowOrder(
   // window sandwiched between two touched ones at different zRanks ends up
   // in the wrong slot (it was displaced by the deeper-touched window but
   // we never put it back).
-  const touchedZRanks = baseline
+  //
+  // Exclude `isSystemChrome` windows (taskbar, desktop) entirely: the OS
+  // manages their position, focusAppWindow("explorer.exe") is ambiguous
+  // when both Shell_TrayWnd and an open File Explorer window share the
+  // exe path, and probing chrome doesn't actually displace user-window
+  // z-order in a way that needs undoing.
+  const nonChrome = baseline.filter(w => w.isSystemChrome !== true);
+  const touchedZRanks = nonChrome
     .filter(w => touched.has(w.appIdentifier))
     .map(w => w.zRank);
   if (touchedZRanks.length === 0) return;
   const maxTouchedZRank = Math.max(...touchedZRanks);
-  const restoreOrder = baseline
+  const restoreOrder = nonChrome
     .filter(w => w.zRank <= maxTouchedZRank)
     .sort((a, b) => b.zRank - a.zRank);
   adapter.logger.debug?.(
@@ -562,31 +575,66 @@ function visibleAreaWithinTarget(
   return total;
 }
 
-function sortZoomWindowCandidates<T extends ZoomWindowSnapshot>(windows: T[]): T[] {
-  return [...windows].sort((a, b) =>
-    b.visibleAreaInTarget - a.visibleAreaInTarget ||
-    b.rawIntersectArea - a.rawIntersectArea ||
-    a.zRank - b.zRank ||
-    b.totalArea - a.totalArea,
-  );
+function sortZoomWindowCandidates<T extends ZoomWindowSnapshot>(
+  windows: T[],
+  cursor: { x: number; y: number } | null,
+): T[] {
+  const ownsCursor = (win: T): boolean => {
+    if (!cursor) return false;
+    return win.visibleRects.some(
+      r => cursor.x >= r.x && cursor.x < r.x + r.w && cursor.y >= r.y && cursor.y < r.y + r.h,
+    );
+  };
+  return [...windows].sort((a, b) => {
+    // Cursor first: "what the user is pointing at" is the strongest
+    // intent signal — mirrors selectWinProbeCandidates' ranking for the
+    // full-screen probe path (toolCalls.ts:670-693).
+    const aCursor = ownsCursor(a);
+    const bCursor = ownsCursor(b);
+    if (aCursor !== bCursor) return aCursor ? -1 : 1;
+    return (
+      b.visibleAreaInTarget - a.visibleAreaInTarget ||
+      b.rawIntersectArea - a.rawIntersectArea ||
+      a.zRank - b.zRank ||
+      b.totalArea - a.totalArea
+    );
+  });
 }
 
 function selectZoomWindowCandidates<T extends ZoomWindowSnapshot>(
   windows: T[],
-  secondaryThreshold = 0.85,
+  cursor: { x: number; y: number } | null = null,
+  cap = 3,
 ): T[] {
   if (windows.length === 0) return [];
-  const sorted = sortZoomWindowCandidates(windows);
-  if (sorted.length === 1) return [sorted[0]!];
-  const first = sorted[0]!;
-  const second = sorted[1]!;
-  if (
-    first.visibleAreaInTarget > 0 &&
-    second.visibleAreaInTarget / first.visibleAreaInTarget >= secondaryThreshold
-  ) {
-    return [first, second];
+  const sorted = sortZoomWindowCandidates(windows, cursor);
+
+  // Take top-`cap` by sort order (no area-ratio gate — zoom is meant to
+  // surface every interactable thing in a small region, so a 70%-of-the-
+  // primary secondary still matters).
+  const picked: T[] = [];
+  const pickedSet = new Set<T>();
+  for (const win of sorted) {
+    if (picked.length >= cap) break;
+    if (win.visibleAreaInTarget <= 0) continue;
+    picked.push(win);
+    pickedSet.add(win);
   }
-  return [first];
+
+  // Force-include any system chrome (taskbar / desktop on Win) that has
+  // any visible share in the zoom region but didn't make the cap-limited
+  // cut. Without this, "zoom to the bottom-right corner and tell me what
+  // that tray icon is" silently misses Shell_TrayWnd / Progman entirely
+  // when a foreground window dominates the area.
+  for (const win of sorted) {
+    if (win.isSystemChrome !== true) continue;
+    if (win.visibleAreaInTarget <= 0) continue;
+    if (pickedSet.has(win)) continue;
+    picked.push(win);
+    pickedSet.add(win);
+  }
+
+  return picked;
 }
 
 function buildWinZoomWindowCandidates(
@@ -3767,8 +3815,19 @@ async function handleZoom(
       try {
         if (adapter.executor.capabilities.platform === "win32") {
           const baseline = await listWinVisibleWindows(adapter);
+          // Read cursor for the candidate ranker — same "what the user
+          // is pointing at" signal selectWinProbeCandidates uses for
+          // full-screen probes. Failure is non-fatal: ranker falls back
+          // to area + zRank.
+          let cursor: { x: number; y: number } | null = null;
+          try {
+            cursor = await adapter.executor.getCursorPosition();
+          } catch {
+            cursor = null;
+          }
           const candidates = selectZoomWindowCandidates(
             buildWinZoomWindowCandidates(baseline, targetPhysicalRect),
+            cursor,
           );
           const merged: Mark[] = [];
           let lastStats: any = undefined;
@@ -3816,8 +3875,15 @@ async function handleZoom(
           };
         } else if (adapter.executor.capabilities.platform === "darwin") {
           const baseline = await listMacVisibleWindows(adapter);
+          let macCursor: { x: number; y: number } | null = null;
+          try {
+            macCursor = await adapter.executor.getCursorPosition();
+          } catch {
+            macCursor = null;
+          }
           const candidates = selectZoomWindowCandidates(
             buildMacZoomWindowCandidates(baseline, targetPhysicalRect),
+            macCursor,
           );
           const merged: Mark[] = [];
           let lastStats: any = undefined;

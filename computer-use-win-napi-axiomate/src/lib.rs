@@ -156,6 +156,13 @@ pub struct VisibleWindowInfo {
     pub z_rank: u32,
     pub is_foreground: bool,
     pub is_host: bool,
+    /// True for shell-owned windows that act as system chrome — the taskbar
+    /// (`Shell_TrayWnd`, `Shell_SecondaryTrayWnd`) and the desktop
+    /// (`Progman`, `WorkerW`). Caller (zoom candidate selector) uses this
+    /// to force-include them as enumeration candidates regardless of their
+    /// visible-area share in the zoom region, mirroring the full-screen
+    /// path's hardcoded taskbar+desktop search roots.
+    pub is_system_chrome: bool,
 }
 
 /// JPEG image returned by capture_window. Same {base64, width, height}
@@ -2974,7 +2981,12 @@ mod windows_impl {
         if !IsWindowVisible(hwnd).as_bool() || IsIconic(hwnd).as_bool() || is_window_cloaked(hwnd) {
             return true.into();
         }
-        if is_filtered_candidate_window(hwnd) {
+        // System chrome (Shell_TrayWnd, Progman, etc.) is marked
+        // WS_EX_TOOLWINDOW and would otherwise be rejected by
+        // is_filtered_candidate_window. Whitelist it first so the zoom
+        // candidate selector can find it.
+        let is_chrome = is_system_chrome_window(hwnd);
+        if !is_chrome && is_filtered_candidate_window(hwnd) {
             return true.into();
         }
         let rect = match get_window_rect(hwnd) {
@@ -3010,9 +3022,29 @@ mod windows_impl {
             z_rank: state.z_rank,
             is_foreground: hwnd.0 == state.foreground.0,
             is_host: state.host_pids.contains(&pid),
+            is_system_chrome: is_chrome,
         });
         state.z_rank = state.z_rank.saturating_add(1);
         true.into()
+    }
+
+    /// Class-name match against the four shell-owned windows that act as
+    /// system chrome: the taskbar (`Shell_TrayWnd` primary, plus
+    /// `Shell_SecondaryTrayWnd` per extra monitor) and the desktop
+    /// (`Progman` + `WorkerW` background). Used by the zoom candidate
+    /// selector to force-include them regardless of their visible area
+    /// share in the target rect.
+    unsafe fn is_system_chrome_window(hwnd: HWND) -> bool {
+        let mut buf = [0u16; 64];
+        let n = GetClassNameW(hwnd, &mut buf);
+        if n <= 0 {
+            return false;
+        }
+        let class = String::from_utf16_lossy(&buf[..n as usize]);
+        matches!(
+            class.as_str(),
+            "Shell_TrayWnd" | "Shell_SecondaryTrayWnd" | "Progman" | "WorkerW"
+        )
     }
 
     /// How `find_first_visible_window_for_app` matched the AI-supplied
