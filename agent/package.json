@@ -1,6 +1,6 @@
 {
   "name": "axiomate",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "Terminal AI coding agent. Bring your own model — any OpenAI- or Anthropic-compatible API. Built-in file/shell/MCP tooling, macOS computer-use, ships as a single Bun-compiled executable.",
   "type": "module",
   "main": "./dist/cli.js",
