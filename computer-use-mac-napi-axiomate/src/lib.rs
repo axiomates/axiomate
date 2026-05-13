@@ -2443,6 +2443,7 @@ mod macos {
             rect: &VRect,
             out: &mut Vec<UiElement>,
             seen: &mut BTreeSet<(i32, i32, u32, u32, &'static str)>,
+            list_item_centers: &mut BTreeSet<(i32, i32)>,
             bfs: &mut VecDeque<(AXUIElementRef, usize)>,
             heap: &mut BinaryHeap<FrontierItem>,
             state: &mut TraversalState,
@@ -2518,6 +2519,27 @@ mod macos {
                     // can't catch (different bbox per layer).
                     if role_bucket == "ListItem" {
                         prune_subtree = true;
+                    }
+                    // Cross-layer ListItem dedup. AXOutline → AXRow gives a
+                    // 220×38 mark; the parallel AXColumn → AXCell path
+                    // gives a 200×38 mark at the same center. Different
+                    // bbox keys, same UI affordance — keep only the first.
+                    if role_bucket == "ListItem" {
+                        let cx = (ui.bbox.origin.x + ui.bbox.size.w as i32 / 2) / 8;
+                        let cy = (ui.bbox.origin.y + ui.bbox.size.h as i32 / 2) / 8;
+                        if !list_item_centers.insert((cx, cy)) {
+                            super::append_ax_som_debug_log(&format!(
+                                "DROP listitem_center_dup depth={} name={:?} bbox=({},{} {}x{})",
+                                depth,
+                                ui.name,
+                                ui.bbox.origin.x,
+                                ui.bbox.origin.y,
+                                ui.bbox.size.w,
+                                ui.bbox.size.h
+                            ));
+                            CFRelease(el as *const c_void);
+                            return true;
+                        }
                     }
                     if seen.insert(key) {
                         super::append_ax_som_debug_log(&format!(
@@ -2636,6 +2658,7 @@ mod macos {
         ) -> UiElementEnumerationResult {
             let mut out = Vec::new();
             let mut seen: BTreeSet<(i32, i32, u32, u32, &'static str)> = BTreeSet::new();
+            let mut list_item_centers: BTreeSet<(i32, i32)> = BTreeSet::new();
             let mut bfs: VecDeque<(AXUIElementRef, usize)> = VecDeque::from([(start, 0)]);
             let mut heap: BinaryHeap<FrontierItem> = BinaryHeap::new();
             let mut state = TraversalState {
@@ -2652,6 +2675,7 @@ mod macos {
                     rect,
                     &mut out,
                     &mut seen,
+                    &mut list_item_centers,
                     &mut bfs,
                     &mut heap,
                     &mut state,
@@ -2667,6 +2691,7 @@ mod macos {
                     rect,
                     &mut out,
                     &mut seen,
+                    &mut list_item_centers,
                     &mut bfs,
                     &mut heap,
                     &mut state,
@@ -2680,6 +2705,7 @@ mod macos {
                         rect,
                         &mut out,
                         &mut seen,
+                        &mut list_item_centers,
                         &mut bfs,
                         &mut heap,
                         &mut state,
@@ -2961,6 +2987,7 @@ mod macos {
             rect: &VRect,
             results: &mut Vec<UiElement>,
             seen: &mut BTreeSet<(i32, i32, u32, u32, &'static str)>,
+            list_item_centers: &mut BTreeSet<(i32, i32)>,
             root_state: &mut RootState,
             global: &mut TraversalState,
             target_budget: u32,
@@ -2984,6 +3011,7 @@ mod macos {
                     rect,
                     results,
                     seen,
+                    list_item_centers,
                     &mut root_state.bfs,
                     &mut root_state.heap,
                     global,
@@ -3005,6 +3033,7 @@ mod macos {
         unsafe fn run_root_enumeration(rect: &VRect, roots: Vec<SearchRoot>) -> UiElementEnumerationResult {
             let mut results: Vec<UiElement> = Vec::new();
             let mut seen: BTreeSet<(i32, i32, u32, u32, &'static str)> = BTreeSet::new();
+            let mut list_item_centers: BTreeSet<(i32, i32)> = BTreeSet::new();
             let mut global_state = TraversalState {
                 traversed_count: 0,
                 matched_count: 0,
@@ -3038,6 +3067,7 @@ mod macos {
                             rect,
                             &mut results,
                             &mut seen,
+                            &mut list_item_centers,
                             root_state,
                             &mut global_state,
                             budget,
