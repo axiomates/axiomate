@@ -1,0 +1,23 @@
+{
+  "name": "sdk-basics",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Examples showing how to use axiomate-sdk: query(), custom tools, sessions, and the scheduler.",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "check": "tsc -p tsconfig.json --noEmit",
+    "query": "node dist/query.js",
+    "custom-tool": "node dist/custom-tool.js",
+    "sessions": "node dist/sessions.js",
+    "scheduler": "node dist/scheduler.js"
+  },
+  "dependencies": {
+    "axiomate-sdk": "workspace:*",
+    "zod": "^3.22.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.4.0"
+  }
+}

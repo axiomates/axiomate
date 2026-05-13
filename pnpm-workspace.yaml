@@ -12,3 +12,4 @@ packages:
   - 'mcpb-axiomate'
   - 'agent'
   - 'packages/sdk'
+  - 'samples/sdk-basics'
