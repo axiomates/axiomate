@@ -1,66 +1,87 @@
 import type { ChildProcess, ExecFileException } from 'child_process'
-import { execFile, spawn } from 'child_process'
+import { execFile, execFileSync, spawn } from 'child_process'
 import memoize from 'lodash-es/memoize.js'
 import { homedir } from 'os'
 import * as path from 'path'
-import { fileURLToPath } from 'url'
 import { isInBundledMode } from './bundledMode.js'
 import { logForDebugging } from './debug.js'
-import { isEnvDefinedFalsy } from './envUtils.js'
-import { execFileNoThrow } from './execFileNoThrow.js'
+import { isEnvTruthy } from './envUtils.js'
 import { findExecutable } from './findExecutable.js'
 import { logError } from './log.js'
 import { getPlatform } from './platform.js'
 import { countCharInString } from './stringUtils.js'
 
-const __filename = fileURLToPath(import.meta.url)
-// we use node:path.join instead of node:url.resolve because the former doesn't encode spaces
-const __dirname = path.join(
-  __filename,
-  process.env.NODE_ENV === 'test' ? '../../../' : '../',
-)
-
 type RipgrepConfig = {
-  mode: 'system' | 'builtin' | 'embedded'
+  mode: 'system' | 'embedded'
   command: string
   args: string[]
   argv0?: string
 }
 
-const getRipgrepConfig = memoize((): RipgrepConfig => {
-  const userWantsSystemRipgrep = isEnvDefinedFalsy(
-    process.env.USE_BUILTIN_RIPGREP,
-  )
+function probeRipgrep(
+  command: string,
+  args: string[],
+  argv0?: string,
+): boolean {
+  try {
+    if (argv0 && typeof Bun !== 'undefined') {
+      const proc = Bun.spawnSync([command, ...args, '--version'], {
+        argv0,
+        stderr: 'ignore',
+        stdout: 'pipe',
+      })
+      const stdout =
+        proc.stdout instanceof Blob
+          ? ''
+          : Buffer.from(proc.stdout).toString('utf-8')
+      return proc.exitCode === 0 && stdout.startsWith('ripgrep ')
+    }
+    const stdout = execFileSync(command, [...args, '--version'], {
+      timeout: 3000,
+      encoding: 'utf-8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    })
+    return typeof stdout === 'string' && stdout.startsWith('ripgrep ')
+  } catch {
+    return false
+  }
+}
 
-  // Try system ripgrep if user wants it
-  if (userWantsSystemRipgrep) {
+const getRipgrepConfig = memoize((): RipgrepConfig => {
+  const skipSystemRipgrep = isEnvTruthy(process.env.USE_BUILTIN_RIPGREP)
+
+  if (!skipSystemRipgrep) {
     const { cmd: systemPath } = findExecutable('rg', [])
-    if (systemPath !== 'rg') {
-      // SECURITY: Use command name 'rg' instead of systemPath to prevent PATH hijacking
-      // If we used systemPath, a malicious ./rg.exe in current directory could be executed
-      // Using just 'rg' lets the OS resolve it safely with NoDefaultCurrentDirectoryInExePath protection
+    if (systemPath !== 'rg' && probeRipgrep(systemPath, [])) {
+      // SECURITY: Use command name 'rg' instead of systemPath to prevent PATH hijacking.
+      // Using just 'rg' lets the OS resolve it safely with NoDefaultCurrentDirectoryInExePath protection.
       return { mode: 'system', command: 'rg', args: [] }
     }
   }
 
-  // In bundled (native) mode, ripgrep is statically compiled into bun-internal
-  // and dispatches based on argv[0]. We spawn ourselves with argv0='rg'.
   if (isInBundledMode()) {
-    return {
-      mode: 'embedded',
-      command: process.execPath,
-      args: ['--no-config'],
-      argv0: 'rg',
+    if (probeRipgrep(process.execPath, ['--no-config'], 'rg')) {
+      return {
+        mode: 'embedded',
+        command: process.execPath,
+        args: ['--no-config'],
+        argv0: 'rg',
+      }
     }
   }
 
-  const rgRoot = path.resolve(__dirname, 'vendor', 'ripgrep')
-  const command =
-    process.platform === 'win32'
-      ? path.resolve(rgRoot, `${process.arch}-win32`, 'rg.exe')
-      : path.resolve(rgRoot, `${process.arch}-${process.platform}`, 'rg')
+  // If system rg was skipped due to USE_BUILTIN_RIPGREP, try it as last resort
+  if (skipSystemRipgrep) {
+    const { cmd: systemPath } = findExecutable('rg', [])
+    if (systemPath !== 'rg' && probeRipgrep(systemPath, [])) {
+      return { mode: 'system', command: 'rg', args: [] }
+    }
+  }
 
-  return { mode: 'builtin', command, args: [] }
+  throw new Error(
+    'ripgrep (rg) not found. Install it via: winget install BurntSushi.ripgrep.MSVC  ' +
+      '(or scoop install ripgrep / brew install ripgrep / apt install ripgrep)',
+  )
 })
 
 export function ripgrepCommand(): {
@@ -247,7 +268,6 @@ async function ripGrepFileCount(
   target: string,
   abortSignal: AbortSignal,
 ): Promise<number> {
-  await codesignRipgrepIfNecessary()
   const { rgPath, rgArgs, argv0 } = ripgrepCommand()
 
   return new Promise<number>((resolve, reject) => {
@@ -297,7 +317,6 @@ export async function ripGrepStream(
   abortSignal: AbortSignal,
   onLines: (lines: string[]) => void,
 ): Promise<void> {
-  await codesignRipgrepIfNecessary()
   const { rgPath, rgArgs, argv0 } = ripgrepCommand()
 
   return new Promise<void>((resolve, reject) => {
@@ -346,8 +365,6 @@ export async function ripGrep(
   target: string,
   abortSignal: AbortSignal,
 ): Promise<string[]> {
-  await codesignRipgrepIfNecessary()
-
   // Test ripgrep on first use and cache the result (fire and forget)
   void testRipgrepOnFirstUse().catch(error => {
     logError(error)
@@ -519,155 +536,43 @@ export const countFilesRoundedRg = memoize(
     `${dirPath}|${ignorePatterns.join(',')}`,
 )
 
-// Singleton to store ripgrep availability status
-let ripgrepStatus: {
-  working: boolean
-  lastTested: number
-  config: RipgrepConfig
-} | null = null
-
 /**
  * Get ripgrep status and configuration info
- * Returns current configuration immediately, with working status if available
  */
 export function getRipgrepStatus(): {
-  mode: 'system' | 'builtin' | 'embedded'
+  mode: 'system' | 'embedded'
   path: string
-  working: boolean | null // null if not yet tested
+  working: boolean | null
 } {
-  const config = getRipgrepConfig()
-  return {
-    mode: config.mode,
-    path: config.command,
-    working: ripgrepStatus?.working ?? null,
+  try {
+    const config = getRipgrepConfig()
+    return {
+      mode: config.mode,
+      path: config.command,
+      working: ripgrepStatus?.working ?? null,
+    }
+  } catch {
+    return { mode: 'system', path: 'rg', working: false }
   }
 }
 
+// Singleton to store ripgrep availability status
+let ripgrepStatus: { working: boolean } | null = null
+
 /**
- * Test ripgrep availability on first use and cache the result
+ * Log ripgrep config on first use (probing already happened in getRipgrepConfig)
  */
 const testRipgrepOnFirstUse = memoize(async (): Promise<void> => {
-  // Already tested
-  if (ripgrepStatus !== null) {
-    return
-  }
-
-  const config = getRipgrepConfig()
+  if (ripgrepStatus !== null) return
 
   try {
-    let test: { code: number; stdout: string }
-
-    // For embedded ripgrep, use Bun.spawn with argv0
-    if (config.argv0) {
-      // Only Bun embeds ripgrep.
-      // eslint-disable-next-line custom-rules/require-bun-typeof-guard
-      const proc = Bun.spawn([config.command, '--version'], {
-        argv0: config.argv0,
-        stderr: 'ignore',
-        stdout: 'pipe',
-      })
-
-      // Bun's ReadableStream has .text() at runtime, but TS types don't reflect it
-      const [stdout, code] = await Promise.all([
-        (proc.stdout as unknown as Blob).text(),
-        proc.exited,
-      ])
-      test = {
-        code,
-        stdout,
-      }
-    } else {
-      test = await execFileNoThrow(
-        config.command,
-        [...config.args, '--version'],
-        {
-          timeout: 5000,
-        },
-      )
-    }
-
-    const working =
-      test.code === 0 && !!test.stdout && test.stdout.startsWith('ripgrep ')
-
-    ripgrepStatus = {
-      working,
-      lastTested: Date.now(),
-      config,
-    }
-
+    const config = getRipgrepConfig()
+    ripgrepStatus = { working: true }
     logForDebugging(
-      `Ripgrep first use test: ${working ? 'PASSED' : 'FAILED'} (mode=${config.mode}, path=${config.command})`,
+      `Ripgrep ready (mode=${config.mode}, path=${config.command})`,
     )
-
-    // Log telemetry for actual ripgrep availability
   } catch (error) {
-    ripgrepStatus = {
-      working: false,
-      lastTested: Date.now(),
-      config,
-    }
+    ripgrepStatus = { working: false }
     logError(error)
   }
 })
-
-let alreadyDoneSignCheck = false
-async function codesignRipgrepIfNecessary() {
-  if (process.platform !== 'darwin' || alreadyDoneSignCheck) {
-    return
-  }
-
-  alreadyDoneSignCheck = true
-
-  // Only sign the standalone vendored rg binary (npm builds)
-  const config = getRipgrepConfig()
-  if (config.mode !== 'builtin') {
-    return
-  }
-  const builtinPath = config.command
-
-  // First, check to see if ripgrep is already signed
-  const lines = (
-    await execFileNoThrow('codesign', ['-vv', '-d', builtinPath], {
-      preserveOutputOnError: false,
-    })
-  ).stdout.split('\n')
-
-  const needsSigned = lines.find(line => line.includes('linker-signed'))
-  if (!needsSigned) {
-    return
-  }
-
-  try {
-    const signResult = await execFileNoThrow('codesign', [
-      '--sign',
-      '-',
-      '--force',
-      '--preserve-metadata=entitlements,requirements,flags,runtime',
-      builtinPath,
-    ])
-
-    if (signResult.code !== 0) {
-      logError(
-        new Error(
-          `Failed to sign ripgrep: ${signResult.stdout} ${signResult.stderr}`,
-        ),
-      )
-    }
-
-    const quarantineResult = await execFileNoThrow('xattr', [
-      '-d',
-      'com.apple.quarantine',
-      builtinPath,
-    ])
-
-    if (quarantineResult.code !== 0) {
-      logError(
-        new Error(
-          `Failed to remove quarantine: ${quarantineResult.stdout} ${quarantineResult.stderr}`,
-        ),
-      )
-    }
-  } catch (e) {
-    logError(e)
-  }
-}

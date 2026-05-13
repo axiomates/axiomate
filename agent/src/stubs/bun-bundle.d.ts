@@ -19,6 +19,7 @@ declare const Bun:
       wrapAnsi(input: string, columns: number, options?: any): string
       embeddedFiles: any[]
       spawn(args: any, options?: any): any
+      spawnSync(args: any, options?: any): any
       listen(options: any): any
       which(name: string): string | null
       YAML: { parse(input: string): any; stringify(value: any): string; [key: string]: any }

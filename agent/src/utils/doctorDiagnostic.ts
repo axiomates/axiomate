@@ -13,7 +13,7 @@ export type DiagnosticInfo = {
   warnings: Array<{ issue: string; fix: string }>
   ripgrepStatus: {
     working: boolean
-    mode: 'system' | 'builtin' | 'embedded'
+    mode: 'system' | 'embedded'
     systemPath: string | null
   }
 }

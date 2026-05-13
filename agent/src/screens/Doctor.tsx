@@ -184,9 +184,7 @@ export function Doctor({ onDone }: Props): React.ReactNode {
           └ Search: {diagnostic.ripgrepStatus.working ? 'OK' : 'Not working'} (
           {diagnostic.ripgrepStatus.mode === 'embedded'
             ? 'bundled'
-            : diagnostic.ripgrepStatus.mode === 'builtin'
-              ? 'vendor'
-              : diagnostic.ripgrepStatus.systemPath || 'system'}
+            : diagnostic.ripgrepStatus.systemPath || 'system'}
           )
         </Text>
 
