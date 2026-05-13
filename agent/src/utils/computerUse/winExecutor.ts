@@ -668,7 +668,6 @@ export function createWinExecutor(): ComputerExecutor {
       )
       const image = outcome.image
       if (!image) return null
-      // Debug aux: dump JPEG so user can visually inspect what AI saw.
       dumpScreenshotForDebug('screenshot_window', image.base64)
       return {
         base64: image.base64,

@@ -1521,10 +1521,6 @@ async function collectWinContextAwareMarks(
         await sleep(150);
       }
       if (candidate.appIdentifier) touched?.add(candidate.appIdentifier);
-      await adapter.executor.screenshotWindow(candidate.appIdentifier, 0);
-      adapter.logger.debug?.(
-        `[computer-use] win probe screenshotWindow app=${candidate.displayName}`,
-      );
       const detailed = await enumerateWinAppMarksDetailed(
         adapter,
         candidate.appIdentifier,
