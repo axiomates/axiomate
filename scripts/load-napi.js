@@ -17,31 +17,51 @@
  * whether to short-circuit by `process.platform` BEFORE invoking this
  * util. Cross-platform packages (audio-capture) just call it directly.
  */
-const { join } = require('node:path')
+const { join, dirname } = require('node:path')
+const { existsSync } = require('node:fs')
+const Module = require('node:module')
+
+function dlopen(filepath) {
+  const m = new Module(filepath)
+  process.dlopen(m, filepath)
+  return m.exports
+}
 
 function loadNapiBinding(packageDir, packageName) {
-  const candidates = [
-    // napi build (host) default output — works for fresh dev builds
-    // on any platform (napi-rs CLI 2.x). This is what bootstrap's
-    // `napi build --release` produces with no --target flag.
-    join(packageDir, `${packageName}.node`),
-    // Triple-suffix variant — used when distributing prebuilt binaries
-    // for multiple platforms via npm (CI matrix) or when explicitly
-    // building with `napi build --target <triple>`.
-    join(packageDir, `${packageName}.${process.platform}-${process.arch}.node`),
+  // In a Bun-compiled exe, __dirname is baked to the BUILD machine path.
+  // The .node files are actually copied next to the exe, so we also search
+  // dirname(process.execPath) as a fallback directory.
+  const searchDirs = [packageDir]
+  const exeDir = dirname(process.execPath)
+  if (exeDir !== packageDir) searchDirs.push(exeDir)
+
+  const suffixes = [
+    `${packageName}.node`,
+    `${packageName}.${process.platform}-${process.arch}.node`,
   ]
 
   const errors = []
-  for (const candidate of candidates) {
-    try {
-      return { mod: require(candidate), error: null }
-    } catch (e) {
-      errors.push(`${candidate}: ${e && e.message ? e.message : String(e)}`)
+  for (const dir of searchDirs) {
+    for (const suffix of suffixes) {
+      const candidate = join(dir, suffix)
+      try {
+        return { mod: require(candidate), error: null }
+      } catch (e) {
+        if (existsSync(candidate)) {
+          try {
+            return { mod: dlopen(candidate), error: null }
+          } catch (e2) {
+            errors.push(`${candidate}: dlopen: ${e2 && e2.message ? e2.message : String(e2)}`)
+            continue
+          }
+        }
+        errors.push(`${candidate}: ${e && e.message ? e.message : String(e)}`)
+      }
     }
   }
   return {
     mod: null,
-    error: `tried ${candidates.length} candidate(s): ${errors.join(' | ')}`,
+    error: `tried ${errors.length} candidate(s): ${errors.join(' | ')}`,
   }
 }
 
