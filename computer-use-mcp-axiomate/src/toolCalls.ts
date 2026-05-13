@@ -309,11 +309,11 @@ function buildToolModeHint(
 
   switch (tool) {
     case "screenshot":
-      return "\n\nCurrent model does not use image content directly here. Focus on text SoM, grouped summaries, and `mark_id`. Do not guess coordinates from rulers.";
+      return "\n\nCurrent model does not process image content. Use the text SoM list and `mouse_move(mark_id: N)` to target detected elements. Do not guess coordinates.";
     case "screenshot_window":
-      return "\n\nCurrent model should treat this as a text-first inspection result. Prefer listed SoM items and `mark_id`; ignore ruler-oriented visual guidance.";
+      return "\n\nCurrent model does not process image content. Use the text SoM list and `mouse_move(mark_id: N)` to target detected elements.";
     case "zoom":
-      return "\n\nCurrent model should use the text SoM list and dense-region summary below. Do not infer coordinates from the zoom image or rulers.";
+      return "\n\nCurrent model does not process image content. Use the text SoM list and dense-region summary. Do not infer coordinates from the image.";
   }
 }
 

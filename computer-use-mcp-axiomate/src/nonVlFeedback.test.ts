@@ -112,7 +112,7 @@ describe('non-VL feedback', () => {
       overrides,
     )
     const text = result.content.find(c => c.type === 'text')
-    expect(text && 'text' in text ? text.text : '').toContain('text-first inspection result')
+    expect(text && 'text' in text ? text.text : '').toContain('does not process image content')
     expect(text && 'text' in text ? text.text : '').toContain('mark_id')
   })
 })

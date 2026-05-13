@@ -295,14 +295,12 @@ export function bindSessionContext(
         result.content.push({ type: "text", text: injection });
         logger.debug(`[${serverName}] locate loop ${name}: injection appended, moved=${activeLocate.moved}`);
       } else if (["left_click", "double_click", "triple_click", "right_click", "middle_click"].includes(name) && !result.isError) {
-        const tip = canSuggestVisionLocate()
-          ? "Tip: For reliable clicking, use vision_locate first to enter guided visual positioning mode."
-          : "Tip: For reliable clicking, prefer `screenshot`, `zoom`, or `screenshot_window`, read the text SoM list, then use `mouse_move(mark_id: N)` instead of guessing coordinates."
+        const tip = "Tip: For reliable clicking, prefer `screenshot`, `zoom`, or `screenshot_window`, read the text SoM list, then use `mouse_move(mark_id: N)` instead of guessing coordinates." +
+          (canSuggestVisionLocate() ? " For complex visual targets that SoM can't detect, use `vision_locate`." : "");
         result.content.push({ type: "text", text: tip });
       } else if (name === "screenshot" && !result.isError) {
-        const tip = canSuggestVisionLocate()
-          ? "Tip: If your next step is to click a UI element you can describe by name (e.g. 'taskbar settings icon', 'Send button'), call `vision_locate` instead of guessing coordinates — guided visual positioning is far more reliable because it starts with zoom, then uses cursor movement and visual confirmation before taking coordinates."
-          : "Tip: If your next step is to click a UI element by name, prefer `screenshot`, `zoom`, or `screenshot_window`, read the text SoM list, then use `mouse_move(mark_id: N)` instead of guessing coordinates."
+        const tip = "Tip: If your next step is to click a UI element, read the text SoM list above and use `mouse_move(mark_id: N)` to jump directly to a detected element." +
+          (canSuggestVisionLocate() ? " For unlabeled or custom-drawn targets that SoM missed, use `vision_locate`." : "");
         result.content.push({ type: "text", text: tip });
       }
 
