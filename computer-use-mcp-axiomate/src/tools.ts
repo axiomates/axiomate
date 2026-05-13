@@ -286,7 +286,7 @@ export function buildComputerUseTools(
         "\n\n**⚠ Tool selection: if the user's intent is to click or interact with a UI element they describe by name or appearance and you have an image-capable model, call `vision_locate` instead — it ALSO returns a screenshot AND walks you through locating the target. Otherwise prefer `screenshot`, `zoom`, or `screenshot_window` and use text SoM + `mark_id`. Use this `screenshot` tool only when the goal is to OBSERVE or READ the screen (verifying state, reading text, planning, debugging) — not as the first step of a click.**\n\n" +
         "**The mouse cursor IS rendered in the image with a thick lime-green CIRCLE outline drawn around it** (the ring is added so the cursor remains unmissable at any image scale / JPEG compression). The cursor's pointer tip sits at the CENTER of the green ring. Use the green ring as ground-truth for where input will land.\n\n" +
         "**Coordinate system: x increases LEFT→RIGHT, y increases TOP→BOTTOM.** (0, 0) is the top-left corner. The ruler numbers on each edge show the valid coordinate range — the largest numbers at the right/bottom edges are the screen width/height.\n\n" +
-        "**SoM (Set-of-Mark)** auto-detects interactive UI elements (buttons, fields, icons, links) across all visible windows and overlays red numbered circles on the image (up to 20) plus a per-window text list of detected marks (up to 20 / 50 vision / text mode). When marks are available, call `mouse_move(mark_id: N)` to jump the cursor directly to a detected element — far faster and more reliable than estimating coordinates from rulers. The text SoM list groups marks by source window so you can quickly find controls in a specific app.\n\n" +
+        "**SoM (Set-of-Mark)** auto-detects interactive UI elements (buttons, fields, icons, links) across all visible windows and overlays red numbered circles on the image plus a per-window text list of detected marks (up to 50 entries). When marks are available, call `mouse_move(mark_id: N)` to jump the cursor directly to a detected element — far faster and more reliable than estimating coordinates from rulers. The text SoM list groups marks by source window so you can quickly find controls in a specific app. Pass `som: false` to skip detection entirely.\n\n" +
         "If the user names a specific application and just wants to SEE it (e.g. \"show me Slack\", \"截 Chrome\"), prefer `screenshot_window` to capture only that app's frontmost window.",
       inputSchema: {
         type: "object" as const,
@@ -300,6 +300,11 @@ export function buildComputerUseTools(
               "'none' (default): clean screenshot without any overlay. " +
               "'edge': four-edge rulers only (no crossing lines). " +
               "'full': four-edge rulers + semi-transparent grid lines across the image.",
+          },
+          som: {
+            type: "boolean",
+            description:
+              "Whether to run SoM (Set-of-Mark) detection and overlay red numbered circles on interactive elements. Default true. Set to false to skip UIA enumeration entirely — faster capture, no z-order side effects on Windows, and no text SoM list. Setting false also clears any prior `mark_id` resolution; `mouse_move(mark_id: N)` will error until the next SoM-producing call.",
           },
         },
         required: [],

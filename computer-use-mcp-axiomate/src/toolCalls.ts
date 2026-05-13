@@ -3764,6 +3764,13 @@ async function handleScreenshot(
   args?: Record<string, unknown>,
 ): Promise<CuCallToolResult> {
   const allowedApps = allowedAppsOf(overrides);
+  // SoM gate: when som:false, skip all UIA enumeration. This bypasses
+  // runWinPreCaptureUIA (avoiding its z-order / foreground side effects
+  // on Windows) and the Mac post-capture probe, plus the windows-context
+  // listing. Also clears any prior mark_id store so mouse_move(mark_id)
+  // errors out until the next SoM-producing call. Default true.
+  const somDisabled = args?.som === false;
+  if (somDisabled) overrides.onLocateMarksUpdated?.([]);
   adapter.logger.debug(
     `[computer-use] handleScreenshot enter: screenshotFiltering=${adapter.executor.capabilities.screenshotFiltering} allowedApps=${allowedApps.length} autoTargetDisplay=${subGates.autoTargetDisplay} hideBeforeAction=${subGates.hideBeforeAction} selectedDisplayId=${overrides.selectedDisplayId ?? "undef"}`,
   );
@@ -3841,7 +3848,7 @@ async function handleScreenshot(
   let winPrecapture: Awaited<ReturnType<typeof runWinPreCaptureUIA>> = null;
   let winRestoredEarly = false;
   try {
-    if (isWin) {
+    if (isWin && !somDisabled) {
       winPrecapture = await runWinPreCaptureUIA(
         adapter,
         overrides.selectedDisplayId,
@@ -3971,7 +3978,10 @@ async function handleScreenshot(
       const visionEnabled = supportsVisionForFeedback(adapter);
       let marks: Mark[] = [];
       let detectionStats: any = {};
-      if (isWin) {
+      if (somDisabled) {
+        // som:false — skip post-capture UIA entirely. marks stays empty,
+        // no windows context is built, no text SoM block is rendered.
+      } else if (isWin) {
         // Win: marks were produced by the pre-capture UIA pass before
         // the screenshot. Validate that display geometry didn't drift
         // — if it did, the mark coords reference stale dims and would
@@ -4181,7 +4191,10 @@ async function handleScreenshot(
     const visionEnabled = supportsVisionForFeedback(adapter);
     let marks: Mark[] = [];
     let detectionStats: any = {};
-    if (isWin) {
+    if (somDisabled) {
+      // som:false — skip post-capture UIA entirely. See atomic-path
+      // comment.
+    } else if (isWin) {
       // Win: see atomic-path comment. Pre-capture pass produced marks
       // earlier; validate display dims still match the screenshot.
       if (winPrecapture) {
