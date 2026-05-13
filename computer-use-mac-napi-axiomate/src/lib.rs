@@ -1802,17 +1802,96 @@ mod macos {
             out
         }
 
+        /// Finder sidebar rows, NSOutlineView cells, and similar container
+        /// items carry the user-visible label on a descendant AXStaticText
+        /// rather than on the row itself. Rows would otherwise fall out
+        /// at the `is_name_useful` check and never become marks. Scan a
+        /// shallow subtree (depth 3 is enough for row → cell → text and
+        /// disclosure-triangle sibling variants) for the first static
+        /// text with a useful title/desc/value.
+        unsafe fn read_descendant_static_text(element: AXUIElementRef) -> Option<String> {
+            let role_attr = ax_attr("AXRole");
+            let title_attr = ax_attr("AXTitle");
+            let desc_attr = ax_attr("AXDescription");
+            let value_attr = ax_attr("AXValue");
+            let mut stack: Vec<(AXUIElementRef, usize)> = Vec::new();
+            let mut result: Option<String> = None;
+            let children = read_children(element);
+            for c in children {
+                stack.push((c, 1));
+            }
+            while let Some((el, depth)) = stack.pop() {
+                let role = read_string_attr(el, role_attr.as_concrete_TypeRef() as CFStringRef)
+                    .unwrap_or_default();
+                if role == "AXStaticText" {
+                    let text = trim_text(
+                        read_string_attr(el, title_attr.as_concrete_TypeRef() as CFStringRef)
+                            .or_else(|| read_string_attr(el, desc_attr.as_concrete_TypeRef() as CFStringRef))
+                            .or_else(|| read_string_attr(el, value_attr.as_concrete_TypeRef() as CFStringRef))
+                            .unwrap_or_default(),
+                    );
+                    if !text.is_empty() {
+                        result = Some(text);
+                        CFRelease(el as *const c_void);
+                        break;
+                    }
+                }
+                if depth < 3 {
+                    let grandchildren = read_children(el);
+                    for g in grandchildren {
+                        stack.push((g, depth + 1));
+                    }
+                }
+                CFRelease(el as *const c_void);
+            }
+            for (el, _) in stack {
+                CFRelease(el as *const c_void);
+            }
+            result
+        }
+
         unsafe fn read_children(element: AXUIElementRef) -> Vec<AXUIElementRef> {
-            let attrs = [
-                "AXChildren",
-                "AXVisibleChildren",
-                "AXRows",
-                "AXContents",
-                "AXSelectedChildren",
-            ];
             let mut out = Vec::new();
             let mut seen = BTreeSet::<usize>::new();
-            for attr_name in attrs {
+
+            // AXChildren ⊇ AXVisibleChildren almost always — walking both
+            // doubled AX traffic and the parent-role debug log. Prefer
+            // VisibleChildren when present (the user can't act on an offscreen
+            // node anyway); fall back to AXChildren otherwise.
+            let primary = {
+                let visible = read_children_for_attr(element, "AXVisibleChildren");
+                if !visible.is_empty() {
+                    super::append_ax_som_debug_log(&format!(
+                        "CHILDREN attr=AXVisibleChildren count={} from {}",
+                        visible.len(),
+                        debug_element_summary(element)
+                    ));
+                    visible
+                } else {
+                    let all = read_children_for_attr(element, "AXChildren");
+                    if !all.is_empty() {
+                        super::append_ax_som_debug_log(&format!(
+                            "CHILDREN attr=AXChildren count={} from {}",
+                            all.len(),
+                            debug_element_summary(element)
+                        ));
+                    }
+                    all
+                }
+            };
+            for child in primary {
+                let key = child as usize;
+                if seen.insert(key) {
+                    out.push(child);
+                } else {
+                    CFRelease(child as *const c_void);
+                }
+            }
+
+            // Virtualized container attrs that surface children the standard
+            // hierarchy hides (e.g. AXOutline → AXRows beyond the visible
+            // viewport, NSTabView contents lazily inflated).
+            for attr_name in ["AXRows", "AXContents", "AXSelectedChildren"] {
                 let children = read_children_for_attr(element, attr_name);
                 if !children.is_empty() {
                     super::append_ax_som_debug_log(&format!(
@@ -2071,6 +2150,19 @@ mod macos {
                     | "AXImage"
                     | "AXSlider"
             )
+        }
+
+        /// AX hit-test (`AXUIElementCopyElementAtPosition`) is reliable for
+        /// elements that draw their own pixels and respond to events. For
+        /// passive/decorative roles (static text labels, images, table rows
+        /// that delegate hit-testing to a child cell) macOS often returns
+        /// the rendering parent instead of the element itself — and parent
+        /// identity is hard to match across AX references. Skipping the
+        /// hit-test here trades the rare false-positive (a stale offscreen
+        /// label) for not silently dropping legitimate path bars, image
+        /// labels, and the visible children of AXOutline rows.
+        fn role_needs_hit_test(role: &str) -> bool {
+            !matches!(role, "AXStaticText" | "AXImage" | "AXRow" | "AXCell")
         }
 
         fn rect_to_public(rect: &CGRectNative) -> VRect {
@@ -2485,7 +2577,7 @@ mod macos {
             {
                 return Err("bbox too large for filter".to_string());
             }
-            if !is_ax_element_hit_visible(element, &bbox) {
+            if role_needs_hit_test(&role_raw) && !is_ax_element_hit_visible(element, &bbox) {
                 return Err("hit-test visibility failed".to_string());
             }
             let name = trim_text(
@@ -2494,6 +2586,11 @@ mod macos {
                 .or_else(|| read_string_attr(element, value_attr.as_concrete_TypeRef() as CFStringRef))
                 .unwrap_or_default(),
             );
+            let name = if name.is_empty() && matches!(role_raw.as_str(), "AXRow" | "AXCell") {
+                read_descendant_static_text(element).unwrap_or_default()
+            } else {
+                name
+            };
             if !is_name_useful(&name, &role_raw) {
                 return Err(format!("name not useful role={role_raw} name={name:?}"));
             }
