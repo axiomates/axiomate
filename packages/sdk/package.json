@@ -1,6 +1,6 @@
 {
   "name": "axiomate-sdk",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Programmatic SDK for the Axiomate AI agent CLI. Spawn the agent as a subprocess and interact via typed async generators.",
   "type": "module",
   "main": "./dist/index.js",

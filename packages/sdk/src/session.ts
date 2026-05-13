@@ -1,12 +1,16 @@
+import { randomUUID } from 'node:crypto'
+import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises'
+import { dirname } from 'node:path'
+import { listSessionsImpl, parseSessionInfoFromLite } from './listSessionsImpl.js'
 import { query } from './query.js'
+import { readSessionLite, resolveSessionFilePath } from './sessionStorage.js'
 import type {
   ForkSessionOptions,
   ForkSessionResult,
   GetSessionInfoOptions,
   GetSessionMessagesOptions,
   ListSessionsOptions,
-  Options,
-  SDKMessage,
+  Query,
   SDKResultMessage,
   SDKSession,
   SDKSessionInfo,
@@ -14,11 +18,14 @@ import type {
   SDKUserMessage,
   SessionMessage,
   SessionMutationOptions,
-  Query,
 } from './types/index.js'
 
+// ---------------------------------------------------------------------------
+// V2 Session API (preview) — convenience wrappers around query()
+// ---------------------------------------------------------------------------
+
 export function unstable_v2_createSession(options: SDKSessionOptions): SDKSession {
-  const sessionId = options.sessionId ?? crypto.randomUUID()
+  const sessionId = options.sessionId ?? randomUUID()
 
   return {
     get sessionId() {
@@ -26,13 +33,15 @@ export function unstable_v2_createSession(options: SDKSessionOptions): SDKSessio
     },
 
     send(message: string | SDKUserMessage): Query {
-      const prompt = typeof message === 'string' ? message : undefined
-      const streamInput = typeof message !== 'string'
-        ? (async function* () { yield message })()
-        : undefined
+      const prompt =
+        typeof message === 'string'
+          ? message
+          : (async function* () {
+              yield message
+            })()
 
       return query({
-        prompt: prompt ?? streamInput!,
+        prompt: prompt as string | AsyncIterable<SDKUserMessage>,
         options: {
           ...options,
           sessionId,
@@ -75,41 +84,117 @@ export async function unstable_v2_prompt(
   return result
 }
 
-export async function getSessionMessages(
-  sessionId: string,
-  options?: GetSessionMessagesOptions,
-): Promise<SessionMessage[]> {
-  const q = query({
-    prompt: `__sdk_internal_get_session_messages ${sessionId}`,
-    options: {
-      cwd: options?.dir,
-      maxTurns: 0,
-    },
-  })
+// ---------------------------------------------------------------------------
+// Filesystem-backed session reads (no CLI subprocess required)
+// ---------------------------------------------------------------------------
 
-  // For session read operations, we use the CLI's session reading capability
-  // This is a placeholder — actual implementation depends on CLI support for session queries
-  const messages: SessionMessage[] = []
-  for await (const _msg of q) {
-    // Collect messages from the stream
+function liteToSdkSessionInfo(info: ReturnType<typeof parseSessionInfoFromLite>): SDKSessionInfo | undefined {
+  if (!info) return undefined
+  return {
+    id: info.sessionId,
+    title: info.customTitle ?? info.summary,
+    tag: info.tag,
+    createdAt: info.createdAt,
+    updatedAt: info.lastModified,
   }
-  return messages
 }
 
 export async function listSessions(
   options?: ListSessionsOptions,
 ): Promise<SDKSessionInfo[]> {
-  // Session listing reads from the filesystem directly
-  // This requires access to ~/.claude/projects/ or the specified dir
-  // For now, delegate to CLI via a special command
-  return []
+  const sessions = await listSessionsImpl({
+    dir: options?.dir,
+    limit: options?.limit,
+    offset: options?.offset,
+  })
+  return sessions.map((s) => ({
+    id: s.sessionId,
+    title: s.customTitle ?? s.summary,
+    tag: s.tag,
+    createdAt: s.createdAt,
+    updatedAt: s.lastModified,
+  }))
 }
 
 export async function getSessionInfo(
   sessionId: string,
   options?: GetSessionInfoOptions,
 ): Promise<SDKSessionInfo | undefined> {
-  return undefined
+  const resolved = await resolveSessionFilePath(sessionId, options?.dir)
+  if (!resolved) return undefined
+
+  const lite = await readSessionLite(resolved.filePath)
+  if (!lite) return undefined
+
+  const info = parseSessionInfoFromLite(sessionId, lite, resolved.projectPath)
+  return liteToSdkSessionInfo(info)
+}
+
+export async function getSessionMessages(
+  sessionId: string,
+  options?: GetSessionMessagesOptions,
+): Promise<SessionMessage[]> {
+  const resolved = await resolveSessionFilePath(sessionId, options?.dir)
+  if (!resolved) return []
+
+  let content: string
+  try {
+    content = await readFile(resolved.filePath, 'utf8')
+  } catch {
+    return []
+  }
+
+  const includeSystem = options?.includeSystemMessages ?? false
+  const offset = options?.offset ?? 0
+  const limit = options?.limit
+  const allowedTypes = new Set(includeSystem ? ['user', 'assistant', 'system'] : ['user', 'assistant'])
+
+  const messages: SessionMessage[] = []
+
+  for (const line of content.split('\n')) {
+    if (!line) continue
+    let entry: Record<string, unknown>
+    try {
+      entry = JSON.parse(line) as Record<string, unknown>
+    } catch {
+      continue
+    }
+    const type = entry['type']
+    if (typeof type !== 'string' || !allowedTypes.has(type)) continue
+
+    let timestamp: number | undefined
+    const ts = entry['timestamp']
+    if (typeof ts === 'string') {
+      const parsed = Date.parse(ts)
+      if (!Number.isNaN(parsed)) timestamp = parsed
+    } else if (typeof ts === 'number') {
+      timestamp = ts
+    }
+
+    messages.push({
+      uuid: (entry['uuid'] as string) ?? '',
+      parentUuid: entry['parentUuid'] as string | undefined,
+      type: type as 'user' | 'assistant' | 'system',
+      content: entry['message'] ?? entry['content'] ?? entry,
+      timestamp,
+    })
+  }
+
+  const sliced = messages.slice(offset)
+  return limit && limit > 0 ? sliced.slice(0, limit) : sliced
+}
+
+// ---------------------------------------------------------------------------
+// Filesystem-backed session mutations
+// ---------------------------------------------------------------------------
+
+async function appendJsonlEntry(
+  filePath: string,
+  entry: Record<string, unknown>,
+): Promise<void> {
+  await mkdir(dirname(filePath), { recursive: true, mode: 0o700 })
+  const line = JSON.stringify(entry) + '\n'
+  await appendFile(filePath, line, { encoding: 'utf8', mode: 0o600 })
 }
 
 export async function renameSession(
@@ -117,7 +202,15 @@ export async function renameSession(
   title: string,
   options?: SessionMutationOptions,
 ): Promise<void> {
-  // Append custom-title entry to session JSONL
+  const resolved = await resolveSessionFilePath(sessionId, options?.dir)
+  if (!resolved) {
+    throw new Error(`Session not found: ${sessionId}`)
+  }
+  await appendJsonlEntry(resolved.filePath, {
+    type: 'custom-title',
+    customTitle: title,
+    sessionId,
+  })
 }
 
 export async function tagSession(
@@ -125,14 +218,111 @@ export async function tagSession(
   tag: string | null,
   options?: SessionMutationOptions,
 ): Promise<void> {
-  // Append tag entry to session JSONL
+  const resolved = await resolveSessionFilePath(sessionId, options?.dir)
+  if (!resolved) {
+    throw new Error(`Session not found: ${sessionId}`)
+  }
+  await appendJsonlEntry(resolved.filePath, {
+    type: 'tag',
+    tag: tag ?? '',
+    sessionId,
+  })
 }
+
+// ---------------------------------------------------------------------------
+// Fork session — JSONL transcript copy with UUID remapping
+// ---------------------------------------------------------------------------
+
+type RawEntry = Record<string, unknown> & { type?: string; uuid?: string }
 
 export async function forkSession(
   sessionId: string,
   options?: ForkSessionOptions,
 ): Promise<ForkSessionResult> {
-  const newSessionId = crypto.randomUUID()
-  // Fork implementation: copy transcript with remapped UUIDs
-  return { sessionId: newSessionId }
+  const resolved = await resolveSessionFilePath(sessionId, options?.dir)
+  if (!resolved) {
+    throw new Error(`Session not found: ${sessionId}`)
+  }
+
+  const sourceContent = await readFile(resolved.filePath, 'utf8')
+  if (!sourceContent.trim()) {
+    throw new Error('No conversation to branch')
+  }
+
+  const sourceEntries: RawEntry[] = []
+  for (const line of sourceContent.split('\n')) {
+    if (!line) continue
+    try {
+      sourceEntries.push(JSON.parse(line) as RawEntry)
+    } catch {
+      // Skip unparseable lines
+    }
+  }
+
+  const allowedTranscriptTypes = new Set(['user', 'assistant', 'system'])
+  const mainConversation = sourceEntries.filter(
+    (e) =>
+      typeof e['type'] === 'string' &&
+      allowedTranscriptTypes.has(e['type']) &&
+      !e['isSidechain'],
+  )
+
+  if (mainConversation.length === 0) {
+    throw new Error('No messages to branch')
+  }
+
+  // Truncate at upToMessageId if specified (inclusive)
+  let truncated = mainConversation
+  if (options?.upToMessageId) {
+    const idx = mainConversation.findIndex((e) => e['uuid'] === options.upToMessageId)
+    if (idx >= 0) {
+      truncated = mainConversation.slice(0, idx + 1)
+    }
+  }
+
+  const forkSessionId = randomUUID()
+  const forkFilePath = resolved.filePath.replace(
+    `${sessionId}.jsonl`,
+    `${forkSessionId}.jsonl`,
+  )
+
+  // Build forked entries: rewrite sessionId, remap parentUuid chain, add forkedFrom
+  let parentUuid: string | null = null
+  const lines: string[] = []
+
+  for (const entry of truncated) {
+    const forked = {
+      ...entry,
+      sessionId: forkSessionId,
+      parentUuid,
+      isSidechain: false,
+      forkedFrom: {
+        sessionId,
+        messageUuid: entry['uuid'],
+      },
+    }
+    lines.push(JSON.stringify(forked))
+    if (entry['type'] !== 'progress' && typeof entry['uuid'] === 'string') {
+      parentUuid = entry['uuid']
+    }
+  }
+
+  // Optional title
+  if (options?.title) {
+    lines.push(
+      JSON.stringify({
+        type: 'custom-title',
+        customTitle: options.title,
+        sessionId: forkSessionId,
+      }),
+    )
+  }
+
+  await mkdir(dirname(forkFilePath), { recursive: true, mode: 0o700 })
+  await writeFile(forkFilePath, lines.join('\n') + '\n', {
+    encoding: 'utf8',
+    mode: 0o600,
+  })
+
+  return { sessionId: forkSessionId }
 }
