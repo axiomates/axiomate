@@ -27,6 +27,25 @@ export {
   connectRemoteControl,
 } from './daemon.js'
 
+// Cron task management (filesystem-backed)
+export {
+  readCronTasks,
+  writeCronTasks,
+  removeCronTasks,
+  markCronTasksFired,
+  findMissedTasks,
+  getCronFilePath,
+} from './cronTasks.js'
+
+export {
+  parseCronExpression,
+  computeNextCronRun,
+  nextCronRunMs,
+  jitteredNextCronRunMs,
+  oneShotJitteredNextCronRunMs,
+  DEFAULT_CRON_JITTER_CONFIG,
+} from './cron.js'
+
 // Errors
 export { AbortError } from './errors.js'
 
