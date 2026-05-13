@@ -871,7 +871,7 @@ mod macos {
         //! agent's executor coord space), so no scaling/flipping is needed.
 
         use super::running_app;
-        use crate::{AppHitInfo, WindowDisplayInfo};
+        use crate::{AppHitInfo, VPoint, VRect, VSize, VisibleMacWindowInfo, WindowDisplayInfo};
         use std::collections::{BTreeMap, BTreeSet};
         use std::os::raw::{c_double, c_void};
 
@@ -1446,7 +1446,7 @@ mod macos {
     }
 
     pub mod ax_query {
-        use crate::{UiElement, VPoint, VRect, VSize, VisibleMacWindowInfo};
+        use crate::{UiElement, UiElementEnumerationResult, VPoint, VRect, VSize, VisibleMacWindowInfo};
         use core_foundation::base::TCFType;
         use core_foundation::string::CFString;
         use std::borrow::Cow;
@@ -1598,7 +1598,8 @@ mod macos {
                 if let Some(rect) = read_rect(focused_window).map(|r| rect_to_public(&r)) {
                     if intersection_area(&rect, target_rect) > 0 {
                         let penalty = if window_id.is_some() { 50 } else { 0 };
-                        best = Some((focused_window, rect, rect_distance(&rect, target_rect) + penalty));
+                        let distance = rect_distance(&rect, target_rect) + penalty;
+                        best = Some((focused_window, rect, distance));
                     }
                 }
             }
@@ -2069,13 +2070,6 @@ mod macos {
                 && y < rect.origin.y + rect.size.h as i32
         }
 
-        fn rect_center(rect: &VRect) -> (i32, i32) {
-            (
-                rect.origin.x + rect.size.w as i32 / 2,
-                rect.origin.y + rect.size.h as i32 / 2,
-            )
-        }
-
         fn rect_intersection_area_rect(a: &VRect, b: &VRect) -> u64 {
             let w = ((a.origin.x + a.size.w as i32).min(b.origin.x + b.size.w as i32)
                 - a.origin.x.max(b.origin.x))
@@ -2163,9 +2157,9 @@ mod macos {
                 if center_in_filter(&bbox, filter) {
                     score += 25;
                 }
-                let bbox_area = bbox_area(&bbox);
+                let bbox_area_value = bbox_area(&bbox);
                 let filter_area = bbox_area(filter);
-                if filter_area > 0 && bbox_area > (filter_area * 9) / 10 && role_is_container_only(&role_raw) {
+                if filter_area > 0 && bbox_area_value > (filter_area * 9) / 10 && role_is_container_only(&role_raw) {
                     score -= 120;
                 }
                 if bbox.size.w == 0 || bbox.size.h == 0 {
