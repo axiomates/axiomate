@@ -3507,6 +3507,42 @@ function uniqueDisplayLabels(
 }
 
 /**
+ * Build a one-line resolution note that explicitly tells the AI the
+ * captured region's real screen coords + size. The rulers in the JPEG
+ * communicate the same info graphically, but text-only / vision-stripped
+ * models can't read those — they need it in words.
+ *
+ * Always emitted (unlike `buildMonitorNote` which suppresses on
+ * single-monitor steady-state). Top-left = origin; bottom-right =
+ * origin + size. Range matches what the AI must use for click coords.
+ *
+ * `kind`:
+ *   - `"screen"` → "Captured region: full screen, ..." (full display)
+ *   - `"window"` → "Captured region: window of <app>, ..." (single-app capture)
+ *   - `"zoom"`   → "Captured region: zoom into ..." (sub-rect of display)
+ */
+function buildResolutionNote(
+  kind: "screen" | "window" | "zoom",
+  rect: { x: number; y: number; w: number; h: number },
+  appLabel?: string,
+): string {
+  const tl = `(${rect.x}, ${rect.y})`;
+  const br = `(${rect.x + rect.w}, ${rect.y + rect.h})`;
+  const wh = `${rect.w}×${rect.h}`;
+  const what =
+    kind === "screen"
+      ? "full screen"
+      : kind === "window"
+        ? `window of "${appLabel ?? "<unknown>"}"`
+        : "zoom region";
+  return (
+    `Captured region: ${what}, top-left=${tl}, bottom-right=${br}, size=${wh} px. ` +
+    `Click / mouse_move coordinates must fall inside this rect — the ruler ` +
+    `labels on the image show the same range.`
+  );
+}
+
+/**
  * Build the monitor-context text that accompanies a screenshot. Tells the
  * model which monitor it's looking at (by human name), lists other attached
  * monitors, and flags when the monitor changed vs. the previous screenshot.
@@ -3970,8 +4006,15 @@ async function handleScreenshot(
         // log shows the source window for each jump.
         overrides.onLocateMarksUpdated?.(attributedMarks.slice(0, shownCount));
       }
+      const resolutionNote = buildResolutionNote("screen", {
+        x: shot.originX ?? 0,
+        y: shot.originY ?? 0,
+        w: shot.displayWidth ?? shot.width,
+        h: shot.displayHeight ?? shot.height,
+      });
       return {
         content: [
+          { type: "text" as const, text: resolutionNote },
           ...(monitorNote ? [{ type: "text" as const, text: monitorNote }] : []),
           ...(hiddenNote ? [{ type: "text" as const, text: hiddenNote }] : []),
           {
@@ -3988,7 +4031,7 @@ async function handleScreenshot(
         screenshot: shot,
       };
     }
-  
+
     // Same hide+defocus sequence as input actions. Screenshot needs hide too
     // — if a non-allowlisted app is on top, SCContentFilter would composite it
     // out, but the pixels BELOW it are what the model would see, and those are
@@ -4159,8 +4202,15 @@ async function handleScreenshot(
       // mark_id against this screenshot's IDs.
       overrides.onLocateMarksUpdated?.(attributedMarks.slice(0, shownCount));
     }
+    const resolutionNote = buildResolutionNote("screen", {
+      x: shot.originX ?? 0,
+      y: shot.originY ?? 0,
+      w: shot.displayWidth ?? shot.width,
+      h: shot.displayHeight ?? shot.height,
+    });
     return {
       content: [
+        { type: "text" as const, text: resolutionNote },
         ...(monitorNote ? [{ type: "text" as const, text: monitorNote }] : []),
         ...(hiddenNote ? [{ type: "text" as const, text: hiddenNote }] : []),
         {
@@ -4486,8 +4536,14 @@ async function handleScreenshotWindow(
   }
   
   try {
+    const resolutionNote = buildResolutionNote(
+      "window",
+      { x: winOriginX, y: winOriginY, w: winWidth, h: winHeight },
+      appIdentifier,
+    );
     return {
       content: [
+        { type: "text" as const, text: resolutionNote },
         {
           type: "image",
           data: result.base64,
@@ -4937,7 +4993,21 @@ async function handleZoom(
 
     const centerX = Math.round((x0 + x1) / 2);
     const centerY = Math.round((y0 + y1) / 2);
-    let text = `Zoomed to [${x0},${y0}]-[${x1},${y1}], center (${centerX},${centerY}), size ${w}×${h} px. Screen is ${screenW}×${screenH}.`;
+    // Screen extent rect for the display this zoom lives on — non-zero
+    // origin on secondary displays.
+    const screenRect = {
+      x: dispOriginX,
+      y: dispOriginY,
+      w: screenW,
+      h: screenH,
+    };
+    let text =
+      buildResolutionNote(
+        "zoom",
+        { x: x0, y: y0, w, h },
+      ) +
+      ` Zoom center=(${centerX},${centerY}). Full screen: top-left=(${screenRect.x}, ${screenRect.y}), ` +
+      `bottom-right=(${screenRect.x + screenRect.w}, ${screenRect.y + screenRect.h}), size=${screenRect.w}×${screenRect.h} px.`;
   
     // Add clipping note if rect was adjusted
     if (hasCenter && wasClipped) {
