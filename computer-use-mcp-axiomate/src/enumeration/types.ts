@@ -65,18 +65,6 @@ export interface BrowserViewportHint {
 }
 
 /**
- * Cursor + active-locate target — drawn on top of any overlay regardless
- * of whether they're inside any element. Pipeline step 11.
- */
-export interface CursorOverlay {
-  x: number;
-  y: number;
-  /** True when an active vision_locate session is running; renderer
-   *  draws the lime-green confirmation ring. */
-  showLocateRing: boolean;
-}
-
-/**
  * Pipeline configuration — caps + thresholds. All overridable by the
  * caller (handleScreenshot / handleZoom / handleScreenshotWindow).
  */
