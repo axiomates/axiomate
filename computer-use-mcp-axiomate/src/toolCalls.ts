@@ -39,7 +39,16 @@ import { randomUUID } from "node:crypto";
 
 import { handleVisionLocate } from "./clickTarget.js";
 import type { Mark } from "./clickTarget.js";
-import { computeDynamicOverlayCap, detectElementsMultiSource, detectElementsMultiSourceDetailed, selectSpatiallyDistributedMarks, summarizeMarks } from "./detection.js";
+import { computeDynamicOverlayCap, selectSpatiallyDistributedMarks, summarizeMarks } from "./detection.js";
+import {
+  buildWindowBaseline,
+  bulkEnumerate,
+  DEFAULT_PIPELINE_CONFIG,
+  filterAndScoreToMarks,
+  refreshVisibleRectsAfterRestore,
+  selectCandidates,
+} from "./enumeration/pipeline.js";
+import type { BrowserViewportHint } from "./enumeration/pipeline.js";
 import { getDefaultTierForApp, getDeniedCategoryForApp, isPolicyDenied } from "./deniedApps.js";
 
 /**
@@ -179,6 +188,14 @@ type VisibleWindowContext = {
   markCount: number;
 };
 
+function getBrowserViewports(
+  marks: Mark[],
+): Array<{ bbox: { x: number; y: number; w: number; h: number } }> | undefined {
+  const raw = (marks as any).__browserViewports;
+  if (!raw || !Array.isArray(raw) || raw.length === 0) return undefined;
+  return raw;
+}
+
 function buildTextFirstSoMBlock(
   marks: Mark[],
   shownCount: number,
@@ -200,9 +217,17 @@ function buildTextFirstSoMBlock(
      * that didn't make the shownCount cut.
      */
     windows?: VisibleWindowContext[];
+    /**
+     * Web-content viewports detected by native enumeration but NOT in
+     * `marks` (those are page-content hosts, off-limits to UIA/AX walks).
+     * Surfaced as a routing hint so the model knows to use the browser
+     * bridge for page interaction rather than coordinate-clicking.
+     */
+    browserViewports?: Array<{ bbox: { x: number; y: number; w: number; h: number } }>;
   },
 ): string {
-  if (marks.length === 0) return "";
+  const hasViewports = opts?.browserViewports && opts.browserViewports.length > 0;
+  if (marks.length === 0 && !hasViewports) return "";
   const shownMarks = marks.slice(0, shownCount);
   const summary = summarizeMarks(marks, rect, {
     shownCount,
@@ -222,6 +247,19 @@ function buildTextFirstSoMBlock(
       ? "Traversal budget stopped native enumeration early."
       : "Output budget limited how many items are surfaced directly.";
     text += ` ${reason}`;
+  }
+
+  if (hasViewports) {
+    text +=
+      `\n\nBrowser web content detected (${opts!.browserViewports!.length} viewport(s)). ` +
+      `Page contents are NOT in the SoM list above — UIA/AX enumeration intentionally skips web content. ` +
+      `To interact with the page, use the browser bridge: call browser_takeover first (the user is prompted to consent), ` +
+      `then browser_snapshot to get ref-addressed elements, then browser_click / browser_type with those refs.`;
+    for (const v of opts!.browserViewports!) {
+      const x1 = v.bbox.x + v.bbox.w;
+      const y1 = v.bbox.y + v.bbox.h;
+      text += `\n  - viewport rect=[${v.bbox.x},${v.bbox.y},${x1},${y1}]`;
+    }
   }
 
   if (opts?.windows && opts.windows.length > 0) {
@@ -366,6 +404,79 @@ async function listWinVisibleWindows(
   return (await anyExecutor.listVisibleWindows?.()) ?? [];
 }
 
+/**
+ * Win-only protection: when an action's target screen point (x,y) sits
+ * inside axiomate's own host window rect, hide host before firing the
+ * action so SendInput delivers to the user-visible app underneath, not
+ * to our own UI. Marks are computed during pre-capture when host is
+ * hidden, then showSelf restores host — if the model later acts on a
+ * mark whose coords now sit under host (because user moved host into
+ * that area, or host's "always-on-top" position overlaps), the click
+ * lands on host instead of the intended target. This guard hides only
+ * when there's a real overlap, so the common case (host off to the
+ * side) pays zero cost.
+ *
+ * Returns a token to pass to {@link winShowHostIfHidden} for restore.
+ * The caller MUST call winShowHostIfHidden in the action handler's
+ * finally / tail so a thrown error doesn't strand axiomate hidden.
+ */
+async function winHideHostIfOverlap(
+  adapter: ComputerUseHostAdapter,
+  x: number,
+  y: number,
+): Promise<{ hidden: boolean; restoreHwnd?: number }> {
+  if (adapter.executor.capabilities.platform !== "win32") {
+    return { hidden: false };
+  }
+  let baseline: VisibleWindowSnapshot[];
+  try {
+    baseline = await listWinVisibleWindows(adapter);
+  } catch {
+    return { hidden: false };
+  }
+  const hostAtPoint = baseline.find(w =>
+    w.isHost === true &&
+    x >= w.rect.x &&
+    x < w.rect.x + w.rect.w &&
+    y >= w.rect.y &&
+    y < w.rect.y + w.rect.h,
+  );
+  if (!hostAtPoint) return { hidden: false };
+  // Preserve restore-foreground intent: if axiomate WAS foreground, we
+  // want showSelf to bring it back; otherwise leave the previous fg app
+  // on top (probably the action target). Mirrors handleScreenshot's
+  // hostWasForeground bookkeeping.
+  const initialFg = baseline.find(w => w.isForeground);
+  const restoreHwnd =
+    initialFg?.isHost === true ? initialFg.hwnd : undefined;
+  adapter.logger.debug?.(
+    `[CU-WIN-HIDE] action point (${x},${y}) overlaps host hwnd=${hostAtPoint.hwnd}; hiding before action (restoreHwnd=${restoreHwnd ?? "none"})`,
+  );
+  try {
+    await adapter.executor.hideSelf?.(restoreHwnd);
+  } catch (e) {
+    adapter.logger.debug?.(
+      `[CU-WIN-HIDE] hideSelf failed: ${e instanceof Error ? e.message : String(e)}`,
+    );
+    return { hidden: false };
+  }
+  return { hidden: true, restoreHwnd };
+}
+
+async function winShowHostIfHidden(
+  adapter: ComputerUseHostAdapter,
+  token: { hidden: boolean; restoreHwnd?: number },
+): Promise<void> {
+  if (!token.hidden) return;
+  try {
+    await adapter.executor.showSelf?.();
+  } catch (e) {
+    adapter.logger.debug?.(
+      `[CU-WIN-HIDE] showSelf failed: ${e instanceof Error ? e.message : String(e)}`,
+    );
+  }
+}
+
 async function listMacVisibleWindows(
   adapter: ComputerUseHostAdapter,
 ): Promise<MacVisibleWindowSnapshot[]> {
@@ -440,17 +551,22 @@ async function restoreWinForegroundToken(
 }
 
 /**
- * Win-only: run the full UIA enumeration + system-chrome aware probe +
- * z-order restore BEFORE the screenshot is captured. Lets the screenshot
- * reflect the final post-restore state (no focus-side-effect leakage),
- * at the cost of computing display dims independently of the capture.
+ * Win pre-capture pipeline pass (handleScreenshot only).
  *
- * Returns null when getDisplaySize / UIA failed catastrophically — caller
- * falls back to the post-capture path.
+ * Runs the Phase 1.5 pipeline (buildWindowBaseline → selectCandidates →
+ * bulkEnumerate → restoreWinVisibleWindowOrder → refreshVisibleRectsAfterRestore →
+ * filterAndScoreToMarks) BEFORE the screenshot capture, so the captured image
+ * reflects the final post-restore z-order and the marks reference the same
+ * settled layout the user sees. Mac's counterpart is runMacPostCaptureUIA,
+ * which runs AFTER capture because AX is foreground-independent.
  *
- * `winTouched` is mutated by collectWinContextAwareMarks (each probed
- * candidate's appIdentifier gets added). Caller passes it through so the
- * finally block sees the same set the restore step used.
+ * `winTouched` is mutated by bulkEnumerate's per-candidate focus probe —
+ * caller passes it through so the outer finally can re-run
+ * restoreWinVisibleWindowOrder as a safety net if this function threw
+ * before reaching its own restore step.
+ *
+ * Returns null when getDisplaySize fails catastrophically — caller can
+ * still capture the screenshot, just without SoM marks.
  */
 async function runWinPreCaptureUIA(
   adapter: ComputerUseHostAdapter,
@@ -461,6 +577,7 @@ async function runWinPreCaptureUIA(
   marks: Mark[];
   somStats: { traversedCount?: number; matchedCount?: number; returnedCount?: number; truncated?: boolean; truncationReason?: string };
   dims: { width: number; height: number; originX: number; originY: number; displayId: number; virtualW: number; virtualH: number };
+  browserViewports: BrowserViewportHint[];
 } | null> {
   let dims: { displayId: number; width: number; height: number; originX?: number; originY?: number };
   try {
@@ -480,38 +597,126 @@ async function runWinPreCaptureUIA(
 
   let marks: Mark[] = [];
   let somStats: any = {};
+  let pipelineViewports: BrowserViewportHint[] = [];
   try {
-    const detection = await detectElementsMultiSourceDetailed(
-      adapter.executor,
-      { x: 0, y: 0, w: virtualW, h: virtualH },
-      { ratioX, ratioY, originX, originY },
-      ["uia"],
+    // Phase 1.5 pipeline path. Steps 2-6 + 8-9 of Part F live here; the
+    // screenshot itself (step 7) and ruler/SoM/cursor compositing (step
+    // 11) stay in the calling handler.
+    // calling handler.
+    const baseline = await buildWindowBaseline(adapter.executor);
+    let cursor: { x: number; y: number } | null = null;
+    try {
+      const c = await adapter.executor.getCursorPosition();
+      cursor = { x: c.x, y: c.y };
+    } catch {}
+    const candidates = selectCandidates(
+      baseline,
+      targetPhysicalRect,
+      DEFAULT_PIPELINE_CONFIG,
+      cursor,
     );
-    marks = detection.marks;
-    somStats = detection.stats;
-    marks = await collectWinContextAwareMarks(
-      adapter, marks, targetPhysicalRect, ratioX, ratioY, originX, originY,
-      undefined, winTouched,
+    const bulk = await bulkEnumerate(
+      adapter.executor,
+      candidates,
+      DEFAULT_PIPELINE_CONFIG,
+      winTouched,
+      adapter.logger,
+    );
+    // Convert physical (rust-side) bboxes into virtual (image-space)
+    // for the rest of the screenshot pipeline.
+    for (const el of bulk.elements) {
+      const vx = (el.bbox.x - originX) / ratioX;
+      const vy = (el.bbox.y - originY) / ratioY;
+      const vw = el.bbox.w / ratioX;
+      const vh = el.bbox.h / ratioY;
+      el.bbox = { x: vx, y: vy, w: vw, h: vh };
+      el.centerX = Math.round(vx + vw / 2);
+      el.centerY = Math.round(vy + vh / 2);
+    }
+    const virtualViewports = bulk.browserViewports.map((v) => ({
+      x: (v.x - originX) / ratioX,
+      y: (v.y - originY) / ratioY,
+      w: v.w / ratioX,
+      h: v.h / ratioY,
+    }));
+    // Convert candidate visible rects to virtual coords for the filter.
+    const virtualCursor = cursor
+      ? { x: (cursor.x - originX) / ratioX, y: (cursor.y - originY) / ratioY }
+      : null;
+    const virtualRegion = { x: 0, y: 0, w: virtualW, h: virtualH };
+
+    // Step 6 — restore z-order + refresh visibleRects against the
+    // post-restore layout. Filter step 8 below uses these refreshed
+    // rects so DWM compose-tail or per-app focus repaints don't leak
+    // through as "occlusion" that was true mid-probe but not post-restore.
+    if (winTouched.size > 0 && winBaseline.length > 0) {
+      try {
+        await restoreWinVisibleWindowOrder(adapter, winBaseline, [...winTouched]);
+      } catch (e) {
+        adapter.logger.debug?.(
+          `[computer-use] win pre-capture restore failed: ${e instanceof Error ? e.message : String(e)}`,
+        );
+      }
+    }
+    // Settle DWM compose + per-app focus-out repaints before re-querying.
+    await sleep(80);
+    const refreshedCandidates = await refreshVisibleRectsAfterRestore(adapter.executor, candidates);
+    const virtualCandidates = refreshedCandidates.map((c) => ({
+      ...c,
+      visibleRects: c.visibleRects.map((r) => ({
+        x: (r.x - originX) / ratioX,
+        y: (r.y - originY) / ratioY,
+        w: r.w / ratioX,
+        h: r.h / ratioY,
+      })),
+      rect: {
+        x: (c.rect.x - originX) / ratioX,
+        y: (c.rect.y - originY) / ratioY,
+        w: c.rect.w / ratioX,
+        h: c.rect.h / ratioY,
+      },
+    }));
+
+    const result = filterAndScoreToMarks(
+      bulk.elements,
+      virtualCandidates,
+      virtualRegion,
+      virtualCursor,
+      virtualViewports,
+    );
+    marks = result.marks;
+    pipelineViewports = result.browserViewports;
+    somStats = {
+      traversedCount: bulk.elements.length,
+      matchedCount: bulk.elements.length,
+      returnedCount: marks.length,
+      truncated: bulk.candidateTimings.some((t) => t.truncated),
+      truncationReason: bulk.candidateTimings.some((t) => t.truncated)
+        ? "traversal_budget"
+        : undefined,
+    };
+    adapter.logger.debug?.(
+      `[computer-use] win pre-capture (new pipeline): ${candidates.length} candidates, ${bulk.elements.length} bulk elements, ${marks.length} marks, ${pipelineViewports.length} viewports`,
     );
   } catch (e) {
     adapter.logger.debug?.(
       `[computer-use] win pre-capture UIA failed: ${e instanceof Error ? e.message : String(e)}`,
     );
-    // Continue to restore + return whatever we got — z-order still needs
-    // undoing if any probe ran before the throw.
-  }
-
-  if (winTouched.size > 0 && winBaseline.length > 0) {
-    try {
-      await restoreWinVisibleWindowOrder(adapter, winBaseline, [...winTouched]);
-    } catch (e) {
-      adapter.logger.debug?.(
-        `[computer-use] win pre-capture restore failed: ${e instanceof Error ? e.message : String(e)}`,
-      );
+    // Probe-tier restore + DWM settle now happen inside the try (so the
+    // refreshed rects power the filter). If we threw before reaching the
+    // restore call, run it here as a safety net so z-order doesn't stay
+    // disturbed across the screenshot.
+    if (winTouched.size > 0 && winBaseline.length > 0) {
+      try {
+        await restoreWinVisibleWindowOrder(adapter, winBaseline, [...winTouched]);
+        await sleep(80);
+      } catch (restoreErr) {
+        adapter.logger.debug?.(
+          `[computer-use] win pre-capture restore (catch path) failed: ${restoreErr instanceof Error ? restoreErr.message : String(restoreErr)}`,
+        );
+      }
     }
   }
-  // Settle DWM compose + per-app focus-out repaints before the screenshot.
-  await sleep(80);
 
   // Layout re-check: if the user moved/resized/closed a window during
   // the ~few-second probe loop, the visibleRects used during UIA are
@@ -548,7 +753,120 @@ async function runWinPreCaptureUIA(
       virtualW,
       virtualH,
     },
+    browserViewports: pipelineViewports,
   };
+}
+
+/**
+ * Mac analog of `runWinPreCaptureUIA` — Phase 1.5 pipeline path.
+ *
+ * Mac AX has no foreground requirement, so this runs POST-capture (no
+ * z-order disturbance to undo). Same pipeline as Win:
+ *   buildWindowBaseline → selectCandidates → bulkEnumerate →
+ *   filterAndScoreToMarks.
+ *
+ * Returns null when AX enumeration fails or no candidates surfaced —
+ * caller proceeds with empty marks.
+ */
+async function runMacPostCaptureUIA(
+  adapter: ComputerUseHostAdapter,
+  shot: { width: number; height: number; displayWidth?: number; displayHeight?: number; originX?: number; originY?: number },
+): Promise<{
+  marks: Mark[];
+  somStats: { traversedCount?: number; matchedCount?: number; returnedCount?: number; truncated?: boolean; truncationReason?: string };
+  browserViewports: BrowserViewportHint[];
+} | null> {
+  const ratioX = shot.displayWidth ? shot.displayWidth / shot.width : 1;
+  const ratioY = shot.displayHeight ? shot.displayHeight / shot.height : 1;
+  const originX = shot.originX ?? 0;
+  const originY = shot.originY ?? 0;
+  const targetPhysicalRect = {
+    x: originX,
+    y: originY,
+    w: Math.round(shot.width * ratioX),
+    h: Math.round(shot.height * ratioY),
+  };
+
+  try {
+    const baseline = await buildWindowBaseline(adapter.executor);
+    let cursor: { x: number; y: number } | null = null;
+    try {
+      const c = await adapter.executor.getCursorPosition();
+      cursor = { x: c.x, y: c.y };
+    } catch {}
+    const candidates = selectCandidates(
+      baseline,
+      targetPhysicalRect,
+      DEFAULT_PIPELINE_CONFIG,
+      cursor,
+    );
+    const winTouched = new Set<string>(); // Mac never touches z-order; unused.
+    const bulk = await bulkEnumerate(
+      adapter.executor,
+      candidates,
+      DEFAULT_PIPELINE_CONFIG,
+      winTouched,
+      adapter.logger,
+    );
+    // Convert physical bboxes to virtual (image-pixel) coords so
+    // filterAndScoreToMarks operates against the screenshot's coord
+    // system (regionVirtual = (0,0,shot.width,shot.height)).
+    for (const el of bulk.elements) {
+      const vx = (el.bbox.x - originX) / ratioX;
+      const vy = (el.bbox.y - originY) / ratioY;
+      const vw = el.bbox.w / ratioX;
+      const vh = el.bbox.h / ratioY;
+      el.bbox = { x: vx, y: vy, w: vw, h: vh };
+      el.centerX = Math.round(vx + vw / 2);
+      el.centerY = Math.round(vy + vh / 2);
+    }
+    const virtualViewports = bulk.browserViewports.map((v) => ({
+      x: (v.x - originX) / ratioX,
+      y: (v.y - originY) / ratioY,
+      w: v.w / ratioX,
+      h: v.h / ratioY,
+    }));
+    const virtualCandidates = candidates.map((c) => ({
+      ...c,
+      visibleRects: c.visibleRects.map((r) =>
+        physicalRectToVirtualRect(r, ratioX, ratioY, originX, originY),
+      ),
+      rect: physicalRectToVirtualRect(c.rect, ratioX, ratioY, originX, originY),
+    }));
+    const virtualCursor = cursor
+      ? { x: (cursor.x - originX) / ratioX, y: (cursor.y - originY) / ratioY }
+      : null;
+    const regionVirtual = { x: 0, y: 0, w: shot.width, h: shot.height };
+    const result = filterAndScoreToMarks(
+      bulk.elements,
+      virtualCandidates,
+      regionVirtual,
+      virtualCursor,
+      virtualViewports,
+    );
+    const somStats = {
+      traversedCount: bulk.elements.length,
+      matchedCount: bulk.elements.length,
+      returnedCount: result.marks.length,
+      truncated: bulk.candidateTimings.some((t) => t.truncated),
+      truncationReason: bulk.candidateTimings.some((t) => t.truncated)
+        ? ("traversal_budget" as const)
+        : undefined,
+    };
+    adapter.logger.debug?.(
+      `[computer-use] mac post-capture pipeline: ${candidates.length} candidates, ${bulk.elements.length} bulk elements, ${result.marks.length} marks, ${result.browserViewports.length} viewports`,
+    );
+    return {
+      marks: result.marks,
+      somStats,
+      browserViewports: result.browserViewports,
+    };
+  } catch (e) {
+    adapter.logger.debug?.(
+      `[computer-use] mac post-capture pipeline failed: ${e instanceof Error ? e.message : String(e)}`,
+    );
+    return null;
+  }
 }
 
 /**
@@ -797,6 +1115,31 @@ function physicalRectToVirtualRect(
 }
 
 /**
+ * Pick the entry whose rect overlaps `target` most (largest intersection
+ * area). Used by screenshot_window to disambiguate when one app has
+ * multiple visible windows — the captured rect identifies which one. If
+ * no entry overlaps, falls back to the first entry.
+ */
+function pickBestRectOverlap<T extends { rect: { x: number; y: number; w: number; h: number } }>(
+  entries: T[],
+  target: { x: number; y: number; w: number; h: number },
+): T | null {
+  if (entries.length === 0) return null;
+  let best: T | null = null;
+  let bestArea = -1;
+  for (const e of entries) {
+    const ix = Math.max(0, Math.min(e.rect.x + e.rect.w, target.x + target.w) - Math.max(e.rect.x, target.x));
+    const iy = Math.max(0, Math.min(e.rect.y + e.rect.h, target.y + target.h) - Math.max(e.rect.y, target.y));
+    const area = ix * iy;
+    if (area > bestArea) {
+      bestArea = area;
+      best = e;
+    }
+  }
+  return bestArea > 0 ? best : entries[0]!;
+}
+
+/**
  * Count how many marks have their center inside `rect`. Used to attribute
  * shown marks back to source windows for the "Visible windows" SoM block.
  *
@@ -881,7 +1224,34 @@ function attributeMarksToEntries(
  *
  * Returns undefined when there's nothing to draw.
  */
-const TEXT_SOM_CAP = 50;
+/**
+ * Maximum number of interactable elements surfaced to the model in the
+ * text-form SoM list. Raised from 50 to 200 because modern models can
+ * usefully consume a larger candidate list, and — more importantly —
+ * dense desktop surfaces (browser shells, IDEs, Office ribbons) routinely
+ * have 100+ shell controls that all matter. At ~80 chars/row this costs
+ * about 12 KB of prompt tokens in the worst case, which is acceptable.
+ *
+ * NOT coupled to the on-image circle overlay cap (see
+ * `computeDynamicOverlayCap` in detection.ts, bounded [5..50]); circles
+ * stay sparse because visual density beyond ~50 tiles becomes unreadable.
+ * Mark IDs are shared across both views, so a circle is always a subset
+ * of the text list — the model can look up any text-listed id even
+ * without a circle at that position.
+ */
+const TEXT_SOM_CAP = 200;
+
+/**
+ * Pipeline step 10 — text SoM list cap. Single point of truth for the
+ * `min(marks.length, TEXT_SOM_CAP)` computation that previously duplicated
+ * across handleScreenshot's atomic + non-atomic branches, handleZoom, and
+ * handleScreenshotWindow. Trivial wrapper but worth the abstraction so a
+ * future model-specific override (e.g. small models want 50 instead of
+ * 200) lands in one place.
+ */
+function textSoMShownCount(markCount: number): number {
+  return Math.min(markCount, TEXT_SOM_CAP);
+}
 
 function computePreCaptureOverlayMarks(
   marks: Mark[],
@@ -1283,413 +1653,6 @@ function selectWinProbeCandidates(
     .slice(0, cap);
 }
 
-async function enumerateWinAppMarksDetailed(
-  adapter: ComputerUseHostAdapter,
-  appIdentifier: string,
-  physicalRect: { x: number; y: number; w: number; h: number },
-  ratioX: number,
-  ratioY: number,
-  originX: number,
-  originY: number,
-): Promise<{ marks: Mark[]; stats?: { traversedCount: number; matchedCount: number; returnedCount: number; truncated: boolean; truncationReason?: "traversal_budget" | "output_budget" } }> {
-  const anyExecutor = adapter.executor as typeof adapter.executor & {
-    enumerateVisibleElementsForAppDetailed?: (
-      appIdentifier: string,
-      rect: { x: number; y: number; w: number; h: number },
-    ) => Promise<{
-      elements: Array<{
-        bbox: { x: number; y: number; w: number; h: number };
-        name?: string;
-        role?: string;
-        automationId?: string;
-        uiaSource?: string;
-      }>;
-      traversedCount: number;
-      matchedCount: number;
-      returnedCount: number;
-      truncated: boolean;
-      truncationReason?: "traversal_budget" | "output_budget";
-    }>;
-  };
-  const detailed = await anyExecutor.enumerateVisibleElementsForAppDetailed?.(
-    appIdentifier,
-    physicalRect,
-  );
-  if (!detailed) return { marks: [] };
-  const marks = detailed.elements.map((el, i) => {
-    const vx = (el.bbox.x - originX) / ratioX;
-    const vy = (el.bbox.y - originY) / ratioY;
-    const vw = el.bbox.w / ratioX;
-    const vh = el.bbox.h / ratioY;
-    return {
-      id: i + 1,
-      x: Math.round(vx + vw / 2),
-      y: Math.round(vy + vh / 2),
-      name: el.name ?? "",
-      role: el.role ?? "",
-      automationId: el.automationId,
-      source: "uia" as const,
-      confidence: 1.0,
-      uiaSource: el.uiaSource ?? "foreground",
-    };
-  });
-  return {
-    marks,
-    stats: {
-      traversedCount: detailed.traversedCount,
-      matchedCount: detailed.matchedCount,
-      returnedCount: detailed.returnedCount,
-      truncated: detailed.truncated,
-      truncationReason: detailed.truncationReason,
-    },
-  };
-}
-
-async function enumerateWinWindowMarksDetailed(
-  adapter: ComputerUseHostAdapter,
-  windowHandle: number,
-  physicalRect: { x: number; y: number; w: number; h: number },
-  ratioX: number,
-  ratioY: number,
-  originX: number,
-  originY: number,
-): Promise<{ marks: Mark[]; stats?: { traversedCount: number; matchedCount: number; returnedCount: number; truncated: boolean; truncationReason?: "traversal_budget" | "output_budget" } }> {
-  const anyExecutor = adapter.executor as typeof adapter.executor & {
-    enumerateVisibleElementsForWindowDetailed?: (
-      windowHandle: number,
-      rect: { x: number; y: number; w: number; h: number },
-    ) => Promise<{
-      elements: Array<{
-        bbox: { x: number; y: number; w: number; h: number };
-        name?: string;
-        role?: string;
-        automationId?: string;
-        uiaSource?: string;
-      }>;
-      traversedCount: number;
-      matchedCount: number;
-      returnedCount: number;
-      truncated: boolean;
-      truncationReason?: "traversal_budget" | "output_budget";
-    }>;
-  };
-  const detailed = await anyExecutor.enumerateVisibleElementsForWindowDetailed?.(
-    windowHandle,
-    physicalRect,
-  );
-  if (!detailed) return { marks: [] };
-  const marks = detailed.elements.map((el, i) => {
-    const vx = (el.bbox.x - originX) / ratioX;
-    const vy = (el.bbox.y - originY) / ratioY;
-    const vw = el.bbox.w / ratioX;
-    const vh = el.bbox.h / ratioY;
-    return {
-      id: i + 1,
-      x: Math.round(vx + vw / 2),
-      y: Math.round(vy + vh / 2),
-      name: el.name ?? "",
-      role: el.role ?? "",
-      automationId: el.automationId,
-      source: "uia" as const,
-      confidence: 1.0,
-      uiaSource: el.uiaSource ?? "foreground",
-    };
-  });
-  return {
-    marks,
-    stats: {
-      traversedCount: detailed.traversedCount,
-      matchedCount: detailed.matchedCount,
-      returnedCount: detailed.returnedCount,
-      truncated: detailed.truncated,
-      truncationReason: detailed.truncationReason,
-    },
-  };
-}
-
-async function enumerateMacWindowMarksDetailed(
-  adapter: ComputerUseHostAdapter,
-  windowId: number,
-  appIdentifier: string,
-  physicalRect: { x: number; y: number; w: number; h: number },
-  ratioX: number,
-  ratioY: number,
-  originX: number,
-  originY: number,
-): Promise<{ marks: Mark[]; stats?: { traversedCount: number; matchedCount: number; returnedCount: number; truncated: boolean; truncationReason?: "traversal_budget" | "output_budget" } }> {
-  const anyExecutor = adapter.executor as typeof adapter.executor & {
-    enumerateVisibleElementsForMacWindowDetailed?: (
-      windowId: number,
-      appIdentifier: string,
-      rect: { x: number; y: number; w: number; h: number },
-    ) => Promise<{
-      elements: Array<{
-        bbox: { x: number; y: number; w: number; h: number };
-        name?: string;
-        role?: string;
-        automationId?: string;
-        uiaSource?: string;
-      }>;
-      traversedCount: number;
-      matchedCount: number;
-      returnedCount: number;
-      truncated: boolean;
-      truncationReason?: "traversal_budget" | "output_budget";
-    }>;
-  };
-  const detailed = await anyExecutor.enumerateVisibleElementsForMacWindowDetailed?.(
-    windowId,
-    appIdentifier,
-    physicalRect,
-  );
-  if (!detailed) return { marks: [] };
-  const marks = detailed.elements.map((el, i) => {
-    const vx = (el.bbox.x - originX) / ratioX;
-    const vy = (el.bbox.y - originY) / ratioY;
-    const vw = el.bbox.w / ratioX;
-    const vh = el.bbox.h / ratioY;
-    return {
-      id: i + 1,
-      x: Math.round(vx + vw / 2),
-      y: Math.round(vy + vh / 2),
-      name: el.name ?? "",
-      role: el.role ?? "",
-      automationId: el.automationId,
-      source: "uia" as const,
-      confidence: 1.0,
-      uiaSource: el.uiaSource ?? "foreground",
-    };
-  });
-  return {
-    marks,
-    stats: {
-      traversedCount: detailed.traversedCount,
-      matchedCount: detailed.matchedCount,
-      returnedCount: detailed.returnedCount,
-      truncated: detailed.truncated,
-      truncationReason: detailed.truncationReason,
-    },
-  };
-}
-
-async function collectWinContextAwareMarks(
-  adapter: ComputerUseHostAdapter,
-  baseMarks: Mark[],
-  targetPhysicalRect: { x: number; y: number; w: number; h: number },
-  ratioX: number,
-  ratioY: number,
-  originX: number,
-  originY: number,
-  probeCap = 3,
-  touched?: Set<string>,
-): Promise<Mark[]> {
-  const baseline = await listWinVisibleWindows(adapter);
-  if (baseline.length === 0) return baseMarks;
-  adapter.logger.debug?.(
-    `[computer-use] win probe baseline windows=${baseline.slice(0, 8).map(w => `${w.displayName}@${w.zRank}${w.isForeground ? "[fg]" : ""}${w.isHost ? "[host]" : ""}${w.isSystemChrome ? "[chrome]" : ""}`).join(", ")}`,
-  );
-
-  const originalForeground = baseline.find(w => w.isForeground);
-  // Read cursor for the probe-candidate ranker — best signal we have for
-  // "which window does the user actually care about right now". Failure is
-  // not fatal: ranker falls back to area + z-rank only.
-  let cursor: { x: number; y: number } | null = null;
-  try {
-    cursor = await adapter.executor.getCursorPosition();
-  } catch {
-    cursor = null;
-  }
-  const candidates = selectWinProbeCandidates(baseline, targetPhysicalRect, probeCap, cursor);
-  if (candidates.length === 0) return baseMarks;
-  adapter.logger.debug?.(
-    `[computer-use] win probe candidates=${candidates.map(c => `${c.displayName}@${c.zRank} rects=${c.visibleRects.length}`).join(", ")}`,
-  );
-
-  const merged: Mark[] = [...baseMarks];
-  for (const candidate of candidates) {
-    try {
-      const probeRect = [...candidate.visibleRects]
-        .sort((a, b) => (b.w * b.h) - (a.w * a.h))[0];
-      if (probeRect && adapter.executor.focusNonHostWindowAtPoint) {
-        adapter.logger.debug?.(
-          `[computer-use] win probe focus visible-region app=${candidate.displayName} point=(${probeRect.x + Math.round(probeRect.w / 2)},${probeRect.y + Math.round(probeRect.h / 2)}) rect=${JSON.stringify(probeRect)}`,
-        );
-        await adapter.executor.focusNonHostWindowAtPoint({
-          x: probeRect.x + Math.round(probeRect.w / 2),
-          y: probeRect.y + Math.round(probeRect.h / 2),
-        });
-        await sleep(150);
-      }
-      if (candidate.appIdentifier) touched?.add(candidate.appIdentifier);
-      const detailed = await enumerateWinAppMarksDetailed(
-        adapter,
-        candidate.appIdentifier,
-        targetPhysicalRect,
-        ratioX,
-        ratioY,
-        originX,
-        originY,
-      );
-      const visibleVirtualRects = candidate.visibleRects.map(rect =>
-        physicalRectToVirtualRect(rect, ratioX, ratioY, originX, originY),
-      );
-      const kept = filterMarksByVisibleRegions(detailed.marks, visibleVirtualRects);
-      // Direct attribution: we know each kept mark came from this
-      // candidate's UIA tree. Pre-tagging here is more accurate than
-      // the post-hoc point-in-rect attribution in
-      // attributeMarksToEntries — overlapping windows can shadow each
-      // other's marks under point-in-rect.
-      for (const m of kept) m.sourceWindowName = candidate.displayName;
-      adapter.logger.debug?.(
-        `[computer-use] win probe app=${candidate.displayName} rawMarks=${detailed.marks.length} kept=${kept.length}`,
-      );
-      merged.push(...kept);
-    } catch {
-      // best-effort
-    }
-  }
-
-  return dedupeMarks(merged);
-}
-
-/**
- * Mac analogue of selectWinProbeCandidates: pick top-N windows that
- * overlap the target rect and have visible (non-occluded) area.
- *
- * Differences from the Win version:
- * - No isHost / isSystemChrome filter — Mac windows don't carry those
- *   flags. Filter system chrome by layer instead (layer 0 = normal app
- *   windows; menu bar / Dock / status items sit at higher layers).
- * - No foreground filter — Mac uses `zRank === 0` as the foreground
- *   convention. Skipping that one is consistent with Win's
- *   `!isForeground` (foreground already enumerated by the main pass).
- * - Cursor-owner ranking matches Win.
- */
-function selectMacProbeCandidates(
-  baseline: MacVisibleWindowSnapshot[],
-  targetRect: { x: number; y: number; w: number; h: number },
-  cap = 3,
-  cursor: { x: number; y: number } | null = null,
-): Array<MacVisibleWindowSnapshot & { visibleRects: Array<{ x: number; y: number; w: number; h: number }> }> {
-  // Manual occlusion subtraction by zRank order. listMacVisibleWindows
-  // returns zRank 0 = frontmost. Lower-zRank windows occlude higher-zRank.
-  type Annotated = MacVisibleWindowSnapshot & {
-    visibleRects: Array<{ x: number; y: number; w: number; h: number }>;
-  };
-  const sortedByZ = [...baseline].sort((a, b) => a.zRank - b.zRank);
-  const annotated: Annotated[] = sortedByZ.map(win => ({ ...win, visibleRects: [win.rect] }));
-  for (let i = 0; i < annotated.length; i += 1) {
-    const target = annotated[i]!;
-    let regions = [target.rect];
-    for (let j = 0; j < i; j += 1) {
-      const occluder = annotated[j]!;
-      const next: Array<{ x: number; y: number; w: number; h: number }> = [];
-      for (const r of regions) next.push(...subtractRect(r, occluder.rect));
-      regions = next;
-      if (regions.length === 0) break;
-    }
-    target.visibleRects = regions;
-  }
-
-  const ownsCursor = (
-    win: { visibleRects: Array<{ x: number; y: number; w: number; h: number }> },
-  ): boolean => {
-    if (!cursor) return false;
-    return win.visibleRects.some(
-      r => cursor.x >= r.x && cursor.x < r.x + r.w && cursor.y >= r.y && cursor.y < r.y + r.h,
-    );
-  };
-
-  return annotated
-    .filter(win =>
-      // layer 0 only — strips out menu bar / Dock / status items / etc.
-      // (those are already enumerated as hardcoded roots in Rust's
-      // discover_search_roots after the menu_bar/dock additions).
-      win.layer === 0 &&
-      // Skip the frontmost; the main detection pass already covered it.
-      win.zRank !== 0 &&
-      win.rect.w >= 100 &&
-      win.rect.h >= 100 &&
-      rectsIntersect(win.rect, targetRect),
-    )
-    .filter(win => visibleAreaWithinTarget(win.visibleRects, targetRect) > 0)
-    .sort((a, b) => {
-      const aCursor = ownsCursor(a);
-      const bCursor = ownsCursor(b);
-      if (aCursor !== bCursor) return aCursor ? -1 : 1;
-      const areaDelta =
-        visibleAreaWithinTarget(b.visibleRects, targetRect) -
-        visibleAreaWithinTarget(a.visibleRects, targetRect);
-      if (areaDelta !== 0) return areaDelta;
-      return a.zRank - b.zRank;
-    })
-    .slice(0, cap);
-}
-
-/**
- * Mac analogue of collectWinContextAwareMarks. Probes top-N non-frontmost
- * normal-layer windows, enumerates their UIA subtrees via the per-windowId
- * native call, filters to each window's un-occluded visible regions, and
- * merges with the base marks. No focus needed — Mac AX is
- * foreground-independent — so this is strictly cheaper than the Win path
- * (no SetForegroundWindow dance, no z-order disturbance, no settle sleep).
- */
-async function collectMacContextAwareMarks(
-  adapter: ComputerUseHostAdapter,
-  baseMarks: Mark[],
-  targetPhysicalRect: { x: number; y: number; w: number; h: number },
-  ratioX: number,
-  ratioY: number,
-  originX: number,
-  originY: number,
-  probeCap = 4,
-): Promise<Mark[]> {
-  const baseline = await listMacVisibleWindows(adapter);
-  if (baseline.length === 0) return baseMarks;
-  adapter.logger.debug?.(
-    `[computer-use] mac probe baseline windows=${baseline.slice(0, 8).map(w => `${w.displayName}@${w.zRank}/L${w.layer}`).join(", ")}`,
-  );
-
-  let cursor: { x: number; y: number } | null = null;
-  try {
-    cursor = await adapter.executor.getCursorPosition();
-  } catch {
-    cursor = null;
-  }
-  const candidates = selectMacProbeCandidates(baseline, targetPhysicalRect, probeCap, cursor);
-  if (candidates.length === 0) return baseMarks;
-  adapter.logger.debug?.(
-    `[computer-use] mac probe candidates=${candidates.map(c => `${c.displayName}@${c.zRank} rects=${c.visibleRects.length}`).join(", ")}`,
-  );
-
-  const merged: Mark[] = [...baseMarks];
-  for (const candidate of candidates) {
-    try {
-      const detailed = await enumerateMacWindowMarksDetailed(
-        adapter,
-        candidate.windowId,
-        candidate.appIdentifier,
-        targetPhysicalRect,
-        ratioX,
-        ratioY,
-        originX,
-        originY,
-      );
-      const visibleVirtualRects = candidate.visibleRects.map(rect =>
-        physicalRectToVirtualRect(rect, ratioX, ratioY, originX, originY),
-      );
-      const kept = filterMarksByVisibleRegions(detailed.marks, visibleVirtualRects);
-      adapter.logger.debug?.(
-        `[computer-use] mac probe app=${candidate.displayName} rawMarks=${detailed.marks.length} kept=${kept.length}`,
-      );
-      merged.push(...kept);
-    } catch {
-      // best-effort
-    }
-  }
-
-  return dedupeMarks(merged);
-}
 
 // ---------------------------------------------------------------------------
 // Arg validation — lightweight, no zod (mirrors chrome-mcp's cast-and-check)
@@ -3986,51 +3949,28 @@ async function handleScreenshot(
           if (winPreCaptureDimsStable(winPrecapture.dims, shot)) {
             marks = winPrecapture.marks;
             detectionStats = winPrecapture.somStats;
+            if (winPrecapture.browserViewports.length > 0) {
+              (marks as any).__browserViewports =
+                winPrecapture.browserViewports.map((v) => ({ bbox: v.bbox }));
+            }
           } else {
             adapter.logger.warn(
               `[computer-use] display geometry drifted during screenshot pipeline; pre=${winPrecapture.dims.width}x${winPrecapture.dims.height}@(${winPrecapture.dims.originX},${winPrecapture.dims.originY})/disp${winPrecapture.dims.displayId} shot=${shot.displayWidth}x${shot.displayHeight}@(${shot.originX ?? 0},${shot.originY ?? 0})/disp${shot.displayId} — discarding SoM marks (image still valid)`,
             );
           }
         }
-      } else if (adapter.executor.enumerateVisibleElements) {
-        // Mac: post-capture UIA. AX has no foreground requirement so
-        // there's no probing / z-order disturbance to defend against —
-        // probe enrichment is still useful for additional non-frontmost
-        // app windows, just doesn't need the focus / restore dance.
-        try {
-          const ratioX = shot.displayWidth ? shot.displayWidth / shot.width : 1;
-          const ratioY = shot.displayHeight ? shot.displayHeight / shot.height : 1;
-          const originX = shot.originX ?? 0;
-          const originY = shot.originY ?? 0;
-          const detection = await detectElementsMultiSourceDetailed(
-            adapter.executor,
-            { x: 0, y: 0, w: shot.width, h: shot.height },
-            { ratioX, ratioY, originX, originY },
-            ["uia"],
-          );
-          marks = detection.marks;
-          detectionStats = detection.stats;
-          // Probe enrichment for non-frontmost normal-layer windows that
-          // didn't make it into the multi-root pass. Mirrors what
-          // collectWinContextAwareMarks does for Win, minus the
-          // foreground-dance overhead.
-          const targetPhysicalRect = {
-            x: originX,
-            y: originY,
-            w: Math.round(shot.width * ratioX),
-            h: Math.round(shot.height * ratioY),
-          };
-          marks = await collectMacContextAwareMarks(
-            adapter,
-            marks,
-            targetPhysicalRect,
-            ratioX,
-            ratioY,
-            originX,
-            originY,
-          );
-        } catch {
-          // best-effort
+      } else if (adapter.executor.capabilities.platform === "darwin") {
+        // Mac: post-capture Phase 1.5 pipeline. AX has no foreground
+        // requirement so this runs after the screenshot, no z-order
+        // disturbance to undo.
+        const macResult = await runMacPostCaptureUIA(adapter, shot);
+        if (macResult) {
+          marks = macResult.marks;
+          detectionStats = macResult.somStats;
+          if (macResult.browserViewports.length > 0) {
+            (marks as any).__browserViewports =
+              macResult.browserViewports.map((v) => ({ bbox: v.bbox }));
+          }
         }
       }
       if (marks.length > 0) {
@@ -4038,11 +3978,12 @@ async function handleScreenshot(
         // cross-display windows can produce UIA elements on adjacent
         // monitors that survive filterMarksByVisibleRegions but aren't
         // visible in this screenshot.
+        const prevViewports = getBrowserViewports(marks);
+        const prevStats = (marks as any).__somStats;
         marks = marks.filter(m => m.x >= 0 && m.x < shot.width && m.y >= 0 && m.y < shot.height);
-        const shownCount = Math.min(
-          marks.length,
-          50,
-        );
+        if (prevViewports) (marks as any).__browserViewports = prevViewports;
+        if (prevStats) (marks as any).__somStats = prevStats;
+        const shownCount = textSoMShownCount(marks.length);
         const wRatioX = shot.displayWidth ? shot.displayWidth / shot.width : 1;
         const wRatioY = shot.displayHeight ? shot.displayHeight / shot.height : 1;
         const wOriginX = shot.originX ?? 0;
@@ -4084,6 +4025,7 @@ async function handleScreenshot(
             includePriorityHint: !visionEnabled,
             stats: { ...detectionStats, returnedCount: attributedMarks.length },
             windows: windowsContext,
+            browserViewports: getBrowserViewports(marks),
           },
         );
         // Publish marks for mark_id resolution by subsequent mouse_move
@@ -4197,52 +4139,35 @@ async function handleScreenshot(
         if (winPreCaptureDimsStable(winPrecapture.dims, shot)) {
           marks = winPrecapture.marks;
           detectionStats = winPrecapture.somStats;
+          if (winPrecapture.browserViewports.length > 0) {
+            (marks as any).__browserViewports =
+              winPrecapture.browserViewports.map((v) => ({ bbox: v.bbox }));
+          }
         } else {
           adapter.logger.warn(
             `[computer-use] display geometry drifted during screenshot pipeline; pre=${winPrecapture.dims.width}x${winPrecapture.dims.height}@(${winPrecapture.dims.originX},${winPrecapture.dims.originY})/disp${winPrecapture.dims.displayId} shot=${shot.displayWidth}x${shot.displayHeight}@(${shot.originX ?? 0},${shot.originY ?? 0})/disp${shot.displayId} — discarding SoM marks (image still valid)`,
           );
         }
       }
-    } else if (adapter.executor.enumerateVisibleElements) {
-      try {
-        const ratioX = shot.displayWidth ? shot.displayWidth / shot.width : 1;
-        const ratioY = shot.displayHeight ? shot.displayHeight / shot.height : 1;
-        const originX = shot.originX ?? 0;
-        const originY = shot.originY ?? 0;
-        const detection = await detectElementsMultiSourceDetailed(
-          adapter.executor,
-          { x: 0, y: 0, w: shot.width, h: shot.height },
-          { ratioX, ratioY, originX, originY },
-          ["uia"],
-        );
-        marks = detection.marks;
-        detectionStats = detection.stats;
-        // Mac probe enrichment — mirrors the atomic-path branch above.
-        const targetPhysicalRect = {
-          x: originX,
-          y: originY,
-          w: Math.round(shot.width * ratioX),
-          h: Math.round(shot.height * ratioY),
-        };
-        marks = await collectMacContextAwareMarks(
-          adapter,
-          marks,
-          targetPhysicalRect,
-          ratioX,
-          ratioY,
-          originX,
-          originY,
-        );
-      } catch {
-        // best-effort
+    } else if (adapter.executor.capabilities.platform === "darwin") {
+      // Mac: post-capture Phase 1.5 pipeline — same as atomic-path branch.
+      const macResult = await runMacPostCaptureUIA(adapter, shot);
+      if (macResult) {
+        marks = macResult.marks;
+        detectionStats = macResult.somStats;
+        if (macResult.browserViewports.length > 0) {
+          (marks as any).__browserViewports =
+            macResult.browserViewports.map((v) => ({ bbox: v.bbox }));
+        }
       }
     }
     if (marks.length > 0) {
+      const prevViewports = getBrowserViewports(marks);
+      const prevStats = (marks as any).__somStats;
       marks = marks.filter(m => m.x >= 0 && m.x < shot.width && m.y >= 0 && m.y < shot.height);
-      const shownCount = Math.min(
-        marks.length,
-        50,
-      );
+      if (prevViewports) (marks as any).__browserViewports = prevViewports;
+      if (prevStats) (marks as any).__somStats = prevStats;
+      const shownCount = textSoMShownCount(marks.length);
       const wRatioX = shot.displayWidth ? shot.displayWidth / shot.width : 1;
       const wRatioY = shot.displayHeight ? shot.displayHeight / shot.height : 1;
       const wOriginX = shot.originX ?? 0;
@@ -4280,6 +4205,7 @@ async function handleScreenshot(
           includePriorityHint: !visionEnabled,
           stats: { ...detectionStats, returnedCount: attributedMarks.length },
           windows: windowsContext,
+          browserViewports: getBrowserViewports(marks),
         },
       );
       // See atomic-path comment: publish marks so mouse_move can resolve
@@ -4407,7 +4333,10 @@ async function handleScreenshotWindow(
     );
   }
 
-  // Run UIA detection on the window's screen rect.
+  // Run UIA detection on the window's screen rect via the Phase 1.5
+  // pipeline. Single-candidate path: the target window is already known
+  // by appIdentifier, so we build one synthetic CandidateWindow rather
+  // than running selectCandidates' visible-area ranking. probeCap=1.
   const somEnabled = args.som !== false;
   let marks: Mark[] = [];
   const ratioX = prelim.displayWidth ? prelim.displayWidth / prelim.width : 1;
@@ -4415,6 +4344,8 @@ async function handleScreenshotWindow(
   const visionEnabled = supportsVisionForFeedback(adapter);
   let drawMarks = false;
   let circleLimit = 0;
+  const winTouched = new Set<string>();
+  let winRestoredEarly = false;
   if (somEnabled) {
     if (anyHostVisible) {
       await adapter.executor.hideSelf?.(
@@ -4424,55 +4355,143 @@ async function handleScreenshotWindow(
     try {
       const ox = prelim.originX ?? 0;
       const oy = prelim.originY ?? 0;
-      if (adapter.executor.enumerateVisibleElementsForAppDetailed) {
-        const detailed = await adapter.executor.enumerateVisibleElementsForAppDetailed(
-          appIdentifier,
-          {
-            x: ox,
-            y: oy,
-            w: prelim.displayWidth ?? Math.round(prelim.width * ratioX),
-            h: prelim.displayHeight ?? Math.round(prelim.height * ratioY),
-          },
+      const targetPhysicalRect = {
+        x: ox,
+        y: oy,
+        w: prelim.displayWidth ?? Math.round(prelim.width * ratioX),
+        h: prelim.displayHeight ?? Math.round(prelim.height * ratioY),
+      };
+      // Resolve the target window's handle from the visible-windows
+      // baseline. The screenshotWindow capture already targeted *some*
+      // window for this app — when an app has multiple windows, prefer
+      // the one whose rect best overlaps prelim's captured rect.
+      let candidate: import("./enumeration/pipeline.js").CandidateWindow | null = null;
+      if (isWin) {
+        const matches = winBaseline.filter(w => w.appIdentifier === appIdentifier);
+        const best = pickBestRectOverlap(matches, targetPhysicalRect);
+        if (best) {
+          candidate = {
+            windowHandle: best.hwnd ?? 0,
+            appIdentifier: best.appIdentifier,
+            displayName: best.displayName,
+            zRank: best.zRank,
+            isForeground: best.isForeground,
+            isSystemChrome: false,
+            rect: best.rect,
+            visibleRects: [best.rect],
+          };
+        }
+      } else if (adapter.executor.capabilities.platform === "darwin") {
+        const macBaseline = await listMacVisibleWindows(adapter);
+        const matches = macBaseline.filter(w => w.appIdentifier === appIdentifier);
+        const best = pickBestRectOverlap(matches, targetPhysicalRect);
+        if (best) {
+          candidate = {
+            windowHandle: 0,
+            macWindowId: best.windowId,
+            appIdentifier: best.appIdentifier,
+            displayName: best.displayName,
+            zRank: best.zRank,
+            isForeground: best.zRank === 0,
+            isSystemChrome: false,
+            rect: best.rect,
+            visibleRects: [best.rect],
+          };
+        }
+      }
+
+      if (candidate) {
+        const bulk = await bulkEnumerate(
+          adapter.executor,
+          [candidate],
+          DEFAULT_PIPELINE_CONFIG,
+          winTouched,
+          adapter.logger,
         );
-        marks = detailed.elements.map((el, i) => {
+        // Convert physical bboxes/centers to virtual (image-pixel) coords
+        // so filterAndScoreToMarks operates in the same coord system the
+        // post-capture overlay path uses.
+        for (const el of bulk.elements) {
           const vx = (el.bbox.x - ox) / ratioX;
           const vy = (el.bbox.y - oy) / ratioY;
           const vw = el.bbox.w / ratioX;
           const vh = el.bbox.h / ratioY;
-          return {
-            id: i + 1,
-            x: Math.round(vx + vw / 2),
-            y: Math.round(vy + vh / 2),
-            name: el.name ?? "",
-            role: el.role ?? "",
-            automationId: el.automationId,
-            source: "uia" as const,
-            confidence: 1.0,
-            uiaSource: el.uiaSource ?? "foreground",
-          };
-        });
-        (marks as any).__somStats = {
-          traversedCount: detailed.traversedCount,
-          matchedCount: detailed.matchedCount,
-          returnedCount: detailed.returnedCount,
-          truncated: detailed.truncated,
-          truncationReason: detailed.truncationReason,
-        };
-      } else {
-        const detection = await detectElementsMultiSourceDetailed(
-          adapter.executor,
-          { x: 0, y: 0, w: prelim.width, h: prelim.height },
-          { ratioX, ratioY, originX: ox, originY: oy, windowOnly: true },
-          ["uia"],
+          el.bbox = { x: vx, y: vy, w: vw, h: vh };
+          el.centerX = Math.round(vx + vw / 2);
+          el.centerY = Math.round(vy + vh / 2);
+        }
+        const virtualViewports = bulk.browserViewports.map(v => ({
+          x: (v.x - ox) / ratioX,
+          y: (v.y - oy) / ratioY,
+          w: v.w / ratioX,
+          h: v.h / ratioY,
+        }));
+
+        // Step 6 — restore z-order + refresh visibleRects BEFORE filter.
+        // bulkEnumerate's Win focus probe may have shifted the target
+        // window forward; restore puts other windows back to their
+        // pre-call zRank so refresh sees the user-visible occlusion.
+        if (isWin && winTouched.size > 0 && winBaseline.length > 0) {
+          try {
+            await restoreWinVisibleWindowOrder(adapter, winBaseline, [...winTouched]);
+          } catch (e) {
+            adapter.logger.debug?.(
+              `[screenshot_window] win restore failed pre-filter: ${e instanceof Error ? e.message : String(e)}`,
+            );
+          }
+          winRestoredEarly = true;
+          await sleep(80);
+        }
+        const refreshedCandidates = await refreshVisibleRectsAfterRestore(adapter.executor, [candidate]);
+        const virtualCandidates = refreshedCandidates.map(c => ({
+          ...c,
+          visibleRects: c.visibleRects.map(r =>
+            physicalRectToVirtualRect(r, ratioX, ratioY, ox, oy),
+          ),
+          rect: physicalRectToVirtualRect(c.rect, ratioX, ratioY, ox, oy),
+          isForeground: true,
+        }));
+        // Region is the image rect (0,0,prelim.width,prelim.height) —
+        // anything outside it gets dropped by the filter's region-bbox
+        // intersection rule, matching screenshot_window's "show only
+        // the captured window's pixels" semantics.
+        const regionVirtual = { x: 0, y: 0, w: prelim.width, h: prelim.height };
+        const result = filterAndScoreToMarks(
+          bulk.elements,
+          virtualCandidates,
+          regionVirtual,
+          null,
+          virtualViewports,
         );
-        marks = detection.marks;
-        (marks as any).__somStats = detection.stats;
+        marks = result.marks;
+        if (result.browserViewports.length > 0) {
+          (marks as any).__browserViewports = result.browserViewports;
+        }
+        (marks as any).__somStats = {
+          traversedCount: bulk.elements.length,
+          matchedCount: bulk.elements.length,
+          returnedCount: marks.length,
+          truncated: bulk.candidateTimings.some(t => t.truncated),
+          truncationReason: bulk.candidateTimings.some(t => t.truncated)
+            ? "traversal_budget"
+            : undefined,
+        };
+        adapter.logger.debug?.(
+          `[screenshot_window] pipeline: candidate=${candidate.displayName} bulk=${bulk.elements.length} marks=${marks.length} viewports=${result.browserViewports.length}`,
+        );
+      } else {
+        adapter.logger.debug?.(
+          `[screenshot_window] no candidate window found for appIdentifier="${appIdentifier}" — skipping SoM`,
+        );
       }
       circleLimit = marks.length > 0 ? 1 : 0;
       // Actual circle cap + spatial sampling happen after we know the
       // final prelim image dims and the shown-mark slice — see below.
       drawMarks = circleLimit > 0;
-    } catch {
+    } catch (e) {
+      adapter.logger.debug?.(
+        `[screenshot_window] SoM pipeline failed: ${e instanceof Error ? e.message : String(e)}`,
+      );
       // UIA detection failed — proceed without marks.
     } finally {
       // Defer restore until after any mark-overlay recapture, otherwise the
@@ -4486,19 +4505,24 @@ async function handleScreenshotWindow(
   let somText = "";
 
   // Discard marks outside the captured image (cross-display window edges).
+  const prevViewports = getBrowserViewports(marks);
+  const prevStats = (marks as any).__somStats;
   marks = marks.filter(m => m.x >= 0 && m.x < prelim.width && m.y >= 0 && m.y < prelim.height);
+  if (prevViewports) (marks as any).__browserViewports = prevViewports;
+  if (prevStats) (marks as any).__somStats = prevStats;
 
-  const shownCount = Math.min(
-    marks.length,
-    50,
-  );
+  const shownCount = textSoMShownCount(marks.length);
   const shownMarks = marks.slice(0, shownCount);
   if (shownMarks.length > 0) {
       somText = buildTextFirstSoMBlock(
         marks,
         shownCount,
         { x: 0, y: 0, w: prelim.width, h: prelim.height },
-        { includePriorityHint: !visionEnabled, stats: (marks as any).__somStats },
+        {
+          includePriorityHint: !visionEnabled,
+          stats: (marks as any).__somStats,
+          browserViewports: getBrowserViewports(marks),
+        },
       );
       // Publish marks for mark_id resolution by subsequent mouse_move
       // calls — see handleScreenshot atomic-path comment for rationale.
@@ -4553,6 +4577,19 @@ async function handleScreenshotWindow(
     if (somEnabled && anyHostVisible) {
       adapter.logger.debug?.(`[computer-use] screenshot_window restore: showSelf (hostWasForeground=${hostWasForeground})`);
       await adapter.executor.showSelf?.();
+    }
+    // bulkEnumerate's Win path calls focusNonHostWindowAtPoint, which
+    // mutates winTouched — restore baseline z-order so non-target windows
+    // return to their pre-call positions. Skip when we already ran the
+    // restore inside the SoM block above (winRestoredEarly).
+    if (isWin && !winRestoredEarly && winTouched.size > 0 && winBaseline.length > 0) {
+      try {
+        await restoreWinVisibleWindowOrder(adapter, winBaseline, [...winTouched]);
+      } catch (e) {
+        adapter.logger.debug?.(
+          `[computer-use] screenshot_window win restore failed: ${e instanceof Error ? e.message : String(e)}`,
+        );
+      }
     }
   }
 }
@@ -4723,129 +4760,111 @@ async function handleZoom(
         h: Math.round(regionVirtual.h * ratioY),
       };
       try {
-        if (adapter.executor.capabilities.platform === "win32") {
-          const baseline = await listWinVisibleWindows(adapter);
-          // Read cursor for the candidate ranker — same "what the user
-          // is pointing at" signal selectWinProbeCandidates uses for
-          // full-screen probes. Failure is non-fatal: ranker falls back
-          // to area + zRank.
+        if (
+          adapter.executor.capabilities.platform === "win32" ||
+          adapter.executor.capabilities.platform === "darwin"
+        ) {
+          // Phase 1.5 pipeline path. Same flow as handleScreenshot's
+          // pre-capture pass, but the target rect is the zoom region
+          // instead of the full display. selectCandidates' visible-area
+          // ranking automatically picks windows that overlap the zoom
+          // rect; bulkEnumerate handles the focus probe + bulk pull;
+          // filterAndScoreToMarks handles in-region filtering + scoring
+          // + dedup.
+          const baseline = await buildWindowBaseline(adapter.executor);
           let cursor: { x: number; y: number } | null = null;
           try {
-            cursor = await adapter.executor.getCursorPosition();
-          } catch {
-            cursor = null;
+            const c = await adapter.executor.getCursorPosition();
+            cursor = { x: c.x, y: c.y };
+          } catch {}
+          const candidates = selectCandidates(
+            baseline,
+            targetPhysicalRect,
+            DEFAULT_PIPELINE_CONFIG,
+            cursor,
+          );
+          adapter.logger.debug?.(
+            `[zoom] pipeline selected ${candidates.length} candidates: ${candidates.map(c => `${c.displayName}@${c.zRank}${c.isForeground ? "[fg]" : ""}${c.isSystemChrome ? "[chrome]" : ""}`).join(", ")} cursor=${cursor ? `(${cursor.x},${cursor.y})` : "null"}`,
+          );
+          const bulk = await bulkEnumerate(
+            adapter.executor,
+            candidates,
+            DEFAULT_PIPELINE_CONFIG,
+            winTouched,
+            adapter.logger,
+          );
+          // Convert physical bboxes/centers to virtual coords so
+          // filterAndScoreToMarks operates in the same coord system the
+          // rest of the zoom pipeline uses (regionVirtual, image dims).
+          for (const el of bulk.elements) {
+            const vx = (el.bbox.x - originX) / ratioX;
+            const vy = (el.bbox.y - originY) / ratioY;
+            const vw = el.bbox.w / ratioX;
+            const vh = el.bbox.h / ratioY;
+            el.bbox = { x: vx, y: vy, w: vw, h: vh };
+            el.centerX = Math.round(vx + vw / 2);
+            el.centerY = Math.round(vy + vh / 2);
           }
-          const built = buildWinZoomWindowCandidates(baseline, targetPhysicalRect);
-          adapter.logger.debug?.(
-            `[computer-use] zoom baseline windows=${baseline.map(w => `${w.displayName}@${w.zRank}${w.isForeground ? "[fg]" : ""}${w.isSystemChrome ? "[chrome]" : ""}`).join(", ")}`,
-          );
-          adapter.logger.debug?.(
-            `[computer-use] zoom built candidates=${built.map(w => `${w.displayName}@${w.zRank} visArea=${w.visibleAreaInTarget} rawArea=${w.rawIntersectArea} rects=${w.visibleRects.length}`).join(", ")}`,
-          );
-          const candidates = selectZoomWindowCandidates(built, cursor);
-          adapter.logger.debug?.(
-            `[computer-use] zoom selected candidates=${candidates.map(w => `${w.displayName}@${w.zRank}`).join(", ")} cap=4 cursor=${cursor ? `(${cursor.x},${cursor.y})` : "null"}`,
-          );
-          const merged: Mark[] = [];
-          let lastStats: any = undefined;
-          for (const candidate of candidates) {
-            const probeRect = [...candidate.visibleRects]
-              .sort((a, b) => (b.w * b.h) - (a.w * a.h))[0];
-            if (!probeRect) continue;
-            if (adapter.executor.focusNonHostWindowAtPoint) {
-              await adapter.executor.focusNonHostWindowAtPoint({
-                x: probeRect.x + Math.round(probeRect.w / 2),
-                y: probeRect.y + Math.round(probeRect.h / 2),
-              });
-              await sleep(150);
+          const virtualViewports = bulk.browserViewports.map(v => ({
+            x: (v.x - originX) / ratioX,
+            y: (v.y - originY) / ratioY,
+            w: v.w / ratioX,
+            h: v.h / ratioY,
+          }));
+
+          // Step 6 — restore z-order + refresh visibleRects BEFORE filter.
+          // Same rationale as runWinPreCaptureUIA: filter step uses the
+          // post-restore layout so DWM compose-tail / per-app focus
+          // repaints don't leak through as occlusion. Mac's helper
+          // returns candidates unchanged on non-Win platforms, but the
+          // call still validates that no candidate window vanished
+          // mid-probe (closed window → empty visibleRects).
+          if (isWin && winTouched.size > 0 && winBaseline.length > 0) {
+            try {
+              await restoreWinVisibleWindowOrder(adapter, winBaseline, [...winTouched]);
+            } catch (e) {
+              adapter.logger.debug(
+                `[zoom] win restore failed pre-filter: ${e instanceof Error ? e.message : String(e)}`,
+              );
             }
-            if (candidate.appIdentifier) winTouched.add(candidate.appIdentifier);
-            const detailed = candidate.hwnd
-              ? await enumerateWinWindowMarksDetailed(
-                  adapter,
-                  candidate.hwnd,
-                  targetPhysicalRect,
-                  ratioX,
-                  ratioY,
-                  originX,
-                  originY,
-                )
-              : await enumerateWinAppMarksDetailed(
-                  adapter,
-                  candidate.appIdentifier,
-                  targetPhysicalRect,
-                  ratioX,
-                  ratioY,
-                  originX,
-                  originY,
-                );
-            const visibleVirtualRects = candidate.visibleRects.map(rect =>
-              physicalRectToVirtualRect(rect, ratioX, ratioY, originX, originY),
-            );
-            const kept = filterMarksByVisibleRegions(detailed.marks, visibleVirtualRects);
-            // Pre-tag source window name so downstream attribution credits
-            // each mark to the window that was actually UIA-probed, not
-            // to whichever buried window overlaps via point-in-rect.
-            // Mirrors the pre-tag collectWinContextAwareMarks does.
-            for (const m of kept) m.sourceWindowName = candidate.displayName;
-            merged.push(...kept);
-            lastStats = detailed.stats;
+            winRestoredEarly = true;
+            await sleep(80);
           }
-          marks = dedupeMarks(merged);
-          (marks as any).__somStats = {
-            ...(lastStats ?? {}),
-            returnedCount: marks.length,
-          };
-          probedWindowNames = new Set(candidates.map(c => c.displayName));
-        } else if (adapter.executor.capabilities.platform === "darwin") {
-          const baseline = await listMacVisibleWindows(adapter);
-          let macCursor: { x: number; y: number } | null = null;
-          try {
-            macCursor = await adapter.executor.getCursorPosition();
-          } catch {
-            macCursor = null;
-          }
-          const candidates = selectZoomWindowCandidates(
-            buildMacZoomWindowCandidates(baseline, targetPhysicalRect),
-            macCursor,
+          const refreshedCandidates = await refreshVisibleRectsAfterRestore(adapter.executor, candidates);
+          const virtualCandidates = refreshedCandidates.map(c => ({
+            ...c,
+            visibleRects: c.visibleRects.map(r =>
+              physicalRectToVirtualRect(r, ratioX, ratioY, originX, originY),
+            ),
+            rect: physicalRectToVirtualRect(c.rect, ratioX, ratioY, originX, originY),
+          }));
+          const virtualCursor = cursor
+            ? { x: (cursor.x - originX) / ratioX, y: (cursor.y - originY) / ratioY }
+            : null;
+          const result = filterAndScoreToMarks(
+            bulk.elements,
+            virtualCandidates,
+            regionVirtual,
+            virtualCursor,
+            virtualViewports,
           );
-          const merged: Mark[] = [];
-          let lastStats: any = undefined;
-          for (const candidate of candidates) {
-            const detailed = await enumerateMacWindowMarksDetailed(
-              adapter,
-              candidate.windowId,
-              candidate.appIdentifier,
-              targetPhysicalRect,
-              ratioX,
-              ratioY,
-              originX,
-              originY,
-            );
-            const visibleVirtualRects = candidate.visibleRects.map(rect =>
-              physicalRectToVirtualRect(rect, ratioX, ratioY, originX, originY),
-            );
-            const kept = filterMarksByVisibleRegions(detailed.marks, visibleVirtualRects);
-            // Pre-tag — see Win zoom probe comment above.
-            for (const m of kept) m.sourceWindowName = candidate.displayName;
-            merged.push(...kept);
-            lastStats = detailed.stats;
+          marks = result.marks;
+          if (result.browserViewports.length > 0) {
+            (marks as any).__browserViewports = result.browserViewports;
           }
-          marks = dedupeMarks(merged);
           (marks as any).__somStats = {
-            ...(lastStats ?? {}),
+            traversedCount: bulk.elements.length,
+            matchedCount: bulk.elements.length,
             returnedCount: marks.length,
+            truncated: bulk.candidateTimings.some(t => t.truncated),
+            truncationReason: bulk.candidateTimings.some(t => t.truncated)
+              ? "traversal_budget"
+              : undefined,
           };
           probedWindowNames = new Set(candidates.map(c => c.displayName));
         } else {
-          const detection = await detectElementsMultiSourceDetailed(
-            adapter.executor,
-            regionVirtual,
-            { ratioX, ratioY, originX, originY },
-            ["uia"],
-          );
-          marks = detection.marks;
-          (marks as any).__somStats = detection.stats;
+          // Linux / unsupported — empty marks, ruler-only fallback.
+          marks = [];
         }
         // Zoom only cares about the zoom region — discard any marks whose
         // center lies outside regionVirtual before downstream tile / text /
@@ -4908,23 +4927,23 @@ async function handleZoom(
       }
     }
 
-    // Win: restore z-order BEFORE the zoom capture so the zoomed image
-    // reflects the post-disturbance settled state — same rationale as
-    // handleScreenshot's pre-capture pass. Then verify display geometry
-    // didn't shift; if it did, drop the marks since their coords are
-    // computed against the pre-shift ratios/origin.
-    if (isWin && winTouched.size > 0 && winBaseline.length > 0) {
+    // Win: z-order was restored INSIDE the SoM block above (so refresh
+    // visibleRects → filter saw the post-restore layout). Here we run
+    // the safety-net restore for the `somDisabled === true` path that
+    // skipped the SoM block, plus the layout-drift check that
+    // invalidates marks if a window moved during the probe loop.
+    if (isWin && !winRestoredEarly && winTouched.size > 0 && winBaseline.length > 0) {
       try {
         await restoreWinVisibleWindowOrder(adapter, winBaseline, [...winTouched]);
       } catch (e) {
         adapter.logger.debug(
-          `[zoom] win restore failed pre-capture: ${e instanceof Error ? e.message : String(e)}`,
+          `[zoom] win restore failed (somDisabled path): ${e instanceof Error ? e.message : String(e)}`,
         );
       }
       winRestoredEarly = true;
-      // Settle DWM compose + per-app focus-out repaints.
       await sleep(80);
-
+    }
+    if (isWin && winRestoredEarly) {
       // Layout re-check: detect window move/resize/close during the
       // probe loop. visibleRects we filtered marks against came from
       // `baseline` (taken at probe start) — if any tracked window
@@ -4998,10 +5017,7 @@ async function handleZoom(
     // models still benefit from a complete text listing alongside the
     // image, and capping at 20 for VL was discriminating against
     // non-vision feedback when the dataset should be identical.
-    const shownCount = Math.min(
-      marks.length,
-      50,
-    );
+    const shownCount = textSoMShownCount(marks.length);
 
     // For circles: pick a spatially-distributed subset of marks so
     // red dots cover the zoom image evenly. Circle count ≤ text-list
@@ -5104,6 +5120,7 @@ async function handleZoom(
           includePriorityHint: !visionEnabled,
           stats: (marks as any).__somStats,
           windows: windowsContext,
+          browserViewports: getBrowserViewports(marks),
         },
       );
     } else if (somDisabled) {
@@ -5248,31 +5265,36 @@ async function handleClickVariant(
   );
   if (hitGate) return hitGate;
 
-  await adapter.executor.click(x, y, button, count, modifiers);
-  // Verify cursor actually landed where we asked. If the value differs
-  // from (x, y) by more than rounding, there's still a coord-space
-  // mismatch between scaleCoord and the input library. Helps tell
-  // "click went to wrong pixel" (our bug) from "click went to right
-  // pixel but model misidentified the target" (model bug).
+  const hideToken = await winHideHostIfOverlap(adapter, x, y);
   try {
-    const actual = await adapter.executor.getCursorPosition();
-    adapter.logger.debug(
-      `[CU-COORD] post-click cursor: requested=(${x},${y}) actual=(${actual.x},${actual.y}) delta=(${actual.x - x},${actual.y - y})`,
-    );
-  } catch {
-    // getCursorPosition is best-effort diagnostic, don't break the click
-  }
-  // Foreground-window probe: which app actually came to the front in
-  // response to this click? Disambiguates "click hit the right pixel
-  // but launched a different app than expected" from "the right app
-  // launched but appears wrong (rendering issue, anti-screenshot, etc)".
-  try {
-    const fg = await adapter.executor.getFrontmostApp();
-    adapter.logger.debug(
-      `[CU-FOREGROUND] after click: appIdentifier="${fg?.appIdentifier ?? "null"}" displayName="${fg?.displayName ?? "null"}"`,
-    );
-  } catch {
-    // best-effort
+    await adapter.executor.click(x, y, button, count, modifiers);
+    // Verify cursor actually landed where we asked. If the value differs
+    // from (x, y) by more than rounding, there's still a coord-space
+    // mismatch between scaleCoord and the input library. Helps tell
+    // "click went to wrong pixel" (our bug) from "click went to right
+    // pixel but model misidentified the target" (model bug).
+    try {
+      const actual = await adapter.executor.getCursorPosition();
+      adapter.logger.debug(
+        `[CU-COORD] post-click cursor: requested=(${x},${y}) actual=(${actual.x},${actual.y}) delta=(${actual.x - x},${actual.y - y})`,
+      );
+    } catch {
+      // getCursorPosition is best-effort diagnostic, don't break the click
+    }
+    // Foreground-window probe: which app actually came to the front in
+    // response to this click? Disambiguates "click hit the right pixel
+    // but launched a different app than expected" from "the right app
+    // launched but appears wrong (rendering issue, anti-screenshot, etc)".
+    try {
+      const fg = await adapter.executor.getFrontmostApp();
+      adapter.logger.debug(
+        `[CU-FOREGROUND] after click: appIdentifier="${fg?.appIdentifier ?? "null"}" displayName="${fg?.displayName ?? "null"}"`,
+      );
+    } catch {
+      // best-effort
+    }
+  } finally {
+    await winShowHostIfHidden(adapter, hideToken);
   }
   return okText("Clicked.");
 }
@@ -5452,7 +5474,12 @@ async function handleScroll(
   if (hitGate) return hitGate;
   if (mouseButtonHeld) mouseMoved = true;
 
-  await adapter.executor.scroll(x, y, dx, dy);
+  const hideToken = await winHideHostIfOverlap(adapter, x, y);
+  try {
+    await adapter.executor.scroll(x, y, dx, dy);
+  } finally {
+    await winShowHostIfHidden(adapter, hideToken);
+  }
   return okText("Scrolled.");
 }
 
@@ -5552,7 +5579,20 @@ async function handleDrag(
   );
   if (toGate) return toGate;
 
-  await adapter.executor.drag(from, to);
+  // Hide host if either endpoint overlaps it. Drag is more complex than
+  // a single click — the path between from and to could traverse host
+  // even when neither endpoint hits — but per-pixel ray-host overlap
+  // checks would be expensive and rare; fall back to "hide if anything
+  // we know about overlaps" which catches the common case.
+  const hideTokenFrom = await winHideHostIfOverlap(adapter, fromPoint.x, fromPoint.y);
+  const hideTokenTo = hideTokenFrom.hidden
+    ? hideTokenFrom
+    : await winHideHostIfOverlap(adapter, to.x, to.y);
+  try {
+    await adapter.executor.drag(from, to);
+  } finally {
+    await winShowHostIfHidden(adapter, hideTokenTo);
+  }
   return okText("Dragged.");
 }
 
@@ -5705,8 +5745,13 @@ async function handleMoveMouse(
     if (hitGate) return hitGate;
   }
 
-  await adapter.executor.moveMouse(x, y);
-  if (mouseButtonHeld) mouseMoved = true;
+  const hideToken = await winHideHostIfOverlap(adapter, x, y);
+  try {
+    await adapter.executor.moveMouse(x, y);
+    if (mouseButtonHeld) mouseMoved = true;
+  } finally {
+    await winShowHostIfHidden(adapter, hideToken);
+  }
 
   const actual = await adapter.executor.getCursorPosition();
   const actualScreenX = rawX;
@@ -6187,6 +6232,16 @@ async function handleLeftMouseDown(
   await adapter.executor.mouseDown();
   mouseButtonHeld = true;
   mouseMoved = false;
+  // Note: we don't hide host around mouseDown/mouseUp. mouseDown fires
+  // at the current cursor position. If host was hidden via mouse_move's
+  // protection and restored before mouseDown, and host now overlaps the
+  // cursor, mouseDown lands on host. The fix here would have to span
+  // from mouseDown to the matching mouseUp — which is multiple tool
+  // calls. Instead, the surrounding mouse_move keeps host hidden during
+  // its OWN action; the gap between mouse_move-end and mouseDown-start
+  // is the residual risk and currently acceptable (cursor doesn't move
+  // in that gap; if host wasn't over the mouse_move target it won't be
+  // over the mouseDown target either).
   return okText("Mouse button pressed.");
 }
 

@@ -70,11 +70,33 @@ export type { DetectedElement, Rect } from "./detection.js";
 export {
   computeRulerIntervals,
   computeZoomRect,
-  detectElementsInRect,
   overlaySoMLimit,
   computeDynamicOverlayCap,
   selectSpatiallyDistributedMarks,
 } from "./detection.js";
+
+// Phase 1.5 pipeline — exposed for end-to-end tests / external probing.
+// Public API surface is the same as `computer-use-mcp-axiomate`'s
+// internal `handleScreenshot` / `handleZoom` / `handleScreenshotWindow`
+// callers use; nothing else needs to depend on these.
+export {
+  buildWindowBaseline,
+  bulkEnumerate,
+  selectCandidates,
+  filterAndScoreToMarks,
+  refreshVisibleRectsAfterRestore,
+  DEFAULT_PIPELINE_CONFIG,
+} from "./enumeration/pipeline.js";
+export type {
+  BrowserViewportHint,
+  CandidateWindow,
+  PipelineConfig,
+  PipelineElement,
+} from "./enumeration/types.js";
+export type {
+  BulkEnumerationResult,
+  BulkUiElement,
+} from "./executor.js";
 
 /** Permission mode for Chrome bridge integration */
 export type PermissionMode = 'ask' | 'skip_all_permission_checks' | 'follow_a_plan';

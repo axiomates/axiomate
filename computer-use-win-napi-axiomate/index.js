@@ -138,60 +138,22 @@ module.exports.captureDisplayScaled = async function captureDisplayScaled(
   return mod.captureDisplayScaled(src, targetW, targetH, jpegQuality, gridMode ?? undefined, gridOriginX ?? undefined, gridOriginY ?? undefined, gridRangeW ?? undefined, gridRangeH ?? undefined, marks ?? undefined)
 }
 
-// ── UIAutomation enumeration (SoM overlay for click_target zoom) ─────────
-//
-// Returns up to 50 visible UI elements whose bbox intersects the input rect.
-// Empty Vec on COM failure / non-Windows / native binding load failure —
-// agent treats empty as "no marks; fall back to ruler positioning".
-module.exports.enumerateUiElementsInRect = function enumerateUiElementsInRect(rect, windowOnly) {
-  const mod = loadNative()
-  if (!mod) return []
-  return mod.enumerateUiElementsInRect(rect, windowOnly)
-}
-
-module.exports.enumerateUiElementsInRectDetailed = function enumerateUiElementsInRectDetailed(rect, windowOnly) {
+// Phase 1.5 bulk-pull entry. Returns the entire ControlView subtree
+// rooted at `hwnd` in a single IUIAutomationCacheRequest IPC, plus
+// browser viewport rects from a RawView pre-scan. No filtering at the
+// Rust layer — TS pipeline (enumeration/pipeline.ts) decides what's
+// meaningful.
+module.exports.enumerateUiElementsBulkForWindow = function enumerateUiElementsBulkForWindow(hwnd) {
   const mod = loadNative()
   if (!mod) {
     return {
       elements: [],
-      traversedCount: 0,
-      matchedCount: 0,
-      returnedCount: 0,
-      truncated: false,
-      truncationReason: null,
+      browserViewportBboxes: [],
+      elapsedMs: 0,
+      truncatedByWalltime: false,
     }
   }
-  return mod.enumerateUiElementsInRectDetailed(rect, windowOnly)
-}
-
-module.exports.enumerateUiElementsForAppInRectDetailed = function enumerateUiElementsForAppInRectDetailed(appIdentifier, rect) {
-  const mod = loadNative()
-  if (!mod) {
-    return {
-      elements: [],
-      traversedCount: 0,
-      matchedCount: 0,
-      returnedCount: 0,
-      truncated: false,
-      truncationReason: null,
-    }
-  }
-  return mod.enumerateUiElementsForAppInRectDetailed(appIdentifier, rect)
-}
-
-module.exports.enumerateUiElementsForWindowInRectDetailed = function enumerateUiElementsForWindowInRectDetailed(hwnd, rect) {
-  const mod = loadNative()
-  if (!mod) {
-    return {
-      elements: [],
-      traversedCount: 0,
-      matchedCount: 0,
-      returnedCount: 0,
-      truncated: false,
-      truncationReason: null,
-    }
-  }
-  return mod.enumerateUiElementsForWindowInRectDetailed(hwnd, rect)
+  return mod.enumerateUiElementsBulkForWindow(hwnd)
 }
 
 module.exports.listVisibleWindows = function listVisibleWindows() {

@@ -224,35 +224,56 @@ pub struct MarkOverlay {
     pub y: i32,
 }
 
-/// One UI element returned by `enumerate_ui_elements_in_rect`. `bbox` is in
-/// the same physical-pixel virtual-screen space as everything else in this
-/// crate (VRect convention — see top of file).
+/// One element returned by the bulk enumeration path (Phase 1.5). Carries
+/// *all* properties the TS pipeline filter/score steps need, plus a
+/// parent-index pointer so the TS side can reconstruct hierarchy without
+/// re-querying UIA. No filtering at the Rust level — every node in the
+/// ControlView subtree comes back; TS step 8 (filter) decides what to drop.
+///
+/// `parent_index = -1` for the root. Otherwise it's an index into the
+/// returned `elements` vec; children always come after their parent in
+/// the vec (BFS or DFS pre-order).
 #[napi(object)]
-pub struct UiElement {
+pub struct BulkUiElement {
     pub bbox: VRect,
-    /// UIAutomation `CurrentName` — control's accessible name. Empty when
-    /// the control didn't expose one.
+    /// UIA `CurrentName` (cached). Empty when the control didn't expose one.
     pub name: String,
-    /// Human-readable control type ("Button", "Edit", "MenuItem", ...).
-    /// Mapped from the integer `UIA_*ControlTypeId`. "Unknown" if the
-    /// type ID didn't match any of the standard values.
+    /// Human-readable control type ("Button", "Edit", ...). Same mapping
+    /// as `UiElement.role`. Cheaper for TS than reading control_type_id +
+    /// looking up the table per node.
     pub role: String,
-    /// UIAutomation `CurrentAutomationId` — stable per-control identifier
-    /// when the app sets one. None when empty.
+    /// Raw `UIA_CONTROLTYPE_ID` integer for TS-side role-bucket logic that
+    /// needs the exact id (rare; most callers use `role`).
+    pub control_type_id: i32,
+    /// UIA `CurrentClassName` (cached). Used by the BrowserViewport prune
+    /// fallback (Chrome_RenderWidgetHostHWND / MozillaWindowClass match).
+    pub class_name: String,
     pub automation_id: Option<String>,
-    /// Which enumeration source produced this element:
-    /// "taskbar", "desktop", or "foreground".
-    pub uia_source: Option<String>,
+    /// UIA `CurrentFrameworkId` (cached). "Win32" / "WPF" / "DirectUI" /
+    /// "Chrome" / "Gecko" — useful for the TS pipeline's app-aware filtering.
+    pub framework_id: String,
+    pub localized_control_type: String,
+    pub is_offscreen: bool,
+    /// 0 when the element doesn't host its own HWND (most non-window
+    /// controls). Non-zero for top-level windows and HWND-backed Panes
+    /// (older Chromium's Chrome_RenderWidgetHostHWND, etc.).
+    pub native_window_handle: i64,
+    pub parent_index: i32,
+    pub depth: u32,
 }
 
 #[napi(object)]
-pub struct UiElementEnumerationResult {
-    pub elements: Vec<UiElement>,
-    pub traversed_count: u32,
-    pub matched_count: u32,
-    pub returned_count: u32,
-    pub truncated: bool,
-    pub truncation_reason: Option<String>,
+pub struct BulkEnumerationResult {
+    pub elements: Vec<BulkUiElement>,
+    /// Web-content viewport bboxes discovered via RawView pre-scan
+    /// (Chromium hides its Document control from ControlView, so the
+    /// main bulk walk can't see it — see Part F step 5). The TS filter
+    /// step uses these to drop any element whose bbox is contained.
+    pub browser_viewport_bboxes: Vec<VRect>,
+    pub elapsed_ms: u32,
+    /// True when the walker bailed early due to the per-call wall-time
+    /// cap. The returned `elements` are still valid (just incomplete).
+    pub truncated_by_walltime: bool,
 }
 
 // ───────────────────────────────────────────────────────────────────────────
@@ -575,120 +596,34 @@ pub async fn capture_display_scaled(
     }
 }
 
-/// Enumerate visible interactable UI elements within a screen rect using
-/// IUIAutomation. Used by the click_target SoM (Set-of-Mark) overlay path:
-/// when the AI zooms into a region inside an active click_target loop, the
-/// system asks the OS for exact bboxes of buttons/menus/edits/etc. and
-/// hands them back as numbered markers + structured text so the AI doesn't
-/// have to estimate pixel positions from a downscaled image.
-///
-/// Scope: rooted at `IUIAutomation::GetRootElement` (the desktop), NOT the
-/// foreground window — this is intentional so taskbar (`Shell_TrayWnd`),
-/// system tray, and floating top-level windows are included. Without root
-/// scope the "click QQ icon in taskbar" use case would never see the icon.
-///
-/// Filtering: `IsControlElement = true` removes pure-content nodes
-/// (TextBlock, Image without click handler) so the result list stays
-/// focused on actually-clickable surfaces. Capped at 50 results to bound
-/// per-call latency on dense desktops.
-///
-/// Returns empty Vec on COM failure (apartment not init'd, IUIAutomation
-/// unavailable on stripped Windows installs) — the agent layer treats
-/// `[]` as "no marks available, fall back to ruler-based positioning"
-/// gracefully.
-#[napi]
-pub async fn enumerate_ui_elements_in_rect(
-    rect: VRect,
-    window_only: Option<bool>,
-) -> napi::Result<Vec<UiElement>> {
-    #[cfg(target_os = "windows")]
-    {
-        Ok(windows_impl::enumerate_ui_elements_in_rect(
-            rect,
-            window_only.unwrap_or(false),
-        ))
-    }
-    #[cfg(not(target_os = "windows"))]
-    {
-        let _ = (rect, window_only);
-        Ok(Vec::new())
-    }
-}
 
+/// Phase 1.5 bulk-pull enumeration for a single window root. Returns the
+/// entire ControlView subtree's elements in one IPC via
+/// `IUIAutomationCacheRequest + BuildUpdatedCache`. No bbox / rect / role
+/// filtering at this layer — the TS pipeline (filter.ts) decides what's
+/// meaningful. Replaces `enumerate_ui_elements_for_window_in_rect_detailed`
+/// once all callers migrate.
+///
+/// Use cases the TS pipeline drives:
+/// - `screenshot`: called per candidate window (top-4 by visible area + desktop + taskbar)
+/// - `zoom`: called per candidate window inside the zoom region
+/// - `screenshot_window`: called once for the named app's window
 #[napi]
-pub async fn enumerate_ui_elements_in_rect_detailed(
-    rect: VRect,
-    window_only: Option<bool>,
-) -> napi::Result<UiElementEnumerationResult> {
-    #[cfg(target_os = "windows")]
-    {
-        Ok(windows_impl::enumerate_ui_elements_in_rect_detailed(
-            rect,
-            window_only.unwrap_or(false),
-        ))
-    }
-    #[cfg(not(target_os = "windows"))]
-    {
-        let _ = (rect, window_only);
-        Ok(UiElementEnumerationResult {
-            elements: Vec::new(),
-            traversed_count: 0,
-            matched_count: 0,
-            returned_count: 0,
-            truncated: false,
-            truncation_reason: None,
-        })
-    }
-}
-
-#[napi]
-pub async fn enumerate_ui_elements_for_app_in_rect_detailed(
-    app_identifier: String,
-    rect: VRect,
-) -> napi::Result<UiElementEnumerationResult> {
-    #[cfg(target_os = "windows")]
-    {
-        Ok(windows_impl::enumerate_ui_elements_for_app_in_rect_detailed(
-            &app_identifier,
-            rect,
-        ))
-    }
-    #[cfg(not(target_os = "windows"))]
-    {
-        let _ = (app_identifier, rect);
-        Ok(UiElementEnumerationResult {
-            elements: Vec::new(),
-            traversed_count: 0,
-            matched_count: 0,
-            returned_count: 0,
-            truncated: false,
-            truncation_reason: None,
-        })
-    }
-}
-
-#[napi]
-pub async fn enumerate_ui_elements_for_window_in_rect_detailed(
+pub async fn enumerate_ui_elements_bulk_for_window(
     hwnd: i64,
-    rect: VRect,
-) -> napi::Result<UiElementEnumerationResult> {
+) -> napi::Result<BulkEnumerationResult> {
     #[cfg(target_os = "windows")]
     {
-        Ok(windows_impl::enumerate_ui_elements_for_window_in_rect_detailed(
-            hwnd,
-            rect,
-        ))
+        Ok(windows_impl::enumerate_ui_elements_bulk_for_window(hwnd))
     }
     #[cfg(not(target_os = "windows"))]
     {
-        let _ = (hwnd, rect);
-        Ok(UiElementEnumerationResult {
+        let _ = hwnd;
+        Ok(BulkEnumerationResult {
             elements: Vec::new(),
-            traversed_count: 0,
-            matched_count: 0,
-            returned_count: 0,
-            truncated: false,
-            truncation_reason: None,
+            browser_viewport_bboxes: Vec::new(),
+            elapsed_ms: 0,
+            truncated_by_walltime: false,
         })
     }
 }
@@ -1108,9 +1043,9 @@ pub async fn drain_self_window_logs() -> Vec<String> {
 #[cfg(target_os = "windows")]
 mod windows_impl {
     use super::{
-        AppHitInfo, CaptureWindowImage, CaptureWindowOutcome, DisplayCaptureResult, InstalledApp,
-        MarkOverlay, UiElement, UiElementEnumerationResult, VPoint, VRect, VisibleWindowInfo,
-        WindowMonitorInfo,
+        AppHitInfo, BulkEnumerationResult, BulkUiElement, CaptureWindowImage,
+        CaptureWindowOutcome, DisplayCaptureResult, InstalledApp, MarkOverlay, VPoint, VRect,
+        VisibleWindowInfo, WindowMonitorInfo,
     };
     use base64::Engine;
     use std::collections::{BTreeMap, BTreeSet};
@@ -1165,43 +1100,44 @@ mod windows_impl {
     };
     use windows::Win32::UI::Shell::{IShellItem, SHCreateItemFromParsingName, SIGDN_NORMALDISPLAY};
     use windows::Win32::UI::WindowsAndMessaging::{
-        AllowSetForegroundWindow, BringWindowToTop, DrawIconEx, EnumWindows, FindWindowW,
-        GetClassNameW, GetCursorInfo, GetCursorPos, GetForegroundWindow, GetIconInfo,
-        GetLayeredWindowAttributes, GetSystemMetrics, GetWindow, GetWindowLongW, GetWindowRect,
+        AllowSetForegroundWindow, BringWindowToTop, DrawIconEx, EnumWindows, GetClassNameW,
+        GetCursorInfo, GetCursorPos, GetForegroundWindow, GetIconInfo, GetLayeredWindowAttributes,
+        GetSystemMetrics, GetWindow, GetWindowLongW, GetWindowPlacement, GetWindowRect,
         GetWindowThreadProcessId, IsIconic, IsWindowVisible, SetForegroundWindow, SetWindowPos,
         ShowWindow, SwitchToThisWindow, WindowFromPoint, ASFW_ANY, GWL_EXSTYLE, GW_HWNDPREV,
         GW_OWNER, CURSORINFO, CURSOR_SHOWING, DI_NORMAL, HWND_NOTOPMOST, HWND_TOP, HWND_TOPMOST,
         ICONINFO, LAYERED_WINDOW_ATTRIBUTES_FLAGS, LWA_ALPHA, SHOW_WINDOW_CMD, SM_CXVIRTUALSCREEN,
         SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN, SWP_NOACTIVATE, SWP_NOMOVE,
-        SWP_NOSIZE, SWP_NOZORDER, SWP_SHOWWINDOW, SW_HIDE, SW_MINIMIZE, SW_RESTORE,
-        SW_SHOWNOACTIVATE, WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOPMOST, WS_EX_TOOLWINDOW,
+        SWP_NOSIZE, SWP_NOZORDER, SWP_SHOWWINDOW, SW_HIDE, SW_MINIMIZE, SW_RESTORE, SW_SHOWMAXIMIZED,
+        SW_SHOWMINIMIZED, SW_SHOWNOACTIVATE, WINDOWPLACEMENT, WS_EX_LAYERED, WS_EX_NOACTIVATE,
+        WS_EX_TOPMOST, WS_EX_TOOLWINDOW,
     };
-    // UIAutomation — IUIAutomation::FindAll path used by enumerate_ui_elements_in_rect
-    // for the SoM (Set-of-Mark) overlay. CUIAutomation is the COM CLSID;
-    // IUIAutomation* are the COM interfaces; UIA_*PropertyId / UIA_*ControlTypeId
-    // are typed constants windows-rs generated from the UIA TLB. We root at
-    // GetRootElement (the desktop) so taskbar / Shell_TrayWnd are included —
-    // foreground-window-scoped FindAll would miss them.
-    use std::cmp::Ordering;
-    use std::collections::{BinaryHeap, VecDeque};
+    // UIAutomation — used by the Phase 1.5 bulk pull. CUIAutomation is the COM
+    // CLSID; IUIAutomation* are the COM interfaces; UIA_*PropertyId /
+    // UIA_*ControlTypeId are typed constants windows-rs generated from the
+    // UIA TLB.
     use std::sync::{Mutex, OnceLock};
     use windows::Win32::UI::Accessibility::{
-        CUIAutomation, ExpandCollapseState_Collapsed, IUIAutomation, IUIAutomationElement,
-        IUIAutomationExpandCollapsePattern, UIA_AppBarControlTypeId, UIA_ButtonControlTypeId,
-        UIA_CalendarControlTypeId, UIA_CheckBoxControlTypeId, UIA_ComboBoxControlTypeId,
-        UIA_CustomControlTypeId, UIA_DataGridControlTypeId, UIA_DataItemControlTypeId,
-        UIA_DocumentControlTypeId, UIA_EditControlTypeId, UIA_ExpandCollapsePatternId,
+        AutomationElementMode_Full, AutomationElementMode_None, CUIAutomation, IUIAutomation,
+        IUIAutomationCacheRequest, IUIAutomationElement, TreeScope_Children, TreeScope_Element,
+        TreeScope_Subtree, UIA_AppBarControlTypeId,
+        UIA_AutomationIdPropertyId, UIA_BoundingRectanglePropertyId, UIA_ButtonControlTypeId,
+        UIA_CalendarControlTypeId, UIA_CheckBoxControlTypeId, UIA_ClassNamePropertyId,
+        UIA_ComboBoxControlTypeId, UIA_ControlTypePropertyId, UIA_CustomControlTypeId,
+        UIA_DataGridControlTypeId, UIA_DataItemControlTypeId, UIA_DocumentControlTypeId,
+        UIA_EditControlTypeId, UIA_FrameworkIdPropertyId,
         UIA_GroupControlTypeId, UIA_HeaderControlTypeId, UIA_HeaderItemControlTypeId,
-        UIA_HyperlinkControlTypeId, UIA_ImageControlTypeId,
-        UIA_ListControlTypeId, UIA_ListItemControlTypeId, UIA_MenuBarControlTypeId,
-        UIA_MenuControlTypeId, UIA_MenuItemControlTypeId, UIA_PaneControlTypeId,
-        UIA_ProgressBarControlTypeId, UIA_RadioButtonControlTypeId, UIA_ScrollBarControlTypeId,
-        UIA_SemanticZoomControlTypeId, UIA_SeparatorControlTypeId, UIA_SliderControlTypeId,
-        UIA_SpinnerControlTypeId, UIA_SplitButtonControlTypeId, UIA_StatusBarControlTypeId,
-        UIA_TabControlTypeId, UIA_TabItemControlTypeId, UIA_TableControlTypeId,
-        UIA_TextControlTypeId, UIA_TitleBarControlTypeId, UIA_ToolBarControlTypeId,
-        UIA_ToolTipControlTypeId, UIA_TreeControlTypeId, UIA_TreeItemControlTypeId,
-        UIA_WindowControlTypeId, UIA_CONTROLTYPE_ID,
+        UIA_HyperlinkControlTypeId, UIA_ImageControlTypeId, UIA_IsOffscreenPropertyId,
+        UIA_ListControlTypeId, UIA_ListItemControlTypeId,
+        UIA_LocalizedControlTypePropertyId, UIA_MenuBarControlTypeId, UIA_MenuControlTypeId,
+        UIA_MenuItemControlTypeId, UIA_NamePropertyId, UIA_NativeWindowHandlePropertyId,
+        UIA_PaneControlTypeId, UIA_ProgressBarControlTypeId, UIA_RadioButtonControlTypeId,
+        UIA_ScrollBarControlTypeId, UIA_SemanticZoomControlTypeId, UIA_SeparatorControlTypeId,
+        UIA_SliderControlTypeId, UIA_SpinnerControlTypeId, UIA_SplitButtonControlTypeId,
+        UIA_StatusBarControlTypeId, UIA_TabControlTypeId, UIA_TabItemControlTypeId,
+        UIA_TableControlTypeId, UIA_TextControlTypeId, UIA_TitleBarControlTypeId,
+        UIA_ToolBarControlTypeId, UIA_ToolTipControlTypeId, UIA_TreeControlTypeId,
+        UIA_TreeItemControlTypeId, UIA_WindowControlTypeId, UIA_CONTROLTYPE_ID,
     };
 
     // VPoint / VSize / VRect are crate-root #[napi(object)] types — see
@@ -1421,1170 +1357,530 @@ mod windows_impl {
         }
     }
 
-    /// Return true when `candidate` is meaningfully visible on screen.
+
+    /// Phase 1.5 bulk pull. Build a `IUIAutomationCacheRequest` over the
+    /// ControlView subtree rooted at `hwnd`, fetch all properties the TS
+    /// pipeline needs in one IPC, walk the cached tree pre-order, and emit
+    /// every node as a `BulkUiElement` with parent index. No filtering at
+    /// this layer.
     ///
-    /// UIA's `CurrentIsOffscreen=false` is too weak for some controls:
-    /// collapsed dropdown options and similar virtualized descendants can
-    /// still remain in the tree with plausible bounding boxes. To approximate
-    /// "the user can currently see this element", sample a few points inside
-    /// the bbox and require UIA hit-testing at one of those points to land on
-    /// the element itself or within its subtree.
-    ///
-    /// This intentionally rejects elements whose bbox exists only in the UIA
-    /// tree but whose pixels are not currently painted at those sample points.
-    unsafe fn is_uia_element_hit_visible(
-        automation: &IUIAutomation,
-        candidate: &IUIAutomationElement,
-        bbox: &VRect,
-    ) -> bool {
-        if bbox.size.w == 0 || bbox.size.h == 0 {
-            return false;
+    /// Two side-channel outputs:
+    /// 1. `browser_viewport_bboxes`: RawView pre-scan finds Document
+    ///    nodes hidden by ControlView (modern Chromium). Returned to TS so
+    ///    step 8's filter can drop everything inside them.
+    /// 2. `truncated_by_walltime`: bulk pull on a single window is normally
+    ///    one IPC, but `BuildUpdatedCache` can hang for an unresponsive app.
+    ///    A 2-second wall-time guard fires `truncated_by_walltime=true` and
+    ///    returns whatever was collected so far (typically nothing in that
+    ///    case — the cache build is monolithic — but we surface the flag
+    ///    so the TS pipeline can mark the window as "enumeration timed out").
+    pub fn enumerate_ui_elements_bulk_for_window(hwnd: i64) -> BulkEnumerationResult {
+        ensure_dpi_aware();
+        let _com = ComGuard::init();
+        let start = std::time::Instant::now();
+        let mut elements: Vec<BulkUiElement> = Vec::new();
+        let mut viewport_bboxes: Vec<VRect> = Vec::new();
+
+        if hwnd == 0 {
+            return BulkEnumerationResult {
+                elements,
+                browser_viewport_bboxes: viewport_bboxes,
+                elapsed_ms: 0,
+                truncated_by_walltime: false,
+            };
         }
 
-        let sample_xs = if bbox.size.w <= 2 {
-            [bbox.origin.x, bbox.origin.x, bbox.origin.x]
-        } else {
-            let x0 = bbox.origin.x;
-            let x1 = bbox.origin.x + bbox.size.w as i32 - 1;
-            [
-                x0 + ((bbox.size.w as i32 - 1) / 2),
-                x0 + ((bbox.size.w as i32 - 1) / 4),
-                x1 - ((bbox.size.w as i32 - 1) / 4),
-            ]
-        };
-        let sample_ys = if bbox.size.h <= 2 {
-            [bbox.origin.y, bbox.origin.y, bbox.origin.y]
-        } else {
-            let y0 = bbox.origin.y;
-            let y1 = bbox.origin.y + bbox.size.h as i32 - 1;
-            [
-                y0 + ((bbox.size.h as i32 - 1) / 2),
-                y0 + ((bbox.size.h as i32 - 1) / 4),
-                y1 - ((bbox.size.h as i32 - 1) / 4),
-            ]
-        };
-
-        let walker = match automation.RawViewWalker() {
-            Ok(w) => w,
-            Err(_) => return true, // best-effort: don't drop everything if walker unavailable
-        };
-
-        for x in sample_xs {
-            for y in sample_ys {
-                let hit = match automation.ElementFromPoint(POINT { x, y }) {
-                    Ok(h) => h,
-                    Err(_) => continue,
+        unsafe {
+            let automation: IUIAutomation =
+                match CoCreateInstance(&CUIAutomation, None, CLSCTX_INPROC_SERVER) {
+                    Ok(a) => a,
+                    Err(_) => {
+                        return BulkEnumerationResult {
+                            elements,
+                            browser_viewport_bboxes: viewport_bboxes,
+                            elapsed_ms: start.elapsed().as_millis().min(u32::MAX as u128) as u32,
+                            truncated_by_walltime: false,
+                        }
+                    }
                 };
 
-                if automation
-                    .CompareElements(&hit, candidate)
-                    .map(|same| same.as_bool())
-                    .unwrap_or(false)
-                {
-                    return true;
-                }
+            let handle = HWND(hwnd as *mut _);
+            if handle.0.is_null() {
+                return BulkEnumerationResult {
+                    elements,
+                    browser_viewport_bboxes: viewport_bboxes,
+                    elapsed_ms: start.elapsed().as_millis().min(u32::MAX as u128) as u32,
+                    truncated_by_walltime: false,
+                };
+            }
 
-                let mut cur = hit;
-                for _ in 0..MAX_UIA_TREE_DEPTH {
-                    if automation
-                        .CompareElements(&cur, candidate)
-                        .map(|same| same.as_bool())
-                        .unwrap_or(false)
-                    {
-                        return true;
+            let root_live = match automation.ElementFromHandle(handle) {
+                Ok(el) => el,
+                Err(_) => {
+                    return BulkEnumerationResult {
+                        elements,
+                        browser_viewport_bboxes: viewport_bboxes,
+                        elapsed_ms: start.elapsed().as_millis().min(u32::MAX as u128) as u32,
+                        truncated_by_walltime: false,
                     }
-                    let parent = match walker.GetParentElement(&cur) {
-                        Ok(p) => p,
-                        Err(_) => break,
-                    };
-                    cur = parent;
+                }
+            };
+
+            // Step 1: RawView pre-scan for browser web-content viewports.
+            // Modern Chromium (128+) hides its Document control from
+            // ControlView, so the bulk pull below can't see it. Same logic
+            // as the Phase 1 prune; we replicate it here so the TS pipeline
+            // doesn't need a separate napi call.
+            let is_browser_root = {
+                let mut pid: u32 = 0;
+                GetWindowThreadProcessId(handle, Some(&mut pid));
+                let mut tmp = std::collections::HashMap::new();
+                pid != 0 && is_browser_process_cached(pid, &mut tmp)
+            };
+            if is_browser_root {
+                if let Ok(raw_walker) = automation.RawViewWalker() {
+                    viewport_bboxes = find_browser_viewports_raw(&raw_walker, &root_live, 0);
                 }
             }
-        }
 
-        false
-    }
-
-    /// Enumerate UI elements whose bounding rect is mostly contained in
-    /// `rect`. Caps at 50 to bound latency on busy desktops.
-    ///
-    /// Strategy — `IUIAutomation::FindAll(TreeScope_Subtree)` from the
-    /// desktop root does NOT reliably reach into modern app processes
-    /// (Win11 taskbar lives in StartMenuExperienceHost.exe; UIA's cross-
-    /// process proxy only surfaces top-level Window/Pane containers, not
-    /// deeper Buttons). Workaround: enumerate THREE specific subtrees
-    /// individually via `ElementFromHandle`, dedup by bbox:
-    ///   1. `Shell_TrayWnd` — the taskbar (covers "click X in taskbar").
-    ///   2. The foreground window — covers app controls in zoom region.
-    ///   3. The desktop root's direct children — fallback for popups /
-    ///      context menus / floating windows not under the above two.
-    ///
-    /// Filtering — for each candidate:
-    ///   - bbox must overlap `rect` AND ≥50% of bbox area must lie inside
-    ///     `rect`. Catches taskbar buttons (small, fully contained); rejects
-    ///     whole-screen Window/Pane containers whose bbox technically
-    ///     intersects the input rect but whose useful pixels are far outside.
-    ///   - exclude container roles (Window, Pane, Group, Document, TitleBar)
-    ///     since they're not actually clickable targets.
-    ///
-    /// Returns `Vec::new()` on any COM failure — caller treats empty as
-    /// "no marks available, fall back to ruler positioning".
-    const MAX_ENUM_VISITED_NODES: u32 = 300;
-    const WARMUP_MAX_DEPTH: usize = 2;
-    const WARMUP_MAX_VISITS: u32 = 80;
-    const ROOT_BASE_BUDGET: u32 = 40;
-    /// Cap on the number of "normal" (app) windows admitted as search roots.
-    /// Taskbar (`Shell_TrayWnd`) and desktop (`Progman`/`WorkerW`) are
-    /// special-cased — they're appended unconditionally on top of this cap so
-    /// taskbar icons / desktop shortcuts don't get evicted by a busy screen
-    /// (which used to happen: normal windows scored +140/+220 always beat
-    /// taskbar's −80 and desktop's −120 in the previous truncate).
-    const MAX_NORMAL_SEARCH_ROOTS: usize = 5;
-    /// Cursor proximity bonus: if the cursor falls inside a root rect, the
-    /// root scores +200. Strongest "what the user currently cares about"
-    /// signal we have without intrusive sensors. Matches the +180 center-hit
-    /// bonus magnitude so it dominates intersect-area for hovered windows.
-    const CURSOR_PROXIMITY_BONUS: i32 = 200;
-
-    #[derive(Clone)]
-    struct SearchRoot {
-        element: IUIAutomationElement,
-        source_label: &'static str,
-        z_rank: usize,
-        score: i32,
-        base_budget: u32,
-        extra_budget: u32,
-        exhausted: bool,
-    }
-
-    struct RootState {
-        root: SearchRoot,
-        bfs: VecDeque<(IUIAutomationElement, usize)>,
-        heap: BinaryHeap<FrontierItem>,
-        visited: u32,
-    }
-
-    #[derive(Clone)]
-    struct FrontierItem {
-        element: IUIAutomationElement,
-        depth: usize,
-        score: i32,
-        seq: u64,
-    }
-
-    impl PartialEq for FrontierItem {
-        fn eq(&self, other: &Self) -> bool {
-            self.score == other.score && self.seq == other.seq
-        }
-    }
-
-    impl Eq for FrontierItem {}
-
-    impl PartialOrd for FrontierItem {
-        fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-            Some(self.cmp(other))
-        }
-    }
-
-    impl Ord for FrontierItem {
-        fn cmp(&self, other: &Self) -> Ordering {
-            self.score
-                .cmp(&other.score)
-                .then_with(|| other.seq.cmp(&self.seq))
-        }
-    }
-
-    struct TraversalState {
-        traversed_count: u32,
-        matched_count: u32,
-        truncated: bool,
-        truncation_reason: Option<String>,
-        seq: u64,
-    }
-
-    /// Decide if a UIA element's name carries actual semantic information.
-    /// Mirrors Mac's `is_name_useful` — empty names are useful only for
-    /// text-input controls (Edit), and names that simply restate the role
-    /// (e.g. "Image", "Group", "Toolbar", "Window") add no signal and
-    /// shouldn't earn the bonus.
-    fn is_name_useful_win(name: &str, role_id: UIA_CONTROLTYPE_ID) -> bool {
-        if name.is_empty() {
-            return role_id == UIA_EditControlTypeId;
-        }
-        let lower = name.to_ascii_lowercase();
-        !(lower == "image"
-            || lower == "group"
-            || lower == "toolbar"
-            || lower == "window"
-            || lower == "application")
-    }
-
-    unsafe fn score_element_shallow(
-        el: &IUIAutomationElement,
-        rect: &VRect,
-        depth: usize,
-    ) -> i32 {
-        let mut score = 0i32;
-        let role_id = el.CurrentControlType().unwrap_or(UIA_CustomControlTypeId);
-        let is_actionable_role = role_id == UIA_ButtonControlTypeId
-            || role_id == UIA_EditControlTypeId
-            || role_id == UIA_HyperlinkControlTypeId
-            || role_id == UIA_MenuItemControlTypeId
-            || role_id == UIA_ListItemControlTypeId
-            || role_id == UIA_TabItemControlTypeId
-            || role_id == UIA_CheckBoxControlTypeId
-            || role_id == UIA_RadioButtonControlTypeId;
-        let is_containerish_role = role_id == UIA_WindowControlTypeId
-            || role_id == UIA_PaneControlTypeId
-            || role_id == UIA_GroupControlTypeId
-            || role_id == UIA_DocumentControlTypeId
-            || role_id == UIA_TitleBarControlTypeId
-            || role_id == UIA_AppBarControlTypeId
-            || role_id == UIA_MenuBarControlTypeId;
-        if is_actionable_role {
-            score += 200;
-        } else if is_containerish_role {
-            score += 20;
-        } else {
-            score += 80;
-        }
-        // Useful name bonus — mirrors Mac's +20 for non-empty, non-role-echo
-        // names. Names like "Send" / "OK" / "user@example.com" are signal;
-        // a Group element named "Group" isn't.
-        let name = el
-            .CurrentName()
-            .ok()
-            .map(|s| s.to_string())
-            .unwrap_or_default();
-        let trimmed_name: String =
-            name.split_whitespace().collect::<Vec<_>>().join(" ").trim().to_string();
-        if is_name_useful_win(&trimmed_name, role_id) {
-            score += 20;
-        }
-        score -= (depth as i32) * 12;
-
-        if let Ok(r) = el.CurrentBoundingRectangle() {
-            let bbox: VRect = r.into();
-            if bbox.intersects(rect) {
-                score += 40;
-            } else {
-                score -= 80;
+            // Step 2: build cache request — one IPC pulls every property
+            // the TS pipeline needs across the entire ControlView subtree.
+            let cache_req: IUIAutomationCacheRequest =
+                match automation.CreateCacheRequest() {
+                    Ok(req) => req,
+                    Err(_) => {
+                        return BulkEnumerationResult {
+                            elements,
+                            browser_viewport_bboxes: viewport_bboxes,
+                            elapsed_ms: start.elapsed().as_millis().min(u32::MAX as u128) as u32,
+                            truncated_by_walltime: false,
+                        }
+                    }
+                };
+            for prop_id in [
+                UIA_BoundingRectanglePropertyId,
+                UIA_NamePropertyId,
+                UIA_ControlTypePropertyId,
+                UIA_ClassNamePropertyId,
+                UIA_AutomationIdPropertyId,
+                UIA_FrameworkIdPropertyId,
+                UIA_LocalizedControlTypePropertyId,
+                UIA_IsOffscreenPropertyId,
+                UIA_NativeWindowHandlePropertyId,
+            ] {
+                let _ = cache_req.AddProperty(prop_id);
             }
-            // Center-in-filter bonus — mirrors Mac's +25. Elements whose
-            // *centroid* lies inside the target rect get a boost over those
-            // that merely overlap at the edge.
-            let bbox_cx = bbox.origin.x + bbox.size.w as i32 / 2;
-            let bbox_cy = bbox.origin.y + bbox.size.h as i32 / 2;
-            if rect_contains_point(rect, bbox_cx, bbox_cy) {
-                score += 25;
+            let _ = cache_req.SetTreeScope(TreeScope_Subtree);
+            // ControlView filter: same view the old walker used. Skips
+            // structural-only nodes that don't represent UI affordances.
+            if let Ok(walker) = automation.ControlViewWalker() {
+                if let Ok(cond) = walker.Condition() {
+                    let _ = cache_req.SetTreeFilter(&cond);
+                }
             }
-            let bbox_area = (bbox.size.w as u64) * (bbox.size.h as u64);
-            let rect_area = (rect.size.w as u64) * (rect.size.h as u64);
-            // Whole-screen container penalty — only for actual container
-            // roles. A Button or ListItem that happens to fill ≥90% of the
-            // filter (rare but possible — full-screen call-to-action) is
-            // genuine signal and shouldn't be dragged down. Matches Mac.
-            if rect_area > 0
-                && bbox_area > (rect_area * 9) / 10
-                && is_containerish_role
-            {
-                score -= 120;
-            }
-            if bbox.size.w == 0 || bbox.size.h == 0 {
-                score -= 200;
-            }
-        } else {
-            score -= 120;
-        }
-        score
-    }
+            // None mode: cached elements are pure data — reading
+            // `Cached*` accessors is local, and `Current*` will fail
+            // (which we never call). Saves memory vs Full mode.
+            let _ = cache_req.SetAutomationElementMode(AutomationElementMode_None);
 
-    fn rect_intersection_area(a: &VRect, b: &VRect) -> u64 {
-        let w = ((a.origin.x + a.size.w as i32).min(b.origin.x + b.size.w as i32)
-            - a.origin.x.max(b.origin.x))
-        .max(0) as u64;
-        let h = ((a.origin.y + a.size.h as i32).min(b.origin.y + b.size.h as i32)
-            - a.origin.y.max(b.origin.y))
-        .max(0) as u64;
-        w * h
-    }
-
-    fn rect_contains_point(rect: &VRect, x: i32, y: i32) -> bool {
-        x >= rect.origin.x
-            && y >= rect.origin.y
-            && x < rect.origin.x + rect.size.w as i32
-            && y < rect.origin.y + rect.size.h as i32
-    }
-
-    fn rect_center(rect: &VRect) -> (i32, i32) {
-        (
-            rect.origin.x + rect.size.w as i32 / 2,
-            rect.origin.y + rect.size.h as i32 / 2,
-        )
-    }
-
-    fn root_weight(
-        kind_window: bool,
-        kind_taskbar: bool,
-        z_rank: usize,
-        root_rect: &VRect,
-        filter: &VRect,
-        is_foreground: bool,
-        cursor: Option<POINT>,
-    ) -> i32 {
-        let mut score = 0i32;
-        let intersect_area = rect_intersection_area(root_rect, filter);
-        let filter_area = (filter.size.w as u64) * (filter.size.h as u64);
-        if filter_area > 0 {
-            score += ((intersect_area.saturating_mul(240)) / filter_area.min(u64::MAX)) as i32;
-        }
-        let (cx, cy) = rect_center(filter);
-        if rect_contains_point(root_rect, cx, cy) {
-            score += 180;
-        }
-        if let Some(c) = cursor {
-            if rect_contains_point(root_rect, c.x, c.y) {
-                score += CURSOR_PROXIMITY_BONUS;
-            }
-        }
-        if is_foreground {
-            score += 220;
-        }
-        score -= (z_rank.min(12) as i32) * 18;
-        if kind_window {
-            score += 140;
-        } else if kind_taskbar {
-            score -= 80;
-        } else {
-            score -= 120;
-        }
-        if root_rect.size.w == 0 || root_rect.size.h == 0 {
-            score -= 500;
-        }
-        score
-    }
-
-    unsafe fn search_root_rect(el: &IUIAutomationElement) -> Option<VRect> {
-        el.CurrentBoundingRectangle().ok().map(Into::into)
-    }
-
-    unsafe fn push_search_root(
-        roots: &mut Vec<SearchRoot>,
-        seen_hwnds: &mut BTreeSet<isize>,
-        element: IUIAutomationElement,
-        source_label: &'static str,
-        z_rank: usize,
-        is_foreground: bool,
-        filter: &VRect,
-        cursor: Option<POINT>,
-    ) {
-        let rect = match search_root_rect(&element) {
-            Some(r) if r.size.w > 0 && r.size.h > 0 && r.intersects(filter) => r,
-            _ => return,
-        };
-        let hwnd = match element.CurrentNativeWindowHandle() {
-            Ok(v) if !v.0.is_null() => v.0 as isize,
-            _ => 0,
-        };
-        if hwnd != 0 && !seen_hwnds.insert(hwnd) {
-            return;
-        }
-        let score = root_weight(
-            source_label == "foreground",
-            source_label == "taskbar",
-            z_rank,
-            &rect,
-            filter,
-            is_foreground,
-            cursor,
-        );
-        roots.push(SearchRoot {
-            element,
-            source_label,
-            z_rank,
-            score,
-            base_budget: 0,
-            extra_budget: 0,
-            exhausted: false,
-        });
-    }
-
-    struct WindowRootCollector {
-        automation: *const IUIAutomation,
-        filter: VRect,
-        foreground: HWND,
-        host_pids: BTreeSet<u32>,
-        roots: *mut Vec<SearchRoot>,
-        seen_hwnds: *mut BTreeSet<isize>,
-        z_rank: usize,
-        cursor: Option<POINT>,
-    }
-
-    unsafe extern "system" fn collect_window_roots_proc(hwnd: HWND, lparam: LPARAM) -> BOOL {
-        let payload = &mut *(lparam.0 as *mut WindowRootCollector);
-        if payload.z_rank >= MAX_NORMAL_SEARCH_ROOTS {
-            return false.into();
-        }
-        if !IsWindowVisible(hwnd).as_bool() || IsIconic(hwnd).as_bool() || is_window_cloaked(hwnd) {
-            return true.into();
-        }
-        if is_filtered_candidate_window(hwnd) {
-            return true.into();
-        }
-        let mut pid: u32 = 0;
-        GetWindowThreadProcessId(hwnd, Some(&mut pid));
-        if pid == 0 || payload.host_pids.contains(&pid) {
-            return true.into();
-        }
-        let rect: VRect = match get_window_rect(hwnd) {
-            Some(r) if r.size.w > 0 && r.size.h > 0 && r.intersects(&payload.filter) => r,
-            _ => return true.into(),
-        };
-        let automation = &*payload.automation;
-        if let Ok(el) = automation.ElementFromHandle(hwnd) {
-            let roots = &mut *payload.roots;
-            let seen = &mut *payload.seen_hwnds;
-            let is_foreground = hwnd.0 == payload.foreground.0;
-            let score = root_weight(
-                true,
-                false,
-                payload.z_rank,
-                &rect,
-                &payload.filter,
-                is_foreground,
-                payload.cursor,
-            );
-            let native = el
-                .CurrentNativeWindowHandle()
-                .ok()
-                .map(|h| h.0 as isize)
-                .unwrap_or(0);
-            if native != 0 && !seen.insert(native) {
-                return true.into();
-            }
-            roots.push(SearchRoot {
-                element: el,
-                source_label: "foreground",
-                z_rank: payload.z_rank,
-                score,
-                base_budget: 0,
-                extra_budget: 0,
-                exhausted: false,
-            });
-            payload.z_rank += 1;
-        }
-        true.into()
-    }
-
-    unsafe fn get_window_rect(hwnd: HWND) -> Option<VRect> {
-        let mut rect = RECT::default();
-        if GetWindowRect(hwnd, &mut rect).is_err() {
-            return None;
-        }
-        let v: VRect = rect.into();
-        if v.size.w == 0 || v.size.h == 0 {
-            None
-        } else {
-            Some(v)
-        }
-    }
-
-    unsafe fn discover_search_roots(
-        automation: &IUIAutomation,
-        filter: &VRect,
-        window_only: bool,
-    ) -> Vec<SearchRoot> {
-        let mut roots: Vec<SearchRoot> = Vec::new();
-        let mut seen_hwnds: BTreeSet<isize> = BTreeSet::new();
-        let foreground = GetForegroundWindow();
-        let host_pids = host_pid_set();
-        // Read the cursor once up-front. It's preserved through hideSelf
-        // (SetWindowPos moves windows, not the cursor), so the position still
-        // indicates the user's last attention point even after axiomate
-        // jumped off-screen. Used by root_weight as a strong "what the user
-        // is looking at" signal.
-        let cursor = {
-            let mut p = POINT::default();
-            if GetCursorPos(&mut p).is_ok() {
-                Some(p)
-            } else {
-                None
-            }
-        };
-
-        if window_only {
-            let center = POINT {
-                x: filter.origin.x + filter.size.w as i32 / 2,
-                y: filter.origin.y + filter.size.h as i32 / 2,
-            };
-            focus_non_host_window_at_point(VPoint {
-                x: center.x,
-                y: center.y,
-            });
-            std::thread::sleep(std::time::Duration::from_millis(50));
-            let cur_fg = GetForegroundWindow();
-            if !cur_fg.0.is_null() {
-                let mut pid: u32 = 0;
-                GetWindowThreadProcessId(cur_fg, Some(&mut pid));
-                if pid != 0 && !host_pids.contains(&pid) {
-                    if let Ok(el) = automation.ElementFromHandle(cur_fg) {
-                        push_search_root(
-                            &mut roots,
-                            &mut seen_hwnds,
-                            el,
-                            "foreground",
-                            0,
-                            true,
-                            filter,
-                            cursor,
+            let cached_root = match root_live.BuildUpdatedCache(&cache_req) {
+                Ok(c) => Some(c),
+                Err(e) => {
+                    // Office (Word, Excel, Outlook) ships a buggy UIA provider
+                    // that returns 0x80004005 "Malformed Cacheresponse
+                    // pTreeStructure String" when given a TreeScope_Subtree
+                    // cache request. Fall back to per-element cache builds
+                    // using a fresh request scoped to TreeScope_Element only.
+                    if std::env::var("AXIOMATE_BULK_DEBUG").is_ok() {
+                        eprintln!(
+                            "[bulk] subtree BuildUpdatedCache failed ({:?}); falling back to per-element walk",
+                            e
                         );
                     }
+                    None
                 }
-            }
-            return roots;
-        }
-
-        let mut payload = WindowRootCollector {
-            automation: automation as *const _,
-            filter: *filter,
-            foreground,
-            host_pids,
-            roots: &mut roots as *mut _,
-            seen_hwnds: &mut seen_hwnds as *mut _,
-            z_rank: 0,
-            cursor,
-        };
-        let _ = EnumWindows(
-            Some(collect_window_roots_proc),
-            LPARAM(&mut payload as *mut _ as isize),
-        );
-
-        let taskbar_class = to_wide("Shell_TrayWnd");
-        if let Ok(hwnd) = FindWindowW(PCWSTR(taskbar_class.as_ptr()), PCWSTR::null()) {
-            if !hwnd.0.is_null() {
-                if let Ok(el) = automation.ElementFromHandle(hwnd) {
-                    push_search_root(
-                        &mut roots,
-                        &mut seen_hwnds,
-                        el,
-                        "taskbar",
-                        payload.z_rank + 1,
-                        false,
-                        filter,
-                        cursor,
-                    );
-                }
-            }
-        }
-
-        let worker_class = to_wide("WorkerW");
-        let progman_class = to_wide("Progman");
-        if let Ok(hwnd) = FindWindowW(PCWSTR(progman_class.as_ptr()), PCWSTR::null()) {
-            if !hwnd.0.is_null() {
-                if let Ok(el) = automation.ElementFromHandle(hwnd) {
-                    push_search_root(
-                        &mut roots,
-                        &mut seen_hwnds,
-                        el,
-                        "desktop",
-                        payload.z_rank + 2,
-                        false,
-                        filter,
-                        cursor,
-                    );
-                }
-            }
-        } else if let Ok(hwnd) = FindWindowW(PCWSTR(worker_class.as_ptr()), PCWSTR::null()) {
-            if !hwnd.0.is_null() {
-                if let Ok(el) = automation.ElementFromHandle(hwnd) {
-                    push_search_root(
-                        &mut roots,
-                        &mut seen_hwnds,
-                        el,
-                        "desktop",
-                        payload.z_rank + 2,
-                        false,
-                        filter,
-                        cursor,
-                    );
-                }
-            }
-        }
-
-        // Re-sort by score for the budget allocator's preference order, but
-        // intentionally NO truncate here: normal windows are already capped
-        // at MAX_NORMAL_SEARCH_ROOTS by the EnumWindows early-break, and
-        // taskbar / desktop are special-cased above so they're guaranteed a
-        // root slot when present. Worst-case `roots.len()` = 5 normal + 1
-        // taskbar + 1 desktop = 7.
-        roots.sort_by(|a, b| b.score.cmp(&a.score).then_with(|| a.z_rank.cmp(&b.z_rank)));
-        roots
-    }
-
-    fn allocate_root_budgets(roots: &mut [SearchRoot]) {
-        if roots.is_empty() {
-            return;
-        }
-        let total = MAX_ENUM_VISITED_NODES;
-        let mut remaining = total;
-        for root in roots.iter_mut() {
-            let base = ROOT_BASE_BUDGET.min(remaining);
-            root.base_budget = base;
-            remaining = remaining.saturating_sub(base);
-        }
-        if remaining == 0 {
-            return;
-        }
-        let total_weight: i64 = roots.iter().map(|r| i64::from(r.score.max(1))).sum();
-        if total_weight <= 0 {
-            let bonus = remaining / roots.len() as u32;
-            for root in roots.iter_mut() {
-                root.extra_budget += bonus;
-            }
-            return;
-        }
-        let mut assigned = 0u32;
-        for root in roots.iter_mut() {
-            let share = ((remaining as u64) * (root.score.max(1) as u64) / (total_weight as u64)) as u32;
-            root.extra_budget = share;
-            assigned = assigned.saturating_add(share);
-        }
-        let mut left = remaining.saturating_sub(assigned);
-        let mut i = 0usize;
-        while left > 0 && !roots.is_empty() {
-            roots[i % roots.len()].extra_budget = roots[i % roots.len()].extra_budget.saturating_add(1);
-            left -= 1;
-            i += 1;
-        }
-    }
-
-    fn budget_for_phase(root: &SearchRoot, base_phase: bool) -> u32 {
-        if base_phase {
-            root.base_budget
-        } else {
-            root.base_budget.saturating_add(root.extra_budget)
-        }
-    }
-
-    unsafe fn drive_root_until_budget(
-        automation: &IUIAutomation,
-        walker: &windows::Win32::UI::Accessibility::IUIAutomationTreeWalker,
-        rect: &VRect,
-        results: &mut Vec<UiElement>,
-        seen: &mut BTreeSet<(i32, i32, u32, u32)>,
-        root_state: &mut RootState,
-        global: &mut TraversalState,
-        target_budget: u32,
-    ) {
-        while root_state.visited < target_budget && !global.truncated {
-            let next = if let Some(item) = root_state.bfs.pop_front() {
-                Some((item.0, item.1))
-            } else if let Some(item) = root_state.heap.pop() {
-                Some((item.element, item.depth))
-            } else {
-                None
             };
-            let Some((el, depth)) = next else {
-                root_state.root.exhausted = true;
-                break;
-            };
-            let before = global.traversed_count;
-            let keep_going = process_incremental_element(
-                automation,
-                walker,
-                el,
-                depth,
-                rect,
-                results,
-                seen,
-                &mut root_state.bfs,
-                &mut root_state.heap,
-                global,
-            );
-            if global.traversed_count > before {
-                root_state.visited = root_state.visited.saturating_add(global.traversed_count - before);
-            }
-            if !keep_going {
-                break;
-            }
-        }
-        if root_state.bfs.is_empty() && root_state.heap.is_empty() {
-            root_state.root.exhausted = true;
-        }
-    }
 
-    unsafe fn run_root_enumeration(
-        automation: &IUIAutomation,
-        walker: &windows::Win32::UI::Accessibility::IUIAutomationTreeWalker,
-        rect: &VRect,
-        roots: Vec<SearchRoot>,
-    ) -> UiElementEnumerationResult {
-        let mut results: Vec<UiElement> = Vec::new();
-        let mut seen: BTreeSet<(i32, i32, u32, u32)> = BTreeSet::new();
-        let mut global_state = TraversalState {
-            traversed_count: 0,
-            matched_count: 0,
-            truncated: false,
-            truncation_reason: None,
-            seq: 0,
-        };
-        let mut root_states: Vec<RootState> = roots
-            .into_iter()
-            .map(|root| RootState {
-                bfs: VecDeque::from([(root.element.clone(), 0)]),
-                heap: BinaryHeap::new(),
-                visited: 0,
-                root,
-            })
-            .collect();
-
-        for base_phase in [true, false] {
-            loop {
-                let mut progressed = false;
-                for root_state in root_states.iter_mut() {
-                    if root_state.root.exhausted {
-                        continue;
-                    }
-                    let budget = budget_for_phase(&root_state.root, base_phase);
-                    if root_state.visited >= budget {
-                        continue;
-                    }
-                    let before_len = results.len();
-                    drive_root_until_budget(
-                        automation,
-                        walker,
-                        rect,
-                        &mut results,
-                        &mut seen,
-                        root_state,
-                        &mut global_state,
-                        budget,
-                    );
-                    for r in &mut results[before_len..] {
-                        r.uia_source = Some(root_state.root.source_label.to_string());
-                    }
-                    if global_state.truncated {
-                        break;
-                    }
-                    if root_state.visited > 0 || root_state.root.exhausted {
-                        progressed = true;
-                    }
-                }
-                if global_state.truncated || !progressed {
-                    break;
-                }
-            }
-            if global_state.truncated {
-                break;
-            }
-        }
-
-        UiElementEnumerationResult {
-            elements: results,
-            traversed_count: global_state.traversed_count,
-            matched_count: global_state.matched_count,
-            returned_count: seen.len() as u32,
-            truncated: global_state.truncated,
-            truncation_reason: global_state.truncation_reason,
-        }
-    }
-
-    unsafe fn enqueue_children(
-        walker: &windows::Win32::UI::Accessibility::IUIAutomationTreeWalker,
-        parent: &IUIAutomationElement,
-        depth: usize,
-        rect: &VRect,
-        bfs: &mut VecDeque<(IUIAutomationElement, usize)>,
-        heap: &mut BinaryHeap<FrontierItem>,
-        state: &mut TraversalState,
-    ) {
-        let mut current = walker.GetFirstChildElement(parent).ok();
-        while let Some(child) = current {
-            let next_depth = depth + 1;
-            if next_depth <= WARMUP_MAX_DEPTH && state.traversed_count < WARMUP_MAX_VISITS {
-                bfs.push_back((child.clone(), next_depth));
-            } else {
-                let score = score_element_shallow(&child, rect, next_depth);
-                let seq = state.seq;
-                state.seq = state.seq.saturating_add(1);
-                heap.push(FrontierItem {
-                    element: child.clone(),
-                    depth: next_depth,
-                    score,
-                    seq,
-                });
-            }
-            current = walker.GetNextSiblingElement(&child).ok();
-        }
-    }
-
-    unsafe fn process_incremental_element(
-        automation: &IUIAutomation,
-        walker: &windows::Win32::UI::Accessibility::IUIAutomationTreeWalker,
-        el: IUIAutomationElement,
-        depth: usize,
-        rect: &VRect,
-        results: &mut Vec<UiElement>,
-        seen: &mut BTreeSet<(i32, i32, u32, u32)>,
-        bfs: &mut VecDeque<(IUIAutomationElement, usize)>,
-        heap: &mut BinaryHeap<FrontierItem>,
-        state: &mut TraversalState,
-    ) -> bool {
-        state.traversed_count = state.traversed_count.saturating_add(1);
-        if state.traversed_count > MAX_ENUM_VISITED_NODES {
-            state.truncated = true;
-            state.truncation_reason = Some("traversal_budget".to_string());
-            return false;
-        }
-        if depth > MAX_UIA_TREE_DEPTH {
-            return true;
-        }
-
-        let bbox_rect = match el.CurrentBoundingRectangle() {
-            Ok(r) => r,
-            Err(_) => {
-                enqueue_children(walker, &el, depth, rect, bfs, heap, state);
-                return true;
-            }
-        };
-        let bbox: VRect = bbox_rect.into();
-        if bbox.size.w == 0 || bbox.size.h == 0 || !bbox.intersects(rect) {
-            enqueue_children(walker, &el, depth, rect, bfs, heap, state);
-            return true;
-        }
-        state.matched_count = state.matched_count.saturating_add(1);
-
-        let intersect_w = ((bbox.origin.x + bbox.size.w as i32)
-            .min(rect.origin.x + rect.size.w as i32)
-            - bbox.origin.x.max(rect.origin.x))
-        .max(0) as u64;
-        let intersect_h = ((bbox.origin.y + bbox.size.h as i32)
-            .min(rect.origin.y + rect.size.h as i32)
-            - bbox.origin.y.max(rect.origin.y))
-        .max(0) as u64;
-        let intersect_area = intersect_w * intersect_h;
-        let bbox_area = (bbox.size.w as u64) * (bbox.size.h as u64);
-        if bbox_area == 0 || (intersect_area * 2) < bbox_area {
-            enqueue_children(walker, &el, depth, rect, bfs, heap, state);
-            return true;
-        }
-
-        if el
-            .CurrentIsOffscreen()
-            .map(|v| v.as_bool())
-            .unwrap_or(false)
-        {
-            enqueue_children(walker, &el, depth, rect, bfs, heap, state);
-            return true;
-        }
-        if !is_uia_element_hit_visible(automation, &el, &bbox) {
-            enqueue_children(walker, &el, depth, rect, bfs, heap, state);
-            return true;
-        }
-
-        let role_id = el.CurrentControlType().unwrap_or(UIA_CustomControlTypeId);
-        if role_id == UIA_DataItemControlTypeId
-            || role_id == UIA_ListItemControlTypeId
-            || role_id == UIA_MenuItemControlTypeId
-            || role_id == UIA_TreeItemControlTypeId
-        {
-            let mut ancestor = el.clone();
-            let mut collapsed = false;
-            for _ in 0..MAX_UIA_TREE_DEPTH {
-                if ancestor
-                    .GetCurrentPatternAs::<IUIAutomationExpandCollapsePattern>(
-                        UIA_ExpandCollapsePatternId,
-                    )
-                    .ok()
-                    .and_then(|p| p.CurrentExpandCollapseState().ok())
-                    .map(|s| s == ExpandCollapseState_Collapsed)
-                    .unwrap_or(false)
-                {
-                    collapsed = true;
-                    break;
-                }
-                let parent = automation
-                    .RawViewWalker()
-                    .ok()
-                    .and_then(|w| w.GetParentElement(&ancestor).ok());
-                match parent {
-                    Some(p) => ancestor = p,
-                    None => break,
-                }
-            }
-            if collapsed {
-                enqueue_children(walker, &el, depth, rect, bfs, heap, state);
-                return true;
-            }
-        }
-
-        if role_id == UIA_WindowControlTypeId
-            || role_id == UIA_PaneControlTypeId
-            || role_id == UIA_GroupControlTypeId
-            || role_id == UIA_DocumentControlTypeId
-            || role_id == UIA_TitleBarControlTypeId
-            || role_id == UIA_AppBarControlTypeId
-            || role_id == UIA_MenuBarControlTypeId
-            || role_id == UIA_SeparatorControlTypeId
-            || role_id == UIA_SemanticZoomControlTypeId
-            || role_id == UIA_TreeControlTypeId
-            || role_id == UIA_TableControlTypeId
-            || role_id == UIA_DataGridControlTypeId
-            || role_id == UIA_ListControlTypeId
-            || role_id == UIA_MenuControlTypeId
-            || role_id == UIA_TabControlTypeId
-            || role_id == UIA_StatusBarControlTypeId
-        {
-            enqueue_children(walker, &el, depth, rect, bfs, heap, state);
-            return true;
-        }
-
-        let key = (bbox.origin.x, bbox.origin.y, bbox.size.w, bbox.size.h);
-        if seen.contains(&key) {
-            enqueue_children(walker, &el, depth, rect, bfs, heap, state);
-            return true;
-        }
-        seen.insert(key);
-        let name = el
-            .CurrentName()
-            .ok()
-            .map(|s| s.to_string())
-            .unwrap_or_default();
-        let role = control_type_to_string(role_id).to_string();
-        let automation_id = el
-            .CurrentAutomationId()
-            .ok()
-            .map(|s| s.to_string())
-            .filter(|s| !s.is_empty());
-        results.push(UiElement {
-            bbox,
-            name,
-            role,
-            automation_id,
-            uia_source: None,
-        });
-        enqueue_children(walker, &el, depth, rect, bfs, heap, state);
-        true
-    }
-
-    /// Enumerate UI elements in `rect` using multi-root discovery plus
-    /// cross-root budget allocation. Each root gets a base budget, then
-    /// remaining traversal budget is distributed by foreground/z-order/overlap
-    /// weight. Within a root, traversal remains BFS warmup + priority frontier.
-
-    pub fn enumerate_ui_elements_in_rect(rect: VRect, window_only: bool) -> Vec<UiElement> {
-        enumerate_ui_elements_in_rect_detailed(rect, window_only).elements
-    }
-
-    pub fn enumerate_ui_elements_in_rect_detailed(
-        rect: VRect,
-        window_only: bool,
-    ) -> UiElementEnumerationResult {
-        ensure_dpi_aware();
-        let _com = ComGuard::init();
-        unsafe {
-            let automation: IUIAutomation =
-                match CoCreateInstance(&CUIAutomation, None, CLSCTX_INPROC_SERVER) {
-                    Ok(a) => a,
+            // Build a fallback per-element cache request once (without
+            // TreeScope_Subtree). Used when the subtree path failed.
+            //
+            // Three-tier fallback ladder:
+            //   tier 0: TreeScope_Subtree  — 1 IPC for the whole tree
+            //   tier 1: Element | Children — 1 IPC per non-leaf, cache the
+            //           node + its direct children's properties together
+            //   tier 2: Element only       — 1 IPC per node, walker resolves
+            //           children via GetFirstChildElement/GetNextSibling
+            //
+            // tier 0 trips Office's Provider bug (0x80004005 "Malformed
+            // Cacheresponse pTreeStructure String") on any subtree query.
+            // tier 1 only asks for 2 levels at a time, sidestepping the
+            // serializer path that crashes. tier 2 is the safety net for
+            // pathological apps that fail even on a single-level cache.
+            //
+            // Each `BuildUpdatedCache` call below tries tier 1 first per
+            // node and falls back to tier 2 if that node's children cache
+            // also fails. We commit to a tier per node, not per tree, so
+            // a partially-broken provider can still return most elements.
+            let element_children_cache_req: IUIAutomationCacheRequest =
+                match automation.CreateCacheRequest() {
+                    Ok(req) => req,
                     Err(_) => {
-                        return UiElementEnumerationResult {
-                            elements: Vec::new(),
-                            traversed_count: 0,
-                            matched_count: 0,
-                            returned_count: 0,
-                            truncated: false,
-                            truncation_reason: None,
+                        return BulkEnumerationResult {
+                            elements,
+                            browser_viewport_bboxes: viewport_bboxes,
+                            elapsed_ms: start.elapsed().as_millis().min(u32::MAX as u128) as u32,
+                            truncated_by_walltime: false,
                         }
                     }
                 };
-            let walker = match automation.ControlViewWalker() {
-                Ok(w) => w,
-                Err(_) => {
-                    return UiElementEnumerationResult {
-                        elements: Vec::new(),
-                        traversed_count: 0,
-                        matched_count: 0,
-                        returned_count: 0,
-                        truncated: false,
-                        truncation_reason: None,
-                    }
+            for prop_id in [
+                UIA_BoundingRectanglePropertyId,
+                UIA_NamePropertyId,
+                UIA_ControlTypePropertyId,
+                UIA_ClassNamePropertyId,
+                UIA_AutomationIdPropertyId,
+                UIA_FrameworkIdPropertyId,
+                UIA_LocalizedControlTypePropertyId,
+                UIA_IsOffscreenPropertyId,
+                UIA_NativeWindowHandlePropertyId,
+            ] {
+                let _ = element_children_cache_req.AddProperty(prop_id);
+            }
+            let _ = element_children_cache_req
+                .SetTreeScope(windows::Win32::UI::Accessibility::TreeScope(
+                    TreeScope_Element.0 | TreeScope_Children.0,
+                ));
+            if let Ok(walker) = automation.ControlViewWalker() {
+                if let Ok(cond) = walker.Condition() {
+                    let _ = element_children_cache_req.SetTreeFilter(&cond);
                 }
-            };
-            let mut roots = discover_search_roots(&automation, &rect, window_only);
-            allocate_root_budgets(&mut roots);
-            run_root_enumeration(&automation, &walker, &rect, roots)
-        }
-    }
+            }
+            let _ = element_children_cache_req
+                .SetAutomationElementMode(AutomationElementMode_Full);
 
-    pub fn enumerate_ui_elements_for_app_in_rect_detailed(
-        app_identifier: &str,
-        rect: VRect,
-    ) -> UiElementEnumerationResult {
-        ensure_dpi_aware();
-        let _com = ComGuard::init();
-        unsafe {
-            let automation: IUIAutomation =
-                match CoCreateInstance(&CUIAutomation, None, CLSCTX_INPROC_SERVER) {
-                    Ok(a) => a,
+            // Single-element fallback for nodes that fail the Element|Children
+            // cache (extremely rare — Office still serves a single level OK).
+            let element_cache_req: IUIAutomationCacheRequest =
+                match automation.CreateCacheRequest() {
+                    Ok(req) => req,
                     Err(_) => {
-                        return UiElementEnumerationResult {
-                            elements: Vec::new(),
-                            traversed_count: 0,
-                            matched_count: 0,
-                            returned_count: 0,
-                            truncated: false,
-                            truncation_reason: None,
+                        return BulkEnumerationResult {
+                            elements,
+                            browser_viewport_bboxes: viewport_bboxes,
+                            elapsed_ms: start.elapsed().as_millis().min(u32::MAX as u128) as u32,
+                            truncated_by_walltime: false,
                         }
                     }
                 };
-            let walker = match automation.ControlViewWalker() {
-                Ok(w) => w,
-                Err(_) => {
-                    return UiElementEnumerationResult {
-                        elements: Vec::new(),
-                        traversed_count: 0,
-                        matched_count: 0,
-                        returned_count: 0,
-                        truncated: false,
-                        truncation_reason: None,
-                    }
+            for prop_id in [
+                UIA_BoundingRectanglePropertyId,
+                UIA_NamePropertyId,
+                UIA_ControlTypePropertyId,
+                UIA_ClassNamePropertyId,
+                UIA_AutomationIdPropertyId,
+                UIA_FrameworkIdPropertyId,
+                UIA_LocalizedControlTypePropertyId,
+                UIA_IsOffscreenPropertyId,
+                UIA_NativeWindowHandlePropertyId,
+            ] {
+                let _ = element_cache_req.AddProperty(prop_id);
+            }
+            let _ = element_cache_req.SetTreeScope(TreeScope_Element);
+            let _ = element_cache_req.SetAutomationElementMode(AutomationElementMode_Full);
+
+            if std::env::var("AXIOMATE_BULK_DEBUG").is_ok() {
+                if let Some(ref cached) = cached_root {
+                    let root_name = cached.CachedName().ok().map(|s| s.to_string()).unwrap_or_default();
+                    let root_class = cached.CachedClassName().ok().map(|s| s.to_string()).unwrap_or_default();
+                    let children_len = cached.GetCachedChildren()
+                        .ok()
+                        .and_then(|c| c.Length().ok())
+                        .unwrap_or(-1);
+                    eprintln!(
+                        "[bulk] subtree cache built: root.name={:?} root.class={:?} children_len={}",
+                        root_name, root_class, children_len
+                    );
                 }
-            };
+            }
 
-            let (matched, _) = find_first_visible_window_for_app(app_identifier);
-            let Some(window_match) = matched else {
-                return UiElementEnumerationResult {
-                    elements: Vec::new(),
-                    traversed_count: 0,
-                    matched_count: 0,
-                    returned_count: 0,
-                    truncated: false,
-                    truncation_reason: None,
-                };
-            };
+            // Step 3: walk the tree pre-order.
+            //
+            // Per-node mode encodes how children were/will be fetched:
+            //   - `Subtree`: element came from the whole-tree subtree cache
+            //     (tier 0). Children are already cached on it; just call
+            //     GetCachedChildren. Zero further IPC.
+            //   - `Children`: element's `Cached*` props were filled by a
+            //     `TreeScope_Element | TreeScope_Children` call on its
+            //     parent (tier 1). Its own children must be fetched by a
+            //     fresh tier-1 cache when we visit it.
+            //   - `Element`: element only has its own props cached (tier 2
+            //     fallback). Children come from the live walker.
+            //
+            // We always prefer tier 1 for non-root nodes when the subtree
+            // tier failed, and downgrade to tier 2 on a per-call basis if
+            // tier 1 errors too.
+            #[derive(Clone, Copy)]
+            enum WalkMode {
+                Subtree,
+                Children,
+                Element,
+            }
 
-            let hwnd = window_match.hwnd;
-            let mut roots = Vec::new();
-            let mut seen_hwnds = BTreeSet::new();
-            if let Ok(el) = automation.ElementFromHandle(hwnd) {
-                let is_foreground = GetForegroundWindow().0 == hwnd.0;
-                let cursor = {
-                    let mut p = POINT::default();
-                    if GetCursorPos(&mut p).is_ok() {
-                        Some(p)
+            const PER_CALL_WALL_BUDGET: std::time::Duration =
+                std::time::Duration::from_millis(2000);
+            let mut truncated = false;
+
+            let live_walker = automation.ControlViewWalker().ok();
+
+            // Root mode: if the tier-0 subtree cache succeeded, walk
+            // entirely off it (mode A). Otherwise we must populate the
+            // root's children ourselves — start the walk in tier-1
+            // mode by treating the live root as "needs Children cache".
+            let initial: (IUIAutomationElement, u32, i32, WalkMode) = match cached_root {
+                Some(c) => (c, 0, -1, WalkMode::Subtree),
+                // Live root needs its OWN props cached too; the cache step
+                // below sees Children mode and builds Element|Children,
+                // which fills props for the root AND captures its children.
+                None => (root_live.clone(), 0, -1, WalkMode::Children),
+            };
+            let mut stack: Vec<(IUIAutomationElement, u32, i32, WalkMode)> = vec![initial];
+
+            while let Some((el, depth, parent_index, mode)) = stack.pop() {
+                if start.elapsed() >= PER_CALL_WALL_BUDGET {
+                    truncated = true;
+                    break;
+                }
+
+                // Determine read_target + the mode children will inherit.
+                // `effective_mode` is the actual mode we ended up in for
+                // THIS node (may differ from `mode` after a tier-1 → tier-2
+                // downgrade on cache failure).
+                // Determine read_target + the mode children will inherit.
+                // `effective_mode` is the actual mode we ended up in for
+                // THIS node (may differ from `mode` after a tier-1 → tier-2
+                // downgrade on cache failure).
+                //
+                // Key insight: when `mode == Subtree | Children`, the
+                // popped `el` is ALREADY a cached element whose props are
+                // in the local cache (read in zero IPC). We do NOT call
+                // BuildUpdatedCache on it for prop reading — that's
+                // wasteful. We only rebuild cache when we need to descend
+                // into ITS children (one level deeper).
+                //
+                // For Subtree mode, no per-node cache rebuild is ever
+                // needed — children come from GetCachedChildren on the
+                // already-cached subtree.
+                //
+                // For Children mode at depth > 0, the cache hierarchy
+                // is "this node + its direct children" populated by the
+                // PARENT's tier-1 cache. So `el.GetCachedChildren()` of
+                // a Children-mode popped node gives us a list of cached
+                // grandchildren (without their own children) — but those
+                // grandchildren's props ARE cached (one level deep).
+                //
+                // For the root in Children mode (depth=0, mode=Children
+                // because subtree cache failed), the root itself is LIVE
+                // (we never built a cache for it). So we DO need to call
+                // BuildUpdatedCache(Element|Children) on the root to get
+                // both its own props + the first level of children.
+                let (read_target, effective_mode): (IUIAutomationElement, WalkMode) =
+                    if depth == 0 && matches!(mode, WalkMode::Children) {
+                        // Root needs an initial cache build.
+                        match el.BuildUpdatedCache(&element_children_cache_req) {
+                            Ok(c) => (c, WalkMode::Children),
+                            Err(_) => match el.BuildUpdatedCache(&element_cache_req) {
+                                Ok(c) => (c, WalkMode::Element),
+                                Err(_) => continue,
+                            },
+                        }
+                    } else if matches!(mode, WalkMode::Element) {
+                        // Tier-2 fallback path: live walker handed us
+                        // this element, build single-level cache.
+                        match el.BuildUpdatedCache(&element_cache_req) {
+                            Ok(c) => (c, WalkMode::Element),
+                            Err(_) => continue,
+                        }
                     } else {
-                        None
-                    }
-                };
-                push_search_root(
-                    &mut roots,
-                    &mut seen_hwnds,
-                    el,
-                    "foreground",
-                    0,
-                    is_foreground,
-                    &rect,
-                    cursor,
-                );
-            }
-            if roots.is_empty() {
-                return UiElementEnumerationResult {
-                    elements: Vec::new(),
-                    traversed_count: 0,
-                    matched_count: 0,
-                    returned_count: 0,
-                    truncated: false,
-                    truncation_reason: None,
-                };
-            }
-
-            allocate_root_budgets(&mut roots);
-            run_root_enumeration(&automation, &walker, &rect, roots)
-        }
-    }
-
-    pub fn enumerate_ui_elements_for_window_in_rect_detailed(
-        hwnd: i64,
-        rect: VRect,
-    ) -> UiElementEnumerationResult {
-        ensure_dpi_aware();
-        let _com = ComGuard::init();
-        if hwnd == 0 {
-            return UiElementEnumerationResult {
-                elements: Vec::new(),
-                traversed_count: 0,
-                matched_count: 0,
-                returned_count: 0,
-                truncated: false,
-                truncation_reason: None,
-            };
-        }
-        unsafe {
-            let automation: IUIAutomation =
-                match CoCreateInstance(&CUIAutomation, None, CLSCTX_INPROC_SERVER) {
-                    Ok(a) => a,
-                    Err(_) => {
-                        return UiElementEnumerationResult {
-                            elements: Vec::new(),
-                            traversed_count: 0,
-                            matched_count: 0,
-                            returned_count: 0,
-                            truncated: false,
-                            truncation_reason: None,
-                        }
-                    }
-                };
-            let walker = match automation.ControlViewWalker() {
-                Ok(w) => w,
-                Err(_) => {
-                    return UiElementEnumerationResult {
-                        elements: Vec::new(),
-                        traversed_count: 0,
-                        matched_count: 0,
-                        returned_count: 0,
-                        truncated: false,
-                        truncation_reason: None,
-                    }
-                }
-            };
-            let mut roots = Vec::new();
-            let mut seen_hwnds = BTreeSet::new();
-            let handle = HWND(hwnd as *mut _);
-            if !handle.0.is_null() {
-                if let Ok(el) = automation.ElementFromHandle(handle) {
-                    let is_foreground = GetForegroundWindow().0 == handle.0;
-                    let cursor = {
-                        let mut p = POINT::default();
-                        if GetCursorPos(&mut p).is_ok() {
-                            Some(p)
-                        } else {
-                            None
-                        }
+                        // Subtree mode OR Children mode at depth>0:
+                        // `el` is already a cached element with its
+                        // props populated. Use directly — props read
+                        // is zero IPC.
+                        (el.clone(), mode)
                     };
-                    push_search_root(
-                        &mut roots,
-                        &mut seen_hwnds,
-                        el,
-                        "foreground",
-                        0,
-                        is_foreground,
-                        &rect,
-                        cursor,
-                    );
+
+                let bbox: VRect = read_target
+                    .CachedBoundingRectangle()
+                    .map(Into::into)
+                    .unwrap_or(VRect {
+                        origin: VPoint { x: 0, y: 0 },
+                        size: super::VSize { w: 0, h: 0 },
+                    });
+                let name = read_target
+                    .CachedName()
+                    .ok()
+                    .map(|s| s.to_string())
+                    .unwrap_or_default();
+                let control_type_id = read_target
+                    .CachedControlType()
+                    .unwrap_or(UIA_CustomControlTypeId);
+                let role = control_type_to_string(control_type_id).to_string();
+                let class_name = read_target
+                    .CachedClassName()
+                    .ok()
+                    .map(|s| s.to_string())
+                    .unwrap_or_default();
+                let automation_id = read_target
+                    .CachedAutomationId()
+                    .ok()
+                    .map(|s| s.to_string())
+                    .filter(|s| !s.is_empty());
+                let framework_id = read_target
+                    .CachedFrameworkId()
+                    .ok()
+                    .map(|s| s.to_string())
+                    .unwrap_or_default();
+                let localized_control_type = read_target
+                    .CachedLocalizedControlType()
+                    .ok()
+                    .map(|s| s.to_string())
+                    .unwrap_or_default();
+                let is_offscreen = read_target
+                    .CachedIsOffscreen()
+                    .map(|v| v.as_bool())
+                    .unwrap_or(false);
+                let native_window_handle = read_target
+                    .CachedNativeWindowHandle()
+                    .map(|h| h.0 as i64)
+                    .unwrap_or(0);
+
+                let my_index = elements.len() as i32;
+                elements.push(BulkUiElement {
+                    bbox,
+                    name,
+                    role,
+                    control_type_id: control_type_id.0,
+                    class_name,
+                    automation_id,
+                    framework_id,
+                    localized_control_type,
+                    is_offscreen,
+                    native_window_handle,
+                    parent_index,
+                    depth,
+                });
+
+                // Push children in reverse so pre-order traversal visits
+                // them in original (leftmost-first) order.
+                match effective_mode {
+                    WalkMode::Subtree => {
+                        // Whole-tree cache: every level already populated.
+                        if let Ok(children) = read_target.GetCachedChildren() {
+                            if let Ok(len) = children.Length() {
+                                let mut child_stack: Vec<IUIAutomationElement> =
+                                    Vec::with_capacity(len.max(0) as usize);
+                                for i in 0..len {
+                                    if let Ok(child) = children.GetElement(i) {
+                                        child_stack.push(child);
+                                    }
+                                }
+                                for child in child_stack.into_iter().rev() {
+                                    stack.push((
+                                        child,
+                                        depth + 1,
+                                        my_index,
+                                        WalkMode::Subtree,
+                                    ));
+                                }
+                            }
+                        }
+                    }
+                    WalkMode::Children => {
+                        // Tier-1 path. The popped node's own props were
+                        // already cached (from its parent's Element|Children
+                        // build, or from the root's initial cache). To
+                        // enumerate ITS children we rebuild a fresh
+                        // Element|Children cache. This is one IPC per
+                        // non-leaf node, vs Element-only's
+                        // 1 + N siblings IPCs (the live walker's
+                        // GetFirstChildElement + GetNextSiblingElement).
+                        let descend = read_target
+                            .BuildUpdatedCache(&element_children_cache_req)
+                            .ok();
+                        let cached_children = descend.as_ref().and_then(|c| {
+                            c.GetCachedChildren().ok()
+                        });
+                        let len = cached_children
+                            .as_ref()
+                            .and_then(|c| c.Length().ok())
+                            .unwrap_or(0);
+                        if len > 0 {
+                            let children = cached_children.unwrap();
+                            let mut child_stack: Vec<IUIAutomationElement> =
+                                Vec::with_capacity(len as usize);
+                            for i in 0..len {
+                                if let Ok(child) = children.GetElement(i) {
+                                    child_stack.push(child);
+                                }
+                            }
+                            for child in child_stack.into_iter().rev() {
+                                stack.push((
+                                    child,
+                                    depth + 1,
+                                    my_index,
+                                    WalkMode::Children,
+                                ));
+                            }
+                        } else if descend.is_none() {
+                            // Tier-1 descend cache failed entirely. Fall
+                            // back to the live walker for this node's
+                            // children.
+                            if let Some(ref walker) = live_walker {
+                                let mut child_stack: Vec<IUIAutomationElement> = Vec::new();
+                                let mut current = walker.GetFirstChildElement(&el).ok();
+                                while let Some(child) = current {
+                                    child_stack.push(child.clone());
+                                    current = walker.GetNextSiblingElement(&child).ok();
+                                }
+                                for child in child_stack.into_iter().rev() {
+                                    stack.push((
+                                        child,
+                                        depth + 1,
+                                        my_index,
+                                        WalkMode::Element,
+                                    ));
+                                }
+                            }
+                        }
+                        // else: descend succeeded but len==0 → genuine leaf.
+                    }
+                    WalkMode::Element => {
+                        // Tier-2 fallback: live walker.
+                        if let Some(ref walker) = live_walker {
+                            let mut child_stack: Vec<IUIAutomationElement> = Vec::new();
+                            let mut current = walker.GetFirstChildElement(&el).ok();
+                            while let Some(child) = current {
+                                child_stack.push(child.clone());
+                                current = walker.GetNextSiblingElement(&child).ok();
+                            }
+                            for child in child_stack.into_iter().rev() {
+                                stack.push((
+                                    child,
+                                    depth + 1,
+                                    my_index,
+                                    WalkMode::Element,
+                                ));
+                            }
+                        }
+                    }
                 }
             }
-            if roots.is_empty() {
-                return UiElementEnumerationResult {
-                    elements: Vec::new(),
-                    traversed_count: 0,
-                    matched_count: 0,
-                    returned_count: 0,
-                    truncated: false,
-                    truncation_reason: None,
-                };
+
+            BulkEnumerationResult {
+                elements,
+                browser_viewport_bboxes: viewport_bboxes,
+                elapsed_ms: start.elapsed().as_millis().min(u32::MAX as u128) as u32,
+                truncated_by_walltime: truncated,
             }
-            allocate_root_budgets(&mut roots);
-            run_root_enumeration(&automation, &walker, &rect, roots)
         }
     }
 
@@ -2944,6 +2240,20 @@ mod windows_impl {
             });
         }
         true.into()
+    }
+
+    unsafe fn get_window_rect(hwnd: HWND) -> Option<VRect> {
+        let mut r = RECT::default();
+        if GetWindowRect(hwnd, &mut r).is_err() {
+            return None;
+        }
+        Some(VRect {
+            origin: VPoint { x: r.left, y: r.top },
+            size: super::VSize {
+                w: (r.right - r.left).max(0) as u32,
+                h: (r.bottom - r.top).max(0) as u32,
+            },
+        })
     }
 
     struct VisibleWindowsState {
@@ -4917,10 +4227,6 @@ mod windows_impl {
     /// 16 is a safety margin for nested job objects / containers.
     const MAX_PROCESS_CHAIN_DEPTH: usize = 16;
 
-    /// Unified traversal depth budget for structured UI enumeration.
-    /// Matches macOS AX to keep budget semantics aligned across platforms.
-    const MAX_UIA_TREE_DEPTH: usize = 48;
-
     /// Walk the ToolHelp32 snapshot once to build {current_pid + all
     /// ancestor pids}. Same approach as `get_host_ancestor_paths()` but
     /// returns PIDs instead of resolved exe paths — defocus only needs
@@ -5550,8 +4856,24 @@ mod windows_impl {
     // Moving off-screen is faster than SW_HIDE because it avoids DWM's
     // fade-out animation entirely.
 
-    /// (hwnd as isize, saved_left, saved_top, saved_width, saved_height, was_foreground)
-    type SavedPlacement = (isize, i32, i32, i32, i32, bool);
+    /// Per-host-window state captured at hide time so `show_self_windows`
+    /// can restore an axiomate window to exactly the same state the user
+    /// had it in. Fields:
+    ///   0: hwnd as isize
+    ///   1-4: saved_left, saved_top, saved_width, saved_height — for the
+    ///        non-maximized restore path. When the host was maximized,
+    ///        these capture the size GetWindowRect returned (= the
+    ///        maximized rect) and are ignored on restore in favor of
+    ///        ShowWindow(SW_SHOWMAXIMIZED).
+    ///   5: was_foreground — whether to re-foreground this hwnd on show.
+    ///   6: placement_kind — 0=normal, 1=maximized, 2=minimized. Lets
+    ///      `show_self_windows` use ShowWindow with the right SW_ verb
+    ///      to restore the exact pre-hide state. Plan Part F step 12
+    ///      requirement: "restore was-maximized, was-minimized state".
+    type SavedPlacement = (isize, i32, i32, i32, i32, bool, u8);
+    const PLACEMENT_NORMAL: u8 = 0;
+    const PLACEMENT_MAXIMIZED: u8 = 1;
+    const PLACEMENT_MINIMIZED: u8 = 2;
     static HIDDEN_HWNDS: Mutex<Vec<SavedPlacement>> = Mutex::new(Vec::new());
 
     /// Diagnostic log buffer for the hide/show foreground-restore sequence.
@@ -5724,24 +5046,65 @@ mod windows_impl {
     }
 
     unsafe fn move_off_screen(hwnd: HWND, was_foreground: bool) -> Option<SavedPlacement> {
-        let mut r = RECT::default();
-        if GetWindowRect(hwnd, &mut r).is_err() {
-            return None;
-        }
-        let w = r.right - r.left;
-        let h = r.bottom - r.top;
+        // Capture pre-hide placement kind so show_self can restore the
+        // exact ShowWindow state (normal / maximized / minimized) — not
+        // just the rect. GetWindowPlacement.showCmd is authoritative for
+        // this; rcNormalPosition is the "if you restored, this is where
+        // it'd go" rect even when currently maximized, so we prefer it
+        // over GetWindowRect for the saved coords.
+        let mut wp = WINDOWPLACEMENT::default();
+        wp.length = std::mem::size_of::<WINDOWPLACEMENT>() as u32;
+        let placement_ok = GetWindowPlacement(hwnd, &mut wp).is_ok();
+        let placement_kind: u8 = if placement_ok {
+            match wp.showCmd {
+                v if v == SW_SHOWMAXIMIZED.0 as u32 => PLACEMENT_MAXIMIZED,
+                v if v == SW_SHOWMINIMIZED.0 as u32 => PLACEMENT_MINIMIZED,
+                _ => PLACEMENT_NORMAL,
+            }
+        } else {
+            PLACEMENT_NORMAL
+        };
+        let (saved_left, saved_top, w, h) = if placement_ok && placement_kind == PLACEMENT_MAXIMIZED
+        {
+            // For maximized windows, GetWindowRect returns the maximized
+            // (full-monitor) rect, which is the WRONG thing to "restore"
+            // to — Windows would set the host to that rect as a normal
+            // window. rcNormalPosition is the pre-maximize geometry the
+            // user originally chose; preserve it so SW_SHOWMAXIMIZED has
+            // the right "restored" size waiting for them.
+            (
+                wp.rcNormalPosition.left,
+                wp.rcNormalPosition.top,
+                wp.rcNormalPosition.right - wp.rcNormalPosition.left,
+                wp.rcNormalPosition.bottom - wp.rcNormalPosition.top,
+            )
+        } else {
+            let mut r = RECT::default();
+            if GetWindowRect(hwnd, &mut r).is_err() {
+                return None;
+            }
+            (r.left, r.top, r.right - r.left, r.bottom - r.top)
+        };
         let saved = (
             hwnd.0 as isize,
-            r.left,
-            r.top,
+            saved_left,
+            saved_top,
             w,
             h,
             was_foreground,
+            placement_kind,
         );
         let off_x =
             GetSystemMetrics(SM_XVIRTUALSCREEN) + GetSystemMetrics(SM_CXVIRTUALSCREEN) + 100;
         let off_y =
             GetSystemMetrics(SM_YVIRTUALSCREEN) + GetSystemMetrics(SM_CYVIRTUALSCREEN) + 100;
+        // For maximized windows we must un-maximize before moving — SetWindowPos
+        // on a maximized window is a no-op for size. Use SW_SHOWNOACTIVATE
+        // (preserves z-order, doesn't take focus) to drop the maximize state
+        // momentarily; show_self will reassert SW_SHOWMAXIMIZED to restore it.
+        if placement_kind == PLACEMENT_MAXIMIZED {
+            let _ = ShowWindow(hwnd, SW_SHOWNOACTIVATE);
+        }
         SetWindowPos(
             hwnd,
             HWND_TOP,
@@ -5934,16 +5297,26 @@ mod windows_impl {
             fg_at_entry.0 as usize
         ));
         let mut foreground_host: Option<HWND> = None;
-        for &(h, x, y, w, h2, was_foreground) in &placements {
+        for &(h, x, y, w, h2, was_foreground, placement_kind) in &placements {
             if h != 0 {
                 unsafe {
                     let hwnd = HWND(h as *mut _);
                     let z_before = describe_z_above(hwnd);
                     move_back(hwnd, x, y, w, h2, was_foreground);
+                    // Step 12 — restore pre-hide maximize/minimize state.
+                    // SW_SHOWMAXIMIZED takes precedence over the rect set
+                    // by move_back: Windows will use rcNormalPosition as
+                    // the "restored" size and snap the window to the
+                    // monitor's work area, matching what the user had.
+                    if placement_kind == PLACEMENT_MAXIMIZED {
+                        let _ = ShowWindow(hwnd, SW_SHOWMAXIMIZED);
+                    } else if placement_kind == PLACEMENT_MINIMIZED {
+                        let _ = ShowWindow(hwnd, SW_SHOWMINIMIZED);
+                    }
                     let z_after = describe_z_above(hwnd);
                     dlog(format!(
-                        "show.move_back hwnd=0x{:x} rect=({},{},{},{}) was_fg={} z_before={} z_after={}",
-                        hwnd.0 as usize, x, y, w, h2, was_foreground, z_before, z_after
+                        "show.move_back hwnd=0x{:x} rect=({},{},{},{}) was_fg={} placement={} z_before={} z_after={}",
+                        hwnd.0 as usize, x, y, w, h2, was_foreground, placement_kind, z_before, z_after
                     ));
                     if was_foreground {
                         foreground_host = Some(hwnd);
@@ -5977,7 +5350,7 @@ mod windows_impl {
                 std::thread::sleep(std::time::Duration::from_millis(50));
                 // Re-assert the saved geometry after SW_RESTORE because the
                 // shell may restore to a previous normalized placement.
-                if let Some((_, x, y, w, h, _)) =
+                if let Some((_, x, y, w, h, _, _)) =
                     placements.iter().find(|(saved_h, ..)| *saved_h == hwnd.0 as isize)
                 {
                     dlog("show.calling move_back (geometry reassert)");
@@ -6083,7 +5456,7 @@ mod windows_impl {
                         GetForegroundWindow().0 as usize,
                         GetForegroundWindow().0 == hwnd.0
                     ));
-                    if let Some((_, x, y, w, h, _)) =
+                    if let Some((_, x, y, w, h, _, _)) =
                         placements.iter().find(|(saved_h, ..)| *saved_h == hwnd.0 as isize)
                     {
                         move_back(hwnd, *x, *y, *w, *h, true);
@@ -6252,6 +5625,120 @@ mod windows_impl {
                 return None;
             }
             Some(String::from_utf16_lossy(&buf[..size as usize]))
+        }
+    }
+
+    /// Read an HWND's window-class name. Used by `is_filtered_candidate_window`
+    /// (line 5649). The browser web-content prune used to call this too but
+    /// switched to a RawView pre-scan + bbox-containment approach because
+    /// modern Chromium's Document control has NativeWindowHandle=0 (no HWND
+    /// to read a ClassName off of).
+    #[allow(dead_code)]
+    unsafe fn class_name_of(hwnd: HWND) -> Option<String> {
+        let mut buf = [0u16; 64];
+        let n = GetClassNameW(hwnd, &mut buf);
+        if n <= 0 {
+            return None;
+        }
+        Some(String::from_utf16_lossy(&buf[..n as usize]))
+    }
+
+    /// True when `pid` belongs to a Chromium-family or Gecko browser. Gated
+    /// behind this exe whitelist so Office's `Document` container (Word,
+    /// Outlook reading pane, OneNote) isn't pruned alongside Chrome's
+    /// `Chrome_RenderWidgetHostHWND`. Results are memoized per enumeration
+    /// in `TraversalState::browser_pid_cache`.
+    fn is_browser_process_cached(
+        pid: u32,
+        cache: &mut std::collections::HashMap<u32, bool>,
+    ) -> bool {
+        if let Some(&hit) = cache.get(&pid) {
+            return hit;
+        }
+        let answer = match exe_path_for_pid(pid) {
+            Some(path) => {
+                let base = basename(&path).to_ascii_lowercase();
+                matches!(
+                    base.as_str(),
+                    "chrome.exe"
+                        | "msedge.exe"
+                        | "brave.exe"
+                        | "firefox.exe"
+                        | "opera.exe"
+                        | "vivaldi.exe"
+                        | "thorium.exe"
+                        | "arc.exe"
+                        | "chromium.exe"
+                )
+            }
+            None => false,
+        };
+        cache.insert(pid, answer);
+        answer
+    }
+
+    /// RawView-walk a browser root looking for `Document` controls. Returns
+    /// their bboxes — those are the web-content rects we want to prune
+    /// from the main ControlView walk via bbox-containment. We need RawView
+    /// here because modern Chromium (128+) intentionally hides the Document
+    /// node from ControlView/Content views (the body element is exposed
+    /// straight as a Pane/etc to screen readers), so a ControlView walk
+    /// never even visits it.
+    ///
+    /// Bounded by `MAX_VIEWPORT_SCAN_DEPTH` and `MAX_VIEWPORT_SCAN_NODES`
+    /// to keep the pre-scan cheap (typical Chromium has the Document at
+    /// depth 6-9, well within bounds).
+    unsafe fn find_browser_viewports_raw(
+        walker: &windows::Win32::UI::Accessibility::IUIAutomationTreeWalker,
+        root: &IUIAutomationElement,
+        depth: usize,
+    ) -> Vec<VRect> {
+        const MAX_VIEWPORT_SCAN_DEPTH: usize = 14;
+        const MAX_VIEWPORT_SCAN_NODES: usize = 800;
+        let mut out: Vec<VRect> = Vec::new();
+        let mut budget: usize = MAX_VIEWPORT_SCAN_NODES;
+        find_browser_viewports_raw_inner(walker, root, depth, &mut out, &mut budget, MAX_VIEWPORT_SCAN_DEPTH);
+        out
+    }
+
+    unsafe fn find_browser_viewports_raw_inner(
+        walker: &windows::Win32::UI::Accessibility::IUIAutomationTreeWalker,
+        node: &IUIAutomationElement,
+        depth: usize,
+        out: &mut Vec<VRect>,
+        budget: &mut usize,
+        max_depth: usize,
+    ) {
+        if *budget == 0 || depth > max_depth {
+            return;
+        }
+        *budget -= 1;
+        if let Ok(ctrl) = node.CurrentControlType() {
+            if ctrl == UIA_DocumentControlTypeId {
+                if let Ok(rect) = node.CurrentBoundingRectangle() {
+                    let r: VRect = rect.into();
+                    if r.size.w > 0 && r.size.h > 0 {
+                        // Dedup overlapping Document nodes (Chromium often
+                        // exposes two — outer + inner — at the same bbox).
+                        let key = (r.origin.x, r.origin.y, r.size.w, r.size.h);
+                        if !out.iter().any(|v| {
+                            (v.origin.x, v.origin.y, v.size.w, v.size.h) == key
+                        }) {
+                            out.push(r);
+                        }
+                    }
+                }
+                // Don't descend into web content even during the pre-scan.
+                return;
+            }
+        }
+        let mut current = walker.GetFirstChildElement(node).ok();
+        while let Some(child) = current {
+            find_browser_viewports_raw_inner(walker, &child, depth + 1, out, budget, max_depth);
+            if *budget == 0 {
+                return;
+            }
+            current = walker.GetNextSiblingElement(&child).ok();
         }
     }
 

@@ -766,144 +766,51 @@ export function createWinExecutor(): ComputerExecutor {
       }
     },
 
-    // ── UI Automation (SoM overlay for click_target zoom) ──────────────
-    // Enumerate visible UI elements within a physical-pixel rect via
-    // IUIAutomation::FindAll. System-chrome gating (fullscreen/maximized
-    // detection) is handled internally by the Rust layer.
-    //
-    // Returns [] when the napi isn't available (non-Windows / load failure)
-    // or when COM init / IUIAutomation creation failed inside Rust — the
-    // dispatcher treats empty as "no marks; fall back to ruler positioning".
-    async enumerateVisibleElements(rect, windowOnly?: boolean) {
-      if (!napiAvailable) return []
-      const raw = await winNapi.enumerateUiElementsInRect({
-        origin: { x: Math.round(rect.x), y: Math.round(rect.y) },
-        size:   { w: Math.round(rect.w), h: Math.round(rect.h) },
-      }, windowOnly)
-      return raw.map(e => ({
-        bbox: {
-          x: e.bbox.origin.x,
-          y: e.bbox.origin.y,
-          w: e.bbox.size.w,
-          h: e.bbox.size.h,
-        },
-        name: e.name,
-        role: e.role,
-        automationId: e.automationId ?? undefined,
-        uiaSource: e.uiaSource ?? undefined,
-      }))
-    },
 
-    async enumerateVisibleElementsDetailed(rect, windowOnly?: boolean) {
-      if (!napiAvailable || !winNapi.enumerateUiElementsInRectDetailed) {
-        const elements = await this.enumerateVisibleElements(rect, windowOnly)
-        return {
-          elements,
-          traversedCount: elements.length,
-          matchedCount: elements.length,
-          returnedCount: elements.length,
-          truncated: false,
-        }
-      }
-      const raw = await winNapi.enumerateUiElementsInRectDetailed({
-        origin: { x: Math.round(rect.x), y: Math.round(rect.y) },
-        size: { w: Math.round(rect.w), h: Math.round(rect.h) },
-      }, windowOnly)
-      const elements = raw.elements.map(e => ({
-        bbox: {
-          x: e.bbox.origin.x,
-          y: e.bbox.origin.y,
-          w: e.bbox.size.w,
-          h: e.bbox.size.h,
-        },
-        name: e.name,
-        role: e.role,
-        automationId: e.automationId ?? undefined,
-        uiaSource: e.uiaSource ?? undefined,
-      }))
-      return {
-        elements,
-        traversedCount: raw.traversedCount,
-        matchedCount: raw.matchedCount,
-        returnedCount: raw.returnedCount,
-        truncated: raw.truncated,
-        truncationReason: raw.truncationReason ?? undefined,
-      }
-    },
-
-    async enumerateVisibleElementsForAppDetailed(appIdentifier, rect) {
-      if (!napiAvailable || !winNapi.enumerateUiElementsForAppInRectDetailed) {
-        const elements = await this.enumerateVisibleElements(rect, true)
-        return {
-          elements,
-          traversedCount: elements.length,
-          matchedCount: elements.length,
-          returnedCount: elements.length,
-          truncated: false,
-        }
-      }
-      const raw = await winNapi.enumerateUiElementsForAppInRectDetailed(appIdentifier, {
-        origin: { x: Math.round(rect.x), y: Math.round(rect.y) },
-        size: { w: Math.round(rect.w), h: Math.round(rect.h) },
-      })
-      const elements = raw.elements.map(e => ({
-        bbox: {
-          x: e.bbox.origin.x,
-          y: e.bbox.origin.y,
-          w: e.bbox.size.w,
-          h: e.bbox.size.h,
-        },
-        name: e.name,
-        role: e.role,
-        automationId: e.automationId ?? undefined,
-        uiaSource: e.uiaSource ?? undefined,
-      }))
-      return {
-        elements,
-        traversedCount: raw.traversedCount,
-        matchedCount: raw.matchedCount,
-        returnedCount: raw.returnedCount,
-        truncated: raw.truncated,
-        truncationReason: raw.truncationReason ?? undefined,
-      }
-    },
-
-    async enumerateVisibleElementsForWindowDetailed(windowHandle, rect) {
-      if (!napiAvailable || !winNapi.enumerateUiElementsForWindowInRectDetailed) {
+    async enumerateUiElementsBulkForWindow(windowHandle) {
+      if (!napiAvailable || !winNapi.enumerateUiElementsBulkForWindow) {
         return {
           elements: [],
-          traversedCount: 0,
-          matchedCount: 0,
-          returnedCount: 0,
-          truncated: false,
+          browserViewportBboxes: [],
+          elapsedMs: 0,
+          truncatedByWalltime: false,
         }
       }
-      const raw = await winNapi.enumerateUiElementsForWindowInRectDetailed(
+      const raw = await winNapi.enumerateUiElementsBulkForWindow(
         Math.trunc(windowHandle),
-        {
-          origin: { x: Math.round(rect.x), y: Math.round(rect.y) },
-          size: { w: Math.round(rect.w), h: Math.round(rect.h) },
-        },
       )
-      const elements = raw.elements.map(e => ({
+      const elements = raw.elements.map((e) => ({
         bbox: {
           x: e.bbox.origin.x,
           y: e.bbox.origin.y,
           w: e.bbox.size.w,
           h: e.bbox.size.h,
         },
-        name: e.name,
-        role: e.role,
+        name: e.name ?? '',
+        role: e.role ?? '',
+        controlTypeId: e.controlTypeId ?? 0,
+        className: e.className ?? '',
         automationId: e.automationId ?? undefined,
-        uiaSource: e.uiaSource ?? undefined,
+        frameworkId: e.frameworkId ?? '',
+        localizedControlType: e.localizedControlType ?? '',
+        isOffscreen: !!e.isOffscreen,
+        nativeWindowHandle: Number(e.nativeWindowHandle ?? 0),
+        parentIndex: e.parentIndex ?? -1,
+        depth: e.depth ?? 0,
       }))
+      const browserViewportBboxes = (raw.browserViewportBboxes ?? []).map(
+        (b) => ({
+          x: b.origin.x,
+          y: b.origin.y,
+          w: b.size.w,
+          h: b.size.h,
+        }),
+      )
       return {
         elements,
-        traversedCount: raw.traversedCount,
-        matchedCount: raw.matchedCount,
-        returnedCount: raw.returnedCount,
-        truncated: raw.truncated,
-        truncationReason: raw.truncationReason ?? undefined,
+        browserViewportBboxes,
+        elapsedMs: raw.elapsedMs ?? 0,
+        truncatedByWalltime: !!raw.truncatedByWalltime,
       }
     },
 

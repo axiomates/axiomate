@@ -65,39 +65,6 @@ type MacNativeBinding = {
     } | null
     diagnostic: string
   }>
-  enumerateUiElementsInRect: (
-    rect: {
-      origin: { x: number; y: number }
-      size: { w: number; h: number }
-    },
-    windowOnly?: boolean,
-  ) => Promise<Array<{
-    bbox: { origin: { x: number; y: number }; size: { w: number; h: number } }
-    name: string
-    role: string
-    automationId?: string | null
-    uiaSource?: string | null
-  }>>
-  enumerateUiElementsInRectDetailed?: (
-    rect: {
-      origin: { x: number; y: number }
-      size: { w: number; h: number }
-    },
-    windowOnly?: boolean,
-  ) => Promise<{
-    elements: Array<{
-      bbox: { origin: { x: number; y: number }; size: { w: number; h: number } }
-      name: string
-      role: string
-      automationId?: string | null
-      uiaSource?: string | null
-    }>
-    traversedCount: number
-    matchedCount: number
-    returnedCount: number
-    truncated: boolean
-    truncationReason?: 'traversal_budget' | 'output_budget' | null
-  }>
   elementFromPoint: (
     x: number,
     y: number,
@@ -119,39 +86,6 @@ type MacNativeBinding = {
     x: number,
     y: number,
   ) => { appIdentifier: string; displayName: string } | null
-  enumerateUiElementsForAppInRect?: (
-    appIdentifier: string,
-    rect: {
-      origin: { x: number; y: number }
-      size: { w: number; h: number }
-    },
-  ) => Promise<Array<{
-    bbox: { origin: { x: number; y: number }; size: { w: number; h: number } }
-    name: string
-    role: string
-    automationId?: string | null
-    uiaSource?: string | null
-  }>>
-  enumerateUiElementsForAppInRectDetailed?: (
-    appIdentifier: string,
-    rect: {
-      origin: { x: number; y: number }
-      size: { w: number; h: number }
-    },
-  ) => Promise<{
-    elements: Array<{
-      bbox: { origin: { x: number; y: number }; size: { w: number; h: number } }
-      name: string
-      role: string
-      automationId?: string | null
-      uiaSource?: string | null
-    }>
-    traversedCount: number
-    matchedCount: number
-    returnedCount: number
-    truncated: boolean
-    truncationReason?: 'traversal_budget' | 'output_budget' | null
-  }>
   listVisibleWindowsDetailed?: () => Promise<Array<{
     windowId: number
     appIdentifier: string
@@ -160,27 +94,6 @@ type MacNativeBinding = {
     layer: number
     zRank: number
   }>>
-  enumerateUiElementsForWindowInRectDetailed?: (
-    windowId: number,
-    appIdentifier: string,
-    rect: {
-      origin: { x: number; y: number }
-      size: { w: number; h: number }
-    },
-  ) => Promise<{
-    elements: Array<{
-      bbox: { origin: { x: number; y: number }; size: { w: number; h: number } }
-      name: string
-      role: string
-      automationId?: string | null
-      uiaSource?: string | null
-    }>
-    traversedCount: number
-    matchedCount: number
-    returnedCount: number
-    truncated: boolean
-    truncationReason?: 'traversal_budget' | 'output_budget' | null
-  }>
 }
 
 let macNativeCached: MacNativeBinding | null | undefined
@@ -555,94 +468,10 @@ export function createComputerUseSwift(): ComputerUseAPI {
       }
       return native.captureWindow(appIdentifier)
     },
-    async enumerateUiElementsInRect(rect: {
-      origin: { x: number; y: number }
-      size: { w: number; h: number }
-    }, windowOnly?: boolean) {
-      const native = loadMacNative()
-      if (!native?.enumerateUiElementsInRect) return []
-      return native.enumerateUiElementsInRect(rect, windowOnly)
-    },
-    async enumerateUiElementsForAppInRect(
-      appIdentifier: string,
-      rect: {
-        origin: { x: number; y: number }
-        size: { w: number; h: number }
-      },
-    ) {
-      const native = loadMacNative()
-      if (!native?.enumerateUiElementsForAppInRect) return []
-      return native.enumerateUiElementsForAppInRect(appIdentifier, rect)
-    },
-    async enumerateUiElementsInRectDetailed(
-      rect: {
-        origin: { x: number; y: number }
-        size: { w: number; h: number }
-      },
-      windowOnly?: boolean,
-    ) {
-      const native = loadMacNative()
-      if (!native?.enumerateUiElementsInRectDetailed) {
-        return {
-          elements: [],
-          traversedCount: 0,
-          matchedCount: 0,
-          returnedCount: 0,
-          truncated: false,
-          truncationReason: null,
-        }
-      }
-      return native.enumerateUiElementsInRectDetailed(rect, windowOnly)
-    },
-    async enumerateUiElementsForAppInRectDetailed(
-      appIdentifier: string,
-      rect: {
-        origin: { x: number; y: number }
-        size: { w: number; h: number }
-      },
-    ) {
-      const native = loadMacNative()
-      if (!native?.enumerateUiElementsForAppInRectDetailed) {
-        return {
-          elements: [],
-          traversedCount: 0,
-          matchedCount: 0,
-          returnedCount: 0,
-          truncated: false,
-          truncationReason: null,
-        }
-      }
-      return native.enumerateUiElementsForAppInRectDetailed(appIdentifier, rect)
-    },
     async listVisibleWindowsDetailed() {
       const native = loadMacNative()
       if (!native?.listVisibleWindowsDetailed) return []
       return native.listVisibleWindowsDetailed()
-    },
-    async enumerateUiElementsForWindowInRectDetailed(
-      windowId: number,
-      appIdentifier: string,
-      rect: {
-        origin: { x: number; y: number }
-        size: { w: number; h: number }
-      },
-    ) {
-      const native = loadMacNative()
-      if (!native?.enumerateUiElementsForWindowInRectDetailed) {
-        return {
-          elements: [],
-          traversedCount: 0,
-          matchedCount: 0,
-          returnedCount: 0,
-          truncated: false,
-          truncationReason: null,
-        }
-      }
-      return native.enumerateUiElementsForWindowInRectDetailed(
-        Math.trunc(windowId),
-        appIdentifier,
-        rect,
-      )
     },
     async elementFromPoint(x: number, y: number) {
       const native = loadMacNative()

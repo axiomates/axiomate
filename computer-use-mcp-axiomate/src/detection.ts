@@ -29,6 +29,17 @@ export interface DetectionStats {
   truncationReason?: "traversal_budget" | "output_budget";
 }
 
+/**
+ * A web-content viewport surfaced by native enumeration (UIA's
+ * Chrome_RenderWidgetHostHWND / MozillaWindowClass, mac's AXWebArea) but
+ * intentionally NOT a clickable Mark — page-content interaction belongs
+ * to the CDP-backed browser bridge. The bbox tells the model where the
+ * page is on screen so it can route to `browser_takeover` / `browser_snapshot`.
+ */
+export interface BrowserViewport {
+  bbox: { x: number; y: number; w: number; h: number };
+}
+
 export interface Rect {
   x: number;
   y: number;
@@ -36,117 +47,6 @@ export interface Rect {
   h: number;
 }
 
-/**
- * Detect interactable UI elements within a screen region via UIAutomation.
- * Coordinates are in the same virtual coordinate space as the screenshot rulers.
- *
- * The executor's `enumerateVisibleElements` returns raw physical-coordinate
- * elements; this function converts them to virtual coordinates using the
- * same ratio as scaleCoord (displayWidth/imageWidth).
- */
-export async function detectElementsInRect(
-  executor: ComputerExecutor,
-  rect: Rect,
-  virtualToPhysical: { ratioX: number; ratioY: number; originX: number; originY: number; windowOnly?: boolean },
-): Promise<DetectedElement[]> {
-  const detailed = executor.enumerateVisibleElementsDetailed
-    ? await executor.enumerateVisibleElementsDetailed(
-        {
-          x: rect.x * virtualToPhysical.ratioX + virtualToPhysical.originX,
-          y: rect.y * virtualToPhysical.ratioY + virtualToPhysical.originY,
-          w: rect.w * virtualToPhysical.ratioX,
-          h: rect.h * virtualToPhysical.ratioY,
-        },
-        virtualToPhysical.windowOnly,
-      )
-    : null;
-  if (!detailed && !executor.enumerateVisibleElements) return [];
-
-  // Convert virtual rect → physical rect for UIAutomation query
-  const physRect = {
-    x: rect.x * virtualToPhysical.ratioX + virtualToPhysical.originX,
-    y: rect.y * virtualToPhysical.ratioY + virtualToPhysical.originY,
-    w: rect.w * virtualToPhysical.ratioX,
-    h: rect.h * virtualToPhysical.ratioY,
-  };
-
-  const rawElements = detailed?.elements ??
-    await executor.enumerateVisibleElements!(physRect, virtualToPhysical.windowOnly);
-
-  return rawElements.map((el, i) => {
-    // Physical → virtual coordinates (inverse of scaleCoord)
-    const vx = (el.bbox.x - virtualToPhysical.originX) / virtualToPhysical.ratioX;
-    const vy = (el.bbox.y - virtualToPhysical.originY) / virtualToPhysical.ratioY;
-    const vw = el.bbox.w / virtualToPhysical.ratioX;
-    const vh = el.bbox.h / virtualToPhysical.ratioY;
-
-    return {
-      id: i + 1,
-      bbox: { x: Math.round(vx), y: Math.round(vy), w: Math.round(vw), h: Math.round(vh) },
-      center: { x: Math.round(vx + vw / 2), y: Math.round(vy + vh / 2) },
-      rawName: el.name ?? "",
-      role: el.role,
-      automationId: el.automationId,
-      uiaSource: el.uiaSource,
-    };
-  });
-}
-
-export async function detectElementsInRectDetailed(
-  executor: ComputerExecutor,
-  rect: Rect,
-  virtualToPhysical: { ratioX: number; ratioY: number; originX: number; originY: number; windowOnly?: boolean },
-): Promise<{ elements: DetectedElement[]; stats: DetectionStats }> {
-  const physRect = {
-    x: rect.x * virtualToPhysical.ratioX + virtualToPhysical.originX,
-    y: rect.y * virtualToPhysical.ratioY + virtualToPhysical.originY,
-    w: rect.w * virtualToPhysical.ratioX,
-    h: rect.h * virtualToPhysical.ratioY,
-  };
-
-  if (executor.enumerateVisibleElementsDetailed) {
-    const detailed = await executor.enumerateVisibleElementsDetailed(
-      physRect,
-      virtualToPhysical.windowOnly,
-    );
-    const elements = detailed.elements.map((el, i) => {
-      const vx = (el.bbox.x - virtualToPhysical.originX) / virtualToPhysical.ratioX;
-      const vy = (el.bbox.y - virtualToPhysical.originY) / virtualToPhysical.ratioY;
-      const vw = el.bbox.w / virtualToPhysical.ratioX;
-      const vh = el.bbox.h / virtualToPhysical.ratioY;
-      return {
-        id: i + 1,
-        bbox: { x: Math.round(vx), y: Math.round(vy), w: Math.round(vw), h: Math.round(vh) },
-        center: { x: Math.round(vx + vw / 2), y: Math.round(vy + vh / 2) },
-        rawName: el.name ?? "",
-        role: el.role,
-        automationId: el.automationId,
-        uiaSource: el.uiaSource,
-      };
-    });
-    return {
-      elements,
-      stats: {
-        traversedCount: detailed.traversedCount,
-        matchedCount: detailed.matchedCount,
-        returnedCount: detailed.returnedCount,
-        truncated: detailed.truncated,
-        truncationReason: detailed.truncationReason,
-      },
-    };
-  }
-
-  const elements = await detectElementsInRect(executor, rect, virtualToPhysical);
-  return {
-    elements,
-    stats: {
-      traversedCount: elements.length,
-      matchedCount: elements.length,
-      returnedCount: elements.length,
-      truncated: false,
-    },
-  };
-}
 
 /**
  * Detection sources for the SoM overlay. UIAutomation is wired today; the
@@ -176,90 +76,6 @@ export interface SoMSummary {
   tiles: SoMSummaryTile[];
 }
 
-/**
- * Multi-source SoM detector. Today only `uia` is wired — the executor's
- * `enumerateVisibleElements` structured element enumeration hook. Other
- * sources are stubbed so the merge structure is in place without forcing
- * the call site to know which sources exist.
- *
- * Returns a flat `Mark[]` ready for direct attachment to
- * `ClickLoopState.marks`. IDs are assigned in-order starting from 1; the
- * mark numbering matches what the renderer draws on the zoomed image so
- * `mouse_move(mark_id: N)` resolution is straightforward.
- *
- * Future merge contract (when additional sources land): each source
- * produces its own bbox+confidence list; the merger dedups by IoU > 0.5
- * and aggregates confidence (max across sources, with a small bonus for
- * multi-source agreement). The output `Mark` carries `source` of the
- * highest-confidence contributor.
- */
-export async function detectElementsMultiSource(
-  executor: ComputerExecutor,
-  rect: Rect,
-  virtualToPhysical: { ratioX: number; ratioY: number; originX: number; originY: number; windowOnly?: boolean },
-  sources: DetectionSource[] = ["uia"],
-): Promise<Mark[]> {
-  const all: Mark[] = [];
-  if (sources.includes("uia")) {
-    const uia = await detectElementsInRect(executor, rect, virtualToPhysical);
-    for (const el of uia) {
-      all.push({
-        id: 0, // re-assigned below after merge
-        x: el.center.x,
-        y: el.center.y,
-        name: el.rawName,
-        role: el.role ?? "",
-        automationId: el.automationId,
-        source: "uia",
-        confidence: 1.0,
-        uiaSource: el.uiaSource ?? "foreground",
-      });
-    }
-  }
-  // TODO: grounder / ocr — call each detector, normalize to the same
-  // shape, then run dedup-by-IoU + confidence-aggregate before id assignment.
-  return all.map((m, i) => ({ ...m, id: i + 1 }));
-}
-
-export async function detectElementsMultiSourceDetailed(
-  executor: ComputerExecutor,
-  rect: Rect,
-  virtualToPhysical: { ratioX: number; ratioY: number; originX: number; originY: number; windowOnly?: boolean },
-  sources: DetectionSource[] = ["uia"],
-): Promise<{ marks: Mark[]; stats: DetectionStats }> {
-  const all: Mark[] = [];
-  let stats: DetectionStats = {
-    traversedCount: 0,
-    matchedCount: 0,
-    returnedCount: 0,
-    truncated: false,
-  };
-  if (sources.includes("uia")) {
-    const uia = await detectElementsInRectDetailed(executor, rect, virtualToPhysical);
-    stats = uia.stats;
-    for (const el of uia.elements) {
-      all.push({
-        id: 0,
-        x: el.center.x,
-        y: el.center.y,
-        name: el.rawName,
-        role: el.role ?? "",
-        automationId: el.automationId,
-        source: "uia",
-        confidence: 1.0,
-        uiaSource: el.uiaSource ?? "foreground",
-      });
-    }
-  }
-  const marks = all.map((m, i) => ({ ...m, id: i + 1 }));
-  return {
-    marks,
-    stats: {
-      ...stats,
-      returnedCount: marks.length,
-    },
-  };
-}
 
 export function summarizeMarks(
   marks: Mark[],
@@ -374,9 +190,11 @@ function tileId(col: number, row: number, cols: number): string {
 }
 
 /**
- * Maximum number of SoM red circles to overlay (fallback / text-list
- * cap). Returns 0 only when there are no elements. Text listing and
- * circles share the same limit so mark_id numbering is consistent.
+ * Maximum number of SoM red circles to overlay (fallback). Returns 0
+ * only when there are no elements. The text-SoM list cap (TEXT_SOM_CAP
+ * in toolCalls.ts) is independent and much larger (200) — circle and
+ * text caps are decoupled by design; circles must stay visually sparse,
+ * the text list can carry every interactable.
  */
 const OVERLAY_LIMIT = 20;
 
@@ -395,9 +213,12 @@ export function overlaySoMLimit(marks: Mark[]): number {
  * show a handful of candidates and large multi-monitor captures don't
  * become unreadable.
  *
- * The text-SoM list cap is NOT derived from this — text listing uses
- * its own 20 / 50 split (vision vs non-vision) since legibility of a
- * numbered list is independent of image density.
+ * Independent of the text-SoM list cap (TEXT_SOM_CAP in toolCalls.ts,
+ * currently 200): circles must stay sparse because visual density
+ * beyond ~50 numbered tiles is unreadable, but the text list has no
+ * such constraint. Mark IDs are shared across both views, so any
+ * circled id is also in the text list — but text-listed ids may have
+ * no circle. Models look up id → metadata via text, not via the image.
  */
 const MIN_CIRCLES = 5;
 const MAX_CIRCLES = 50;

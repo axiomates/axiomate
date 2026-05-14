@@ -189,6 +189,35 @@ module.exports.enumerateUiElementsForWindowInRectDetailed = async function enume
   return mod.enumerateUiElementsForWindowInRectDetailed(windowId, bundleId, rect)
 }
 
+// Phase 1.5 bulk pull. Walks the app's AX tree pre-order using
+// AXUIElementCopyMultipleAttributeValues (one IPC per node). Stops at
+// AXWebArea. No filtering at the Rust layer.
+module.exports.enumerateUiElementsBulkForApp = async function enumerateUiElementsBulkForApp(bundleId) {
+  const mod = loadNative()
+  if (!mod) {
+    return {
+      elements: [],
+      browserViewportBboxes: [],
+      elapsedMs: 0,
+      truncatedByWalltime: false,
+    }
+  }
+  return mod.enumerateUiElementsBulkForApp(bundleId)
+}
+
+module.exports.enumerateUiElementsBulkForMacWindow = async function enumerateUiElementsBulkForMacWindow(windowId, bundleId) {
+  const mod = loadNative()
+  if (!mod) {
+    return {
+      elements: [],
+      browserViewportBboxes: [],
+      elapsedMs: 0,
+      truncatedByWalltime: false,
+    }
+  }
+  return mod.enumerateUiElementsBulkForMacWindow(windowId, bundleId)
+}
+
 module.exports.elementFromPoint = async function elementFromPoint(x, y) {
   const mod = loadNative()
   if (!mod) return null

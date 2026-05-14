@@ -1104,170 +1104,33 @@ export function createCliExecutor(opts: {
       await cu.apps.open(appIdentifier)
     },
 
-    async enumerateVisibleElements(rect, windowOnly?: boolean) {
-      if (!cu.enumerateUiElementsInRect) return []
-      const raw = await cu.enumerateUiElementsInRect(
-        {
-          origin: { x: Math.round(rect.x), y: Math.round(rect.y) },
-          size: { w: Math.round(rect.w), h: Math.round(rect.h) },
-        },
-        windowOnly,
-      )
-      return raw.map(e => ({
-        bbox: {
-          x: e.bbox.origin.x,
-          y: e.bbox.origin.y,
-          w: e.bbox.size.w,
-          h: e.bbox.size.h,
-        },
-        name: e.name,
-        role: e.role,
-        automationId: e.automationId ?? undefined,
-        uiaSource: e.uiaSource ?? undefined,
-      }))
-    },
-
-    async enumerateVisibleElementsDetailed(rect, windowOnly?: boolean) {
-      if (!cu.enumerateUiElementsInRectDetailed) {
-        const elements = await this.enumerateVisibleElements(rect, windowOnly)
-        return {
-          elements,
-          traversedCount: elements.length,
-          matchedCount: elements.length,
-          returnedCount: elements.length,
-          truncated: false,
-        }
-      }
-      const raw = await cu.enumerateUiElementsInRectDetailed(
-        {
-          origin: { x: Math.round(rect.x), y: Math.round(rect.y) },
-          size: { w: Math.round(rect.w), h: Math.round(rect.h) },
-        },
-        windowOnly,
-      )
-      const elements = raw.elements.map(e => ({
-        bbox: {
-          x: e.bbox.origin.x,
-          y: e.bbox.origin.y,
-          w: e.bbox.size.w,
-          h: e.bbox.size.h,
-        },
-        name: e.name,
-        role: e.role,
-        automationId: e.automationId ?? undefined,
-        uiaSource: e.uiaSource ?? undefined,
-      }))
-      return {
-        elements,
-        traversedCount: raw.traversedCount,
-        matchedCount: raw.matchedCount,
-        returnedCount: raw.returnedCount,
-        truncated: raw.truncated,
-        truncationReason: raw.truncationReason ?? undefined,
-      }
-    },
-
-    async enumerateVisibleElementsForAppDetailed(appIdentifier, rect) {
-      if (!cu.enumerateUiElementsForAppInRectDetailed) {
-        // Native side only exposes the non-detailed variant — synthesize
-        // stats so callers depending on the Detailed shape keep working.
-        if (!cu.enumerateUiElementsForAppInRect) {
-          return { elements: [], traversedCount: 0, matchedCount: 0, returnedCount: 0, truncated: false }
-        }
-        const rawElements = await cu.enumerateUiElementsForAppInRect(
-          appIdentifier,
-          {
-            origin: { x: Math.round(rect.x), y: Math.round(rect.y) },
-            size: { w: Math.round(rect.w), h: Math.round(rect.h) },
-          },
-        )
-        const elements = rawElements.map(e => ({
-          bbox: {
-            x: e.bbox.origin.x,
-            y: e.bbox.origin.y,
-            w: e.bbox.size.w,
-            h: e.bbox.size.h,
-          },
-          name: e.name,
-          role: e.role,
-          automationId: e.automationId ?? undefined,
-          uiaSource: e.uiaSource ?? undefined,
-        }))
-        return {
-          elements,
-          traversedCount: elements.length,
-          matchedCount: elements.length,
-          returnedCount: elements.length,
-          truncated: false,
-        }
-      }
-      const raw = await cu.enumerateUiElementsForAppInRectDetailed(
-        appIdentifier,
-        {
-          origin: { x: Math.round(rect.x), y: Math.round(rect.y) },
-          size: { w: Math.round(rect.w), h: Math.round(rect.h) },
-        },
-      )
-      const elements = raw.elements.map(e => ({
-        bbox: {
-          x: e.bbox.origin.x,
-          y: e.bbox.origin.y,
-          w: e.bbox.size.w,
-          h: e.bbox.size.h,
-        },
-        name: e.name,
-        role: e.role,
-        automationId: e.automationId ?? undefined,
-        uiaSource: e.uiaSource ?? undefined,
-      }))
-      return {
-        elements,
-        traversedCount: raw.traversedCount,
-        matchedCount: raw.matchedCount,
-        returnedCount: raw.returnedCount,
-        truncated: raw.truncated,
-        truncationReason: raw.truncationReason ?? undefined,
-      }
-    },
-
-    async enumerateVisibleElementsForMacWindowDetailed(windowId, appIdentifier, rect) {
-      if (!cu.enumerateUiElementsForWindowInRectDetailed) {
+    async enumerateUiElementsBulkForApp(bundleId) {
+      if (!cu.enumerateUiElementsBulkForApp) {
         return {
           elements: [],
-          traversedCount: 0,
-          matchedCount: 0,
-          returnedCount: 0,
-          truncated: false,
+          browserViewportBboxes: [],
+          elapsedMs: 0,
+          truncatedByWalltime: false,
         }
       }
-      const raw = await cu.enumerateUiElementsForWindowInRectDetailed(
-        Math.trunc(windowId),
-        appIdentifier,
-        {
-          origin: { x: Math.round(rect.x), y: Math.round(rect.y) },
-          size: { w: Math.round(rect.w), h: Math.round(rect.h) },
-        },
-      )
-      const elements = raw.elements.map(e => ({
-        bbox: {
-          x: e.bbox.origin.x,
-          y: e.bbox.origin.y,
-          w: e.bbox.size.w,
-          h: e.bbox.size.h,
-        },
-        name: e.name,
-        role: e.role,
-        automationId: e.automationId ?? undefined,
-        uiaSource: e.uiaSource ?? undefined,
-      }))
-      return {
-        elements,
-        traversedCount: raw.traversedCount,
-        matchedCount: raw.matchedCount,
-        returnedCount: raw.returnedCount,
-        truncated: raw.truncated,
-        truncationReason: raw.truncationReason ?? undefined,
+      const raw = await cu.enumerateUiElementsBulkForApp(bundleId)
+      return normalizeBulkResult(raw)
+    },
+
+    async enumerateUiElementsBulkForMacWindow(windowId, bundleId) {
+      if (!cu.enumerateUiElementsBulkForMacWindow) {
+        return {
+          elements: [],
+          browserViewportBboxes: [],
+          elapsedMs: 0,
+          truncatedByWalltime: false,
+        }
       }
+      const raw = await cu.enumerateUiElementsBulkForMacWindow(
+        Math.trunc(windowId),
+        bundleId,
+      )
+      return normalizeBulkResult(raw)
     },
 
     async elementFromPoint(x: number, y: number) {
@@ -1279,6 +1142,55 @@ export function createCliExecutor(opts: {
         role: el.role,
       }
     },
+  }
+}
+
+// Bulk-pull result normalizer for the mac napi. Mac elements use AX roles
+// directly (no UIA control-type integer) and carry extra attributes
+// (subrole, value, focused, ...) that win doesn't have.
+function normalizeBulkResult(raw: any) {
+  const elements = (raw.elements ?? []).map((e: any) => ({
+    bbox: {
+      x: e.bbox.origin.x,
+      y: e.bbox.origin.y,
+      w: e.bbox.size.w,
+      h: e.bbox.size.h,
+    },
+    name: e.name ?? '',
+    role: e.role ?? '',
+    controlTypeId: 0,
+    className: '',
+    automationId: e.identifier ?? undefined,
+    frameworkId: '',
+    localizedControlType: e.roleDescription ?? '',
+    isOffscreen: !!e.hidden,
+    nativeWindowHandle: 0,
+    parentIndex: e.parentIndex ?? -1,
+    depth: e.depth ?? 0,
+    subrole: e.subrole ?? undefined,
+    roleDescription: e.roleDescription ?? undefined,
+    value: e.value ?? undefined,
+    help: e.help ?? undefined,
+    description: e.description ?? undefined,
+    identifier: e.identifier ?? undefined,
+    enabled: e.enabled ?? undefined,
+    hidden: e.hidden ?? undefined,
+    focused: e.focused ?? undefined,
+    selected: e.selected ?? undefined,
+  }))
+  const browserViewportBboxes = (raw.browserViewportBboxes ?? []).map(
+    (b: any) => ({
+      x: b.origin.x,
+      y: b.origin.y,
+      w: b.size.w,
+      h: b.size.h,
+    }),
+  )
+  return {
+    elements,
+    browserViewportBboxes,
+    elapsedMs: raw.elapsedMs ?? 0,
+    truncatedByWalltime: !!raw.truncatedByWalltime,
   }
 }
 

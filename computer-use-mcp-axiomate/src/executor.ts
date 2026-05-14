@@ -86,6 +86,56 @@ export interface ComputerExecutorCapabilities {
   teachMode?: boolean;
 }
 
+/**
+ * One element from the Phase 1.5 bulk-pull path. Mirrors the Rust napi
+ * struct (`BulkUiElement` on both win + mac), normalized into a single
+ * shape so the TS pipeline doesn't need platform-specific extraction.
+ *
+ * Fields not exposed by a given platform get sensible defaults:
+ * - `controlTypeId` is `0` on Mac (no UIA-style integer id; use `role`).
+ * - `frameworkId` / `localizedControlType` / `className` are empty on Mac
+ *   (no direct AX equivalents).
+ * - `subrole` / `roleDescription` / `value` / `help` / `description` /
+ *   `enabled` / `focused` / `selected` are only populated on Mac.
+ *
+ * `parentIndex = -1` for the root. Children always come after their
+ * parent in the returned array (pre-order traversal).
+ */
+export interface BulkUiElement {
+  bbox: { x: number; y: number; w: number; h: number };
+  name: string;
+  role: string;
+  controlTypeId: number;
+  className: string;
+  automationId?: string;
+  frameworkId: string;
+  localizedControlType: string;
+  isOffscreen: boolean;
+  nativeWindowHandle: number;
+  parentIndex: number;
+  depth: number;
+  // Mac-only extensions
+  subrole?: string;
+  roleDescription?: string;
+  value?: string;
+  help?: string;
+  description?: string;
+  identifier?: string;
+  enabled?: boolean;
+  hidden?: boolean;
+  focused?: boolean;
+  selected?: boolean;
+}
+
+export interface BulkEnumerationResult {
+  elements: BulkUiElement[];
+  /** Web-content viewport rects discovered during the platform's
+   *  Phase 1 prune scan (Win RawView Document, Mac AXWebArea). */
+  browserViewportBboxes: Array<{ x: number; y: number; w: number; h: number }>;
+  elapsedMs: number;
+  truncatedByWalltime: boolean;
+}
+
 export interface ComputerExecutor {
   capabilities: ComputerExecutorCapabilities;
 
@@ -229,89 +279,6 @@ export interface ComputerExecutor {
   readClipboard(): Promise<string>;
   writeClipboard?(text: string): Promise<void>;
 
-  // ── UI Automation (click_target SoM) ─────────────────────────────────
-  /**
-   * Enumerate visible interactable UI elements within a physical-pixel rect.
-   * Used by click_target's SoM overlay. Optional — returns [] if unavailable.
-   * Win32: IUIAutomation::FindAll with TreeScope_Subtree rooted at
-   * `GetRootElement()` (the desktop), filtered by `IsControlElement = true`,
-   * then post-filtered to elements whose bbox intersects `rect`. Rooting at
-   * the desktop (not the foreground window) is intentional so taskbar
-   * (`Shell_TrayWnd`), system tray, and floating top-level windows are
-   * included — foreground-scoped FindAll would miss the most common
-   * "click X in the taskbar" intent.
-   */
-  enumerateVisibleElements?(rect: {
-    x: number;
-    y: number;
-    w: number;
-    h: number;
-  }, windowOnly?: boolean): Promise<
-    Array<{
-      bbox: { x: number; y: number; w: number; h: number };
-      name?: string;
-      role?: string;
-      automationId?: string;
-      /** Which UIA source produced this element: "taskbar", "desktop", "foreground". */
-      uiaSource?: string;
-    }>
-  >;
-
-  /**
-   * Richer structured-element enumeration result. Preferred over
-   * enumerateVisibleElements when implemented. Separates traversal budget from
-   * output budget so the caller can distinguish "stopped walking" from
-   * "walked more but only returned top-K".
-   */
-  enumerateVisibleElementsDetailed?(rect: {
-    x: number;
-    y: number;
-    w: number;
-    h: number;
-  }, windowOnly?: boolean): Promise<{
-    elements: Array<{
-      bbox: { x: number; y: number; w: number; h: number };
-      name?: string;
-      role?: string;
-      automationId?: string;
-      uiaSource?: string;
-    }>;
-    traversedCount: number;
-    matchedCount: number;
-    returnedCount: number;
-    truncated: boolean;
-    truncationReason?: "traversal_budget" | "output_budget";
-  }>;
-
-  /**
-   * Enumerate structured UI elements for a specific target app/window
-   * identity, rather than relying on frontmost-app or rect hit-test
-   * heuristics. Used by screenshot_window SoM on both Win and Mac. The
-   * Detailed variant is the only public API — non-detailed natives are
-   * an executor-internal fallback inside the implementation.
-   */
-  enumerateVisibleElementsForAppDetailed?(
-    appIdentifier: string,
-    rect: {
-      x: number;
-      y: number;
-      w: number;
-      h: number;
-    },
-  ): Promise<{
-    elements: Array<{
-      bbox: { x: number; y: number; w: number; h: number };
-      name?: string;
-      role?: string;
-      automationId?: string;
-      uiaSource?: string;
-    }>;
-    traversedCount: number;
-    matchedCount: number;
-    returnedCount: number;
-    truncated: boolean;
-    truncationReason?: "traversal_budget" | "output_budget";
-  }>;
 
   /**
    * Hit-test: return the UI element at a physical-pixel coordinate.
@@ -361,28 +328,6 @@ export interface ComputerExecutor {
    */
   getHostAncestorPaths?(): Promise<string[]>;
 
-  enumerateVisibleElementsForWindowDetailed?(
-    windowHandle: number,
-    rect: {
-      x: number;
-      y: number;
-      w: number;
-      h: number;
-    },
-  ): Promise<{
-    elements: Array<{
-      bbox: { x: number; y: number; w: number; h: number };
-      name?: string;
-      role?: string;
-      automationId?: string;
-      uiaSource?: string;
-    }>;
-    traversedCount: number;
-    matchedCount: number;
-    returnedCount: number;
-    truncated: boolean;
-    truncationReason?: "traversal_budget" | "output_budget";
-  }>;
 
   listVisibleMacWindows?(): Promise<Array<{
     windowId: number;
@@ -393,29 +338,31 @@ export interface ComputerExecutor {
     zRank: number;
   }>>;
 
-  enumerateVisibleElementsForMacWindowDetailed?(
+
+  /**
+   * Phase 1.5 bulk-pull. Returns the entire ControlView (Win) / AX (Mac)
+   * subtree rooted at the given window/app in one IPC, with all properties
+   * the TS pipeline needs. NO filtering at the executor layer — every node
+   * comes back; `enumeration/filter.ts` step 8 decides what's meaningful.
+   *
+   * `browserViewportBboxes` carries the web-content rects discovered via
+   * the platform's RawView pre-scan (Win) or AXWebArea hits (Mac) — Phase 1
+   * prune semantics preserved.
+   *
+   * `truncatedByWalltime` is a per-call wall-time backstop firing flag.
+   * The pipeline reports the window as "enumeration timed out" but the
+   * partial `elements` are still usable.
+   */
+  enumerateUiElementsBulkForWindow?(windowHandle: number): Promise<BulkEnumerationResult>;
+
+  /** Mac analog by bundle id (no specific window). */
+  enumerateUiElementsBulkForApp?(bundleId: string): Promise<BulkEnumerationResult>;
+
+  /** Mac analog rooted at a specific CGWindowID. */
+  enumerateUiElementsBulkForMacWindow?(
     windowId: number,
-    appIdentifier: string,
-    rect: {
-      x: number;
-      y: number;
-      w: number;
-      h: number;
-    },
-  ): Promise<{
-    elements: Array<{
-      bbox: { x: number; y: number; w: number; h: number };
-      name?: string;
-      role?: string;
-      automationId?: string;
-      uiaSource?: string;
-    }>;
-    traversedCount: number;
-    matchedCount: number;
-    returnedCount: number;
-    truncated: boolean;
-    truncationReason?: "traversal_budget" | "output_budget";
-  }>;
+    bundleId: string,
+  ): Promise<BulkEnumerationResult>;
 
   /**
    * Snapshot the current non-host foreground window so screenshot/zoom paths

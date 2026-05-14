@@ -174,6 +174,56 @@ pub struct UiElementEnumerationResult {
     pub truncation_reason: Option<String>,
 }
 
+/// Phase 1.5 bulk-pull element. Carries every attribute the TS pipeline's
+/// filter / score steps need, plus a `parent_index` for hierarchy
+/// reconstruction. No filtering at the Rust level — every AX node visited
+/// during BFS comes back; TS step 8 decides what's meaningful.
+///
+/// `parent_index = -1` for the root. Children come after their parent in
+/// the returned vec (pre-order).
+///
+/// On macOS we don't have UIA's per-tree CacheRequest. Each node is read
+/// via one `AXUIElementCopyMultipleAttributeValues` call pulling the full
+/// attribute set in a single IPC — ~6× faster than per-attribute reads.
+#[napi(object)]
+pub struct BulkUiElement {
+    pub bbox: VRect,
+    /// AX role (e.g. "AXButton", "AXTextField"). Not the human-readable
+    /// short form — the TS pipeline maps roles itself.
+    pub role: String,
+    /// Subrole when present (e.g. "AXMinimizeButton", "AXSearchField").
+    /// Disambiguates titlebar buttons, search-vs-text fields, etc.
+    pub subrole: Option<String>,
+    pub role_description: Option<String>,
+    /// AXTitle / AXValue / AXDescription, normalized to a single name
+    /// field for parity with the Win bulk shape.
+    pub name: String,
+    pub help: Option<String>,
+    pub value: Option<String>,
+    pub description: Option<String>,
+    pub identifier: Option<String>,
+    pub enabled: bool,
+    pub hidden: bool,
+    pub focused: bool,
+    pub selected: bool,
+    pub parent_index: i32,
+    pub depth: u32,
+}
+
+#[napi(object)]
+pub struct BulkEnumerationResult {
+    pub elements: Vec<BulkUiElement>,
+    /// AXWebArea bboxes encountered during BFS. The walker stops at
+    /// AXWebArea (page content belongs to the browser bridge, not AX), so
+    /// these are leaves — the TS pipeline uses them to drop any other
+    /// element whose bbox sits inside (defensive; rarely triggers since
+    /// AXWebArea is normally the only browser child of interest at its
+    /// rect).
+    pub browser_viewport_bboxes: Vec<VRect>,
+    pub elapsed_ms: u32,
+    pub truncated_by_walltime: bool,
+}
+
 /// For each requested app identifier (CFBundleIdentifier on macOS), return the set of CGDisplayIDs whose
 /// `CGDisplayBounds` rect intersects any of that app's on-screen window
 /// rects. Empty `display_ids` means the app has no visible windows on any
@@ -407,6 +457,62 @@ pub async fn enumerate_ui_elements_for_window_in_rect_detailed(
             returned_count: 0,
             truncated: false,
             truncation_reason: None,
+        })
+    }
+}
+
+/// Phase 1.5 bulk-pull enumeration for one app identified by bundle id.
+/// Walks the AX tree under `AXUIElementCreateApplication(pid)` pre-order,
+/// reading every attribute the TS pipeline needs in one IPC per node via
+/// `AXUIElementCopyMultipleAttributeValues`. Stops descending at
+/// `AXWebArea` (Phase 1 prune — page content goes through the browser
+/// bridge). No filtering at this layer.
+#[napi]
+pub async fn enumerate_ui_elements_bulk_for_app(
+    app_identifier: String,
+) -> napi::Result<BulkEnumerationResult> {
+    #[cfg(target_os = "macos")]
+    {
+        Ok(macos::ax_query::enumerate_ui_elements_bulk_for_app(
+            &app_identifier,
+        ))
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = app_identifier;
+        Ok(BulkEnumerationResult {
+            elements: Vec::new(),
+            browser_viewport_bboxes: Vec::new(),
+            elapsed_ms: 0,
+            truncated_by_walltime: false,
+        })
+    }
+}
+
+/// Phase 1.5 bulk-pull enumeration for a specific window of an app.
+/// Same shape as `enumerate_ui_elements_bulk_for_app` but rooted at the
+/// AXWindow that matches `window_id` (CGWindowID). Falls back to the
+/// app's frontmost window when the id can't be resolved.
+#[napi]
+pub async fn enumerate_ui_elements_bulk_for_mac_window(
+    window_id: u32,
+    app_identifier: String,
+) -> napi::Result<BulkEnumerationResult> {
+    #[cfg(target_os = "macos")]
+    {
+        Ok(macos::ax_query::enumerate_ui_elements_bulk_for_mac_window(
+            window_id,
+            &app_identifier,
+        ))
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (window_id, app_identifier);
+        Ok(BulkEnumerationResult {
+            elements: Vec::new(),
+            browser_viewport_bboxes: Vec::new(),
+            elapsed_ms: 0,
+            truncated_by_walltime: false,
         })
     }
 }
@@ -1501,7 +1607,10 @@ mod macos {
     }
 
     pub mod ax_query {
-        use crate::{UiElement, UiElementEnumerationResult, VPoint, VRect, VSize, VisibleMacWindowInfo};
+        use crate::{
+            BulkEnumerationResult, BulkUiElement, UiElement, UiElementEnumerationResult,
+            VPoint, VRect, VSize, VisibleMacWindowInfo,
+        };
         use core_foundation::base::TCFType;
         use core_foundation::string::CFString;
         use std::borrow::Cow;
@@ -1524,10 +1633,10 @@ mod macos {
         const K_CF_STRING_ENCODING_UTF8: u32 = 0x08000100;
         const K_AX_ERROR_SUCCESS: AXError = 0;
         const MAX_AX_TREE_DEPTH: usize = 48;
-        const MAX_ENUM_VISITED_NODES: u32 = 300;
+        const MAX_ENUM_VISITED_NODES: u32 = 1500;
         const WARMUP_MAX_DEPTH: usize = 2;
-        const WARMUP_MAX_VISITS: u32 = 80;
-        const ROOT_BASE_BUDGET: u32 = 40;
+        const WARMUP_MAX_VISITS: u32 = 200;
+        const ROOT_BASE_BUDGET: u32 = 120;
         const MAX_NORMAL_SEARCH_ROOTS: usize = 5;
         const CURSOR_PROXIMITY_BONUS: i32 = 200;
 
@@ -1562,6 +1671,17 @@ mod macos {
                 attribute: CFStringRef,
                 value: *mut CFTypeRef,
             ) -> AXError;
+            /// Bulk attribute fetch — one IPC pulls every requested attribute
+            /// in `attributes` and writes their values (or kAXErrorNoValue
+            /// sentinels) into `values` in matching order. Phase 1.5 bulk
+            /// path uses this to read role+title+value+children+geometry in
+            /// a single round-trip per node.
+            fn AXUIElementCopyMultipleAttributeValues(
+                element: AXUIElementRef,
+                attributes: CFArrayRef,
+                options: u32,
+                values: *mut CFArrayRef,
+            ) -> AXError;
             fn AXUIElementCopyElementAtPosition(
                 application: AXUIElementRef,
                 x: f32,
@@ -1569,6 +1689,12 @@ mod macos {
                 element: *mut AXUIElementRef,
             ) -> AXError;
             fn AXValueGetValue(value: AXValueRef, the_type: u32, out: *mut c_void) -> bool;
+            fn CFArrayCreate(
+                allocator: *const c_void,
+                values: *const *const c_void,
+                num_values: CFIndex,
+                callbacks: *const c_void,
+            ) -> CFArrayRef;
             fn CFArrayGetCount(arr: CFArrayRef) -> CFIndex;
             fn CFArrayGetValueAtIndex(arr: CFArrayRef, idx: CFIndex) -> *const c_void;
             fn CFGetTypeID(cf: *const c_void) -> usize;
@@ -1584,6 +1710,13 @@ mod macos {
                 buffer_size: CFIndex,
                 encoding: u32,
             ) -> bool;
+        }
+
+        // CoreFoundation static — passed to CFArrayCreate as the callback
+        // table for ref-counted CFType members (CFRetain on insert,
+        // CFRelease on remove).
+        extern "C" {
+            static kCFTypeArrayCallBacks: c_void;
         }
 
         fn ax_attr(name: &str) -> CFString {
@@ -2482,6 +2615,58 @@ mod macos {
                 CFRelease(el as *const c_void);
                 return true;
             }
+
+            // Browser web-content prune: AXWebArea is the role every
+            // Chromium / WebKit / Gecko browser uses for the page content
+            // root on macOS. Handing this subtree to the CDP-based browser
+            // bridge is dramatically more reliable than walking AX — DOM
+            // nodes collapse, names are stale, and hit-test drifts with
+            // scroll. We keep a BrowserViewport sentinel at this bbox so
+            // the TS layer knows the page rect and can route the model to
+            // `browser_takeover` / `browser_snapshot`.
+            //
+            // No bundle-id gate: AXWebArea is exclusive to web content
+            // hosts on macOS (unlike Win's Document control type, which
+            // Office also uses). If a false positive surfaces, add a pid
+            // -> bundle-id check here.
+            let web_role_attr = ax_attr("AXRole");
+            if let Some(role) = read_string_attr(
+                el,
+                web_role_attr.as_concrete_TypeRef() as CFStringRef,
+            ) {
+                if role == "AXWebArea" {
+                    if let Some(raw_rect) = read_rect(el) {
+                        let bbox = rect_to_public(&raw_rect);
+                        if bbox.size.w > 0
+                            && bbox.size.h > 0
+                            && intersects_filter(&bbox, rect)
+                        {
+                            state.matched_count = state.matched_count.saturating_add(1);
+                            let key = (
+                                bbox.origin.x,
+                                bbox.origin.y,
+                                bbox.size.w,
+                                bbox.size.h,
+                                "BrowserViewport",
+                            );
+                            if !seen.contains(&key) {
+                                seen.insert(key);
+                                out.push(UiElement {
+                                    bbox,
+                                    name: String::new(),
+                                    role: "BrowserViewport".to_string(),
+                                    automation_id: None,
+                                    uia_source: Some("browser_viewport".to_string()),
+                                });
+                            }
+                        }
+                    }
+                    // Do NOT push_children — page content is off-limits
+                    // to AX enumeration.
+                    CFRelease(el as *const c_void);
+                    return true;
+                }
+            }
             let mut prune_subtree = false;
             match element_to_ui(el, rect) {
                 Ok(ui) => {
@@ -2992,7 +3177,23 @@ mod macos {
             global: &mut TraversalState,
             target_budget: u32,
         ) {
+            // Per-root wall-time cap. macOS AXUIElement calls can spike
+            // on background apps (AXObserver notifications are foreground-
+            // biased and AX reads cross-process serialize). Cap each root
+            // at PER_ROOT_WALL_BUDGET so one slow app can't starve others.
+            const PER_ROOT_WALL_BUDGET: std::time::Duration =
+                std::time::Duration::from_millis(1500);
+            const CHECK_INTERVAL: u32 = 16;
+            let root_start = std::time::Instant::now();
+            let mut next_time_check = CHECK_INTERVAL;
             while root_state.visited < target_budget && !global.truncated {
+                if root_state.visited >= next_time_check {
+                    if root_start.elapsed() >= PER_ROOT_WALL_BUDGET {
+                        root_state.root.exhausted = true;
+                        break;
+                    }
+                    next_time_check = root_state.visited.saturating_add(CHECK_INTERVAL);
+                }
                 let next = if let Some(item) = root_state.bfs.pop_front() {
                     Some((item.0, item.1))
                 } else if let Some(item) = root_state.heap.pop() {
@@ -3226,6 +3427,341 @@ mod macos {
                 CFRelease(start as *const c_void);
                 super::append_ax_som_debug_log(&format!("END kept={}", result.elements.len()));
                 result
+            }
+        }
+
+        /// Phase 1.5 bulk pull for one app. Walks the AX tree under the
+        /// app's root, reading every attribute the TS pipeline needs in one
+        /// IPC per node via `AXUIElementCopyMultipleAttributeValues`. Stops
+        /// descending at `AXWebArea`.
+        pub fn enumerate_ui_elements_bulk_for_app(app_identifier: &str) -> BulkEnumerationResult {
+            let root = match app_ax_root_for_identifier(app_identifier) {
+                Some(r) => r,
+                None => {
+                    return BulkEnumerationResult {
+                        elements: Vec::new(),
+                        browser_viewport_bboxes: Vec::new(),
+                        elapsed_ms: 0,
+                        truncated_by_walltime: false,
+                    }
+                }
+            };
+            unsafe {
+                let result = bulk_walk_from_root(root);
+                CFRelease(root as *const c_void);
+                result
+            }
+        }
+
+        /// Phase 1.5 bulk pull rooted at a specific AXWindow (matched by
+        /// CGWindowID). Falls back to the app's full tree when the window
+        /// can't be resolved — the TS pipeline will filter to the window
+        /// bbox anyway.
+        pub fn enumerate_ui_elements_bulk_for_mac_window(
+            window_id: u32,
+            app_identifier: &str,
+        ) -> BulkEnumerationResult {
+            // Try window-rooted first. We synthesize a generous rect (the
+            // whole virtual screen) so app_window_root_for_rect's distance
+            // ranking still works to pick the named window.
+            let fallback_rect = VRect {
+                origin: VPoint { x: -32768, y: -32768 },
+                size: VSize { w: 65535, h: 65535 },
+            };
+            let window_root = unsafe {
+                app_window_root_for_rect(Some(window_id), app_identifier, &fallback_rect)
+            };
+            if let Some((start, _)) = window_root {
+                unsafe {
+                    let result = bulk_walk_from_root(start);
+                    CFRelease(start as *const c_void);
+                    return result;
+                }
+            }
+            // Fallback: app-level root.
+            enumerate_ui_elements_bulk_for_app(app_identifier)
+        }
+
+        /// Shared body of both bulk entries. Pre-order BFS over the AX
+        /// tree. Per node: one `AXUIElementCopyMultipleAttributeValues`
+        /// call pulls all attributes + children references. Stops at
+        /// AXWebArea (Phase 1 prune).
+        unsafe fn bulk_walk_from_root(root: AXUIElementRef) -> BulkEnumerationResult {
+            const PER_CALL_WALL_BUDGET: std::time::Duration =
+                std::time::Duration::from_millis(2000);
+            let start_ts = std::time::Instant::now();
+
+            // Build the attributes array once — reused for every node.
+            let attr_names = [
+                "AXRole",
+                "AXSubrole",
+                "AXRoleDescription",
+                "AXTitle",
+                "AXValue",
+                "AXDescription",
+                "AXHelp",
+                "AXIdentifier",
+                "AXPosition",
+                "AXSize",
+                "AXEnabled",
+                "AXHidden",
+                "AXFocused",
+                "AXSelected",
+                "AXChildren",
+            ];
+            const ATTR_ROLE: usize = 0;
+            const ATTR_SUBROLE: usize = 1;
+            const ATTR_ROLE_DESC: usize = 2;
+            const ATTR_TITLE: usize = 3;
+            const ATTR_VALUE: usize = 4;
+            const ATTR_DESC: usize = 5;
+            const ATTR_HELP: usize = 6;
+            const ATTR_IDENT: usize = 7;
+            const ATTR_POS: usize = 8;
+            const ATTR_SIZE: usize = 9;
+            const ATTR_ENABLED: usize = 10;
+            const ATTR_HIDDEN: usize = 11;
+            const ATTR_FOCUSED: usize = 12;
+            const ATTR_SELECTED: usize = 13;
+            const ATTR_CHILDREN: usize = 14;
+
+            let attr_cf_strings: Vec<CFString> =
+                attr_names.iter().map(|n| ax_attr(n)).collect();
+            let attr_ptrs: Vec<*const c_void> = attr_cf_strings
+                .iter()
+                .map(|s| s.as_concrete_TypeRef() as *const c_void)
+                .collect();
+            let attrs_array: CFArrayRef = CFArrayCreate(
+                std::ptr::null(),
+                attr_ptrs.as_ptr(),
+                attr_ptrs.len() as CFIndex,
+                &kCFTypeArrayCallBacks as *const c_void,
+            );
+            if attrs_array.is_null() {
+                return BulkEnumerationResult {
+                    elements: Vec::new(),
+                    browser_viewport_bboxes: Vec::new(),
+                    elapsed_ms: start_ts.elapsed().as_millis().min(u32::MAX as u128) as u32,
+                    truncated_by_walltime: false,
+                };
+            }
+
+            let mut elements: Vec<BulkUiElement> = Vec::new();
+            let mut viewport_bboxes: Vec<VRect> = Vec::new();
+            let mut truncated = false;
+
+            // Stack of (AX element, depth, parent_index). Owned AX refs;
+            // released after we process them.
+            let mut stack: Vec<(AXUIElementRef, u32, i32)> = vec![(root, 0, -1)];
+            // Root is owned by caller — don't release on our way out.
+            let root_ref = root;
+
+            while let Some((node, depth, parent_index)) = stack.pop() {
+                if start_ts.elapsed() >= PER_CALL_WALL_BUDGET {
+                    truncated = true;
+                    if node != root_ref {
+                        CFRelease(node as *const c_void);
+                    }
+                    // Drain remaining stack to free refs.
+                    while let Some((n, _, _)) = stack.pop() {
+                        if n != root_ref {
+                            CFRelease(n as *const c_void);
+                        }
+                    }
+                    break;
+                }
+
+                let mut values: CFArrayRef = std::ptr::null();
+                let err = AXUIElementCopyMultipleAttributeValues(
+                    node,
+                    attrs_array,
+                    0,
+                    &mut values as *mut _,
+                );
+
+                if err != K_AX_ERROR_SUCCESS || values.is_null() {
+                    if node != root_ref {
+                        CFRelease(node as *const c_void);
+                    }
+                    continue;
+                }
+
+                let get_val = |idx: usize| -> CFTypeRef {
+                    CFArrayGetValueAtIndex(values, idx as CFIndex) as CFTypeRef
+                };
+                let cf_string_to_rust = |v: CFTypeRef| -> Option<String> {
+                    if v.is_null() {
+                        return None;
+                    }
+                    let ty = CFGetTypeID(v as *const c_void);
+                    if ty != CFStringGetTypeID() {
+                        return None;
+                    }
+                    let mut buf = [0u8; 1024];
+                    let ok = CFStringGetCString(
+                        v as CFStringRef,
+                        buf.as_mut_ptr() as *mut c_char,
+                        buf.len() as CFIndex,
+                        0x08000100, // kCFStringEncodingUTF8
+                    );
+                    if !ok {
+                        return None;
+                    }
+                    let len = buf.iter().position(|&b| b == 0).unwrap_or(buf.len());
+                    String::from_utf8(buf[..len].to_vec()).ok()
+                };
+                let cf_bool_to_rust = |v: CFTypeRef| -> Option<bool> {
+                    if v.is_null() {
+                        return None;
+                    }
+                    let ty = CFGetTypeID(v as *const c_void);
+                    if ty != CFBooleanGetTypeID() {
+                        return None;
+                    }
+                    Some(CFBooleanGetValue(v as *const c_void))
+                };
+                let cf_value_to_point = |v: CFTypeRef| -> Option<CGPoint> {
+                    if v.is_null() {
+                        return None;
+                    }
+                    let mut p = CGPoint::default();
+                    let ok = AXValueGetValue(
+                        v as AXValueRef,
+                        K_AX_VALUE_CGPOINT_TYPE,
+                        &mut p as *mut _ as *mut c_void,
+                    );
+                    if ok {
+                        Some(p)
+                    } else {
+                        None
+                    }
+                };
+                let cf_value_to_size = |v: CFTypeRef| -> Option<CGSize> {
+                    if v.is_null() {
+                        return None;
+                    }
+                    let mut s = CGSize::default();
+                    let ok = AXValueGetValue(
+                        v as AXValueRef,
+                        K_AX_VALUE_CGSIZE_TYPE,
+                        &mut s as *mut _ as *mut c_void,
+                    );
+                    if ok {
+                        Some(s)
+                    } else {
+                        None
+                    }
+                };
+
+                let role = cf_string_to_rust(get_val(ATTR_ROLE)).unwrap_or_default();
+                let subrole = cf_string_to_rust(get_val(ATTR_SUBROLE));
+                let role_description = cf_string_to_rust(get_val(ATTR_ROLE_DESC));
+                let title = cf_string_to_rust(get_val(ATTR_TITLE)).unwrap_or_default();
+                let value_str = cf_string_to_rust(get_val(ATTR_VALUE));
+                let description = cf_string_to_rust(get_val(ATTR_DESC));
+                let help = cf_string_to_rust(get_val(ATTR_HELP));
+                let identifier =
+                    cf_string_to_rust(get_val(ATTR_IDENT)).filter(|s| !s.is_empty());
+
+                let name = if !title.is_empty() {
+                    title.clone()
+                } else if let Some(v) = value_str.as_ref() {
+                    v.clone()
+                } else if let Some(d) = description.as_ref() {
+                    d.clone()
+                } else {
+                    String::new()
+                };
+
+                let pos = cf_value_to_point(get_val(ATTR_POS));
+                let size = cf_value_to_size(get_val(ATTR_SIZE));
+                let bbox = match (pos, size) {
+                    (Some(p), Some(s)) => {
+                        let r = CGRectNative {
+                            origin: p,
+                            size: s,
+                        };
+                        rect_to_public(&r)
+                    }
+                    _ => VRect {
+                        origin: VPoint { x: 0, y: 0 },
+                        size: VSize { w: 0, h: 0 },
+                    },
+                };
+
+                let enabled = cf_bool_to_rust(get_val(ATTR_ENABLED)).unwrap_or(true);
+                let hidden = cf_bool_to_rust(get_val(ATTR_HIDDEN)).unwrap_or(false);
+                let focused = cf_bool_to_rust(get_val(ATTR_FOCUSED)).unwrap_or(false);
+                let selected = cf_bool_to_rust(get_val(ATTR_SELECTED)).unwrap_or(false);
+
+                let my_index = elements.len() as i32;
+
+                // AXWebArea prune (Phase 1): emit a viewport bbox, push the
+                // node as a BulkUiElement (so TS step 8 can route the model
+                // to browser_takeover), but do NOT descend.
+                let is_web_area = role == "AXWebArea";
+                if is_web_area && bbox.size.w > 0 && bbox.size.h > 0 {
+                    viewport_bboxes.push(bbox);
+                }
+
+                elements.push(BulkUiElement {
+                    bbox,
+                    role: role.clone(),
+                    subrole,
+                    role_description,
+                    name,
+                    help,
+                    value: value_str,
+                    description,
+                    identifier,
+                    enabled,
+                    hidden,
+                    focused,
+                    selected,
+                    parent_index,
+                    depth,
+                });
+
+                // Collect children (in reverse so pre-order stack-pop visits
+                // leftmost first).
+                if !is_web_area {
+                    let children_val = get_val(ATTR_CHILDREN);
+                    if !children_val.is_null()
+                        && CFGetTypeID(children_val as *const c_void) == CFArrayGetTypeID()
+                    {
+                        let children_array = children_val as CFArrayRef;
+                        let count = CFArrayGetCount(children_array);
+                        // Retain children before stacking — the parent's
+                        // `values` array goes away when we release it
+                        // below.
+                        let mut child_refs: Vec<AXUIElementRef> =
+                            Vec::with_capacity(count.max(0) as usize);
+                        for i in 0..count {
+                            let child_raw = CFArrayGetValueAtIndex(children_array, i);
+                            if !child_raw.is_null() {
+                                CFRetain(child_raw);
+                                child_refs.push(child_raw as AXUIElementRef);
+                            }
+                        }
+                        for child in child_refs.into_iter().rev() {
+                            stack.push((child, depth + 1, my_index));
+                        }
+                    }
+                }
+
+                CFRelease(values as *const c_void);
+                if node != root_ref {
+                    CFRelease(node as *const c_void);
+                }
+            }
+
+            CFRelease(attrs_array as *const c_void);
+
+            BulkEnumerationResult {
+                elements,
+                browser_viewport_bboxes: viewport_bboxes,
+                elapsed_ms: start_ts.elapsed().as_millis().min(u32::MAX as u128) as u32,
+                truncated_by_walltime: truncated,
             }
         }
 

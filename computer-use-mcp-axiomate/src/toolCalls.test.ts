@@ -110,7 +110,7 @@ describe('vision_locate gates', () => {
 })
 
 describe('zoom window prioritization', () => {
-  it('prefers the largest visible window area on windows and restores host windows', async () => {
+  it('runs the bulk-pull pipeline on the largest visible window and restores host windows', async () => {
     const adapter = makeAdapter()
     const executor = adapter.executor as any
     executor.getDisplaySize = vi.fn(async () => ({
@@ -152,7 +152,7 @@ describe('zoom window prioritization', () => {
         hwnd: 101,
         rect: { x: 0, y: 0, w: 400, h: 400 },
         zRank: 1,
-        isForeground: false,
+        isForeground: true,
         isHost: false,
       },
       {
@@ -161,38 +161,53 @@ describe('zoom window prioritization', () => {
         hwnd: 202,
         rect: { x: 50, y: 50, w: 120, h: 120 },
         zRank: 0,
-        isForeground: true,
+        isForeground: false,
         isHost: false,
       },
     ])
     executor.focusNonHostWindowAtPoint = vi.fn(async () => true)
-    executor.enumerateVisibleElementsForWindowDetailed = vi.fn(async (hwnd: number) => ({
+    // Phase 1.5 bulk-pull API replaces the legacy
+    // enumerateVisibleElementsForWindowDetailed; mock it per hwnd. Element
+    // bbox is in physical screen coords (pipeline converts to virtual).
+    executor.enumerateUiElementsBulkForWindow = vi.fn(async (hwnd: number) => ({
       elements: hwnd === 101
         ? [{
             bbox: { x: 220, y: 220, w: 40, h: 20 },
             name: 'Primary',
             role: 'Button',
+            controlTypeId: 0,
+            className: '',
             automationId: 'primary-btn',
-            uiaSource: 'foreground',
+            frameworkId: '',
+            localizedControlType: '',
+            isOffscreen: false,
+            nativeWindowHandle: hwnd,
+            parentIndex: -1,
+            depth: 0,
           }]
         : [{
             bbox: { x: 70, y: 70, w: 20, h: 20 },
             name: 'Secondary',
             role: 'Button',
+            controlTypeId: 0,
+            className: '',
             automationId: 'secondary-btn',
-            uiaSource: 'foreground',
+            frameworkId: '',
+            localizedControlType: '',
+            isOffscreen: false,
+            nativeWindowHandle: hwnd,
+            parentIndex: -1,
+            depth: 0,
           }],
-      traversedCount: 1,
-      matchedCount: 1,
-      returnedCount: 1,
-      truncated: false,
+      browserViewportBboxes: [],
+      elapsedMs: 1,
+      truncatedByWalltime: false,
     }))
     executor.zoom = vi.fn(async () => ({ base64: 'aGVsbG8=', width: 200, height: 200 }))
-    // Place the cursor in big-app's L-shape visible region (small-app's
-    // rect [50,50]-[170,170] is on top, so cursor at (200,200) sits in
-    // big-app's exposed area). The selector ranks cursor-ownership above
-    // area; positioning the cursor on the larger window lets this test
-    // continue to validate the area-priority branch as a tiebreaker.
+    // Cursor in big-app's exposed L-shape area (outside small-app's
+    // overlay rect). The scorer applies a cursor-proximity bonus, but
+    // the dominant signal for "which window's mark wins" is the
+    // foreground bonus (+50) on big-app.
     executor.getCursorPosition = vi.fn(async () => ({ x: 200, y: 200 }))
 
     let lastMarks: any[] = []
@@ -216,8 +231,11 @@ describe('zoom window prioritization', () => {
     expect(result.isError).toBeUndefined()
     expect(executor.hideSelf).toHaveBeenCalledWith(10)
     expect(executor.showSelf).toHaveBeenCalledTimes(1)
-    expect(executor.enumerateVisibleElementsForWindowDetailed).toHaveBeenCalled()
-    expect(executor.enumerateVisibleElementsForWindowDetailed.mock.calls[0][0]).toBe(101)
+    expect(executor.enumerateUiElementsBulkForWindow).toHaveBeenCalled()
+    const calledHwnds = executor.enumerateUiElementsBulkForWindow.mock.calls.map(
+      (c: any[]) => c[0],
+    )
+    expect(calledHwnds).toContain(101)
     expect(lastMarks[0]?.name).toBe('Primary')
   })
 })
