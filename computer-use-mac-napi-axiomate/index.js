@@ -32,6 +32,16 @@ module.exports.isAvailable = function isAvailable() {
   return loadNative() !== null
 }
 
+// AXIsProcessTrusted() — does this process have Accessibility permission?
+// false → AX queries silently return empty / kAXErrorAPIDisabled, which is
+// the typical reason `enumerateUiElementsBulkForApp` returns zero elements
+// without erroring. Cheap to call; safe to log every screenshot.
+module.exports.isAccessibilityTrusted = function isAccessibilityTrusted() {
+  const mod = loadNative()
+  if (!mod) return false
+  return mod.isAccessibilityTrusted()
+}
+
 // ── NSRunningApplication hide / unhide (prepareDisplay support) ────────────
 
 module.exports.hideApp = async function hideApp(bundleId) {

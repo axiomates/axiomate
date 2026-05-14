@@ -9,6 +9,13 @@ export function isAvailable(): boolean
  *  attempted yet, or after a successful load. */
 export function getLoadError(): string | null
 
+/** AXIsProcessTrusted() — does this process have Accessibility permission?
+ *  When false, AX queries (AXUIElementCopyAttributeValue, etc.) silently
+ *  return empty/kAXErrorAPIDisabled — the typical cause of empty bulk
+ *  enumeration on mac. macOS-only; returns false on other platforms or
+ *  when the native binding failed to load. */
+export function isAccessibilityTrusted(): boolean
+
 /** NSRunningApplication.hide() — sends the app to background, removing its
  *  windows from screen. Returns true if at least one running instance with
  *  the given bundle id was hidden. macOS-only. */

@@ -479,8 +479,20 @@ export async function bulkEnumerate(
             c.macWindowId,
             c.appIdentifier,
           );
+          logger.debug?.(
+            `[pipeline] mac.bulkForWindow ${c.displayName} (${c.appIdentifier} win=${c.macWindowId}) → bulk=${bulk ? 'obj' : 'null'} ` +
+              `elements=${bulk?.elements?.length ?? '-'} elapsedMs=${bulk?.elapsedMs ?? '-'}`,
+          );
         } else if (executor.enumerateUiElementsBulkForApp) {
           bulk = await executor.enumerateUiElementsBulkForApp(c.appIdentifier);
+          logger.debug?.(
+            `[pipeline] mac.bulkForApp ${c.displayName} (${c.appIdentifier}) → bulk=${bulk ? 'obj' : 'null'} ` +
+              `elements=${bulk?.elements?.length ?? '-'} elapsedMs=${bulk?.elapsedMs ?? '-'}`,
+          );
+        } else {
+          logger.debug?.(
+            `[pipeline] mac executor has neither enumerateUiElementsBulkForMacWindow nor enumerateUiElementsBulkForApp for ${c.displayName}`,
+          );
         }
       } catch (e) {
         logger.debug?.(

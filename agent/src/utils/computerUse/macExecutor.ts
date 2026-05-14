@@ -460,6 +460,24 @@ export function createCliExecutor(opts: {
       : '[computer-use] terminal not detected; falling back to sentinel host',
   )
 
+  // Probe AX trust + screen-recording perms once at factory time. Without
+  // Accessibility, AX queries return empty (bulk enumeration returns 0
+  // elements with elapsed=0ms) — the typical cause of empty SoM on mac.
+  // Without Screen Recording, captureExcluding produces blank pixels.
+  try {
+    const axOk = cu.tcc?.checkAccessibility?.() ?? false
+    const screenOk = cu.tcc?.checkScreenRecording?.() ?? false
+    logForDebugging(
+      `[computer-use] mac TCC: accessibility=${axOk} screenRecording=${screenOk} (axOk=false → SoM bulk enumeration returns empty)`,
+      { level: axOk && screenOk ? 'debug' : 'warn' },
+    )
+  } catch (e) {
+    logForDebugging(
+      `[computer-use] mac TCC probe failed: ${e instanceof Error ? e.message : String(e)}`,
+      { level: 'warn' },
+    )
+  }
+
   return {
     capabilities: {
       ...MAC_CLI_CAPABILITIES,
