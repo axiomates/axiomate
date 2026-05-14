@@ -1253,12 +1253,7 @@ async function applyMacMarkOverlay(
   shownCount: number,
   logger: ComputerUseHostAdapter["logger"],
 ): Promise<void> {
-  if (!executor.drawMarksOnScreenshot) {
-    logger.debug?.(
-      `[mac-overlay] no drawMarksOnScreenshot on executor — skipping (${attributedMarks.length} marks would have been drawn)`,
-    );
-    return;
-  }
+  if (!executor.drawMarksOnScreenshot) return;
   try {
     // Circles are a spatially-distributed subset of the text-list slice
     // (marks[0..shownCount]). shownCount ≤ TEXT_SOM_CAP so circles
@@ -1266,9 +1261,6 @@ async function applyMacMarkOverlay(
     const textSlice = attributedMarks.slice(0, shownCount);
     const circleCap = Math.min(textSlice.length, computeDynamicOverlayCap(shot.width, shot.height));
     const sampled = selectSpatiallyDistributedMarks(textSlice, circleCap);
-    logger.debug?.(
-      `[mac-overlay] inputs: attributed=${attributedMarks.length} shown=${shownCount} circleCap=${circleCap} sampled=${sampled.length} shot=${shot.width}x${shot.height} display=${shot.displayWidth ?? '<missing>'}x${shot.displayHeight ?? '<missing>'}@(${shot.originX ?? 0},${shot.originY ?? 0})`,
-    );
     if (sampled.length === 0) return;
     // Project display-coord-pt → JPEG image-px for the SVG overlay.
     const dW = shot.displayWidth ?? shot.width;
@@ -1280,20 +1272,21 @@ async function applyMacMarkOverlay(
       x: dW > 0 ? ((m.x - dOX) / dW) * shot.width : m.x,
       y: dH > 0 ? ((m.y - dOY) / dH) * shot.height : m.y,
     }));
-    if (overlayMarks.length > 0) {
-      const sample = overlayMarks.slice(0, 3).map(m => `#${m.id}@(${Math.round(m.x)},${Math.round(m.y)})`).join(' ');
-      logger.debug?.(`[mac-overlay] first overlayMarks: ${sample}`);
-    }
-    const before = shot.base64.length;
     shot.base64 = await executor.drawMarksOnScreenshot({
       base64: shot.base64,
       imageWidth: shot.width,
       imageHeight: shot.height,
       marks: overlayMarks,
     });
-    logger.debug?.(
-      `[mac-overlay] drawMarksOnScreenshot done: base64Len ${before} → ${shot.base64.length} (delta=${shot.base64.length - before})`,
-    );
+    // Re-dump the debug screenshot AFTER marks were composited — the
+    // mac executor's resolvePrepareCapture/screenshot dumps before this
+    // overlay step runs (atomic path: dump happens inside the executor,
+    // applyMacMarkOverlay runs in toolCalls after), so ~/.axiomate/debug/
+    // screenshots/screenshot-latest.jpg would otherwise never show
+    // the red SoM circles a vision model actually receives.
+    if (typeof executor.dumpDebugScreenshot === "function") {
+      executor.dumpDebugScreenshot("screenshot", shot.base64);
+    }
   } catch (e) {
     logger.debug?.(
       `[computer-use] mac drawMarksOnScreenshot failed: ${e instanceof Error ? e.message : String(e)}`,

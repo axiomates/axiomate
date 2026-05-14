@@ -490,6 +490,12 @@ export function createCliExecutor(opts: {
       hostAppIdentifier: terminalAppIdentifier ?? CLI_HOST_APP_IDENTIFIER,
     },
 
+    // Re-dump debug screenshot after toolCalls' applyMacMarkOverlay so
+    // the on-disk JPEG includes the SoM red circles.
+    dumpDebugScreenshot(tool: string, base64: string): void {
+      dumpMacScreenshotForDebug(tool, base64)
+    },
+
     // ── Pre-action sequence (hide + defocus) ────────────────────────────
 
     async prepareForAction(

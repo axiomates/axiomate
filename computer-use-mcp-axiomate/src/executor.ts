@@ -166,6 +166,17 @@ export interface ComputerExecutor {
     imageHeight: number;
     marks: Array<{ id: number; x: number; y: number }>;
   }): Promise<string>;
+  /**
+   * Optional debug-only helper that re-dumps a JPEG to
+   * `~/.axiomate/debug/screenshots/<tool>-latest.jpg`. Mac implementations
+   * dump inside their capture call BEFORE toolCalls.ts mutates `shot.base64`
+   * via `applyMacMarkOverlay`; this hook lets the post-overlay caller
+   * refresh that file so the on-disk debug screenshot reflects what the
+   * vision model actually sees (with SoM red circles composited in).
+   * No-op when not in --debug mode. Synchronous best-effort; never
+   * throws on disk errors.
+   */
+  dumpDebugScreenshot?(tool: string, base64: string): void;
   zoom(
     region: { x: number; y: number; w: number; h: number },
     allowedAppIdentifiers: string[],
