@@ -37,9 +37,41 @@ printBuildFeatures('build', features)
 {
   const root = resolve(dirname(import.meta.path), '..')
 
+  // pnpm forwards its full config to lifecycle scripts as `npm_config_*`
+  // env vars (including pnpm-only keys like `_jsr-registry`,
+  // `shamefully-hoist`, `verify-deps-before-run`, `recursive`,
+  // `npm-globalconfig`). When we shell out to `npx napi build`, npx is
+  // the system npm — it doesn't recognize those keys and emits
+  // `npm warn Unknown env config "..."` for each, once per package. The
+  // warnings are harmless but spam stderr 5× per build on mac (5 napi
+  // packages) / 2× on win. Strip the known pnpm-only keys before the
+  // child npx sees them. Anything we forget stays — only documented
+  // pnpm-exclusive names appear here. (Names checked against pnpm
+  // 10.33.2; if pnpm adds more, add them to this list.)
+  const PNPM_ONLY_NPM_CONFIG_KEYS = [
+    'npm_config__jsr_registry',
+    'npm_config_recursive',
+    'npm_config_shamefully_hoist',
+    'npm_config_verify_deps_before_run',
+    'npm_config_npm_globalconfig',
+  ]
+  function envWithoutPnpmOnlyKeys(): Record<string, string> {
+    const out: Record<string, string> = {}
+    for (const [k, v] of Object.entries(process.env)) {
+      if (v === undefined) continue
+      if (PNPM_ONLY_NPM_CONFIG_KEYS.includes(k)) continue
+      out[k] = v
+    }
+    return out
+  }
+
   function runBuildStep(label: string, command: string[], cwd: string) {
     console.log(`  Building ${label} ...`)
-    const proc = Bun.spawnSync(command, { cwd, stdio: ['inherit', 'inherit', 'inherit'] })
+    const proc = Bun.spawnSync(command, {
+      cwd,
+      env: envWithoutPnpmOnlyKeys(),
+      stdio: ['inherit', 'inherit', 'inherit'],
+    })
     if (proc.exitCode !== 0) {
       console.error(`  ✗ ${label} failed`)
       process.exit(1)
