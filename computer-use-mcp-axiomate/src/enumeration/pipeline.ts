@@ -313,9 +313,26 @@ function selectMacCandidates(
 ): CandidateWindow[] {
   // Mac doesn't track isForeground / isHost — zRank=0 ≡ foreground by
   // convention. layer > 0 = system chrome (Dock, menu bar).
+  //
+  // CGWindowList reports the Dock with a full-screen kCGWindowBounds
+  // (e.g. 1470×956@(0,0)) even though visually it's just an ~80px
+  // strip — the Dock uses a transparent screen-sized compositor surface.
+  // Using it as an occluder wipes every layer=0 window's visibleRects
+  // to empty and selectCandidates returns no user windows. Exclude
+  // chrome (layer > 0) from the occluder set: user windows compute
+  // visibility against other user windows only. System-chrome
+  // candidates are still added separately via the includeSystemChrome
+  // branch, where they compute their own visibility against the full
+  // baseline (and against each other) the same way as before.
+  const occluders = baseline.filter((w) => w.layer === 0);
   const enriched = baseline.map((w) => ({
     w,
-    visibleRects: computeVisibleRects(w, baseline),
+    // User windows occluded by user windows only; chrome occluded by
+    // the full baseline so a fullscreen app still hides the Dock.
+    visibleRects:
+      w.layer === 0
+        ? computeVisibleRects(w, occluders)
+        : computeVisibleRects(w, baseline),
   }));
 
   const fitsTarget = (vrs: Rect[]) =>
