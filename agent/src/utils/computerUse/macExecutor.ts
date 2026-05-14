@@ -630,6 +630,19 @@ export function createCliExecutor(opts: {
           jpegQuality: 95,
         })
       }
+      // Stamp display-coord-pt geometry on the return so downstream code
+      // (runMacPostCaptureUIA's selectCandidates target rect, scaleCoord,
+      // cursor_position) operates against the cursor coord space, not
+      // image px. Native `captureExcluding` only fills base64/width/height.
+      result.displayId = d.displayId
+      result.displayWidth = d.width
+      result.displayHeight = d.height
+      result.originX = d.originX
+      result.originY = d.originY
+      logForDebugging(
+        `[CU-COORD] mac.resolvePrepareCapture stamp: image=${result.width}x${result.height} display=${d.width}x${d.height}@(${d.originX},${d.originY}) displayId=${d.displayId}`,
+        { level: 'debug' },
+      )
       dumpMacScreenshotForDebug('screenshot', result.base64)
       return result
     },
@@ -737,6 +750,19 @@ export function createCliExecutor(opts: {
           jpegQuality: 95,
         })
       }
+      // Stamp display-coord-pt geometry on the return so runMacPostCaptureUIA's
+      // selectCandidates target rect (and the in-display bounds filter)
+      // operate against the cursor coord space, not image px. Native
+      // `captureExcluding` only returns base64/width/height.
+      result.displayId = d.displayId
+      result.displayWidth = d.width
+      result.displayHeight = d.height
+      result.originX = d.originX
+      result.originY = d.originY
+      logForDebugging(
+        `[CU-COORD] mac.screenshot stamp: image=${result.width}x${result.height} display=${d.width}x${d.height}@(${d.originX},${d.originY}) displayId=${d.displayId}`,
+        { level: 'debug' },
+      )
       dumpMacScreenshotForDebug('screenshot', result.base64)
       return result
     },

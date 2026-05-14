@@ -739,6 +739,11 @@ async function runMacPostCaptureUIA(
     w: shot.displayWidth ?? shot.width,
     h: shot.displayHeight ?? shot.height,
   };
+  adapter.logger.debug?.(
+    `[mac-post] enter: shot=${shot.width}x${shot.height} ` +
+      `display=${shot.displayWidth ?? '<missing>'}x${shot.displayHeight ?? '<missing>'} ` +
+      `origin=(${originX},${originY}) targetRect=${targetPhysicalRect.w}x${targetPhysicalRect.h}@(${targetPhysicalRect.x},${targetPhysicalRect.y})`,
+  );
 
   try {
     const baseline = await buildWindowBaseline(adapter.executor);
@@ -747,11 +752,29 @@ async function runMacPostCaptureUIA(
       const c = await adapter.executor.getCursorPosition();
       cursor = { x: c.x, y: c.y };
     } catch {}
+    adapter.logger.debug?.(
+      `[mac-post] baseline.mac=${baseline.mac?.length ?? 0} baseline.win=${baseline.win?.length ?? 0} cursor=${cursor ? `(${cursor.x},${cursor.y})` : 'null'}`,
+    );
+    if (baseline.mac && baseline.mac.length > 0) {
+      const first5 = baseline.mac.slice(0, 5).map(w =>
+        `${w.displayName}@z${w.zRank} layer=${w.layer} rect=${w.rect.w}x${w.rect.h}@(${w.rect.x},${w.rect.y})`,
+      );
+      adapter.logger.debug?.(`[mac-post] baseline.mac top-5: ${first5.join(' | ')}`);
+    }
     const candidates = selectCandidates(
       baseline,
       targetPhysicalRect,
       DEFAULT_PIPELINE_CONFIG,
       cursor,
+    );
+    adapter.logger.debug?.(
+      `[mac-post] selectCandidates → ${candidates.length} candidate(s)` +
+        (candidates.length > 0
+          ? ': ' +
+            candidates.map(c =>
+              `${c.displayName}@z${c.zRank}${c.isForeground ? '[fg]' : ''} rect=${c.rect.w}x${c.rect.h}@(${c.rect.x},${c.rect.y})`,
+            ).join(' | ')
+          : ''),
     );
     const winTouched = new Set<string>(); // Mac never touches z-order; unused.
     const bulk = await bulkEnumerate(
@@ -761,12 +784,24 @@ async function runMacPostCaptureUIA(
       winTouched,
       adapter.logger,
     );
+    adapter.logger.debug?.(
+      `[mac-post] bulkEnumerate → ${bulk.elements.length} elements, ${bulk.browserViewports.length} viewports`,
+    );
+    if (bulk.elements.length > 0) {
+      const sampleEls = bulk.elements.slice(0, 3).map(e =>
+        `${e.role}@(${e.bbox.x},${e.bbox.y}) ${e.bbox.w}x${e.bbox.h} name="${(e.name ?? '').slice(0, 30)}"`,
+      );
+      adapter.logger.debug?.(`[mac-post] bulk sample: ${sampleEls.join(' | ')}`);
+    }
     const result = filterAndScoreToMarks(
       bulk.elements,
       candidates,
       targetPhysicalRect,
       cursor,
       bulk.browserViewports,
+    );
+    adapter.logger.debug?.(
+      `[mac-post] filterAndScoreToMarks → ${result.marks.length} marks`,
     );
     const somStats = {
       traversedCount: bulk.elements.length,
@@ -3840,12 +3875,18 @@ async function handleScreenshot(
         const dHeight = shot.displayHeight ?? shot.height;
         const prevViewports = getBrowserViewports(marks);
         const prevStats = (marks as any).__somStats;
+        const preCount = marks.length;
         marks = marks.filter(
           m =>
             m.x >= dOriginX &&
             m.x < dOriginX + dWidth &&
             m.y >= dOriginY &&
             m.y < dOriginY + dHeight,
+        );
+        adapter.logger.debug?.(
+          `[handleScreenshot-atomic] in-display bounds filter: ${preCount} → ${marks.length} marks ` +
+            `(bounds=${dWidth}x${dHeight}@(${dOriginX},${dOriginY}), ` +
+            `shot=${shot.width}x${shot.height})`,
         );
         if (prevViewports) (marks as any).__browserViewports = prevViewports;
         if (prevStats) (marks as any).__somStats = prevStats;
@@ -4031,12 +4072,17 @@ async function handleScreenshot(
       const dHeight = shot.displayHeight ?? shot.height;
       const prevViewports = getBrowserViewports(marks);
       const prevStats = (marks as any).__somStats;
+      const preCount = marks.length;
       marks = marks.filter(
         m =>
           m.x >= dOriginX &&
           m.x < dOriginX + dWidth &&
           m.y >= dOriginY &&
           m.y < dOriginY + dHeight,
+      );
+      adapter.logger.debug?.(
+        `[handleScreenshot-nonatomic] in-display bounds filter: ${preCount} → ${marks.length} marks ` +
+          `(bounds=${dWidth}x${dHeight}@(${dOriginX},${dOriginY}), shot=${shot.width}x${shot.height})`,
       );
       if (prevViewports) (marks as any).__browserViewports = prevViewports;
       if (prevStats) (marks as any).__somStats = prevStats;
