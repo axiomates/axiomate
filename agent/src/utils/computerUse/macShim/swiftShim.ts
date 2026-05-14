@@ -85,6 +85,23 @@ type MacNativeBinding = {
     layer: number
     zRank: number
   }>>
+  enumerateUiElementsBulkForApp?: (
+    appIdentifier: string,
+  ) => Promise<{
+    elements: any[]
+    browserViewportBboxes: any[]
+    elapsedMs: number
+    truncatedByWalltime: boolean
+  }>
+  enumerateUiElementsBulkForMacWindow?: (
+    windowId: number,
+    appIdentifier: string,
+  ) => Promise<{
+    elements: any[]
+    browserViewportBboxes: any[]
+    elapsedMs: number
+    truncatedByWalltime: boolean
+  }>
 }
 
 let macNativeCached: MacNativeBinding | null | undefined
@@ -473,6 +490,35 @@ export function createComputerUseSwift(): ComputerUseAPI {
       const native = loadMacNative()
       if (!native?.listVisibleWindowsDetailed) return []
       return native.listVisibleWindowsDetailed()
+    },
+    // Phase 1.5 bulk-pull AX enumeration. The mac napi binding implements
+    // both; the swift shim must forward them so executor's
+    // `cu.enumerateUiElementsBulk…` is non-undefined and the macExecutor
+    // wrapper actually invokes native (instead of falling back to the
+    // hardcoded empty BulkResult guard).
+    async enumerateUiElementsBulkForApp(appIdentifier: string) {
+      const native = loadMacNative()
+      if (!native?.enumerateUiElementsBulkForApp) {
+        return {
+          elements: [],
+          browserViewportBboxes: [],
+          elapsedMs: 0,
+          truncatedByWalltime: false,
+        }
+      }
+      return native.enumerateUiElementsBulkForApp(appIdentifier)
+    },
+    async enumerateUiElementsBulkForMacWindow(windowId: number, appIdentifier: string) {
+      const native = loadMacNative()
+      if (!native?.enumerateUiElementsBulkForMacWindow) {
+        return {
+          elements: [],
+          browserViewportBboxes: [],
+          elapsedMs: 0,
+          truncatedByWalltime: false,
+        }
+      }
+      return native.enumerateUiElementsBulkForMacWindow(windowId, appIdentifier)
     },
     async resolvePrepareCapture(...args: any[]): Promise<any> {
       // Atomic resolve→prepare→capture path used by dispatch's autoTargetDisplay

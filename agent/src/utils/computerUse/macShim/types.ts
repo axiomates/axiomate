@@ -99,6 +99,27 @@ export interface ComputerUseAPI {
     layer: number
     zRank: number
   }>>
+  /** Phase 1.5 AX bulk-pull rooted at the app. Mac-only. Shim forwards
+   *  directly to the mac napi binding's enumerate_ui_elements_bulk_for_app.
+   *  Returns empty result when the binding isn't loaded. */
+  enumerateUiElementsBulkForApp?(appIdentifier: string): Promise<{
+    elements: any[]
+    browserViewportBboxes: any[]
+    elapsedMs: number
+    truncatedByWalltime: boolean
+  }>
+  /** Phase 1.5 AX bulk-pull rooted at a specific CGWindowID. Same shape
+   *  as the app variant but scoped to one window — falls back to the app
+   *  root inside Rust when the window can't be resolved. */
+  enumerateUiElementsBulkForMacWindow?(
+    windowId: number,
+    appIdentifier: string,
+  ): Promise<{
+    elements: any[]
+    browserViewportBboxes: any[]
+    elapsedMs: number
+    truncatedByWalltime: boolean
+  }>
   _drainMainRunLoop?(): void
   [key: string]: any
 }
