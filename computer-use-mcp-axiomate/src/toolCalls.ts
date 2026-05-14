@@ -756,10 +756,21 @@ async function runMacPostCaptureUIA(
       `[mac-post] baseline.mac=${baseline.mac?.length ?? 0} baseline.win=${baseline.win?.length ?? 0} cursor=${cursor ? `(${cursor.x},${cursor.y})` : 'null'}`,
     );
     if (baseline.mac && baseline.mac.length > 0) {
-      const first5 = baseline.mac.slice(0, 5).map(w =>
-        `${w.displayName}@z${w.zRank} layer=${w.layer} rect=${w.rect.w}x${w.rect.h}@(${w.rect.x},${w.rect.y})`,
-      );
-      adapter.logger.debug?.(`[mac-post] baseline.mac top-5: ${first5.join(' | ')}`);
+      const layerCounts = new Map<number, number>();
+      for (const w of baseline.mac) {
+        layerCounts.set(w.layer, (layerCounts.get(w.layer) ?? 0) + 1);
+      }
+      const layerSummary = [...layerCounts.entries()]
+        .sort((a, b) => a[0] - b[0])
+        .map(([l, n]) => `layer=${l}:${n}`)
+        .join(' ');
+      adapter.logger.debug?.(`[mac-post] baseline.mac layer histogram: ${layerSummary}`);
+      // Dump ALL windows so we can see why layer=0 ones aren't surfacing.
+      for (const [i, w] of baseline.mac.entries()) {
+        adapter.logger.debug?.(
+          `[mac-post] baseline.mac[${i}]: ${w.displayName} (${w.appIdentifier}) @z${w.zRank} layer=${w.layer} rect=${w.rect.w}x${w.rect.h}@(${w.rect.x},${w.rect.y})`,
+        );
+      }
     }
     const candidates = selectCandidates(
       baseline,
