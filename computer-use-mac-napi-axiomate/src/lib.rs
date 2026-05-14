@@ -1681,10 +1681,6 @@ mod macos {
             let root = match app_ax_root_for_identifier(app_identifier) {
                 Some(r) => r,
                 None => {
-                    ax_walk_diag_log(&format!(
-                        "for_app[{}]: no_app_root",
-                        app_identifier
-                    ));
                     return BulkEnumerationResult {
                         elements: Vec::new(),
                         browser_viewport_bboxes: Vec::new(),
@@ -1694,7 +1690,7 @@ mod macos {
                 }
             };
             unsafe {
-                let result = bulk_walk_from_root(root, &format!("for_app[{}]", app_identifier));
+                let result = bulk_walk_from_root(root);
                 CFRelease(root as *const c_void);
                 result
             }
@@ -1720,56 +1716,26 @@ mod macos {
             };
             if let Some((start, _)) = window_root {
                 unsafe {
-                    let result = bulk_walk_from_root(
-                        start,
-                        &format!("for_window[{}, win={}]", app_identifier, window_id),
-                    );
+                    let result = bulk_walk_from_root(start);
                     CFRelease(start as *const c_void);
                     return result;
                 }
             }
-            // Fallback: app-level root.
-            ax_walk_diag_log(&format!(
-                "for_window[{}, win={}]: no_window_root → falling back to app root",
-                app_identifier, window_id
-            ));
+            // Fallback: app-level root. (The TS pipeline filters elements to
+            // the window's bbox after the fact.)
             enumerate_ui_elements_bulk_for_app(app_identifier)
         }
 
-        /// Append a one-line diagnostic to ~/.axiomate/debug/ax-walk.log.
-        /// Best-effort: any IO failure is silently dropped so AX walks
-        /// never abort because of logging. Mac-only (lives inside the
-        /// macos cfg-gated module).
-        fn ax_walk_diag_log(line: &str) {
-            use std::io::Write;
-            let home = match std::env::var_os("HOME") {
-                Some(h) => h,
-                None => return,
-            };
-            let dir = std::path::PathBuf::from(home).join(".axiomate").join("debug");
-            let _ = std::fs::create_dir_all(&dir);
-            let path = dir.join("ax-walk.log");
-            let now = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_millis())
-                .unwrap_or(0);
-            if let Ok(mut f) = std::fs::OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(&path)
-            {
-                let _ = writeln!(f, "{} {}", now, line);
-            }
-        }
+        // (ax_walk_diag_log removed — it was a one-off used to track down
+        // why the swift shim wasn't forwarding the AX bulk-pull napi calls.
+        // Once the forwarding was added the walk produced elements normally
+        // and the log was no longer needed.)
 
         /// Shared body of both bulk entries. Pre-order BFS over the AX
         /// tree. Per node: one `AXUIElementCopyMultipleAttributeValues`
         /// call pulls all attributes + children references. Stops at
         /// AXWebArea (Phase 1 prune).
-        unsafe fn bulk_walk_from_root(
-            root: AXUIElementRef,
-            log_context: &str,
-        ) -> BulkEnumerationResult {
+        unsafe fn bulk_walk_from_root(root: AXUIElementRef) -> BulkEnumerationResult {
             const PER_CALL_WALL_BUDGET: std::time::Duration =
                 std::time::Duration::from_millis(2000);
             let start_ts = std::time::Instant::now();
@@ -1821,7 +1787,6 @@ mod macos {
                 &kCFTypeArrayCallBacks as *const c_void,
             );
             if attrs_array.is_null() {
-                ax_walk_diag_log(&format!("{}: attrs_array_null", log_context));
                 return BulkEnumerationResult {
                     elements: Vec::new(),
                     browser_viewport_bboxes: Vec::new(),
@@ -1833,12 +1798,6 @@ mod macos {
             let mut elements: Vec<BulkUiElement> = Vec::new();
             let mut viewport_bboxes: Vec<VRect> = Vec::new();
             let mut truncated = false;
-            // Track per-node AX errors so we can surface why a walk
-            // produced 0 elements (typical cause: AXUIElementCopyMultiple
-            // returning kAXErrorAttributeUnsupported on the root).
-            let mut nodes_visited: u32 = 0;
-            let mut nodes_skipped_err: u32 = 0;
-            let mut first_err: i32 = 0;
 
             // Stack of (AX element, depth, parent_index). Owned AX refs;
             // released after we process them.
@@ -1861,7 +1820,6 @@ mod macos {
                     break;
                 }
 
-                nodes_visited += 1;
                 let mut values: CFArrayRef = std::ptr::null();
                 let err = AXUIElementCopyMultipleAttributeValues(
                     node,
@@ -1871,10 +1829,6 @@ mod macos {
                 );
 
                 if err != K_AX_ERROR_SUCCESS || values.is_null() {
-                    nodes_skipped_err += 1;
-                    if first_err == 0 && err != K_AX_ERROR_SUCCESS {
-                        first_err = err;
-                    }
                     if node != root_ref {
                         CFRelease(node as *const c_void);
                     }
@@ -2051,17 +2005,6 @@ mod macos {
             }
 
             CFRelease(attrs_array as *const c_void);
-
-            ax_walk_diag_log(&format!(
-                "{}: done elements={} visited={} skipped_err={} first_err={} truncated={} elapsedMs={}",
-                log_context,
-                elements.len(),
-                nodes_visited,
-                nodes_skipped_err,
-                first_err,
-                truncated,
-                start_ts.elapsed().as_millis().min(u32::MAX as u128) as u32,
-            ));
 
             BulkEnumerationResult {
                 elements,

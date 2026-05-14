@@ -481,7 +481,13 @@ export function createCliExecutor(opts: {
   return {
     capabilities: {
       ...MAC_CLI_CAPABILITIES,
-      hostAppIdentifier: CLI_HOST_APP_IDENTIFIER,
+      // Real host identifier (e.g. com.apple.Terminal / com.googlecode.iterm2)
+      // when we detected the terminal we're inside; falls back to the sentinel
+      // so the rest of the MCP layer's null-handling stays simple. The Mac
+      // post-capture pipeline reads this to drop host windows from SoM
+      // candidates (otherwise the user's terminal — which had to be temporarily
+      // restored to z-order before AX enumeration — gets attributed marks).
+      hostAppIdentifier: terminalAppIdentifier ?? CLI_HOST_APP_IDENTIFIER,
     },
 
     // ── Pre-action sequence (hide + defocus) ────────────────────────────
