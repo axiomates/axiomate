@@ -32,6 +32,18 @@ module.exports.isAvailable = function isAvailable() {
   return loadNative() !== null
 }
 
+// AXIsProcessTrusted() — does this process actually have macOS
+// Accessibility permission? Necessary because the swift bridge's
+// `cu.tcc.checkAccessibility()` is a hardcoded stub that returns true
+// regardless of real state. Without AX trust, AX queries silently
+// return empty / kAXErrorAPIDisabled and bulk enumeration yields 0
+// elements with elapsedMs=0.
+module.exports.isAccessibilityTrusted = function isAccessibilityTrusted() {
+  const mod = loadNative()
+  if (!mod) return false
+  return mod.isAccessibilityTrusted()
+}
+
 // ── NSRunningApplication hide / unhide (prepareDisplay support) ────────────
 
 module.exports.hideApp = async function hideApp(bundleId) {

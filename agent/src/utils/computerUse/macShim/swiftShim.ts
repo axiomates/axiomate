@@ -37,6 +37,7 @@ import type { ComputerUseAPI } from './types.js'
 // missing binary just disables native features without breaking the build.
 type MacNativeBinding = {
   isAvailable: () => boolean
+  isAccessibilityTrusted?: () => boolean
   getFrontmostApp?: () => Promise<{ appIdentifier: string; displayName: string } | null>
   hideApp: (appIdentifier: string) => Promise<boolean>
   unhideApp: (appIdentifier: string) => Promise<boolean>
@@ -395,11 +396,21 @@ export function createComputerUseSwift(): ComputerUseAPI {
 
     tcc: {
       checkScreenRecording(): boolean {
-        // Assume permission granted on non-macOS, or that user has granted it
+        // Assume permission granted on non-macOS, or that user has granted it.
+        // Real screen-recording probe would need a TCC-specific check; the
+        // captureExcluding call itself surfaces the failure via blank pixels.
         return true
       },
       checkAccessibility(): boolean {
-        return true
+        // Delegate to the mac napi's `AXIsProcessTrusted()`. Without this,
+        // the previous stub always returned true and masked the real state —
+        // bulk AX enumeration silently returns 0 elements when trust is
+        // missing. Fall back to true only when the native binding isn't
+        // available at all (non-macOS / build artifact missing), to keep
+        // existing happy-path behavior unchanged.
+        const native = loadMacNative()
+        if (!native || !native.isAccessibilityTrusted) return true
+        return native.isAccessibilityTrusted()
       },
       requestScreenRecording(): void {
         // macOS-specific TCC prompt

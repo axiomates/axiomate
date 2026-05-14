@@ -9,6 +9,14 @@ export function isAvailable(): boolean
  *  attempted yet, or after a successful load. */
 export function getLoadError(): string | null
 
+/** AXIsProcessTrusted() — does this process actually have macOS
+ *  Accessibility permission? Necessary because the swift bridge's
+ *  `cu.tcc.checkAccessibility()` is a hardcoded stub returning true,
+ *  so callers that want the real state must come through this binding.
+ *  When false, AX queries silently return empty / kAXErrorAPIDisabled
+ *  and bulk enumeration yields 0 elements with elapsedMs=0. */
+export function isAccessibilityTrusted(): boolean
+
 /** NSRunningApplication.hide() — sends the app to background, removing its
  *  windows from screen. Returns true if at least one running instance with
  *  the given bundle id was hidden. macOS-only. */
