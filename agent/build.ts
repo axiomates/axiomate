@@ -12,8 +12,16 @@ import { join, dirname, resolve } from 'path'
 import { getBuildDefine, parseFeatures, printBuildFeatures } from './buildConfig.ts'
 import { makeComputerUseStubPlugin } from './bunPluginComputerUseStub.ts'
 import { spawnEnv } from './buildEnv.ts'
+import { resetDistDir } from './buildPaths.ts'
 
-const pkg = JSON.parse(readFileSync(join(dirname(import.meta.path), 'package.json'), 'utf-8'))
+const agentDir = dirname(import.meta.path)
+const pkg = JSON.parse(readFileSync(join(agentDir, 'package.json'), 'utf-8'))
+
+// Clear dist/ so stale outputs from previous package:win/package:mac runs
+// (axiomate.exe, *.node, sharp-*.node) or builds with different features
+// don't get picked up at runtime by `pnpm start`.
+console.log('Cleaning dist/ ...')
+resetDistDir(join(agentDir, 'dist'))
 
 // Read CHANGELOG.md for build-time embedding (so LogoV2 can show release notes without network)
 let versionChangelog = ''

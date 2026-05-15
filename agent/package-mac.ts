@@ -13,7 +13,6 @@
 import {
   copyFileSync,
   existsSync,
-  mkdirSync,
   readdirSync,
   readFileSync,
   rmSync,
@@ -26,6 +25,7 @@ import { getBuildDefine, parseFeatures, printBuildFeatures } from './buildConfig
 import { nativeExeDirPlugin } from './bunPluginNativeExeDir.ts'
 import { makeComputerUseStubPlugin } from './bunPluginComputerUseStub.ts'
 import { spawnEnv } from './buildEnv.ts'
+import { resetDistDir } from './buildPaths.ts'
 import type { BunPlugin } from 'bun'
 
 if (platform() !== 'darwin') {
@@ -164,8 +164,7 @@ const sharpMacRuntimePlugin: BunPlugin = {
 console.log('Step 0/4: Pre-building workspace packages ...')
 
 console.log('  Cleaning dist/ ...')
-rmSync(distDir, { recursive: true, force: true })
-mkdirSync(distDir, { recursive: true })
+resetDistDir(distDir)
 
 buildTscWorkspace('clipboard-axiomate')
 buildTscWorkspace('treeify-axiomate')

@@ -14,7 +14,6 @@
 import {
   copyFileSync,
   existsSync,
-  mkdirSync,
   readFileSync,
   readdirSync,
   rmSync,
@@ -26,6 +25,7 @@ import { getBuildDefine, parseFeatures, printBuildFeatures } from './buildConfig
 import { nativeExeDirPlugin } from './bunPluginNativeExeDir.ts'
 import { makeComputerUseStubPlugin } from './bunPluginComputerUseStub.ts'
 import { spawnEnv } from './buildEnv.ts'
+import { resetDistDir } from './buildPaths.ts'
 
 const agentDir = dirname(import.meta.path)
 const pkg = JSON.parse(readFileSync(join(agentDir, 'package.json'), 'utf-8'))
@@ -101,8 +101,7 @@ console.log('Step 0/4: Pre-building workspace packages ...')
 // Start from a clean dist/ so stale outputs from other build flows don't get
 // mistaken for runtime requirements of the packaged executable.
 console.log('  Cleaning dist/ ...')
-rmSync(distDir, { recursive: true, force: true })
-mkdirSync(distDir, { recursive: true })
+resetDistDir(distDir)
 
 // These workspace packages are bundled into the Windows exe, so their
 // package exports must exist before Bun can resolve them.
