@@ -14,10 +14,6 @@ export interface FilterContext {
   region: Rect;
   /** Per-candidate post-restore visible rects (occlusion-clipped). */
   visibleRects: Rect[];
-  /** Browser web-content viewport rects from bulk pull's pre-scan.
-   *  Elements whose bbox sits inside any of these are dropped — page
-   *  content goes through the browser bridge, not click_target. */
-  browserViewports: Rect[];
 }
 
 export function filterMeaningfulElements(
@@ -52,19 +48,20 @@ function shouldKeep(el: PipelineElement, ctx: FilterContext): boolean {
     }
   }
 
-  // Drop: element sits inside a browser web-content viewport. Routing
-  // hint exists separately; page content belongs to the browser bridge.
-  if (ctx.browserViewports.length > 0) {
-    for (const vp of ctx.browserViewports) {
-      if (rectContainsCenter(vp, el)) {
-        return false;
-      }
-    }
-  }
+  // Browser web-content elements ARE kept now. Previously we dropped
+  // every element whose center fell inside a BrowserViewport rect on
+  // the theory that page interaction belongs to the CDP bridge. But
+  // the bridge attaches to a SEPARATE isolated Chrome — it can't see
+  // the user's real Chrome. If the user is actively reading or
+  // operating a page in their own browser, dropping its elements
+  // leaves the model with nothing actionable. UIA/AX exposure of
+  // Chromium is sparse and noisy, but partial coverage is strictly
+  // better than no coverage. The routing hint still tells the model
+  // it can use browser_attach for cleaner snapshots when that fits.
 
-  // Drop: BrowserViewport sentinels themselves — they're not clickable.
-  // The pipeline surfaces them via `browserViewports` to the model
-  // through a dedicated text-block hint, not via the SoM mark list.
+  // Drop: BrowserViewport sentinel rows themselves — they're not
+  // clickable elements. The viewport rects are still surfaced
+  // separately via the SoM block's routing hint.
   if (el.role === "BrowserViewport") return false;
 
   // Role-based decision.
@@ -94,13 +91,4 @@ function pointInAnyRect(x: number, y: number, rects: Rect[]): boolean {
     if (x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h) return true;
   }
   return false;
-}
-
-function rectContainsCenter(outer: Rect, el: PipelineElement): boolean {
-  return (
-    el.centerX >= outer.x &&
-    el.centerX < outer.x + outer.w &&
-    el.centerY >= outer.y &&
-    el.centerY < outer.y + outer.h
-  );
 }

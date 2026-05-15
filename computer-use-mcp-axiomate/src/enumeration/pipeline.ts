@@ -586,7 +586,6 @@ export function filterAndScoreToMarks(
     const filtered = filterMeaningfulElements(list, {
       region,
       visibleRects: cand.visibleRects,
-      browserViewports,
     });
     for (const e of filtered) kept.push(e);
   }

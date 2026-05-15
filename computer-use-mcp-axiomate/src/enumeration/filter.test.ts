@@ -32,7 +32,6 @@ describe("filterMeaningfulElements", () => {
     const out = filterMeaningfulElements([el], {
       region,
       visibleRects: visibleAll,
-      browserViewports: [],
     });
     expect(out).toEqual([]);
   });
@@ -42,7 +41,6 @@ describe("filterMeaningfulElements", () => {
     const out = filterMeaningfulElements([el], {
       region,
       visibleRects: visibleAll,
-      browserViewports: [],
     });
     expect(out).toEqual([]);
   });
@@ -52,7 +50,6 @@ describe("filterMeaningfulElements", () => {
     const out = filterMeaningfulElements([el], {
       region,
       visibleRects: visibleAll,
-      browserViewports: [],
     });
     expect(out).toEqual([]);
   });
@@ -68,7 +65,6 @@ describe("filterMeaningfulElements", () => {
     const out = filterMeaningfulElements([el], {
       region,
       visibleRects: visibleAll,
-      browserViewports: [],
     });
     expect(out).toEqual([]);
   });
@@ -85,12 +81,11 @@ describe("filterMeaningfulElements", () => {
     const out = filterMeaningfulElements([el], {
       region,
       visibleRects: visibleOnly,
-      browserViewports: [],
     });
     expect(out).toEqual([]);
   });
 
-  it("drops elements inside a browser viewport", () => {
+  it("KEEPS elements inside a browser viewport (no longer pruned)", () => {
     const el = makeEl({
       role: "Button",
       name: "Submit",
@@ -98,13 +93,12 @@ describe("filterMeaningfulElements", () => {
       centerX: 125,
       centerY: 115,
     });
-    const viewport = { x: 50, y: 50, w: 500, h: 500 };
     const out = filterMeaningfulElements([el], {
       region,
       visibleRects: visibleAll,
-      browserViewports: [viewport],
     });
-    expect(out).toEqual([]);
+    expect(out).toHaveLength(1);
+    expect(out[0]!.name).toBe("Submit");
   });
 
   it("drops BrowserViewport sentinel itself from clickable list", () => {
@@ -118,7 +112,6 @@ describe("filterMeaningfulElements", () => {
     const out = filterMeaningfulElements([el], {
       region,
       visibleRects: visibleAll,
-      browserViewports: [],
     });
     expect(out).toEqual([]);
   });
@@ -134,7 +127,6 @@ describe("filterMeaningfulElements", () => {
     const out = filterMeaningfulElements([el], {
       region,
       visibleRects: visibleAll,
-      browserViewports: [],
     });
     expect(out).toHaveLength(1);
   });
@@ -150,7 +142,6 @@ describe("filterMeaningfulElements", () => {
     const out = filterMeaningfulElements([el], {
       region,
       visibleRects: visibleAll,
-      browserViewports: [],
     });
     expect(out).toHaveLength(1);
   });
@@ -166,7 +157,6 @@ describe("filterMeaningfulElements", () => {
     const out = filterMeaningfulElements([el], {
       region,
       visibleRects: visibleAll,
-      browserViewports: [],
     });
     expect(out).toEqual([]);
   });
@@ -182,7 +172,6 @@ describe("filterMeaningfulElements", () => {
     const out = filterMeaningfulElements([el], {
       region,
       visibleRects: visibleAll,
-      browserViewports: [],
     });
     expect(out).toEqual([]);
   });
