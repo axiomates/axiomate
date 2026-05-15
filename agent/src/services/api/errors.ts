@@ -347,7 +347,39 @@ export function extractUnknownErrorFormat(value: unknown): string | undefined {
     return (value as RoutingEnvelopeError).Output!.__type
   }
 
+  // OpenAI-style nested error envelope: { error: { message, code, ... } }
+  const nested = (value as { error?: unknown }).error
+  if (nested && typeof nested === 'object') {
+    const msg = (nested as { message?: unknown }).message
+    if (typeof msg === 'string' && msg.length > 0) return msg
+    const code = (nested as { code?: unknown }).code
+    if (typeof code === 'string' && code.length > 0) return code
+  }
+
+  // Top-level message field (some Chinese providers / proxies return this shape)
+  const topMsg = (value as { message?: unknown }).message
+  if (typeof topMsg === 'string' && topMsg.length > 0) return topMsg
+
   return undefined
+}
+
+/**
+ * Truncated JSON snippet for diagnostic error messages, when no structured
+ * error envelope can be extracted. Caps length to keep error messages
+ * readable in terminal output.
+ */
+export function summarizeUnexpectedResponse(value: unknown, maxLen = 300): string {
+  const extracted = extractUnknownErrorFormat(value)
+  if (extracted) return extracted
+  try {
+    const json = JSON.stringify(value)
+    if (json && json.length > 0) {
+      return json.length > maxLen ? `${json.slice(0, maxLen)}…` : json
+    }
+  } catch {
+    // fallthrough
+  }
+  return String(value)
 }
 
 export function getAssistantMessageFromError(

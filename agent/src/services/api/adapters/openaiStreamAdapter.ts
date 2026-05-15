@@ -11,9 +11,11 @@ import type {
   Usage,
   StopReason,
 } from '../streamTypes.js'
+import { LLMAPIError } from '../streamTypes.js'
 import { mapFinishReason } from './openaiRequestAdapter.js'
 import type { ModelProviderUsageMapping } from '../../../utils/config.js'
 import { mapOpenAIUsage } from './openaiUsageMapper.js'
+import { summarizeUnexpectedResponse } from '../errors.js'
 
 // ---------------------------------------------------------------------------
 // OpenAI chunk shape (subset of openai SDK types we actually use)
@@ -83,6 +85,22 @@ export class OpenAIStreamState {
   mapChunk(chunk: OpenAIChatChunk): StreamEvent[] {
     const events: StreamEvent[] = []
 
+    // Some OpenAI-compatible providers (proxies, Chinese vendors) occasionally
+    // emit chunks missing `choices` entirely — defend so we don't crash with
+    // a TypeError that the error harness can't classify.
+    const choices = Array.isArray(chunk?.choices) ? chunk.choices : []
+
+    // Inline error envelope (e.g. proxy injecting {"error":{"message":"..."}}
+    // mid-stream). Surface as LLMAPIError so withRetry's classifyError can
+    // route it through the standard retry/failover paths.
+    const inlineError = (chunk as { error?: unknown })?.error
+    if (inlineError && typeof inlineError === 'object') {
+      throw new LLMAPIError(
+        `Provider streamed inline error: ${summarizeUnexpectedResponse(chunk)}`,
+        { status: 502 },
+      )
+    }
+
     if (!this.responseStarted) {
       this.responseId = chunk.id || `openai-${Date.now()}`
       this.model = chunk.model || 'unknown'
@@ -98,10 +116,10 @@ export class OpenAIStreamState {
       })
     }
 
-    for (const choice of chunk.choices) {
+    for (const choice of choices) {
       // Only process first choice — we never request n > 1
       if (choice.index !== 0) continue
-      const delta = choice.delta
+      const delta = choice.delta ?? {}
 
       // --- Thinking (reasoning_content) ---
       if (delta.reasoning_content) {
@@ -238,7 +256,7 @@ export class OpenAIStreamState {
     // a supplemental response_delta so processStream updates the message usage.
     // Use stopReason from the earlier finish_reason chunk (already stored in this.usage
     // path) — we must NOT send null here as processStream would overwrite the real value.
-    if (chunk.choices.length === 0 && chunk.usage) {
+    if (choices.length === 0 && chunk.usage) {
       const prevUsage = this.usage
       const mappedUsage = mapOpenAIUsage(chunk, this.usageMapping)
       this.usage = {

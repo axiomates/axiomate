@@ -3,13 +3,61 @@ import {
   OpenAIStreamState,
   type OpenAIChatChunk,
 } from '../adapters/openaiStreamAdapter.js'
+import { LLMAPIError } from '../streamTypes.js'
+
+describe('OpenAIStreamState malformed chunk defense', () => {
+  // Some OpenAI-compatible proxies emit chunks missing `choices` or with
+  // inline error envelopes. Pre-fix these crashed with a TypeError ("undefined
+  // is not an object (evaluating 'response.choices[0]')") that classifyError
+  // couldn't route through the harness — surface as LLMAPIError(502) so
+  // withRetry classifies as server_error and retries.
+  it('does not crash on chunk with missing choices', () => {
+    const state = new OpenAIStreamState()
+    // Cast through unknown because the type forces `choices` to be present.
+    const events = state.mapChunk({
+      id: 'chatcmpl_bad',
+      model: 'deepseek-v4-pro',
+    } as unknown as OpenAIChatChunk)
+    // We still emit response_start so downstream accumulator stays consistent.
+    expect(events.find(e => e.type === 'response_start')).toBeTruthy()
+  })
+
+  it('does not crash on chunk with non-array choices', () => {
+    const state = new OpenAIStreamState()
+    const events = state.mapChunk({
+      id: 'chatcmpl_bad',
+      model: 'deepseek-v4-pro',
+      choices: null,
+    } as unknown as OpenAIChatChunk)
+    expect(events.find(e => e.type === 'response_start')).toBeTruthy()
+  })
+
+  it('throws LLMAPIError(502) on inline error envelope', () => {
+    const state = new OpenAIStreamState()
+    expect(() =>
+      state.mapChunk({
+        error: { message: 'upstream timeout', code: 'gateway_timeout' },
+      } as unknown as OpenAIChatChunk),
+    ).toThrow(LLMAPIError)
+
+    try {
+      state.mapChunk({
+        error: { message: 'upstream timeout' },
+      } as unknown as OpenAIChatChunk)
+    } catch (e) {
+      expect(e).toBeInstanceOf(LLMAPIError)
+      expect((e as LLMAPIError).status).toBe(502)
+      expect((e as LLMAPIError).message).toContain('upstream timeout')
+    }
+  })
+})
 
 describe('OpenAIStreamState usage mapping', () => {
   it('maps cache usage from OpenAI-compatible stream chunks', () => {
     const state = new OpenAIStreamState()
     const events = state.mapChunk({
       id: 'chatcmpl_test',
-      model: 'qwen3.6-plus',
+      model: 'deepseek-v4-pro',
       choices: [
         {
           index: 0,
@@ -55,7 +103,7 @@ describe('OpenAIStreamState tool_use lifecycle', () => {
     // Chunk 1: opening with id+name
     state.mapChunk({
       id: 'chatcmpl_tc',
-      model: 'qwen3.6-plus',
+      model: 'deepseek-v4-pro',
       choices: [
         {
           index: 0,
@@ -78,7 +126,7 @@ describe('OpenAIStreamState tool_use lifecycle', () => {
     // Chunk 2: argument fragment
     state.mapChunk({
       id: 'chatcmpl_tc',
-      model: 'qwen3.6-plus',
+      model: 'deepseek-v4-pro',
       choices: [
         {
           index: 0,
@@ -95,7 +143,7 @@ describe('OpenAIStreamState tool_use lifecycle', () => {
     // Chunk 3: finish_reason='tool_calls' — emits first round of block_stops
     const finishEvents = state.mapChunk({
       id: 'chatcmpl_tc',
-      model: 'qwen3.6-plus',
+      model: 'deepseek-v4-pro',
       choices: [
         {
           index: 0,
@@ -142,7 +190,7 @@ describe('OpenAIStreamState thinking lifecycle', () => {
     allEvents.push(
       ...state.mapChunk({
         id: 'chatcmpl_thinking',
-        model: 'qwen3.6-plus',
+        model: 'deepseek-v4-pro',
         choices: [
           {
             index: 0,
@@ -158,7 +206,7 @@ describe('OpenAIStreamState thinking lifecycle', () => {
     allEvents.push(
       ...state.mapChunk({
         id: 'chatcmpl_thinking',
-        model: 'qwen3.6-plus',
+        model: 'deepseek-v4-pro',
         choices: [
           {
             index: 0,
@@ -173,7 +221,7 @@ describe('OpenAIStreamState thinking lifecycle', () => {
     allEvents.push(
       ...state.mapChunk({
         id: 'chatcmpl_thinking',
-        model: 'qwen3.6-plus',
+        model: 'deepseek-v4-pro',
         choices: [
           {
             index: 0,

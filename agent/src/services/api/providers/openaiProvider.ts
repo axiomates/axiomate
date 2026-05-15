@@ -39,6 +39,7 @@ import {
 import { OpenAIStreamState, type OpenAIChatChunk } from '../adapters/openaiStreamAdapter.js'
 import { mapOpenAIUsage } from '../adapters/openaiUsageMapper.js'
 import { withRetry } from '../withRetry.js'
+import { summarizeUnexpectedResponse } from '../errors.js'
 
 // ---------------------------------------------------------------------------
 // Config
@@ -202,7 +203,13 @@ export class OpenAIProvider implements LLMProvider {
         { signal },
       )) as OpenAI.ChatCompletion
 
-      const choice = response.choices[0]
+      const choice = response?.choices?.[0]
+      if (!choice) {
+        throw new LLMAPIError(
+          `Provider returned malformed response (no choices): ${summarizeUnexpectedResponse(response)}`,
+          { status: 502 },
+        )
+      }
       const content = this.mapResponseContent(choice)
       const usage = mapOpenAIUsage(
         response,
@@ -338,7 +345,13 @@ export class OpenAIProvider implements LLMProvider {
         { signal: request.signal },
       )
 
-      const choice = response.choices[0]
+      const choice = response?.choices?.[0]
+      if (!choice) {
+        throw new LLMAPIError(
+          `Provider returned malformed response (no choices): ${summarizeUnexpectedResponse(response)}`,
+          { status: 502 },
+        )
+      }
       const content = this.mapResponseContent(choice)
       const usage = mapOpenAIUsage(
         response,
