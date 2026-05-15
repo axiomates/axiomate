@@ -21,6 +21,18 @@ import type {
   PageSnapshot,
 } from "./types.js";
 
+interface ConsoleEntry {
+  type: "log" | "warn" | "error" | "info" | "debug" | "exception";
+  /** Joined text representation. For exceptions, the error message/stack. */
+  text: string;
+  /** Wall-clock time when the event arrived. */
+  timestamp: number;
+  /** Source URL + line/col for exceptions; undefined for plain logs. */
+  source?: string;
+}
+
+const CONSOLE_BUFFER_CAP = 500;
+
 interface BridgeSession {
   state: BridgeState;
   client?: CdpClient;
@@ -30,9 +42,11 @@ interface BridgeSession {
   profile?: BridgeProfile;
   /** The most recent snapshot's refs map. Cleared on navigation. */
   lastSnapshot?: PageSnapshot;
+  /** Ring buffer of console events. Drained / cleared by browser_console. */
+  consoleBuffer: ConsoleEntry[];
 }
 
-const session: BridgeSession = { state: "detached" };
+const session: BridgeSession = { state: "detached", consoleBuffer: [] };
 
 function ok(text: string): CallToolResult {
   return { content: [{ type: "text", text }] };
@@ -55,36 +69,45 @@ function statusObject(): BridgeStatus {
 function requireClient(): CdpClient | CallToolResult {
   if (session.state !== "attached" || !session.client) {
     return err(
-      "browser bridge is not attached. Call browser_takeover first.",
+      "browser bridge is not attached. Call browser_attach first.",
     );
   }
   return session.client;
+}
+
+function pushConsole(entry: ConsoleEntry): void {
+  session.consoleBuffer.push(entry);
+  if (session.consoleBuffer.length > CONSOLE_BUFFER_CAP) {
+    // Drop oldest. Newest events are most relevant for debugging "what
+    // just broke".
+    session.consoleBuffer.splice(
+      0,
+      session.consoleBuffer.length - CONSOLE_BUFFER_CAP,
+    );
+  }
 }
 
 /**
  * Attach to a freshly-spawned isolated-profile Chromium. The user-profile
  * takeover path was attempted (Phase 2b) but removed: Chrome 136+ silently
  * ignores `--remote-debugging-port` when paired with the default
- * user-data-dir as a cookie-theft mitigation, so the takeover flow could
- * close the user's browser but never get CDP back. Verified on Chrome
- * 148.0.7778.97 against my own profile — relaunched process accepted the
- * flag in its command line but never opened the port nor wrote
- * DevToolsActivePort. Isolated is the only path we ship.
+ * user-data-dir as a cookie-theft mitigation (developer.chrome.com/blog/
+ * remote-debugging-port, 2025-03-17). Isolated is the only shippable path.
  */
-async function handleTakeover(): Promise<CallToolResult> {
+async function handleAttach(): Promise<CallToolResult> {
   if (session.state === "attached" && session.client) {
     return ok(
       `already attached: ${JSON.stringify(statusObject(), null, 2)}`,
     );
   }
   if (session.state === "attaching") {
-    return err("takeover already in progress");
+    return err("attach already in progress");
   }
   session.state = "attaching";
   const launch = await tryLaunchIsolated();
   if (!launch.ok) {
     session.state = "detached";
-    return err(`takeover failed: ${launch.reason}`);
+    return err(`attach failed: ${launch.reason}`);
   }
   try {
     const client = await CdpClient.connect({
@@ -97,9 +120,56 @@ async function handleTakeover(): Promise<CallToolResult> {
     session.pid = launch.pid;
     session.profile = "isolated";
     session.state = "attached";
+    session.consoleBuffer = [];
+
+    // Wire CDP events: snapshot invalidation + console buffer.
     client.on("Page.frameNavigated", () => {
       session.lastSnapshot = undefined;
     });
+
+    // Enable Runtime so consoleAPICalled and exceptionThrown fire.
+    await client.send("Runtime.enable").catch(() => {
+      // Already enabled or transient race — non-fatal.
+    });
+
+    client.on("Runtime.consoleAPICalled", (params: any) => {
+      // params.type ∈ "log","debug","info","error","warning",...
+      // params.args is an array of RemoteObject; we serialize each.
+      const text = (params.args ?? [])
+        .map((a: any) => {
+          if (a == null) return String(a);
+          if ("value" in a && a.value !== undefined) return String(a.value);
+          if (a.description) return a.description;
+          if (a.unserializableValue) return a.unserializableValue;
+          return JSON.stringify(a);
+        })
+        .join(" ");
+      const t = params.type as string;
+      // Normalize: "warning" → "warn"; everything else lowercased.
+      const type: ConsoleEntry["type"] =
+        t === "warning" ? "warn" : (t as ConsoleEntry["type"]);
+      pushConsole({
+        type,
+        text,
+        timestamp: Date.now(),
+      });
+    });
+
+    client.on("Runtime.exceptionThrown", (params: any) => {
+      const d = params.exceptionDetails ?? {};
+      const msg = d.text ?? "uncaught exception";
+      const exc = d.exception?.description ?? d.exception?.value ?? "";
+      const source = [d.url, d.lineNumber, d.columnNumber]
+        .filter((v) => v !== undefined)
+        .join(":");
+      pushConsole({
+        type: "exception",
+        text: exc ? `${msg}: ${exc}` : msg,
+        timestamp: Date.now(),
+        source: source || undefined,
+      });
+    });
+
     return ok(`attached: ${JSON.stringify(statusObject(), null, 2)}`);
   } catch (e) {
     session.state = "detached";
@@ -107,9 +177,9 @@ async function handleTakeover(): Promise<CallToolResult> {
   }
 }
 
-async function handleRelease(): Promise<CallToolResult> {
+async function handleDetach(): Promise<CallToolResult> {
   if (session.state === "detached") {
-    return ok("already released");
+    return ok("already detached");
   }
   try {
     await session.client?.close();
@@ -130,8 +200,9 @@ async function handleRelease(): Promise<CallToolResult> {
   session.pid = undefined;
   session.profile = undefined;
   session.lastSnapshot = undefined;
+  session.consoleBuffer = [];
   session.state = "released";
-  return ok("released");
+  return ok("detached");
 }
 
 async function handleNavigate(args: {
@@ -327,6 +398,119 @@ async function handleDialog(args: {
   return ok(`dialog ${args.action}`);
 }
 
+async function handleConsole(args: {
+  expression?: string;
+  clear?: boolean;
+}): Promise<CallToolResult> {
+  const c = requireClient();
+  if (!(c instanceof CdpClient)) return c;
+
+  let evalLine = "";
+  if (args.expression) {
+    try {
+      const r = await c.send<any>("Runtime.evaluate", {
+        expression: args.expression,
+        returnByValue: true,
+        awaitPromise: true,
+      });
+      if (r.exceptionDetails) {
+        const d = r.exceptionDetails;
+        evalLine = `[evaluate] threw: ${d.text}${
+          d.exception?.description ? ` — ${d.exception.description}` : ""
+        }`;
+      } else {
+        const v = r.result?.value;
+        const repr =
+          v === undefined
+            ? r.result?.description ?? "undefined"
+            : typeof v === "string"
+              ? v
+              : JSON.stringify(v);
+        evalLine = `[evaluate] ${repr}`;
+      }
+    } catch (e) {
+      evalLine = `[evaluate failed] ${(e as Error).message}`;
+    }
+  }
+
+  const buf = [...session.consoleBuffer];
+  if (args.clear) session.consoleBuffer = [];
+
+  const lines = buf.map((e) => {
+    const src = e.source ? ` (${e.source})` : "";
+    return `[${e.type}]${src} ${e.text}`;
+  });
+
+  if (evalLine) lines.push(evalLine);
+  if (lines.length === 0) {
+    return ok("(console buffer empty, no expression evaluated)");
+  }
+  return ok(lines.join("\n"));
+}
+
+async function handleGetImages(args: {
+  limit?: number;
+}): Promise<CallToolResult> {
+  const c = requireClient();
+  if (!(c instanceof CdpClient)) return c;
+  const limit = Math.max(1, Math.min(args.limit ?? 50, 500));
+  // Run in the page; collect img elements. currentSrc resolves srcset; alt
+  // is the accessibility text; naturalWidth/Height are intrinsic px.
+  const expr = `
+    JSON.stringify(
+      Array.from(document.images)
+        .slice(0, ${limit})
+        .map(img => ({
+          src: img.currentSrc || img.src,
+          alt: img.alt || null,
+          naturalWidth: img.naturalWidth,
+          naturalHeight: img.naturalHeight,
+        }))
+    )
+  `;
+  const r = await c.send<any>("Runtime.evaluate", {
+    expression: expr,
+    returnByValue: true,
+  });
+  if (r.exceptionDetails) {
+    return err(
+      `evaluate failed: ${r.exceptionDetails.text}`,
+    );
+  }
+  const json = r.result?.value ?? "[]";
+  return ok(json);
+}
+
+async function handleVision(args: {
+  format?: "png" | "jpeg";
+  quality?: number;
+  fullPage?: boolean;
+}): Promise<CallToolResult> {
+  const c = requireClient();
+  if (!(c instanceof CdpClient)) return c;
+  const format = args.format ?? "png";
+  const params: any = { format };
+  if (format === "jpeg") {
+    params.quality = args.quality ?? 80;
+  }
+  if (args.fullPage) {
+    params.captureBeyondViewport = true;
+  }
+  const r = await c.send<{ data: string }>(
+    "Page.captureScreenshot",
+    params,
+  );
+  return {
+    content: [
+      {
+        type: "image",
+        data: r.data,
+        mimeType: format === "jpeg" ? "image/jpeg" : "image/png",
+      },
+    ],
+  };
+}
+
 async function handleCdp(args: {
   method: string;
   params?: any;
@@ -344,12 +528,12 @@ export async function dispatchBrowserBridgeTool(
 ): Promise<CallToolResult> {
   try {
     switch (name) {
-      case "browser_takeover":
-        return await handleTakeover();
-      case "browser_takeover_status":
+      case "browser_attach":
+        return await handleAttach();
+      case "browser_status":
         return ok(JSON.stringify(statusObject(), null, 2));
-      case "browser_release":
-        return await handleRelease();
+      case "browser_detach":
+        return await handleDetach();
       case "browser_navigate":
         return await handleNavigate(args);
       case "browser_snapshot":
@@ -382,6 +566,12 @@ export async function dispatchBrowserBridgeTool(
         return await handleZoom(args);
       case "browser_dialog":
         return await handleDialog(args);
+      case "browser_console":
+        return await handleConsole(args ?? {});
+      case "browser_get_images":
+        return await handleGetImages(args ?? {});
+      case "browser_vision":
+        return await handleVision(args ?? {});
       case "browser_cdp":
         return await handleCdp(args);
       default:
@@ -401,4 +591,5 @@ export function __resetBridgeForTesting(): void {
   session.pid = undefined;
   session.profile = undefined;
   session.lastSnapshot = undefined;
+  session.consoleBuffer = [];
 }

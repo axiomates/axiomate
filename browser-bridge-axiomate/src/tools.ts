@@ -13,9 +13,9 @@ import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 export function buildBrowserBridgeTools(): Tool[] {
   return [
     {
-      name: "browser_takeover",
+      name: "browser_attach",
       description:
-        "Attach to a freshly-spawned isolated-profile Chromium via Chrome DevTools Protocol. Profile lives at ~/.axiomate/browser-bridge/profile (no user logins, no extensions). Idempotent — calling again returns the current state. Note: takeover of the user's real browser profile is not supported because Chrome 136+ silently disables --remote-debugging-port on the default user-data-dir.",
+        "Attach to a freshly-spawned isolated-profile Chromium via Chrome DevTools Protocol. Profile lives at ~/.axiomate/browser-bridge/profile (no user logins, no extensions) so this never interferes with the user's running browser. Idempotent — calling again returns the current state. Note: taking over the user's real browser profile (with their logins) is not supported because Chrome 136+ silently disables --remote-debugging-port on the default user-data-dir.",
       inputSchema: {
         type: "object",
         properties: {},
@@ -23,9 +23,9 @@ export function buildBrowserBridgeTools(): Tool[] {
       },
     },
     {
-      name: "browser_takeover_status",
+      name: "browser_status",
       description:
-        "Inspect the current bridge state without changing it. Returns attached/detached, profile (isolated|user), browser kind, CDP port.",
+        "Inspect the current bridge state without changing it. Returns attached/detached, profile, browser kind, CDP port.",
       inputSchema: {
         type: "object",
         properties: {},
@@ -33,7 +33,7 @@ export function buildBrowserBridgeTools(): Tool[] {
       },
     },
     {
-      name: "browser_release",
+      name: "browser_detach",
       description:
         "Tear down the CDP connection and kill the isolated browser process. Use at the end of a browser-driven task.",
       inputSchema: {
@@ -239,6 +239,73 @@ export function buildBrowserBridgeTools(): Tool[] {
           promptText: { type: "string" },
         },
         required: ["action"],
+        additionalProperties: false,
+      },
+    },
+    {
+      name: "browser_console",
+      description:
+        "Read browser console output (log/warn/error/info) and uncaught exception stacks. Or pass `expression` to evaluate JavaScript in the page context (like typing into DevTools Console) and get the result back. Without `expression` you get the accumulated console buffer since the last attach or clear. Useful for debugging web pages — console errors typically point at the exact problem more directly than UI state.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          expression: {
+            type: "string",
+            description:
+              "Optional JavaScript expression to evaluate in the page context. Returned by value.",
+          },
+          clear: {
+            type: "boolean",
+            description: "If true, clear the console buffer after reading (default false).",
+            default: false,
+          },
+        },
+        additionalProperties: false,
+      },
+    },
+    {
+      name: "browser_get_images",
+      description:
+        "List every `<img>` element on the current page with src, alt, and natural dimensions. Returns JSON. Useful for discovering visual content the AX-tree snapshot doesn't surface, or for picking an image to download / feed to a vision tool.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          limit: {
+            type: "integer",
+            description: "Max number of images to return (default 50).",
+            default: 50,
+            minimum: 1,
+            maximum: 500,
+          },
+        },
+        additionalProperties: false,
+      },
+    },
+    {
+      name: "browser_vision",
+      description:
+        "Take a screenshot of the visible viewport and return it inline as an image content block. Use when the AX-snapshot does not reveal what you need: CAPTCHAs, canvas/SVG content, image-only buttons, custom layout that does not surface accessible names. The MCP host's own vision pipeline (if any) consumes the image. No on-screen overlay is drawn by this call.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          format: {
+            type: "string",
+            enum: ["png", "jpeg"],
+            default: "png",
+            description: "Image format. jpeg is smaller; png preserves detail.",
+          },
+          quality: {
+            type: "integer",
+            minimum: 1,
+            maximum: 100,
+            description: "JPEG quality 1-100 (ignored for PNG). Default 80.",
+          },
+          fullPage: {
+            type: "boolean",
+            default: false,
+            description: "If true, capture the entire scrollable page, not just the viewport.",
+          },
+        },
         additionalProperties: false,
       },
     },

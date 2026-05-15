@@ -34,7 +34,7 @@ export interface DetectionStats {
  * Chrome_RenderWidgetHostHWND / MozillaWindowClass, mac's AXWebArea) but
  * intentionally NOT a clickable Mark — page-content interaction belongs
  * to the CDP-backed browser bridge. The bbox tells the model where the
- * page is on screen so it can route to `browser_takeover` / `browser_snapshot`.
+ * page is on screen so it can route to `browser_attach` / `browser_snapshot`.
  */
 export interface BrowserViewport {
   bbox: { x: number; y: number; w: number; h: number };

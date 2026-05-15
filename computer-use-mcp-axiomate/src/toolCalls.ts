@@ -253,8 +253,9 @@ function buildTextFirstSoMBlock(
     text +=
       `\n\nBrowser web content detected (${opts!.browserViewports!.length} viewport(s)). ` +
       `Page contents are NOT in the SoM list above — UIA/AX enumeration intentionally skips web content. ` +
-      `To interact with the page, use the browser bridge: call browser_takeover first (the user is prompted to consent), ` +
-      `then browser_snapshot to get ref-addressed elements, then browser_click / browser_type with those refs.`;
+      `To interact with the page, use the browser bridge: call browser_attach first to spawn an isolated Chromium (no user logins; this never disrupts the user's running browser), ` +
+      `then browser_snapshot to get ref-addressed elements, then browser_click / browser_type with those refs. ` +
+      `If the AX-snapshot doesn't reveal what you need (CAPTCHAs, canvas content, image-only buttons), try browser_vision for a screenshot or browser_console for page errors and JS evaluation.`;
     for (const v of opts!.browserViewports!) {
       const x1 = v.bbox.x + v.bbox.w;
       const y1 = v.bbox.y + v.bbox.h;

@@ -4,7 +4,7 @@
  * Spawns a Chromium-family browser with `--remote-debugging-port` against a
  * dedicated profile dir under `~/.axiomate/browser-bridge/profile`. The
  * spawned process is detached so the agent's lifecycle doesn't tie to it;
- * `browser_release` kills the PID explicitly when the bridge is torn down.
+ * `browser_detach` kills the PID explicitly when the bridge is torn down.
  *
  * Direct port of hermes_cli/browser_connect.py. Binary tables, spawn flags,
  * and the CDP-ready retry loop match upstream so the operational behavior

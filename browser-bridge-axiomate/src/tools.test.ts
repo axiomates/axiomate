@@ -6,9 +6,9 @@ describe("buildBrowserBridgeTools", () => {
   const names = tools.map((t) => t.name);
 
   it("includes the lifecycle trio", () => {
-    expect(names).toContain("browser_takeover");
-    expect(names).toContain("browser_takeover_status");
-    expect(names).toContain("browser_release");
+    expect(names).toContain("browser_attach");
+    expect(names).toContain("browser_status");
+    expect(names).toContain("browser_detach");
   });
 
   it("includes navigation primitives", () => {
@@ -32,6 +32,18 @@ describe("buildBrowserBridgeTools", () => {
     expect(names).toContain("browser_tab_close");
     expect(names).toContain("browser_tab_switch");
     expect(names).toContain("browser_tab_list");
+  });
+
+  it("includes hermes-parity tools (console, get_images, vision)", () => {
+    expect(names).toContain("browser_console");
+    expect(names).toContain("browser_get_images");
+    expect(names).toContain("browser_vision");
+  });
+
+  it("does NOT expose the old takeover-shaped names", () => {
+    expect(names).not.toContain("browser_takeover");
+    expect(names).not.toContain("browser_takeover_status");
+    expect(names).not.toContain("browser_release");
   });
 
   it("includes the CDP escape hatch", () => {
