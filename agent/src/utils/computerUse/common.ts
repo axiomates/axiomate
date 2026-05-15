@@ -3,6 +3,8 @@ import { env } from '../env.js'
 
 export const COMPUTER_USE_MCP_SERVER_NAME = 'computer-use'
 
+export const BROWSER_BRIDGE_MCP_SERVER_NAME = 'browser-bridge'
+
 /**
  * Sentinel app identifier for the frontmost gate. Axiomate is a terminal — it
  * has no window. This never matches a real `NSWorkspace.frontmostApplication`,

@@ -3,7 +3,10 @@ import type {
   McpInProcessServerConfig,
   ScopedMcpServerConfig,
 } from '../../services/mcp/types.js'
-import { COMPUTER_USE_MCP_SERVER_NAME } from './common.js'
+import {
+  BROWSER_BRIDGE_MCP_SERVER_NAME,
+  COMPUTER_USE_MCP_SERVER_NAME,
+} from './common.js'
 
 /**
  * Build the in-process MCP server config for the computer-use suite.
@@ -47,6 +50,39 @@ export function setupComputerUseMCP():
   }
   return {
     [COMPUTER_USE_MCP_SERVER_NAME]: {
+      ...config,
+      scope: 'dynamic',
+    },
+  }
+}
+
+/**
+ * Sibling factory for the browser-bridge MCP server. Same gating as
+ * `setupComputerUseMCP` — gated on DARWIN || WIN32 at build time and again
+ * at runtime so a darwin-built bundle running on a non-mac host (shouldn't
+ * happen, but) still skips registration. The bunPluginComputerUseStub
+ * replaces this module's exports on linux, so the entire
+ * `browser-bridge-axiomate` import graph is DCE'd out of the linux bundle.
+ */
+export function setupBrowserBridgeMCP():
+  | Record<string, ScopedMcpServerConfig>
+  | undefined {
+  if (!feature('DARWIN') && !feature('WIN32')) return undefined
+  if (process.platform !== 'darwin' && process.platform !== 'win32') {
+    return undefined
+  }
+
+  const config: McpInProcessServerConfig = {
+    type: 'in-process',
+    factory: async () => {
+      const { createBrowserBridgeMcpServer } = await import(
+        'browser-bridge-axiomate'
+      )
+      return createBrowserBridgeMcpServer()
+    },
+  }
+  return {
+    [BROWSER_BRIDGE_MCP_SERVER_NAME]: {
       ...config,
       scope: 'dynamic',
     },

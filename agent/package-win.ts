@@ -111,6 +111,7 @@ buildTscWorkspace('treeify-axiomate')
 buildTscWorkspace('sandbox-axiomate')
 buildTscWorkspace('mcpb-axiomate')
 buildTscWorkspace('computer-use-mcp-axiomate')
+buildTscWorkspace('browser-bridge-axiomate')
 buildTscWorkspace('image-processor-axiomate')
 
 buildNapiWorkspace('audio-capture-axiomate')
@@ -153,6 +154,8 @@ const result = await Bun.build({
     'computer-use-mac-napi-axiomate',      // macOS-only (DARWIN-gated)
     'computer-use-win-napi-axiomate',      // win-only NAPI workspace
     'computer-use-mcp-axiomate',           // workspace pkg
+    'browser-bridge-axiomate',             // workspace pkg
+    'chrome-remote-interface',             // CDP client (deep node-only graph, keep external)
   ],
 
   // Rewrite literal .node imports to load from <exeDir>/<basename>.node

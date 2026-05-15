@@ -172,6 +172,7 @@ buildTscWorkspace('treeify-axiomate')
 buildTscWorkspace('sandbox-axiomate')
 buildTscWorkspace('mcpb-axiomate')
 buildTscWorkspace('computer-use-mcp-axiomate')
+buildTscWorkspace('browser-bridge-axiomate')
 buildTscWorkspace('image-processor-axiomate')
 
 buildNapiWorkspace('clipboard-axiomate')

@@ -1153,12 +1153,18 @@ export async function getAxiomateMcpConfigs(
   // true workspace-graph DCE on linux. mac and win each have a native
   // peer (computer-use-{mac,win}-napi-axiomate) backing the executor.
   // User-configured servers of the same name win — don't override.
-  const { setupComputerUseMCP } = await import(
+  const { setupComputerUseMCP, setupBrowserBridgeMCP } = await import(
     '../../utils/computerUse/setup.js'
   )
   const computerUseServers = setupComputerUseMCP()
   if (computerUseServers) {
     for (const [name, config] of Object.entries(computerUseServers)) {
+      if (!filtered[name]) filtered[name] = config
+    }
+  }
+  const browserBridgeServers = setupBrowserBridgeMCP()
+  if (browserBridgeServers) {
+    for (const [name, config] of Object.entries(browserBridgeServers)) {
       if (!filtered[name]) filtered[name] = config
     }
   }

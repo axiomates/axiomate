@@ -9,6 +9,7 @@ packages:
   - 'computer-use-mcp-axiomate'
   - 'computer-use-mac-napi-axiomate'
   - 'computer-use-win-napi-axiomate'
+  - 'browser-bridge-axiomate'
   - 'mcpb-axiomate'
   - 'agent'
   - 'packages/sdk'

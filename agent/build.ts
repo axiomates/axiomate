@@ -105,6 +105,8 @@ const result = await Bun.build({
     'computer-use-mcp-axiomate',
     'computer-use-mac-napi-axiomate',
     'computer-use-win-napi-axiomate',
+    'browser-bridge-axiomate',
+    'chrome-remote-interface',
     'mcpb-axiomate',
     // react-reconciler-axiomate is NOT external — must be bundled
     // (contains useEffectEvent support missing from npm version)

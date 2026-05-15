@@ -29,7 +29,8 @@ import type { BunPlugin } from 'bun'
 // register the in-process computer-use MCP server.
 const SETUP_STUB =
   '// computer-use stub: windows / linux build, native APIs unavailable\n' +
-  'export function setupComputerUseMCP() { return undefined }\n'
+  'export function setupComputerUseMCP() { return undefined }\n' +
+  'export function setupBrowserBridgeMCP() { return undefined }\n'
 
 // `wrapper.tsx` is a dynamic-import target from client.ts (the per-call
 // ToolUseContext bridge). Without stubbing, the dynamic import alone makes
