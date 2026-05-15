@@ -15,17 +15,10 @@ export function buildBrowserBridgeTools(): Tool[] {
     {
       name: "browser_takeover",
       description:
-        "Attach to a browser via Chrome DevTools Protocol. By default uses an isolated profile (~/.axiomate/browser-bridge/profile, no logins, no extensions); pass profile='user' to take over the user's running browser (logins, cookies, extensions) — this gracefully closes their browser and relaunches it with CDP enabled. User-profile takeover requires the AXIOMATE_BROWSER_TAKEOVER=1 env var to be implicitly the default; passing profile='user' explicitly works regardless of the env var. Idempotent — calling again returns the current state.",
+        "Attach to a freshly-spawned isolated-profile Chromium via Chrome DevTools Protocol. Profile lives at ~/.axiomate/browser-bridge/profile (no user logins, no extensions). Idempotent — calling again returns the current state. Note: takeover of the user's real browser profile is not supported because Chrome 136+ silently disables --remote-debugging-port on the default user-data-dir.",
       inputSchema: {
         type: "object",
-        properties: {
-          profile: {
-            type: "string",
-            enum: ["isolated", "user"],
-            description:
-              "isolated (default) launches a fresh profile; user takes over the running browser with the user's real profile (logins/cookies/extensions). User-profile takeover may fail recoverably (falls back to isolated) or non-recoverably.",
-          },
-        },
+        properties: {},
         additionalProperties: false,
       },
     },

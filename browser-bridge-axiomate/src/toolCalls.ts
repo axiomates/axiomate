@@ -13,7 +13,6 @@ import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { CdpClient } from "./cdpClient.js";
 import { enumeratePageElements, refCenter } from "./enumerate.js";
 import { tryLaunchIsolated } from "./launcher.js";
-import { isTakeoverEnabled, takeoverRealProfile } from "./takeover/index.js";
 import type {
   BridgeProfile,
   BridgeState,
@@ -62,9 +61,17 @@ function requireClient(): CdpClient | CallToolResult {
   return session.client;
 }
 
-async function handleTakeover(args: {
-  profile?: BridgeProfile;
-}): Promise<CallToolResult> {
+/**
+ * Attach to a freshly-spawned isolated-profile Chromium. The user-profile
+ * takeover path was attempted (Phase 2b) but removed: Chrome 136+ silently
+ * ignores `--remote-debugging-port` when paired with the default
+ * user-data-dir as a cookie-theft mitigation, so the takeover flow could
+ * close the user's browser but never get CDP back. Verified on Chrome
+ * 148.0.7778.97 against my own profile — relaunched process accepted the
+ * flag in its command line but never opened the port nor wrote
+ * DevToolsActivePort. Isolated is the only path we ship.
+ */
+async function handleTakeover(): Promise<CallToolResult> {
   if (session.state === "attached" && session.client) {
     return ok(
       `already attached: ${JSON.stringify(statusObject(), null, 2)}`,
@@ -74,60 +81,10 @@ async function handleTakeover(args: {
     return err("takeover already in progress");
   }
   session.state = "attaching";
-
-  // Profile selection: explicit args.profile wins; otherwise gate
-  // user-profile takeover behind the AXIOMATE_BROWSER_TAKEOVER env var.
-  const requested =
-    args.profile ?? (isTakeoverEnabled() ? "user" : "isolated");
-
-  if (requested === "user") {
-    const result = await takeoverRealProfile();
-    if (result.ok && result.client) {
-      session.client = result.client;
-      session.kind = result.kind;
-      session.port = result.port;
-      session.pid = result.pid;
-      session.profile = "user";
-      session.state = "attached";
-      result.client.on("Page.frameNavigated", () => {
-        session.lastSnapshot = undefined;
-      });
-      return ok(
-        `attached (user profile): ${JSON.stringify(
-          { status: statusObject(), notes: result.notes },
-          null,
-          2,
-        )}`,
-      );
-    }
-    // Takeover failed. Fall through to isolated only if `recoverable`
-    // (meaning the user's browser is in a safe state to launch alongside).
-    if (!result.recoverable) {
-      session.state = "detached";
-      return err(
-        `takeover failed (NOT recoverable to isolated): ${result.reason}` +
-          (result.hint ? ` — ${result.hint}` : "") +
-          `\nnotes: ${result.notes.join("; ")}`,
-      );
-    }
-    // Surface why we're falling back so the model knows logins won't work.
-    const reason = result.reason ?? "(no reason)";
-    const hint = result.hint ? ` (${result.hint})` : "";
-    return await fallbackToIsolated(
-      `takeover failed, falling back to isolated: ${reason}${hint}`,
-    );
-  }
-
-  return await fallbackToIsolated();
-}
-
-async function fallbackToIsolated(prefix?: string): Promise<CallToolResult> {
   const launch = await tryLaunchIsolated();
   if (!launch.ok) {
     session.state = "detached";
-    return err(
-      `${prefix ? prefix + "; " : ""}isolated launch failed: ${launch.reason}`,
-    );
+    return err(`takeover failed: ${launch.reason}`);
   }
   try {
     const client = await CdpClient.connect({
@@ -143,18 +100,10 @@ async function fallbackToIsolated(prefix?: string): Promise<CallToolResult> {
     client.on("Page.frameNavigated", () => {
       session.lastSnapshot = undefined;
     });
-    return ok(
-      `${prefix ? prefix + "\n" : ""}attached (isolated profile): ${JSON.stringify(
-        statusObject(),
-        null,
-        2,
-      )}`,
-    );
+    return ok(`attached: ${JSON.stringify(statusObject(), null, 2)}`);
   } catch (e) {
     session.state = "detached";
-    return err(
-      `${prefix ? prefix + "; " : ""}CDP connect failed: ${(e as Error).message}`,
-    );
+    return err(`CDP connect failed: ${(e as Error).message}`);
   }
 }
 
@@ -396,7 +345,7 @@ export async function dispatchBrowserBridgeTool(
   try {
     switch (name) {
       case "browser_takeover":
-        return await handleTakeover(args ?? {});
+        return await handleTakeover();
       case "browser_takeover_status":
         return ok(JSON.stringify(statusObject(), null, 2));
       case "browser_release":

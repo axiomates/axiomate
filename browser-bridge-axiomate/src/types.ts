@@ -24,7 +24,7 @@ export type BridgeState =
   | "attached"
   | "released";
 
-export type BridgeProfile = "isolated" | "user";
+export type BridgeProfile = "isolated";
 
 export interface BridgeStatus {
   state: BridgeState;
