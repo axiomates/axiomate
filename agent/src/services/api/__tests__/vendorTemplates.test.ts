@@ -18,25 +18,91 @@ describe('inferVendor', () => {
     expect(inferVendor({ protocol: 'openai-responses', model: 'o4-mini' })).toBe('openai-responses')
   })
 
-  it('openai + DeepSeek V4 → deepseek-reasoning', () => {
-    expect(inferVendor({ protocol: 'openai-chat', model: 'deepseek-v4-pro' })).toBe('deepseek-reasoning')
-    expect(inferVendor({ protocol: 'openai-chat', model: 'deepseek-ai/DeepSeek-V4-Flash' })).toBe('deepseek-reasoning')
+  it('openai-chat + api.deepseek.com baseUrl → deepseek-reasoning', () => {
+    expect(
+      inferVendor({
+        protocol: 'openai-chat',
+        model: 'deepseek-v4-pro',
+        baseUrl: 'https://api.deepseek.com',
+      }),
+    ).toBe('deepseek-reasoning')
   })
 
-  it('openai + Qwen3+ → qwen-thinking', () => {
-    expect(inferVendor({ protocol: 'openai-chat', model: 'Qwen/Qwen3-235B' })).toBe('qwen-thinking')
-    expect(inferVendor({ protocol: 'openai-chat', model: 'qwen3-235b' })).toBe('qwen-thinking')
-    expect(inferVendor({ protocol: 'openai-chat', model: 'Qwen/Qwen3.5-122B' })).toBe('qwen-thinking')
+  it('openai-chat + SiliconFlow baseUrl → openai-ali-thinking (gateway-level)', () => {
+    expect(
+      inferVendor({
+        protocol: 'openai-chat',
+        model: 'Qwen/Qwen3-235B',
+        baseUrl: 'https://api.siliconflow.cn/v1',
+      }),
+    ).toBe('openai-ali-thinking')
+    // Even DeepSeek-via-SiliconFlow uses the gateway's wire schema:
+    expect(
+      inferVendor({
+        protocol: 'openai-chat',
+        model: 'deepseek-ai/DeepSeek-V4-Flash',
+        baseUrl: 'https://api.siliconflow.cn/v1',
+      }),
+    ).toBe('openai-ali-thinking')
   })
 
-  it('openai + unknown model → openai-default', () => {
-    expect(inferVendor({ protocol: 'openai-chat', model: 'gpt-4o' })).toBe('openai-default')
-    expect(inferVendor({ protocol: 'openai-chat', model: 'mistral-large' })).toBe('openai-default')
+  it('openai-chat + aliyun DashScope baseUrl → openai-ali-thinking', () => {
+    expect(
+      inferVendor({
+        protocol: 'openai-chat',
+        model: 'qwen3.6-plus',
+        baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+      }),
+    ).toBe('openai-ali-thinking')
+  })
+
+  it('openai-chat + DeepSeek V4 model name (unknown gateway) → deepseek-reasoning', () => {
+    expect(
+      inferVendor({
+        protocol: 'openai-chat',
+        model: 'deepseek-v4-pro',
+        baseUrl: 'https://my-private-relay.example.com/v1',
+      }),
+    ).toBe('deepseek-reasoning')
+  })
+
+  it('openai-chat + unknown gateway + unknown model → openai-default', () => {
+    expect(
+      inferVendor({
+        protocol: 'openai-chat',
+        model: 'gpt-4o',
+        baseUrl: 'https://openrouter.ai/api/v1',
+      }),
+    ).toBe('openai-default')
   })
 
   it('does not match deepseek-v2 / v3 (older non-reasoning models)', () => {
-    expect(inferVendor({ protocol: 'openai-chat', model: 'deepseek-v2' })).toBe('openai-default')
-    expect(inferVendor({ protocol: 'openai-chat', model: 'deepseek-v3' })).toBe('openai-default')
+    expect(
+      inferVendor({
+        protocol: 'openai-chat',
+        model: 'deepseek-v2',
+        baseUrl: 'https://example.com/v1',
+      }),
+    ).toBe('openai-default')
+    expect(
+      inferVendor({
+        protocol: 'openai-chat',
+        model: 'deepseek-v3',
+        baseUrl: 'https://example.com/v1',
+      }),
+    ).toBe('openai-default')
+  })
+
+  it('Qwen model on a non-aliyun/SiliconFlow gateway → openai-default (no name-based inference)', () => {
+    // OpenRouter etc. host Qwen but use OpenAI-standard schema.
+    // User must explicitly set vendor: 'openai-ali-thinking' if needed.
+    expect(
+      inferVendor({
+        protocol: 'openai-chat',
+        model: 'qwen/qwen3-235b',
+        baseUrl: 'https://openrouter.ai/api/v1',
+      }),
+    ).toBe('openai-default')
   })
 })
 
@@ -46,7 +112,7 @@ describe('isBuiltinVendor', () => {
     expect(isBuiltinVendor('openai-responses')).toBe(true)
     expect(isBuiltinVendor('anthropic')).toBe(true)
     expect(isBuiltinVendor('deepseek-reasoning')).toBe(true)
-    expect(isBuiltinVendor('qwen-thinking')).toBe(true)
+    expect(isBuiltinVendor('openai-ali-thinking')).toBe(true)
   })
 
   it('rejects unknown names', () => {
@@ -191,16 +257,38 @@ describe('applyThinkingTemplate — built-in: deepseek-reasoning', () => {
   })
 })
 
-describe('applyThinkingTemplate — built-in: qwen-thinking', () => {
-  const template = resolveTemplate('qwen-thinking')
+describe('applyThinkingTemplate — built-in: openai-ali-thinking', () => {
+  const template = resolveTemplate('openai-ali-thinking')
 
-  it('enabled with budget → enable_thinking: true + thinking_budget', () => {
+  it('enabled with effort + budget → enable_thinking + reasoning_effort + thinking_budget', () => {
     expect(
-      applyThinkingTemplate({ enabled: true, budget: 4096 }, template),
-    ).toEqual({ enable_thinking: true, thinking_budget: 4096 })
+      applyThinkingTemplate({ enabled: true, effort: 'high', budget: 4096 }, template),
+    ).toEqual({
+      enable_thinking: true,
+      reasoning_effort: 'high',
+      thinking_budget: 4096,
+    })
   })
 
-  it('enabled without budget → enable_thinking: true only', () => {
+  it('low/medium pass through unchanged (gateway accepts the full OpenAI effort set)', () => {
+    expect(applyThinkingTemplate({ enabled: true, effort: 'low' }, template)).toEqual({
+      enable_thinking: true,
+      reasoning_effort: 'low',
+    })
+    expect(applyThinkingTemplate({ enabled: true, effort: 'medium' }, template)).toEqual({
+      enable_thinking: true,
+      reasoning_effort: 'medium',
+    })
+  })
+
+  it("max maps to xhigh (the gateway's top tier; 'max' is rejected as invalid)", () => {
+    expect(applyThinkingTemplate({ enabled: true, effort: 'max' }, template)).toEqual({
+      enable_thinking: true,
+      reasoning_effort: 'xhigh',
+    })
+  })
+
+  it('enabled without effort/budget → enable_thinking: true only', () => {
     expect(applyThinkingTemplate({ enabled: true }, template)).toEqual({
       enable_thinking: true,
     })
@@ -239,9 +327,9 @@ describe('built-in templates structural sanity', () => {
     expect(Object.keys(builtins).sort()).toEqual([
       'anthropic',
       'deepseek-reasoning',
+      'openai-ali-thinking',
       'openai-default',
       'openai-responses',
-      'qwen-thinking',
     ])
   })
 })

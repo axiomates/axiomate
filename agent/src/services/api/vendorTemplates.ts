@@ -8,7 +8,7 @@
  * expects (reasoning_effort vs reasoning.effort vs enable_thinking, etc).
  *
  * Built-in templates cover the five common cases: openai-default,
- * openai-responses, anthropic, deepseek-reasoning, qwen-thinking.
+ * openai-responses, anthropic, deepseek-reasoning, openai-ali-thinking.
  * Users can register additional templates under config's top-level
  * `templates` field, optionally extending built-ins via `extends`.
  */
@@ -20,7 +20,7 @@ export type VendorTemplateName =
   | 'openai-responses'
   | 'anthropic'
   | 'deepseek-reasoning'
-  | 'qwen-thinking'
+  | 'openai-ali-thinking'
 
 /** Effort levels the user can declare (axiomate-neutral). */
 export type EffortLevel = 'low' | 'medium' | 'high' | 'max'
@@ -98,15 +98,16 @@ const builtinTemplates: Record<VendorTemplateName, VendorTemplate> = {
     budget: { patch: { thinking: { budget_tokens: '<budget>' } } },
   },
   'deepseek-reasoning': {
-    // DeepSeek V4 Pro requires both fields per their docs:
+    // DeepSeek V4+ official API requires both fields per their docs:
     //   thinking: { type: 'enabled' }     ← Anthropic-style thinking switch
-    //   reasoning_effort: '<low|medium|high|max>'  ← OpenAI-style intensity
+    //   reasoning_effort: 'high' | 'max'  ← OpenAI-style intensity (only
+    //                                       high/max are accepted; low/medium
+    //                                       are collapsed to high)
     // The naming is borrowed from both ecosystems but is DeepSeek-specific
     // (not a standard on either OpenAI or Anthropic Chat Completions).
     enabledPatch: { thinking: { type: 'enabled' } },
     effort: {
       patch: { reasoning_effort: '<value>' },
-      // DeepSeek docs: low/medium are mapped server-side to high; xhigh → max.
       valueMap: {
         low: 'high',
         medium: 'high',
@@ -116,9 +117,32 @@ const builtinTemplates: Record<VendorTemplateName, VendorTemplate> = {
     },
     autoRoundTripReasoningContent: true,
   },
-  'qwen-thinking': {
+  'openai-ali-thinking': {
+    // OpenAI-compatible thinking gateways that share a common wire schema:
+    // aliyun DashScope, SiliconFlow, and any provider following the same
+    // top-level shape. Applies to ALL thinking-capable models on these
+    // gateways (Qwen, GLM, Kimi, MiniMax, DeepSeek-via-gateway, ...) —
+    // model-agnostic, gateway-specific.
+    //
+    // Wire fields (all top-level, not extra_body — that's a Python-SDK
+    // convention; Node SDK lets us send any top-level fields verbatim):
+    //   enable_thinking: bool             ← thinking switch
+    //   thinking_budget: number           ← max reasoning tokens
+    //   reasoning_effort: 'none'|'minimal'|'low'|'medium'|'high'|'xhigh'
+    //                                     ← OpenAI-standard effort set; the
+    //                                       neutral 'max' maps to 'xhigh'
+    //                                       (the gateway rejects 'max').
     enabledPatch: { enable_thinking: true },
     disabledPatch: { enable_thinking: false },
+    effort: {
+      patch: { reasoning_effort: '<value>' },
+      valueMap: {
+        low: 'low',
+        medium: 'medium',
+        high: 'high',
+        max: 'xhigh',
+      },
+    },
     budget: { patch: { thinking_budget: '<budget>' } },
   },
 }
@@ -190,22 +214,48 @@ export function resolveTemplate(
 // ---------------------------------------------------------------------------
 
 const DEEPSEEK_REASONING_RE = /deepseek.*v[4-9]/i
-const QWEN_THINKING_RE = /(^|[/-])qwen[-_]?[3-9]/i
+
+/** Match the official DeepSeek API host. */
+const DEEPSEEK_HOST_RE = /(^|\/\/)api\.deepseek\.com(\/|$)/i
+
+/** Match SiliconFlow host. */
+const SILICONFLOW_HOST_RE = /siliconflow\.cn/i
+
+/** Match aliyun DashScope hosts (incl. compatible-mode endpoint). */
+const ALIYUN_HOST_RE = /dashscope\.aliyun(cs)?\.com/i
 
 /**
- * Pick a sensible vendor template when the user didn't specify one.
- * Looks at protocol + model name only (never baseUrl — same gateway
- * can host multiple vendors).
+ * Pick a sensible vendor template when the user didn't specify one
+ * via the `vendor` config field.
+ *
+ * Resolution order:
+ *   1. protocol === 'anthropic'         → 'anthropic'
+ *   2. protocol === 'openai-responses'  → 'openai-responses'
+ *   3. protocol === 'openai-chat':
+ *      a. baseUrl is api.deepseek.com   → 'deepseek-reasoning'
+ *      b. baseUrl is SiliconFlow / aliyun DashScope → 'openai-ali-thinking'
+ *         (gateway-level decision; covers Qwen, GLM, Kimi, MiniMax,
+ *         DeepSeek-via-gateway — same wire schema across all models)
+ *      c. model name matches DeepSeek V4+    → 'deepseek-reasoning'
+ *      d. fallback                            → 'openai-default'
+ *
+ * Gateway hosts are checked before model names because the gateway's
+ * wire schema is the same regardless of model — e.g. SiliconFlow's
+ * thinking schema applies even when the model is DeepSeek.
  */
 export function inferVendor(
-  config: Pick<ModelProviderConfig, 'protocol' | 'model'>,
+  config: Pick<ModelProviderConfig, 'protocol' | 'model'> & { baseUrl?: string },
 ): VendorTemplateName {
   if (config.protocol === 'anthropic') return 'anthropic'
   if (config.protocol === 'openai-responses') return 'openai-responses'
 
-  const m = config.model
-  if (DEEPSEEK_REASONING_RE.test(m)) return 'deepseek-reasoning'
-  if (QWEN_THINKING_RE.test(m)) return 'qwen-thinking'
+  const url = config.baseUrl ?? ''
+  if (DEEPSEEK_HOST_RE.test(url)) return 'deepseek-reasoning'
+  if (SILICONFLOW_HOST_RE.test(url) || ALIYUN_HOST_RE.test(url)) {
+    return 'openai-ali-thinking'
+  }
+
+  if (DEEPSEEK_REASONING_RE.test(config.model)) return 'deepseek-reasoning'
   return 'openai-default'
 }
 

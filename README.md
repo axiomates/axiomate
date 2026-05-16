@@ -264,7 +264,7 @@ The `o4-mini` entry uses the OpenAI Responses API (`/v1/responses`), which prese
 | `model` | yes | Model ID sent to the provider API |
 | `name` | no | Display name in the model picker |
 | `protocol` | yes | `"openai-chat"`, `"openai-responses"`, or `"anthropic"` — determines wire format. See [Protocol](#protocol) below |
-| `vendor` | no | Vendor template name. Built-in: `openai-default`, `openai-responses`, `anthropic`, `deepseek-reasoning`, `qwen-thinking`. When omitted, axiomate infers from `protocol` + `model` name. Override when the inference picks the wrong template (e.g., GLM running on a Qwen-style gateway needs `vendor: "qwen-thinking"`) |
+| `vendor` | no | Vendor template name. Built-in: `openai-default`, `openai-responses`, `anthropic`, `deepseek-reasoning`, `openai-ali-thinking`. When omitted, axiomate infers from `protocol` + `baseUrl` (then model name as a last resort). Override when the inference picks the wrong template (e.g., a self-hosted relay that mirrors the SiliconFlow wire schema needs an explicit `vendor: "openai-ali-thinking"`) |
 | `baseUrl` | yes | API endpoint URL |
 | `apiKey` | yes | API key for authentication |
 | `contextWindow` | no | Context window size in tokens |
@@ -575,9 +575,9 @@ axiomate has five built-in vendor templates that translate the neutral `thinking
 | `openai-responses` | Auto-picked by `protocol: "openai-responses"` | `reasoning: { effort, summary: "auto" }` |
 | `anthropic` | Auto-picked by `protocol: "anthropic"` | `thinking: { type: "enabled", budget_tokens }` + `output_config: { effort }` |
 | `deepseek-reasoning` | Auto-picked when model name matches DeepSeek V4+ | `reasoning_effort` (with low/medium auto-collapsed to high per DeepSeek docs) + automatic `reasoning_content` round-trip |
-| `qwen-thinking` | Auto-picked when model name matches Qwen3+ | `enable_thinking` + `thinking_budget` |
+| `openai-ali-thinking` | Auto-picked when `baseUrl` is `api.siliconflow.cn` or `dashscope.aliyuncs.com` | `enable_thinking` + `reasoning_effort` (low/medium collapse to high) + `thinking_budget` |
 
-axiomate auto-picks a vendor based on `protocol` + model name. Override with `vendor: "qwen-thinking"` if your model name doesn't match the inference rules but follows that vendor's wire format (e.g., GLM hosted on a Qwen-style gateway).
+axiomate auto-picks a vendor based on `protocol` + `baseUrl` first, then model name as a last resort. The gateway-first ordering matters because `api.siliconflow.cn` and `dashscope.aliyuncs.com` use a single wire schema for every thinking-capable model they host (Qwen, GLM, Kimi, MiniMax, even DeepSeek). Override with `vendor: "..."` if you're relaying through a non-canonical host.
 
 **Enabling thinking / reasoning:**
 

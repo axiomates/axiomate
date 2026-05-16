@@ -277,7 +277,7 @@ export type ModelProviderConfig = {
   /**
    * Vendor template name. Determines how `thinking` translates to wire
    * fields. Built-in: 'openai-default' | 'openai-responses' | 'anthropic'
-   * | 'deepseek-reasoning' | 'qwen-thinking'. Users can register more
+   * | 'deepseek-reasoning' | 'openai-ali-thinking'. Users can register more
    * under config's top-level `templates` field.
    *
    * When omitted, axiomate infers from protocol + model name (see
