@@ -5,7 +5,7 @@
  * without pulling in the LLM / provider registry / ink render chain.
  */
 
-export type Protocol = 'openai' | 'openai-responses' | 'anthropic'
+export type Protocol = 'openai-chat' | 'openai-responses' | 'anthropic'
 
 export type Stage =
   | 'protocol'
@@ -56,13 +56,13 @@ export type OnboardingProviderAction =
   | { type: 'back' }
 
 export const DEFAULT_BASE_URLS: Record<Protocol, string> = {
-  openai: 'https://api.openai.com/v1',
+  'openai-chat': 'https://api.openai.com/v1',
   'openai-responses': 'https://api.openai.com/v1',
   anthropic: 'https://api.anthropic.com',
 }
 
 export const MODEL_ID_HINT: Record<Protocol, string> = {
-  openai:
+  'openai-chat':
     'e.g., gpt-4o  or  qwen/qwen3-235b (OpenRouter)  or  Qwen/Qwen3-235B (SiliconFlow)',
   'openai-responses':
     'e.g., gpt-5, o4-mini, o3 (OpenAI Responses API — preferred for reasoning models)',
@@ -83,7 +83,7 @@ const MIN_CONTEXT_WINDOW = 1024
 
 export const initialOnboardingProviderState: OnboardingProviderState = {
   stage: 'protocol',
-  protocol: 'openai',
+  protocol: 'openai-chat',
   baseUrl: '',
   apiKey: '',
   modelId: '',

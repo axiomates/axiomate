@@ -216,7 +216,7 @@ Models are configured in `~/.axiomate.json`. On first run the file is created au
     "qwen/qwen3-235b": {
       "model": "qwen/qwen3-235b",
       "name": "Qwen3 235B",
-      "protocol": "openai",
+      "protocol": "openai-chat",
       "baseUrl": "https://openrouter.ai/api/v1",
       "apiKey": "sk-...",
       "contextWindow": 131072,
@@ -241,7 +241,7 @@ Models are configured in `~/.axiomate.json`. On first run the file is created au
     },
     "deepseek-v4-pro": {
       "model": "deepseek-v4-pro",
-      "protocol": "openai",
+      "protocol": "openai-chat",
       "baseUrl": "https://api.deepseek.com",
       "apiKey": "sk-...",
       "thinking": { "enabled": true, "effort": "high" }
@@ -263,7 +263,7 @@ The `o4-mini` entry uses the OpenAI Responses API (`/v1/responses`), which prese
 |-------|----------|-------------|
 | `model` | yes | Model ID sent to the provider API |
 | `name` | no | Display name in the model picker |
-| `protocol` | yes | `"openai"`, `"openai-responses"`, or `"anthropic"` — determines wire format. See [Protocol](#protocol) below |
+| `protocol` | yes | `"openai-chat"`, `"openai-responses"`, or `"anthropic"` — determines wire format. See [Protocol](#protocol) below |
 | `vendor` | no | Vendor template name. Built-in: `openai-default`, `openai-responses`, `anthropic`, `deepseek-reasoning`, `qwen-thinking`. When omitted, axiomate infers from `protocol` + `model` name. Override when the inference picks the wrong template (e.g., GLM running on a Qwen-style gateway needs `vendor: "qwen-thinking"`) |
 | `baseUrl` | yes | API endpoint URL |
 | `apiKey` | yes | API key for authentication |
@@ -555,14 +555,14 @@ The `protocol` field determines the wire format axiomate uses to talk to the mod
 
 | Value | Endpoint | Best for |
 |---|---|---|
-| `"openai"` | `POST {baseUrl}/chat/completions` | The de-facto standard. Use for any third-party OpenAI-compatible gateway: OpenRouter, SiliconFlow, DeepSeek, Together, Groq, Mistral, vLLM, ollama, LM Studio, LocalAI, ... |
+| `"openai-chat"` | `POST {baseUrl}/chat/completions` | The de-facto standard. Use for any third-party OpenAI-compatible gateway: OpenRouter, SiliconFlow, DeepSeek, Together, Groq, Mistral, vLLM, ollama, LM Studio, LocalAI, ... |
 | `"openai-responses"` | `POST {baseUrl}/responses` | OpenAI's newer Responses API. Use for OpenAI o-series / GPT-5 (official), and any gateway that explicitly supports `/v1/responses`. **Preserves reasoning items across tool-call rounds** — strongly preferred for reasoning models in agentic loops |
 | `"anthropic"` | `POST {baseUrl}/v1/messages` | Anthropic's Messages API. Use for Anthropic direct or any provider that implements the Anthropic wire format |
 
-**Picking between `openai` and `openai-responses`:**
+**Picking between `openai-chat` and `openai-responses`:**
 
 - If your provider documents Responses API support and the model is a reasoning model (o-series, GPT-5, etc.), pick `openai-responses`. Multi-step tool loops keep their chain of thought via reasoning items — without this, the model re-reasons from scratch on every turn.
-- If your provider only documents Chat Completions, or you're using a non-reasoning model, pick `openai`. It's universally supported and zero-friction.
+- If your provider only documents Chat Completions, or you're using a non-reasoning model, pick `openai-chat`. It's universally supported and zero-friction.
 - DeepSeek V4 / Qwen3 thinking / etc. all use Chat Completions with vendor-specific reasoning fields. axiomate's vendor template system handles the differences for you — see "Vendor templates" below.
 
 **Vendor templates:**

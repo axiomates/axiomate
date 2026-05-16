@@ -9,7 +9,7 @@ import {
 describe('onboardingProviderReducer', () => {
   it('starts on the protocol step with an openai default', () => {
     expect(initialOnboardingProviderState.stage).toBe('protocol')
-    expect(initialOnboardingProviderState.protocol).toBe('openai')
+    expect(initialOnboardingProviderState.protocol).toBe('openai-chat')
   })
 
   it('advances protocol → baseUrl and seeds a protocol-appropriate default baseUrl', () => {
@@ -29,7 +29,7 @@ describe('onboardingProviderReducer', () => {
     }
     const next = onboardingProviderReducer(seeded, {
       type: 'pickProtocol',
-      protocol: 'openai',
+      protocol: 'openai-chat',
     })
     expect(next.baseUrl).toBe('http://localhost:11434/v1')
   })
@@ -240,7 +240,7 @@ describe('full happy-path transition', () => {
     let state = initialOnboardingProviderState
     state = onboardingProviderReducer(state, {
       type: 'pickProtocol',
-      protocol: 'openai',
+      protocol: 'openai-chat',
     })
     state = onboardingProviderReducer(state, {
       type: 'submitBaseUrl',
@@ -272,7 +272,7 @@ describe('full happy-path transition', () => {
     })
     expect(state).toMatchObject({
       stage: 'verifying',
-      protocol: 'openai',
+      protocol: 'openai-chat',
       baseUrl: 'https://openrouter.ai/api/v1',
       apiKey: 'sk-or-v1-abc',
       modelId: 'qwen/qwen3-235b',
@@ -288,7 +288,7 @@ describe('buildModelConfig', () => {
   it('shapes the models[modelId] entry per ModelProviderConfig with defaults omitted', () => {
     const state: OnboardingProviderState = {
       stage: 'verifying',
-      protocol: 'openai',
+      protocol: 'openai-chat',
       baseUrl: 'https://openrouter.ai/api/v1',
       apiKey: 'sk-or-v1-abc',
       modelId: 'qwen/qwen3-235b',
@@ -300,7 +300,7 @@ describe('buildModelConfig', () => {
     expect(buildModelConfig(state)).toEqual({
       model: 'qwen/qwen3-235b',
       name: 'qwen/qwen3-235b',
-      protocol: 'openai',
+      protocol: 'openai-chat',
       baseUrl: 'https://openrouter.ai/api/v1',
       apiKey: 'sk-or-v1-abc',
       contextWindow: 128_000,
@@ -310,7 +310,7 @@ describe('buildModelConfig', () => {
   it('emits supportsImages: false when user explicitly disabled images', () => {
     const state: OnboardingProviderState = {
       stage: 'verifying',
-      protocol: 'openai',
+      protocol: 'openai-chat',
       baseUrl: 'https://api.deepseek.com',
       apiKey: 'sk-test',
       modelId: 'deepseek-v4-pro',
@@ -342,7 +342,7 @@ describe('buildModelConfig', () => {
   it('omits thinking field entirely when wizard chose Off', () => {
     const state: OnboardingProviderState = {
       stage: 'verifying',
-      protocol: 'openai',
+      protocol: 'openai-chat',
       baseUrl: 'https://api.example.com/v1',
       apiKey: 'sk-test',
       modelId: 'plain-model',

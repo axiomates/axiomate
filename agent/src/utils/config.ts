@@ -273,7 +273,7 @@ export type ModelProviderConfig = {
   name?: string
   description?: string
   /** Determines which LLMProvider to use */
-  protocol: 'openai' | 'openai-responses' | 'anthropic'
+  protocol: 'openai-chat' | 'openai-responses' | 'anthropic'
   /**
    * Vendor template name. Determines how `thinking` translates to wire
    * fields. Built-in: 'openai-default' | 'openai-responses' | 'anthropic'
@@ -323,7 +323,7 @@ export type ModelProviderConfig = {
    * claiming to be the official Codex CLI. Setting this lets axiomate
    * masquerade as the expected client without forking the SDK.
    *
-   * Applies to both `protocol: 'openai'` and `protocol: 'openai-responses'`.
+   * Applies to both `protocol: 'openai-chat'` and `protocol: 'openai-responses'`.
    * Anthropic ignores this field (the SDK uses its own UA construction).
    */
   userAgent?: string

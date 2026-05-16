@@ -11,7 +11,7 @@ import {
 
 describe('inferVendor', () => {
   it('anthropic protocol → anthropic', () => {
-    expect(inferVendor({ protocol: 'anthropic', model: 'claude-opus-4' })).toBe('anthropic')
+    expect(inferVendor({ protocol: 'anthropic', model: 'anthropic-flagship-4' })).toBe('anthropic')
   })
 
   it('openai-responses protocol → openai-responses', () => {
@@ -19,23 +19,23 @@ describe('inferVendor', () => {
   })
 
   it('openai + DeepSeek V4 → deepseek-reasoning', () => {
-    expect(inferVendor({ protocol: 'openai', model: 'deepseek-v4-pro' })).toBe('deepseek-reasoning')
-    expect(inferVendor({ protocol: 'openai', model: 'deepseek-ai/DeepSeek-V4-Flash' })).toBe('deepseek-reasoning')
+    expect(inferVendor({ protocol: 'openai-chat', model: 'deepseek-v4-pro' })).toBe('deepseek-reasoning')
+    expect(inferVendor({ protocol: 'openai-chat', model: 'deepseek-ai/DeepSeek-V4-Flash' })).toBe('deepseek-reasoning')
   })
 
   it('openai + Qwen3+ → qwen-thinking', () => {
-    expect(inferVendor({ protocol: 'openai', model: 'Qwen/Qwen3-235B' })).toBe('qwen-thinking')
-    expect(inferVendor({ protocol: 'openai', model: 'qwen3-235b' })).toBe('qwen-thinking')
-    expect(inferVendor({ protocol: 'openai', model: 'Qwen/Qwen3.5-122B' })).toBe('qwen-thinking')
+    expect(inferVendor({ protocol: 'openai-chat', model: 'Qwen/Qwen3-235B' })).toBe('qwen-thinking')
+    expect(inferVendor({ protocol: 'openai-chat', model: 'qwen3-235b' })).toBe('qwen-thinking')
+    expect(inferVendor({ protocol: 'openai-chat', model: 'Qwen/Qwen3.5-122B' })).toBe('qwen-thinking')
   })
 
   it('openai + unknown model → openai-default', () => {
-    expect(inferVendor({ protocol: 'openai', model: 'gpt-4o' })).toBe('openai-default')
-    expect(inferVendor({ protocol: 'openai', model: 'mistral-large' })).toBe('openai-default')
+    expect(inferVendor({ protocol: 'openai-chat', model: 'gpt-4o' })).toBe('openai-default')
+    expect(inferVendor({ protocol: 'openai-chat', model: 'mistral-large' })).toBe('openai-default')
   })
 
   it('does not match deepseek-v2 (older non-reasoning models)', () => {
-    expect(inferVendor({ protocol: 'openai', model: 'deepseek-v2' })).toBe('openai-default')
+    expect(inferVendor({ protocol: 'openai-chat', model: 'deepseek-v2' })).toBe('openai-default')
   })
 })
 

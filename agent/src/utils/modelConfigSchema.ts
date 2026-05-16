@@ -76,7 +76,7 @@ export const ModelProviderConfigSchema = z
     model: z.string().min(1),
     name: z.string().optional(),
     description: z.string().optional(),
-    protocol: z.enum(['openai', 'openai-responses', 'anthropic']),
+    protocol: z.enum(['openai-chat', 'openai-responses', 'anthropic']),
     vendor: z.string().optional(),
     baseUrl: z.string().min(1),
     apiKey: z.string().min(1),

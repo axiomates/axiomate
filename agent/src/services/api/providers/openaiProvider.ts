@@ -70,7 +70,7 @@ export interface OpenAIProviderConfig {
 // ---------------------------------------------------------------------------
 
 export class OpenAIProvider implements LLMProvider {
-  readonly name = 'openai'
+  readonly name = 'openai-chat'
   private client: OpenAI
   private config: OpenAIProviderConfig
 

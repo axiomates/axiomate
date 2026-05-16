@@ -13,7 +13,7 @@ function makeProvider(model = 'gpt-4o') {
     apiKey: 'test-key',
     modelConfig: {
       model,
-      protocol: 'openai',
+      protocol: 'openai-chat',
       baseUrl: 'https://example.invalid/v1',
       apiKey: 'test-key',
     },

@@ -49,7 +49,7 @@ export async function sideQuery(
   switch (provider.name) {
     case 'anthropic':
       return anthropicSideQuery(provider, options)
-    case 'openai':
+    case 'openai-chat':
     case 'openai-responses':
       // Both OpenAI-family providers expose the same neutral inference()
       // contract; no provider-specific wrapping needed.

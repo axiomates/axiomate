@@ -10,7 +10,7 @@ vi.mock('../config.js', () => ({
 
 type TestModelProviderConfig = {
   model: string
-  protocol: 'openai' | 'anthropic'
+  protocol: 'openai-chat' | 'anthropic'
   baseUrl: string
   apiKey: string
   repairToolCalls?: boolean
@@ -22,7 +22,7 @@ function modelConfig(
 ): TestModelProviderConfig {
   return {
     model,
-    protocol: 'openai',
+    protocol: 'openai-chat',
     baseUrl: 'https://example.test/v1',
     apiKey: 'test-key',
     ...(repairToolCalls === undefined ? {} : { repairToolCalls }),

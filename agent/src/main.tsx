@@ -1127,7 +1127,7 @@ async function run(): Promise<CommanderCommand> {
             `Run ${chalk.cyan('axiomate')} interactively to set up, or edit ${chalk.underline(configPath)} directly.\n`,
           )
           console.error(
-            `Supported protocols: ${chalk.cyan('"openai"')} (OpenRouter, SiliconFlow, vLLM, ollama) or ${chalk.cyan('"anthropic"')}`,
+            `Supported protocols: ${chalk.cyan('"openai-chat"')} (OpenRouter, SiliconFlow, vLLM, ollama, ...), ${chalk.cyan('"openai-responses"')} (OpenAI o-series), or ${chalk.cyan('"anthropic"')}`,
           )
           console.error(
             `Docs: ${chalk.underline('https://github.com/axiomates/axiomate#configuration')}\n`,

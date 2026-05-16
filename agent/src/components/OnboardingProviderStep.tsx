@@ -179,7 +179,7 @@ export function OnboardingProviderStep({
 
 function protocolLabel(protocol: Protocol): string {
   switch (protocol) {
-    case 'openai':
+    case 'openai-chat':
       return 'OpenAI Chat Completions'
     case 'openai-responses':
       return 'OpenAI Responses API'
@@ -205,7 +205,7 @@ function ProtocolStep({
       </Text>
       <Select
         options={[
-          { label: 'OpenAI Chat Completions (compatible: OpenRouter, SiliconFlow, vLLM, ollama, ...)', value: 'openai' },
+          { label: 'OpenAI Chat Completions (compatible: OpenRouter, SiliconFlow, vLLM, ollama, ...)', value: 'openai-chat' },
           { label: 'OpenAI Responses API (preferred for reasoning models: o4-mini, o3, gpt-5)', value: 'openai-responses' },
           { label: 'Anthropic-compatible', value: 'anthropic' },
         ]}

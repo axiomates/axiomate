@@ -42,7 +42,7 @@ export function getProviderForModel(model: string): LLMProvider {
       `  "models": {\n` +
       `    "${model}": {\n` +
       `      "model": "${model}",\n` +
-      `      "protocol": "openai",\n` +
+      `      "protocol": "openai-chat",\n` +
       `      "baseUrl": "https://your-api-provider.com/v1",\n` +
       `      "apiKey": "sk-..."\n` +
       `    }\n` +
@@ -104,7 +104,7 @@ function createProviderFromConfig(config: ModelProviderConfig): LLMProvider {
       })
     }
 
-    case 'openai':
+    case 'openai-chat':
       return new OpenAIProvider({
         baseUrl: config.baseUrl,
         apiKey: config.apiKey,
@@ -120,7 +120,7 @@ function createProviderFromConfig(config: ModelProviderConfig): LLMProvider {
 
     default:
       throw new Error(
-        `Unsupported protocol '${(config as { protocol: string }).protocol}' for model '${config.model}'. Supported: 'anthropic', 'openai', 'openai-responses'.`,
+        `Unsupported protocol '${(config as { protocol: string }).protocol}' for model '${config.model}'. Supported: 'anthropic', 'openai-chat', 'openai-responses'.`,
       )
   }
 }

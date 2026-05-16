@@ -93,14 +93,14 @@ describe('providerRegistry', () => {
       models: {
         'gpt-4o': {
           model: 'gpt-4o',
-          protocol: 'openai',
+          protocol: 'openai-chat',
           baseUrl: 'https://api.openai.com/v1',
           apiKey: 'sk-test',
         },
       },
     })
     const provider = getProviderForModel('gpt-4o')
-    expect(provider.name).toBe('openai')
+    expect(provider.name).toBe('openai-chat')
   })
 
   it('returns OpenAIResponsesProvider for protocol: openai-responses', () => {
