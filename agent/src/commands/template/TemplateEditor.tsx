@@ -38,8 +38,12 @@ const EXTENDS_OPTIONS = [
     value: 'deepseek-reasoning',
   },
   {
-    label: 'openai-ali-thinking — aliyun / SiliconFlow gateways',
+    label: 'openai-ali-thinking — aliyun DashScope (max → xhigh)',
     value: 'openai-ali-thinking',
+  },
+  {
+    label: 'openai-siliconflow-thinking — SiliconFlow (max → max)',
+    value: 'openai-siliconflow-thinking',
   },
   { label: 'None — write from scratch', value: '__none__' },
 ]

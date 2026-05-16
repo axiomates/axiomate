@@ -21,6 +21,7 @@ export type VendorTemplateName =
   | 'anthropic'
   | 'deepseek-reasoning'
   | 'openai-ali-thinking'
+  | 'openai-siliconflow-thinking'
 
 /** Effort levels the user can declare (axiomate-neutral). */
 export type EffortLevel = 'low' | 'medium' | 'high' | 'max'
@@ -86,15 +87,29 @@ export type VendorTemplate = {
 
 const builtinTemplates: Record<VendorTemplateName, VendorTemplate> = {
   'openai-default': {
-    effort: { patch: { reasoning_effort: '<value>' } },
+    effort: {
+      patch: { reasoning_effort: '<value>' },
+      // OpenAI Chat Completions accepts only low/medium/high. The neutral
+      // 'max' has no native equivalent — collapse to high.
+      valueMap: { max: 'high' },
+    },
   },
   'openai-responses': {
     enabledPatch: { reasoning: { summary: 'auto' } },
-    effort: { patch: { reasoning: { effort: '<value>' } } },
+    effort: {
+      patch: { reasoning: { effort: '<value>' } },
+      // OpenAI Responses API accepts 'minimal'|'low'|'medium'|'high'. The
+      // neutral 'max' has no native equivalent — collapse to high.
+      valueMap: { max: 'high' },
+    },
   },
   anthropic: {
     anthropicThinkingField: { defaultBudgetTokens: 16000 },
-    effort: { patch: { output_config: { effort: '<value>' } } },
+    effort: {
+      patch: { output_config: { effort: '<value>' } },
+      // Anthropic accepts low/medium/high. Collapse 'max' to high.
+      valueMap: { max: 'high' },
+    },
     budget: { patch: { thinking: { budget_tokens: '<budget>' } } },
   },
   'deepseek-reasoning': {
@@ -118,20 +133,12 @@ const builtinTemplates: Record<VendorTemplateName, VendorTemplate> = {
     autoRoundTripReasoningContent: true,
   },
   'openai-ali-thinking': {
-    // OpenAI-compatible thinking gateways that share a common wire schema:
-    // aliyun DashScope, SiliconFlow, and any provider following the same
-    // top-level shape. Applies to ALL thinking-capable models on these
-    // gateways (Qwen, GLM, Kimi, MiniMax, DeepSeek-via-gateway, ...) —
-    // model-agnostic, gateway-specific.
-    //
-    // Wire fields (all top-level, not extra_body — that's a Python-SDK
-    // convention; Node SDK lets us send any top-level fields verbatim):
+    // aliyun DashScope OpenAI-compatible thinking gateway. Wire fields:
     //   enable_thinking: bool             ← thinking switch
     //   thinking_budget: number           ← max reasoning tokens
-    //   reasoning_effort: 'none'|'minimal'|'low'|'medium'|'high'|'xhigh'
-    //                                     ← OpenAI-standard effort set; the
-    //                                       neutral 'max' maps to 'xhigh'
-    //                                       (the gateway rejects 'max').
+    //   reasoning_effort: 'low'|'medium'|'high'|'xhigh'
+    // Note: aliyun rejects 'max' literally — the docs say xhigh is the
+    // top tier, so we collapse the neutral 'max' to 'xhigh'.
     enabledPatch: { enable_thinking: true },
     disabledPatch: { enable_thinking: false },
     effort: {
@@ -142,6 +149,20 @@ const builtinTemplates: Record<VendorTemplateName, VendorTemplate> = {
         high: 'high',
         max: 'xhigh',
       },
+    },
+    budget: { patch: { thinking_budget: '<budget>' } },
+  },
+  'openai-siliconflow-thinking': {
+    // SiliconFlow OpenAI-compatible thinking gateway. Same trio as aliyun
+    // but accepts 'max' literally (no xhigh remap). Wire fields:
+    //   enable_thinking: bool             ← thinking switch
+    //   thinking_budget: number           ← max reasoning tokens
+    //   reasoning_effort: 'low'|'medium'|'high'|'max'
+    enabledPatch: { enable_thinking: true },
+    disabledPatch: { enable_thinking: false },
+    effort: {
+      patch: { reasoning_effort: '<value>' },
+      // Identity map: SiliconFlow accepts every neutral level as-is.
     },
     budget: { patch: { thinking_budget: '<budget>' } },
   },
@@ -251,9 +272,8 @@ export function inferVendor(
 
   const url = config.baseUrl ?? ''
   if (DEEPSEEK_HOST_RE.test(url)) return 'deepseek-reasoning'
-  if (SILICONFLOW_HOST_RE.test(url) || ALIYUN_HOST_RE.test(url)) {
-    return 'openai-ali-thinking'
-  }
+  if (SILICONFLOW_HOST_RE.test(url)) return 'openai-siliconflow-thinking'
+  if (ALIYUN_HOST_RE.test(url)) return 'openai-ali-thinking'
 
   // Model-name fallback for unknown gateways. DeepSeek V4+ is the family
   // that takes thinking + reasoning_effort; V3 and earlier are not

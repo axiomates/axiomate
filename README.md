@@ -291,6 +291,71 @@ Once a model is configured you can revise any field without leaving axiomate or 
 
 For complex GUI editors (VS Code, Sublime), make sure your `EDITOR` includes a wait flag — e.g. `EDITOR='code --wait'` or `EDITOR='subl --wait'` — so axiomate blocks until you close the file.
 
+#### Custom vendor template example
+
+A vendor template is a JSON object describing how to translate the neutral `thinking` declaration into wire fields. The DSL has four main parts: `enabledPatch` / `disabledPatch` (merged whenever thinking is on/off), `effort.patch` (containing the placeholder `<value>` to substitute the user's effort level), and `effort.valueMap` (optional remapping of axiomate's neutral effort levels to vendor-specific strings).
+
+**Example 1 — wrap a private API with non-standard effort tiers:**
+
+```jsonc
+{
+  "templates": {
+    "my-private-thinking": {
+      "extends": "openai-default",
+      "enabledPatch": { "thinking_mode": "on" },
+      "effort": {
+        "patch": { "intelligence_level": "<value>" },
+        "valueMap": {
+          "low": "1",
+          "medium": "2",
+          "high": "3",
+          "max": "9999"
+        }
+      }
+    }
+  }
+}
+```
+
+When a model with `vendor: "my-private-thinking"` and `thinking: { enabled: true, effort: "low" }` sends a request, the wire body has `thinking_mode: "on"` + `intelligence_level: "1"` at the top level.
+
+**Example 2 — override a built-in's value remapping:**
+
+The built-in `deepseek-reasoning` template collapses `low/medium → high` to match what DeepSeek's docs say their server accepts. If you want to send the literal axiomate level (e.g., to test what the server actually does with `low`), define a derived template with an identity `valueMap`:
+
+```jsonc
+{
+  "templates": {
+    "deepseek-honest": {
+      "extends": "deepseek-reasoning",
+      "effort": {
+        "patch": { "reasoning_effort": "<value>" },
+        "valueMap": {
+          "low": "low",
+          "medium": "medium",
+          "high": "high",
+          "max": "max"
+        }
+      }
+    }
+  },
+  "models": {
+    "deepseek-v4-pro-strict": {
+      "model": "deepseek-v4-pro",
+      "protocol": "openai-chat",
+      "vendor": "deepseek-honest",
+      "baseUrl": "https://api.deepseek.com",
+      "apiKey": "sk-...",
+      "thinking": { "enabled": true, "effort": "low" }
+    }
+  }
+}
+```
+
+Now the ModelPicker's "Low" choice sends `reasoning_effort: "low"` literally rather than collapsing to "high".
+
+The full DSL (with `budget`, `anthropicThinkingField`, `autoRoundTripReasoningContent`) is documented inline in `agent/src/services/api/vendorTemplates.ts`. Use `/template new` for an interactive wizard that prefills a built-in's JSON for you to modify.
+
 ### Voice Dictation
 
 `/voice` records microphone audio and sends it to the speech-to-text provider configured at `voice.stt` in `~/.axiomate.json`. The provider is independent from login/OAuth state and build-time feature flags.

@@ -34,7 +34,11 @@ export function modelSupportsEffort(model: string): boolean {
 }
 
 export function modelSupportsMaxEffort(model: string): boolean {
-  if (getConfiguredModelEffort(model) === 'max') {
+  // Any model that supports configurable effort can also be cranked to max.
+  // The actual wire value sent is determined by the vendor template's
+  // effort.valueMap (e.g. OpenAI vendors collapse max → high; DeepSeek
+  // forwards max as-is; aliyun/SiliconFlow maps max → xhigh).
+  if (modelSupportsEffort(model)) {
     return true
   }
   return getModelCapabilityOverride(model, 'max_effort') ?? false

@@ -51,7 +51,9 @@ describe('effort capability support', () => {
     })
 
     expect(modelSupportsEffort('custom')).toBe(true)
-    expect(modelSupportsMaxEffort('custom')).toBe(false)
+    // Any effort-capable model can be cranked to max — the vendor template's
+    // valueMap remaps if the wire format doesn't accept literal 'max'.
+    expect(modelSupportsMaxEffort('custom')).toBe(true)
     expect(getDefaultEffortForModel('custom')).toBe('medium')
   })
 

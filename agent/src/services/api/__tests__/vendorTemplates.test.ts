@@ -28,14 +28,14 @@ describe('inferVendor', () => {
     ).toBe('deepseek-reasoning')
   })
 
-  it('openai-chat + SiliconFlow baseUrl → openai-ali-thinking (gateway-level)', () => {
+  it('openai-chat + SiliconFlow baseUrl → openai-siliconflow-thinking (gateway-level)', () => {
     expect(
       inferVendor({
         protocol: 'openai-chat',
         model: 'Qwen/Qwen3-235B',
         baseUrl: 'https://api.siliconflow.cn/v1',
       }),
-    ).toBe('openai-ali-thinking')
+    ).toBe('openai-siliconflow-thinking')
     // Even DeepSeek-via-SiliconFlow uses the gateway's wire schema:
     expect(
       inferVendor({
@@ -43,7 +43,7 @@ describe('inferVendor', () => {
         model: 'deepseek-ai/DeepSeek-V4-Flash',
         baseUrl: 'https://api.siliconflow.cn/v1',
       }),
-    ).toBe('openai-ali-thinking')
+    ).toBe('openai-siliconflow-thinking')
   })
 
   it('openai-chat + aliyun DashScope baseUrl → openai-ali-thinking', () => {
@@ -126,12 +126,13 @@ describe('inferVendor', () => {
 })
 
 describe('isBuiltinVendor', () => {
-  it('recognizes all 5 built-ins', () => {
+  it('recognizes all 6 built-ins', () => {
     expect(isBuiltinVendor('openai-default')).toBe(true)
     expect(isBuiltinVendor('openai-responses')).toBe(true)
     expect(isBuiltinVendor('anthropic')).toBe(true)
     expect(isBuiltinVendor('deepseek-reasoning')).toBe(true)
     expect(isBuiltinVendor('openai-ali-thinking')).toBe(true)
+    expect(isBuiltinVendor('openai-siliconflow-thinking')).toBe(true)
   })
 
   it('rejects unknown names', () => {
@@ -320,6 +321,36 @@ describe('applyThinkingTemplate — built-in: openai-ali-thinking', () => {
   })
 })
 
+describe('applyThinkingTemplate — built-in: openai-siliconflow-thinking', () => {
+  const template = resolveTemplate('openai-siliconflow-thinking')
+
+  it('all effort levels pass through unchanged (including max)', () => {
+    for (const lvl of ['low', 'medium', 'high', 'max'] as const) {
+      expect(
+        applyThinkingTemplate({ enabled: true, effort: lvl }, template),
+      ).toEqual({
+        enable_thinking: true,
+        reasoning_effort: lvl,
+      })
+    }
+  })
+
+  it('budget passes through as thinking_budget', () => {
+    expect(
+      applyThinkingTemplate({ enabled: true, budget: 4096 }, template),
+    ).toEqual({
+      enable_thinking: true,
+      thinking_budget: 4096,
+    })
+  })
+
+  it('disabled → enable_thinking: false', () => {
+    expect(applyThinkingTemplate({ enabled: false }, template)).toEqual({
+      enable_thinking: false,
+    })
+  })
+})
+
 describe('deepMerge', () => {
   it('overwrites primitive at leaf', () => {
     const dst: Record<string, unknown> = { a: 1, b: 2 }
@@ -341,7 +372,7 @@ describe('deepMerge', () => {
 })
 
 describe('built-in templates structural sanity', () => {
-  it('all 5 expected names present', () => {
+  it('all 6 expected names present', () => {
     const builtins = getBuiltinTemplates()
     expect(Object.keys(builtins).sort()).toEqual([
       'anthropic',
@@ -349,6 +380,7 @@ describe('built-in templates structural sanity', () => {
       'openai-ali-thinking',
       'openai-default',
       'openai-responses',
+      'openai-siliconflow-thinking',
     ])
   })
 })

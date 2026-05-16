@@ -58,7 +58,7 @@ export function getProviderForModel(model: string): LLMProvider {
       if (!customTemplate) {
         throw new Error(
           `Model '${model}' references vendor '${modelConfig.vendor}', which is neither a built-in template nor defined in config.templates. ` +
-          `Built-in templates: 'openai-default', 'openai-responses', 'anthropic', 'deepseek-reasoning', 'openai-ali-thinking'.`,
+          `Built-in templates: 'openai-default', 'openai-responses', 'anthropic', 'deepseek-reasoning', 'openai-ali-thinking', 'openai-siliconflow-thinking'.`,
         )
       }
     }
