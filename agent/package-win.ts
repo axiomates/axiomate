@@ -216,6 +216,18 @@ copyIfExists('node_modules/@img/sharp-win32-x64/lib/sharp-win32-x64.node')
 copyIfExists('node_modules/@nut-tree-fork/libnut-win32/build/Release/libnut.node')
 copyIfExists('node_modules/node-screenshots-win32-x64-msvc/node-screenshots.win32-x64-msvc.node', 'node-screenshots.node')
 
+// Bundle ripgrep binary alongside axiomate.exe.
+// At runtime, getRipgrepConfig (utils/ripgrep.ts) looks for `rg.exe` in
+// dirname(process.execPath) — i.e. next to axiomate.exe — so the user
+// gets a fixed ripgrep version with no PATH lookup or system-install
+// requirement. Source is the @vscode/ripgrep platform-specific subpackage
+// resolved via pnpm. The wrapper @vscode/ripgrep package itself only
+// exports an rgPath constant; pnpm hoists the actual binary into the
+// platform-suffixed subpackage at the path below.
+copyIfExists(
+  'node_modules/@vscode/ripgrep-win32-x64/bin/rg.exe',
+)
+
 copyWorkspaceNativeFiles('audio-capture-axiomate')
 copyWorkspaceNativeFiles('computer-use-win-napi-axiomate')
 

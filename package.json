@@ -19,6 +19,7 @@
   },
   "pnpm": {
     "onlyBuiltDependencies": [
+      "@vscode/ripgrep",
       "esbuild",
       "protobufjs",
       "sharp"

@@ -280,6 +280,11 @@ copyIfExists('node_modules/@nut-tree-fork/libnut-darwin/build/Release/libnut.nod
 copyIfExists('node_modules/@nut-tree-fork/node-mac-permissions/build/Release/permissions.node')
 copyIfExists(`node_modules/node-screenshots-darwin-${macArch}/node-screenshots.${nodePlatformArch}.node`, 'node-screenshots.node')
 
+// Bundle ripgrep binary alongside the axiomate executable. See package-win.ts
+// for full rationale — same pattern, platform-specific subpackage resolved
+// at packaging time, found at runtime via dirname(process.execPath).
+copyIfExists(`node_modules/@vscode/ripgrep-darwin-${macArch}/bin/rg`)
+
 copyWorkspaceNativeFiles('clipboard-axiomate')
 copyWorkspaceNativeFiles('audio-capture-axiomate')
 copyWorkspaceNativeFiles('modifiers-mac-napi-axiomate')
