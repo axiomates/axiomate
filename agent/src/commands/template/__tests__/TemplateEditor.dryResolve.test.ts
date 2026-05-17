@@ -1,7 +1,9 @@
 import { describe, expect, test, vi } from 'vitest'
 
 const mockGetGlobalConfig = vi.hoisted(() =>
-  vi.fn<() => { templates?: Record<string, unknown> }>(() => ({})),
+  vi.fn(
+    (): { templates?: Record<string, unknown> } => ({}),
+  ),
 )
 
 vi.mock('../../../utils/config.js', () => ({

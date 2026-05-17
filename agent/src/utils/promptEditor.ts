@@ -277,7 +277,7 @@ export function editJsonInEditor<T>(opts: EditJsonOptions<T>): EditJsonResult<T>
     const message = err instanceof Error ? err.message : String(err)
     return {
       ok: false,
-      error: `Invalid JSON: ${message}`,
+      error: prettifyJsonError(message, result.content),
       raw: result.content,
       tempPath,
     }
@@ -306,4 +306,82 @@ function cleanupTempFile(path: string): void {
   } catch {
     // Best-effort; the OS cleans /tmp eventually.
   }
+}
+
+/**
+ * Translate V8's JSON.parse error message into a hint that explains the
+ * likely cause and points at line/col instead of byte offset. The user
+ * is editing in $EDITOR, so the goal is to make the most common JS-vs-JSON
+ * confusions (comments, trailing commas, unquoted keys, single quotes,
+ * special numerics) easy to spot at a glance. Falls back to the V8 message
+ * if no pattern matches.
+ *
+ * Node's V8 error format varies by version (older: "at position N";
+ * newer: "Unexpected token X, ..."), so we don't trust the position field
+ * — we scan the content for the offending pattern ourselves and compute
+ * line/col from the first match.
+ */
+export function prettifyJsonError(message: string, content: string): string {
+  type Probe = { regex: RegExp; hint: string }
+  const probes: Probe[] = [
+    {
+      regex: /\/\/[^\n]*|\/\*[\s\S]*?\*\//,
+      hint: "JSON does not support comments. Remove '//' or '/* */' lines.",
+    },
+    {
+      regex: /,\s*[}\]]/,
+      hint: "JSON does not allow trailing commas. Remove the comma before '}' or ']'.",
+    },
+    {
+      regex: /[{,]\s*([A-Za-z_$][\w$]*)\s*:/,
+      hint: 'JSON requires keys to be double-quoted strings (not bare identifiers). Wrap them in "...".',
+    },
+    {
+      regex: /:\s*'[^']*'/,
+      hint: `JSON requires double quotes ", not single ' for strings.`,
+    },
+    {
+      regex: /(?:^|[\s:,\[])(Infinity|NaN|undefined)\b/,
+      hint: 'JSON does not support Infinity, NaN, or undefined. Use null or a finite number.',
+    },
+  ]
+
+  for (const { regex, hint } of probes) {
+    const m = regex.exec(content)
+    if (m) {
+      const { line, col } = linecolFromOffset(content, m.index)
+      return `${hint} (line ${line}, col ${col})`
+    }
+  }
+
+  // No specific pattern matched — try to extract a position from the raw
+  // V8 message (older Node format) or just pass through.
+  const posMatch = /at position (\d+)/.exec(message)
+  if (posMatch) {
+    const { line, col } = linecolFromOffset(
+      content,
+      Number.parseInt(posMatch[1]!, 10),
+    )
+    return `Invalid JSON at line ${line}, col ${col}: ${message}`
+  }
+  return `Invalid JSON: ${message}`
+}
+
+/** Convert a 0-based byte offset into 1-based line/col (counting LF). */
+function linecolFromOffset(
+  content: string,
+  offset: number,
+): { line: number; col: number } {
+  let line = 1
+  let col = 1
+  const limit = Math.min(offset, content.length)
+  for (let i = 0; i < limit; i++) {
+    if (content[i] === '\n') {
+      line++
+      col = 1
+    } else {
+      col++
+    }
+  }
+  return { line, col }
 }
