@@ -108,9 +108,11 @@ export const VendorTemplateSchema = z
         z.null(),
       ])
       .optional(),
-    autoRoundTripReasoningContent: z
-      .union([z.boolean(), z.null()])
-      .optional(),
+    // autoRoundTripReasoningContent is intentionally NOT on VendorTemplate.
+    // It's a model-class quirk (DeepSeek V4+ requires reasoning_content
+    // round-trip on tool calls regardless of which gateway hosts the model),
+    // so it lives on ModelTemplate. Putting it here would silently let
+    // users misclassify it as a vendor concern.
   })
   .strict()
 
@@ -124,7 +126,8 @@ export const VendorTemplateSchema = z
  * is no inheritance between model templates today, and they do not
  * declare a target protocol because they overlay whatever vendor
  * resolved. Auto-matched via `matchModelRegex` when the user didn't
- * pin one explicitly with `modelTemplate:` on a model entry.
+ * pin one explicitly with `modelTemplate:` on a model entry. Owns
+ * `autoRoundTripReasoningContent` since that quirk follows the model.
  */
 export const ModelTemplateSchema = z
   .object({

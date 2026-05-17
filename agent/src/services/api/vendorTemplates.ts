@@ -94,16 +94,6 @@ export type TemplatePatches = {
    * didn't supply one. Other vendors leave this unset.
    */
   anthropicThinkingField?: { defaultBudgetTokens: number } | null
-
-  /**
-   * Echo reasoning_content back in the assistant message history on
-   * subsequent tool calls. Required by some reasoning models (DeepSeek
-   * V4+) to maintain reasoning context across tool-use turns.
-   *
-   * Lives at any of the three layers — typically on the model layer
-   * because it follows the model across gateways.
-   */
-  autoRoundTripReasoningContent?: boolean | null
 }
 
 /**
@@ -113,6 +103,11 @@ export type TemplatePatches = {
  * either specify `protocol` (independent template) or `extends`
  * (inherits another vendor's full chain). Cycles and missing parents are
  * caught at resolveStack time.
+ *
+ * NOTE: `autoRoundTripReasoningContent` is intentionally NOT part of this
+ * shape — it's a model-class quirk (DeepSeek V4+ requires reasoning_content
+ * round-trip on tool calls regardless of which gateway hosts the model),
+ * not a gateway behavior. Declare it on ModelTemplate instead.
  */
 export type VendorTemplate = TemplatePatches & {
   /**
@@ -129,6 +124,11 @@ export type VendorTemplate = TemplatePatches & {
  * A model template overlays model-specific quirks on top of a vendor.
  * Selected per ModelProviderConfig either via explicit `modelTemplate:`
  * or auto-matched by the model name regex.
+ *
+ * Owns `autoRoundTripReasoningContent` — that flag follows the model
+ * across gateways (e.g. DeepSeek V4 needs it whether reached via the
+ * official API, SiliconFlow, OpenRouter, or a private relay), so it
+ * naturally lives at the model layer rather than vendor.
  */
 export type ModelTemplate = TemplatePatches & {
   /**
@@ -138,6 +138,16 @@ export type ModelTemplate = TemplatePatches & {
    * gateway/protocol agnostic.
    */
   matchModelRegex?: string
+
+  /**
+   * Echo reasoning_content back in the assistant message history on
+   * subsequent tool calls. Required by some reasoning models (DeepSeek
+   * V4+) to maintain reasoning context across tool-use turns.
+   *
+   * Lives only on the model layer — it's a property of the model itself
+   * that travels with it across gateways, not a vendor/protocol concern.
+   */
+  autoRoundTripReasoningContent?: boolean | null
 }
 
 /**
@@ -147,10 +157,16 @@ export type ModelTemplate = TemplatePatches & {
  */
 export type ProtocolTemplate = TemplatePatches
 
-/** Final shape consumed by applyThinkingTemplate after the three-layer merge. */
+/**
+ * Final shape consumed by applyThinkingTemplate after the three-layer merge.
+ * Includes ModelTemplate fields (autoRoundTripReasoningContent) since the
+ * model layer participates in the merge.
+ */
 export type ResolvedTemplate = TemplatePatches & {
   /** Protocol the resolved patches target — used for runtime routing. */
   protocol: Protocol
+  /** Inherited from the model layer if any model template matched. */
+  autoRoundTripReasoningContent?: boolean
 }
 
 // Backwards-compat alias for the rare callers that imported the old name.

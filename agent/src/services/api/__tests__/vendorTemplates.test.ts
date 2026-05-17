@@ -436,9 +436,9 @@ describe('applyThinkingTemplate — built-in: deepseek-reasoning', () => {
     })
   })
 
-  it('does NOT set autoRoundTripReasoningContent on the vendor template — that quirk lives in the openai-chat-deepseek-v4p model template', () => {
-    expect(template.autoRoundTripReasoningContent).toBeUndefined()
-  })
+  // autoRoundTripReasoningContent on VendorTemplate is now a TYPE error —
+  // the field was moved to ModelTemplate (openai-chat-deepseek-v4p). The
+  // type system enforces this; no runtime test needed.
 })
 
 describe('applyThinkingTemplate — built-in: openai-ali-thinking', () => {
