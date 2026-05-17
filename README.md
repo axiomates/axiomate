@@ -23,21 +23,29 @@ Multi-provider AI agent CLI with full desktop automation. Chat, code, and contro
   npm install -g pnpm
   ```
 - Git
-- [ripgrep](https://github.com/BurntSushi/ripgrep) (`rg`) — recommended when running from source. Axiomate's search/grep/glob/`AXIOMATE.md` discovery paths use ripgrep. Release binaries bundle it; source runs prefer a system `rg` when available.
+- [ripgrep](https://github.com/BurntSushi/ripgrep) (`rg`) — **bundled automatically** in every distribution mode (pnpm/npm install via `@vscode/ripgrep`; packaged `axiomate.exe`/`axiomate` ship `rg` next to the binary). You don't need to install ripgrep yourself in normal use; a system `rg` on `PATH` is treated as a fallback only.
 - **Windows only**: Visual Studio 2022 Build Tools with the C++ workload — needed by Rust NAPI compilation. The bootstrap script **auto-installs it via `winget`** when missing, so most users don't need to do anything in advance. If you want it pre-installed (or your environment doesn't have winget), see the [Windows section](#windows) below.
 
 The bootstrap script will auto-install Bun, Rust, pnpm itself, and the Windows VS Build Tools (Windows only) when any of them are missing. So once you have Node + Git, `npm run bootstrap` (or `node scripts/bootstrap.mjs`) is enough for a clean machine. If pnpm is already installed, prefer `pnpm run bootstrap` — same behavior.
 
-### Installing ripgrep
+### How ripgrep is resolved
 
-The packaged `axiomate.exe` / `axiomate` binaries already ship `rg` bundled inside the runtime, so release users usually do not need to install anything.
+At startup Axiomate picks `rg` in this order:
 
-When running from source (`pnpm run start` / `pnpm run bootstrap`), Axiomate will:
+1. **Bundled** —
+   - Packaged exe: `dirname(process.execPath) + 'rg(.exe)'` (the rg binary copied next to `axiomate.exe`/`axiomate` by `package:win`/`package:mac`).
+   - npm/pnpm distribution: the `rgPath` exported by `@vscode/ripgrep`, which resolves to the platform-specific subpackage (`@vscode/ripgrep-{platform}-{arch}/bin/rg{.exe}`) installed automatically.
+2. **System `rg`** on `PATH` (fallback only — useful for environments where the bundled binary is unavailable).
+3. If neither is found Axiomate fails fast with an install hint.
 
-- prefer a system `rg` on `PATH` when one is available
-- otherwise fall back to the bundled / vendored ripgrep path used by the repo or packaged runtime
+This means a normal `pnpm run bootstrap` clone or a downloaded release artifact gets the same fixed ripgrep version (15.0.0 at the time of writing, via `@vscode/ripgrep`). PATH version drift stops mattering.
 
-Installing a normal system `rg` is still recommended because it makes diagnostics simpler and helps when you want to use `rg` directly in your own shell.
+### Manually installing ripgrep (only if the bundled binary is missing)
+
+You shouldn't need this in normal use. Reach for it only if:
+- you hand-relocated `axiomate.exe` without its sibling files (and want to keep the relocation), or
+- you're on a platform/arch the `@vscode/ripgrep` subpackages don't cover, or
+- a corporate policy strips bundled binaries on download.
 
 #### Online install
 
@@ -99,7 +107,7 @@ $env:Path = "C:\Tools\ripgrep;$env:Path"
 export PATH="/opt/ripgrep:$PATH"
 ```
 
-If you maintain an internal software mirror, the cleanest setup is to mirror the official ripgrep release artifacts and install from that mirror instead of relying on public package repositories.
+If you maintain an internal software mirror, the cleanest setup is to mirror the official ripgrep release artifacts and install from that mirror instead of relying on public package repositories. Axiomate will pick up that `rg` automatically as the system fallback.
 
 The repo uses pnpm workspaces. Bun is used by the build/runtime scripts, not as the primary installer.
 
