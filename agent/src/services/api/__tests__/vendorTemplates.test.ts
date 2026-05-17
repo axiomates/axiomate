@@ -84,6 +84,45 @@ describe('inferVendor', () => {
     }
   })
 
+  it('openai-chat + DeepSeek versions WITHOUT the v prefix → deepseek-reasoning', () => {
+    // Common third-party-relay naming uses bare numbers instead of v-prefix.
+    for (const m of [
+      'deepseek-4',
+      'DeepSeek 4',
+      'deepseek 4.1',
+      'deepseek_4',
+      'DeepSeek-4.2-Pro',
+    ]) {
+      expect(
+        inferVendor({
+          protocol: 'openai-chat',
+          model: m,
+          baseUrl: 'https://example.com/v1',
+        }),
+      ).toBe('deepseek-reasoning')
+    }
+  })
+
+  it('openai-chat + non-version model lines that happen to contain "deepseek" + a digit later → openai-default', () => {
+    // The regex requires the digit to be adjacent to deepseek (only optional
+    // 'v' + space/dash/underscore between them), so unrelated R-series and
+    // distill names don't get misclassified as a reasoning version.
+    for (const m of [
+      'deepseek-r1',
+      'deepseek-r1-distill-70b',
+      'deepseek-coder-7b',
+      'deepseek-chat',
+    ]) {
+      expect(
+        inferVendor({
+          protocol: 'openai-chat',
+          model: m,
+          baseUrl: 'https://example.com/v1',
+        }),
+      ).toBe('openai-default')
+    }
+  })
+
   it('openai-chat + unknown gateway + unknown model → openai-default', () => {
     expect(
       inferVendor({

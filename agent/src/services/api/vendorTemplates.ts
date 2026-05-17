@@ -294,7 +294,19 @@ export function resolveTemplate(
 // inferVendor
 // ---------------------------------------------------------------------------
 
-const DEEPSEEK_REASONING_RE = /deepseek.*v(\d+)/i
+/**
+ * Match DeepSeek model names with a version >= 4 (the reasoning family).
+ *
+ * Matches: deepseek-v4, DeepSeek-V4, deepseek 4, deepseek-4.1, deepseek_v10
+ * Rejects: deepseek-r1, deepseek-coder-7b, deepseek-chat (no version digit
+ *          adjacent to the deepseek prefix; the optional 'v' and only
+ *          space/dash/underscore separators keep us from matching unrelated
+ *          model lines that happen to contain "deepseek" plus a digit later).
+ *
+ * Captures the leading integer of the version (`v4.1` → `4`); callers
+ * compare against the >=4 threshold.
+ */
+const DEEPSEEK_REASONING_RE = /\bdeepseek[\s\-_]*v?[\s\-_]*(\d+)/i
 
 /** Match the official DeepSeek API host. */
 const DEEPSEEK_HOST_RE = /(^|\/\/)api\.deepseek\.com(\/|$)/i
