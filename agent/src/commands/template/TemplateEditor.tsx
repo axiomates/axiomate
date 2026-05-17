@@ -11,6 +11,7 @@ import { editJsonInEditor } from '../../utils/promptEditor.js'
 import {
   getBuiltinTemplates,
   isBuiltinVendor,
+  resolveTemplate,
   type VendorTemplate,
 } from '../../services/api/vendorTemplates.js'
 import { VendorTemplateSchema } from '../../utils/modelConfigSchema.js'
@@ -76,13 +77,18 @@ export function TemplateEditor({
   React.useEffect(() => {
     if (state.phase !== 'opening') return
 
+    // Build a schema that ALSO dry-resolves the about-to-save template
+    // against the live custom registry. This catches typos in `extends`
+    // (e.g. 'openai-defaut'), cycles, exceeded depth, and missing
+    // protocols at save time — surfacing through the same Re-edit flow
+    // as Zod field errors instead of throwing on the wire path.
+    const dryResolveSchema = buildDryResolveSchema(state.name)
+
     if (!state.reusePath) {
       const initial = buildInitialTemplate(state.baseName)
       const result = editJsonInEditor<VendorTemplate>({
         initialContent: JSON.stringify(initial, null, 2) + '\n',
-        schema: VendorTemplateSchema as unknown as import('zod').ZodSchema<
-          VendorTemplate
-        >,
+        schema: dryResolveSchema,
         filenameHint: `axiomate-template-${state.name.replace(
           /[^A-Za-z0-9]/g,
           '_',
@@ -95,9 +101,7 @@ export function TemplateEditor({
     const result = editJsonInEditor<VendorTemplate>({
       mode: 'reuse',
       reusePath: state.reusePath,
-      schema: VendorTemplateSchema as unknown as import('zod').ZodSchema<
-        VendorTemplate
-      >,
+      schema: dryResolveSchema,
     })
     handleEditorResult(result, state.name, onComplete, onCancel, dispatch)
   }, [
@@ -157,6 +161,36 @@ function buildInitialTemplate(baseName: string): VendorTemplate {
     } as VendorTemplate
   }
   return SCRATCH_INITIAL_TEMPLATE
+}
+
+/**
+ * Produce a schema that wraps VendorTemplateSchema with a superRefine
+ * pass calling resolveTemplate. Captures the live custom-template
+ * registry by closure so a successful parse not only validates field
+ * shape but also confirms the extends chain resolves and the merged
+ * template ends up with non-empty `protocols`.
+ *
+ * Surfaces failures through the same path as a Zod field error — meaning
+ * editJsonInEditor returns ok:false with a useful error message, and
+ * handleEditorResult dispatches editorInvalid → TUI shows Re-edit prompt.
+ */
+export function buildDryResolveSchema(
+  templateName: string,
+): import('zod').ZodSchema<VendorTemplate> {
+  return VendorTemplateSchema.superRefine((parsed, ctx) => {
+    const known = {
+      ...(getGlobalConfig().templates ?? {}),
+      [templateName]: parsed as VendorTemplate,
+    }
+    try {
+      resolveTemplate(templateName, known)
+    } catch (err) {
+      ctx.addIssue({
+        code: 'custom',
+        message: err instanceof Error ? err.message : String(err),
+      })
+    }
+  }) as unknown as import('zod').ZodSchema<VendorTemplate>
 }
 
 function handleEditorResult(
