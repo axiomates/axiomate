@@ -67,19 +67,8 @@ export function createRipgrepShellIntegration(): {
 } {
   const rgCommand = ripgrepCommand()
 
-  // For embedded ripgrep (bun-internal), we need a shell function that sets argv0
-  if (rgCommand.argv0) {
-    return {
-      type: 'function',
-      snippet: createArgv0ShellFunction(
-        'rg',
-        rgCommand.argv0,
-        rgCommand.rgPath,
-      ),
-    }
-  }
-
-  // For regular ripgrep, use a simple alias target
+  // Bundled / system rg: simple alias target — no argv0 multi-call trick
+  // since the embedded mode (axiomate.exe-as-rg) was removed.
   const quotedPath = quote([rgCommand.rgPath])
   const quotedArgs = rgCommand.rgArgs.map(arg => quote([arg]))
   const aliasTarget =

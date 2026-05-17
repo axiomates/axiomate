@@ -31,7 +31,7 @@ function probeRipgrep(command: string, args: string[]): boolean {
   }
 }
 
-const RG_BASENAME = getPlatform() === 'win32' ? 'rg.exe' : 'rg'
+const RG_BASENAME = getPlatform() === 'windows' ? 'rg.exe' : 'rg'
 
 /**
  * Resolve a bundled rg binary that ships with axiomate. Two distribution
