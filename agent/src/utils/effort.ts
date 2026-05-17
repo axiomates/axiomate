@@ -295,38 +295,6 @@ export function convertEffortValueToLevel(value: EffortValue): EffortLevel {
   return 'high'
 }
 
-/**
- * Get user-facing description for effort levels
- *
- * @param level The effort level to describe
- * @returns Human-readable description
- */
-export function getEffortLevelDescription(level: EffortLevel): string {
-  switch (level) {
-    case 'low':
-      return 'Quick, straightforward implementation with minimal overhead'
-    case 'medium':
-      return 'Balanced approach with standard implementation and testing'
-    case 'high':
-      return 'Comprehensive implementation with extensive testing and documentation'
-    case 'max':
-      return 'Maximum capability with deepest reasoning'
-  }
-}
-
-/**
- * Get user-facing description for effort values (both string and numeric)
- *
- * @param value The effort value to describe
- * @returns Human-readable description
- */
-export function getEffortValueDescription(value: EffortValue): string {
-  if (typeof value === 'string') {
-    return getEffortLevelDescription(value)
-  }
-  return 'Balanced approach with standard implementation and testing'
-}
-
 export type DefaultEffortCalloutConfig = {
   enabled: boolean
   dialogTitle: string
