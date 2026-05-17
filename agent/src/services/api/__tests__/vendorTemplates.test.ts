@@ -182,9 +182,43 @@ describe('resolveTemplate', () => {
     expect(() => resolveTemplate('a', custom)).toThrow(/cyclic/)
   })
 
+  it('throws when a custom template has neither protocols nor extends', () => {
+    const custom: Record<string, VendorTemplate> = {
+      'bare-vendor': {
+        effort: { patch: { reasoning_effort: '<value>' } },
+      },
+    }
+    expect(() => resolveTemplate('bare-vendor', custom)).toThrow(
+      /missing 'protocols'/,
+    )
+  })
+
+  it('inherits protocols from extends chain when child omits it', () => {
+    const custom: Record<string, VendorTemplate> = {
+      'derived-from-deepseek': {
+        extends: 'deepseek-reasoning',
+        // no protocols here — inherited from deepseek-reasoning
+      },
+    }
+    const t = resolveTemplate('derived-from-deepseek', custom)
+    expect(t.protocols).toEqual(['openai-chat'])
+  })
+
+  it("child's explicit protocols override the parent", () => {
+    const custom: Record<string, VendorTemplate> = {
+      'override-vendor': {
+        protocols: ['openai-responses'],
+        extends: 'openai-default',
+      },
+    }
+    const t = resolveTemplate('override-vendor', custom)
+    expect(t.protocols).toEqual(['openai-responses'])
+  })
+
   it('custom template wins over built-in on name collision', () => {
     const custom: Record<string, VendorTemplate> = {
       'openai-default': {
+        protocols: ['openai-chat'],
         effort: { patch: { my_custom_effort: '<value>' } },
       },
     }
@@ -435,6 +469,34 @@ describe('built-in templates structural sanity', () => {
       'openai-default',
       'openai-responses',
       'openai-siliconflow-thinking',
+    ])
+  })
+
+  it('every built-in declares non-empty protocols', () => {
+    const builtins = getBuiltinTemplates()
+    for (const [name, tpl] of Object.entries(builtins)) {
+      expect(tpl.protocols, `${name} should declare protocols`).toBeDefined()
+      expect(
+        tpl.protocols!.length,
+        `${name} should have at least one protocol`,
+      ).toBeGreaterThan(0)
+    }
+  })
+
+  it('protocol-to-template mapping is what M1 expects', () => {
+    expect(resolveTemplate('anthropic').protocols).toEqual(['anthropic'])
+    expect(resolveTemplate('openai-responses').protocols).toEqual([
+      'openai-responses',
+    ])
+    expect(resolveTemplate('openai-default').protocols).toEqual(['openai-chat'])
+    expect(resolveTemplate('deepseek-reasoning').protocols).toEqual([
+      'openai-chat',
+    ])
+    expect(resolveTemplate('openai-ali-thinking').protocols).toEqual([
+      'openai-chat',
+    ])
+    expect(resolveTemplate('openai-siliconflow-thinking').protocols).toEqual([
+      'openai-chat',
     ])
   })
 })

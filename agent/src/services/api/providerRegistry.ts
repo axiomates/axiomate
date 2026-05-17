@@ -7,7 +7,7 @@
 import type { LLMProvider } from './provider.js'
 import { getGlobalConfig, type ModelProviderConfig } from '../../utils/config.js'
 import { validateModelProviderConfig } from '../../utils/modelConfigSchema.js'
-import { isBuiltinVendor } from './vendorTemplates.js'
+import { isBuiltinVendor, resolveTemplate } from './vendorTemplates.js'
 import Anthropic from '@anthropic-ai/sdk'
 import { AnthropicProvider } from './providers/anthropicProvider.js'
 import { OpenAIProvider } from './providers/openaiProvider.js'
@@ -59,6 +59,29 @@ export function getProviderForModel(model: string): LLMProvider {
         throw new Error(
           `Model '${model}' references vendor '${modelConfig.vendor}', which is neither a built-in template nor defined in config.templates. ` +
           `Built-in templates: 'openai-default', 'openai-responses', 'anthropic', 'deepseek-reasoning', 'openai-ali-thinking', 'openai-siliconflow-thinking'.`,
+        )
+      }
+    }
+    // Cross-check that the resolved vendor template's `protocols` array
+    // includes this model's protocol. Mismatched combos (e.g. anthropic
+    // vendor template under openai-chat protocol) emit wire bodies the
+    // server rejects with 400. Refuse at config-load time so the user sees
+    // the cause clearly instead of a confusing vendor-side error.
+    if (modelConfig.vendor) {
+      try {
+        const tpl = resolveTemplate(modelConfig.vendor, config.templates)
+        if (!tpl.protocols.includes(modelConfig.protocol)) {
+          throw new Error(
+            `Model '${model}' uses vendor template '${modelConfig.vendor}' with protocol '${modelConfig.protocol}', but that template only fits these protocols: [${tpl.protocols.join(', ')}]. ` +
+            `Either change the model's protocol, or pick a vendor template that supports '${modelConfig.protocol}'.`,
+          )
+        }
+      } catch (err) {
+        // resolveTemplate may throw "Unknown template" / "missing protocols" —
+        // surface those with the model's name attached for clarity.
+        if (err instanceof Error && err.message.startsWith('Model ')) throw err
+        throw new Error(
+          `Model '${model}': ${err instanceof Error ? err.message : String(err)}`,
         )
       }
     }

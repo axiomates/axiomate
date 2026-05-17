@@ -239,6 +239,7 @@ describe('getCyclableEffortLevels', () => {
       },
       templates: {
         'my-vendor': {
+          protocols: ['openai-chat'],
           effort: {
             patch: { reasoning_effort: '<value>' },
             valueMap: { medium: 'medium', high: 'high' },
@@ -261,6 +262,7 @@ describe('getCyclableEffortLevels', () => {
       },
       templates: {
         'my-bare-vendor': {
+          protocols: ['openai-chat'],
           effort: { patch: { reasoning_effort: '<value>' } },
         },
       },

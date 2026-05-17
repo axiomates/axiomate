@@ -2,9 +2,11 @@ import { describe, expect, it } from 'vitest'
 import {
   buildModelConfig,
   getThinkingChoicesForVendor,
+  getVendorChoicesForProtocol,
   initialOnboardingProviderState,
   isThinkingChoiceSupported,
   onboardingProviderReducer,
+  shouldSkipVendorStage,
   type OnboardingProviderState,
 } from '../OnboardingProviderStep.reducer.js'
 
@@ -96,10 +98,23 @@ describe('onboardingProviderReducer', () => {
   it('submitSupportsImages advances to vendor and stores the choice', () => {
     const next = onboardingProviderReducer(
       { ...initialOnboardingProviderState, stage: 'supportsImages' },
-      { type: 'submitSupportsImages', value: false },
+      { type: 'submitSupportsImages', value: false, nextStage: 'vendor' },
     )
     expect(next.stage).toBe('vendor')
     expect(next.supportsImages).toBe(false)
+  })
+
+  it('submitSupportsImages skips to thinking when nextStage is thinking', () => {
+    const next = onboardingProviderReducer(
+      {
+        ...initialOnboardingProviderState,
+        stage: 'supportsImages',
+        protocol: 'anthropic',
+      },
+      { type: 'submitSupportsImages', value: false, nextStage: 'thinking' },
+    )
+    expect(next.stage).toBe('thinking')
+    expect(next.vendor).toBe('auto')
   })
 
   it('submitVendor advances to thinking and stores the vendor', () => {
@@ -325,6 +340,7 @@ describe('full happy-path transition', () => {
     state = onboardingProviderReducer(state, {
       type: 'submitSupportsImages',
       value: false,
+      nextStage: 'vendor',
     })
     state = onboardingProviderReducer(state, {
       type: 'submitVendor',
@@ -526,6 +542,7 @@ describe('getThinkingChoicesForVendor', () => {
     expect(
       getThinkingChoicesForVendor('my-vendor', {
         'my-vendor': {
+          protocols: ['openai-chat'],
           effort: {
             patch: { reasoning_effort: '<value>' },
             valueMap: { medium: 'medium', high: 'high' },
@@ -538,7 +555,7 @@ describe('getThinkingChoicesForVendor', () => {
   it('custom template with no effort field offers off only', () => {
     expect(
       getThinkingChoicesForVendor('no-effort', {
-        'no-effort': {},
+        'no-effort': { protocols: ['openai-chat'] },
       }),
     ).toEqual(['off'])
   })
@@ -560,5 +577,71 @@ describe('isThinkingChoiceSupported', () => {
 
   it("anthropic + 'high' is supported", () => {
     expect(isThinkingChoiceSupported('high', 'anthropic')).toBe(true)
+  })
+})
+
+describe('getVendorChoicesForProtocol', () => {
+  it("anthropic protocol → only the 'anthropic' built-in", () => {
+    expect(getVendorChoicesForProtocol('anthropic')).toEqual(['anthropic'])
+  })
+
+  it("openai-responses protocol → only the 'openai-responses' built-in", () => {
+    expect(getVendorChoicesForProtocol('openai-responses')).toEqual([
+      'openai-responses',
+    ])
+  })
+
+  it('openai-chat protocol → all four openai-chat-family built-ins', () => {
+    expect(getVendorChoicesForProtocol('openai-chat').sort()).toEqual([
+      'deepseek-reasoning',
+      'openai-ali-thinking',
+      'openai-default',
+      'openai-siliconflow-thinking',
+    ])
+  })
+
+  it('custom template extending anthropic shows up under anthropic protocol', () => {
+    const customs = {
+      'my-claude-mod': { extends: 'anthropic' as const },
+    }
+    expect(getVendorChoicesForProtocol('anthropic', customs).sort()).toEqual([
+      'anthropic',
+      'my-claude-mod',
+    ])
+  })
+
+  it('custom template with own protocols filters correctly', () => {
+    const customs = {
+      'my-resp-vendor': {
+        protocols: ['openai-responses' as const],
+        effort: { patch: { reasoning: { effort: '<value>' } } },
+      },
+    }
+    expect(getVendorChoicesForProtocol('openai-responses', customs).sort()).toEqual([
+      'my-resp-vendor',
+      'openai-responses',
+    ])
+  })
+})
+
+describe('shouldSkipVendorStage', () => {
+  it('anthropic protocol — skips (only one vendor fits)', () => {
+    expect(shouldSkipVendorStage('anthropic')).toBe(true)
+  })
+
+  it('openai-responses protocol — skips (only one vendor fits)', () => {
+    expect(shouldSkipVendorStage('openai-responses')).toBe(true)
+  })
+
+  it('openai-chat protocol — does not skip (4 vendors fit)', () => {
+    expect(shouldSkipVendorStage('openai-chat')).toBe(false)
+  })
+
+  it('anthropic protocol stops skipping once a custom anthropic vendor is added', () => {
+    expect(
+      shouldSkipVendorStage('anthropic', {
+        'my-claude-mod': { extends: 'anthropic' as const },
+      }),
+    ).toBe(false)
   })
 })

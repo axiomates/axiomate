@@ -6,11 +6,16 @@
  */
 
 import {
+  getBuiltinTemplates,
   resolveTemplate,
+  type Protocol,
   type VendorTemplate,
 } from '../services/api/vendorTemplates.js'
 
-export type Protocol = 'openai-chat' | 'openai-responses' | 'anthropic'
+export type { Protocol }
+
+// Protocol is re-exported above from vendorTemplates.js for the wizard to
+// use; both layers must agree on the same string union.
 
 export type Stage =
   | 'protocol'
@@ -91,6 +96,42 @@ export function isThinkingChoiceSupported(
   return getThinkingChoicesForVendor(vendor, customTemplates).includes(choice)
 }
 
+/**
+ * Vendor templates whose `protocols` array includes the given protocol —
+ * the candidates the wizard would show on the vendor stage. Considers both
+ * built-ins and user-defined custom templates so the count adapts as the
+ * user adds custom templates over time.
+ */
+export function getVendorChoicesForProtocol(
+  protocol: Protocol,
+  customTemplates?: Record<string, VendorTemplate>,
+): string[] {
+  const allNames = [
+    ...Object.keys(getBuiltinTemplates()),
+    ...Object.keys(customTemplates ?? {}),
+  ]
+  return allNames.filter(name => {
+    try {
+      return resolveTemplate(name, customTemplates).protocols.includes(protocol)
+    } catch {
+      return false
+    }
+  })
+}
+
+/**
+ * Whether to skip the vendor stage in onboarding for this protocol.
+ * Skips when there's exactly one matching vendor (so picking it adds no
+ * information). Computed dynamically from the current template registry,
+ * so adding a custom template later un-skips the stage automatically.
+ */
+export function shouldSkipVendorStage(
+  protocol: Protocol,
+  customTemplates?: Record<string, VendorTemplate>,
+): boolean {
+  return getVendorChoicesForProtocol(protocol, customTemplates).length === 1
+}
+
 
 export type OnboardingProviderState = {
   stage: Stage
@@ -123,7 +164,7 @@ export type OnboardingProviderAction =
   | { type: 'submitApiKey'; value: string }
   | { type: 'submitModelId'; value: string }
   | { type: 'submitContextWindow'; value: string }
-  | { type: 'submitSupportsImages'; value: boolean }
+  | { type: 'submitSupportsImages'; value: boolean; nextStage: 'vendor' | 'thinking' }
   | { type: 'submitVendor'; value: string; nextThinking: ThinkingChoice }
   | { type: 'startCreateTemplate' }
   | { type: 'finishCreateTemplate'; templateName: string; nextThinking: ThinkingChoice }
@@ -132,7 +173,7 @@ export type OnboardingProviderAction =
   | { type: 'submitUserAgent'; value: string }
   | { type: 'verifyFail'; error: string }
   | { type: 'retryFromApiKey' }
-  | { type: 'back' }
+  | { type: 'back'; skipVendor?: boolean }
 
 export const DEFAULT_BASE_URLS: Record<Protocol, string> = {
   'openai-chat': 'https://api.openai.com/v1',
@@ -232,8 +273,12 @@ export function onboardingProviderReducer(
     case 'submitSupportsImages':
       return {
         ...state,
-        stage: 'vendor',
+        stage: action.nextStage,
         supportsImages: action.value,
+        // When the dispatcher told us to skip vendor (only one vendor fits
+        // the protocol), 'auto' is the right placeholder — inferVendor at
+        // request time will resolve to the same single candidate anyway.
+        ...(action.nextStage === 'thinking' ? { vendor: 'auto' } : {}),
         error: undefined,
       }
     case 'submitVendor':
@@ -283,11 +328,15 @@ export function onboardingProviderReducer(
     case 'retryFromApiKey':
       return { ...state, stage: 'apiKey', error: undefined }
     case 'back':
-      return { ...state, stage: previousStage(state.stage), error: undefined }
+      return {
+        ...state,
+        stage: previousStage(state.stage, action.skipVendor),
+        error: undefined,
+      }
   }
 }
 
-function previousStage(stage: Stage): Stage {
+function previousStage(stage: Stage, skipVendor?: boolean): Stage {
   switch (stage) {
     case 'protocol':
       return 'protocol' // Parent handles cancel-from-protocol
@@ -306,7 +355,9 @@ function previousStage(stage: Stage): Stage {
     case 'createTemplate':
       return 'vendor'
     case 'thinking':
-      return 'vendor'
+      // When the vendor stage was skipped (single matching vendor for the
+      // current protocol), back from thinking jumps straight to supportsImages.
+      return skipVendor ? 'supportsImages' : 'vendor'
     case 'userAgent':
       return 'thinking'
     case 'verifying':

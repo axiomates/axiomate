@@ -40,8 +40,14 @@ export const ThinkingDeclSchema = z
 
 const PatchObjectSchema = z.record(z.unknown())
 
+const PROTOCOL_LITERALS = ['anthropic', 'openai-chat', 'openai-responses'] as const
+
 export const VendorTemplateSchema = z
   .object({
+    // Optional in the schema because a template using `extends` may omit
+    // `protocols` and inherit from its parent. resolveTemplate enforces
+    // non-empty after the extends chain merges (vendorTemplates.ts).
+    protocols: z.array(z.enum(PROTOCOL_LITERALS)).nonempty().optional(),
     extends: z.string().optional(),
     enabledPatch: PatchObjectSchema.optional(),
     disabledPatch: PatchObjectSchema.optional(),

@@ -27,6 +27,15 @@ export type VendorTemplateName =
 /** Effort levels the user can declare (axiomate-neutral). */
 export type EffortLevel = 'none' | 'low' | 'medium' | 'high' | 'max'
 
+/** Wire protocols this template's patches can produce a valid body for. */
+export type Protocol = 'anthropic' | 'openai-chat' | 'openai-responses'
+
+export const PROTOCOLS: readonly Protocol[] = [
+  'anthropic',
+  'openai-chat',
+  'openai-responses',
+] as const
+
 /**
  * A vendor template describes how to translate a ThinkingDecl into a wire
  * body fragment. Patches use placeholder strings that get substituted with
@@ -35,6 +44,22 @@ export type EffortLevel = 'none' | 'low' | 'medium' | 'high' | 'max'
  *   '<budget>'  → ThinkingDecl.budget (number)
  */
 export type VendorTemplate = {
+  /**
+   * Wire protocols this template's patches can produce a valid body for.
+   * For example, a template emitting `output_config.effort` only fits an
+   * anthropic-protocol body — sending it through openai-chat would 400.
+   * This is a technical constraint on the patch fields, not a vendor
+   * identity: the same vendor (e.g. OpenAI) may have several templates
+   * for different protocols (openai-default for openai-chat,
+   * openai-responses for openai-responses).
+   *
+   * Required at the leaf of the extends chain (built-ins always set it,
+   * VendorTemplateSchema demands it for raw user templates that don't
+   * extend). Optional on intermediate nodes that inherit from a parent.
+   * resolveTemplate guarantees the merged output has a non-empty array.
+   */
+  protocols?: Protocol[]
+
   /** Inherit fields from another template; the child's fields win on conflict. */
   extends?: VendorTemplateName | string
 
@@ -88,6 +113,7 @@ export type VendorTemplate = {
 
 const builtinTemplates: Record<VendorTemplateName, VendorTemplate> = {
   'openai-default': {
+    protocols: ['openai-chat'],
     effort: {
       patch: { reasoning_effort: '<value>' },
       // OpenAI Chat Completions accepts 'minimal'|'low'|'medium'|'high'.
@@ -102,6 +128,7 @@ const builtinTemplates: Record<VendorTemplateName, VendorTemplate> = {
     },
   },
   'openai-responses': {
+    protocols: ['openai-responses'],
     enabledPatch: { reasoning: { summary: 'auto' } },
     effort: {
       patch: { reasoning: { effort: '<value>' } },
@@ -116,6 +143,7 @@ const builtinTemplates: Record<VendorTemplateName, VendorTemplate> = {
     },
   },
   anthropic: {
+    protocols: ['anthropic'],
     anthropicThinkingField: { defaultBudgetTokens: 16000 },
     effort: {
       patch: { output_config: { effort: '<value>' } },
@@ -126,6 +154,7 @@ const builtinTemplates: Record<VendorTemplateName, VendorTemplate> = {
     budget: { patch: { thinking: { budget_tokens: '<budget>' } } },
   },
   'deepseek-reasoning': {
+    protocols: ['openai-chat'],
     // DeepSeek V4+ official API requires both fields per their docs:
     //   thinking: { type: 'enabled' }     ← Anthropic-style thinking switch
     //   reasoning_effort: 'high' | 'max'  ← only these two tiers accepted
@@ -145,6 +174,7 @@ const builtinTemplates: Record<VendorTemplateName, VendorTemplate> = {
     autoRoundTripReasoningContent: true,
   },
   'openai-ali-thinking': {
+    protocols: ['openai-chat'],
     // aliyun DashScope OpenAI-compatible thinking gateway. Wire fields:
     //   enable_thinking: bool             ← thinking switch
     //   thinking_budget: number           ← max reasoning tokens
@@ -165,6 +195,7 @@ const builtinTemplates: Record<VendorTemplateName, VendorTemplate> = {
     budget: { patch: { thinking_budget: '<budget>' } },
   },
   'openai-siliconflow-thinking': {
+    protocols: ['openai-chat'],
     // SiliconFlow OpenAI-compatible thinking gateway. Same trio as aliyun.
     // Wire fields:
     //   enable_thinking: bool             ← thinking switch
@@ -236,13 +267,26 @@ export function resolveTemplate(
     current = tpl.extends
   }
 
-  // Merge from base (last) → derived (first). Derived wins on conflicts.
-  const merged: VendorTemplate = {}
+  // Merge from base (last) → derived (first). Derived wins on conflicts —
+  // but `protocols` is special: a child that omits it should inherit, not
+  // erase. Object.assign with an undefined source key would clobber, so
+  // skip undefined `protocols` during the merge.
+  const merged: VendorTemplate = { protocols: [] }
   for (let i = chain.length - 1; i >= 0; i--) {
-    Object.assign(merged, chain[i])
+    const link = chain[i]!
+    const { protocols, ...rest } = link
+    Object.assign(merged, rest)
+    if (protocols !== undefined) {
+      merged.protocols = protocols
+    }
   }
   // Final extends key has no semantic value on the resolved template.
   delete merged.extends
+  if (!merged.protocols || merged.protocols.length === 0) {
+    throw new Error(
+      `Vendor template '${name}' is missing 'protocols' — declare which wire protocols it produces valid bodies for, e.g. ["openai-chat"], or extend a built-in template that already declares them.`,
+    )
+  }
   return merged
 }
 
@@ -385,14 +429,12 @@ export function applyThinkingTemplate(
     if (template.disabledPatch) {
       deepMerge(out, structuredClone(template.disabledPatch))
     }
-    if (
-      thinking.effort !== undefined &&
-      thinking.effort !== 'none'
-    ) {
+    if (thinking.effort !== undefined) {
       // User configured `thinking.enabled: false` together with a non-'none'
-      // effort. The else-branch above sends only disabledPatch, so the
-      // effort field is silently dropped. Warn so the user understands why
-      // their high-effort config isn't taking effect — and consider using
+      // effort (the 'none' case was handled by the early-return at the top
+      // of this function). The else-branch above sends only disabledPatch,
+      // so the effort field is silently dropped. Warn so the user understands
+      // why their high-effort config isn't taking effect — and consider using
       // `effort: 'none'` (runtime override) or omitting `enabled: false`.
       logForDebugging(
         `[vendor-template] thinking.effort='${thinking.effort}' ignored — thinking.enabled=false routes through disabledPatch (use effort:'none' or remove enabled:false to send effort)`,

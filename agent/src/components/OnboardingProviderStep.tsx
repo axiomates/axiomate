@@ -6,6 +6,7 @@ import { verifyApiKey } from '../services/api/llm.js'
 import { saveGlobalConfig, getGlobalConfig } from '../utils/config.js'
 import {
   getBuiltinTemplates,
+  resolveTemplate,
   type VendorTemplateName,
 } from '../services/api/vendorTemplates.js'
 import { TemplateEditor } from '../commands/template/TemplateEditor.js'
@@ -23,6 +24,7 @@ import {
   USER_AGENT_HINT,
   getThinkingChoicesForVendor,
   isThinkingChoiceSupported,
+  shouldSkipVendorStage,
   type OnboardingProviderState,
   type Protocol,
   type ThinkingChoice,
@@ -138,7 +140,15 @@ export function OnboardingProviderStep({
       return (
         <SupportsImagesStep
           initial={state.supportsImages}
-          onSubmit={v => dispatch({ type: 'submitSupportsImages', value: v })}
+          onSubmit={v => {
+            const customTemplates = getGlobalConfig().templates
+            const skip = shouldSkipVendorStage(state.protocol, customTemplates)
+            dispatch({
+              type: 'submitSupportsImages',
+              value: v,
+              nextStage: skip ? 'thinking' : 'vendor',
+            })
+          }}
           onBack={() => dispatch({ type: 'back' })}
         />
       )
@@ -146,6 +156,7 @@ export function OnboardingProviderStep({
       return (
         <VendorStep
           initial={state.vendor}
+          protocol={state.protocol}
           onSubmit={v => {
             const customTemplates = getGlobalConfig().templates
             const nextThinking = isThinkingChoiceSupported(
@@ -188,7 +199,13 @@ export function OnboardingProviderStep({
           initial={state.thinking}
           vendor={state.vendor}
           onSubmit={v => dispatch({ type: 'submitThinking', value: v })}
-          onBack={() => dispatch({ type: 'back' })}
+          onBack={() => {
+            const customTemplates = getGlobalConfig().templates
+            dispatch({
+              type: 'back',
+              skipVendor: shouldSkipVendorStage(state.protocol, customTemplates),
+            })
+          }}
         />
       )
     case 'userAgent':
@@ -462,11 +479,13 @@ function ContextWindowStep({
 
 function VendorStep({
   initial,
+  protocol,
   onSubmit,
   onCreateNew,
   onBack,
 }: {
   initial: string
+  protocol: Protocol
   onSubmit: (vendorName: string) => void
   onCreateNew: () => void
   onBack: () => void
@@ -475,19 +494,32 @@ function VendorStep({
     if (key.escape) onBack()
   })
 
+  const customTemplates = getGlobalConfig().templates
   const builtins = Object.keys(getBuiltinTemplates()) as VendorTemplateName[]
-  const customs = Object.keys(getGlobalConfig().templates ?? {})
+  const customs = Object.keys(customTemplates ?? {})
+
+  // Only show vendor templates whose patches fit the chosen protocol.
+  // resolveTemplate inherits `protocols` through extends chains; failures
+  // (custom template missing protocols) are excluded silently — surfacing
+  // them here would clutter the picker.
+  const fitsProtocol = (name: string): boolean => {
+    try {
+      return resolveTemplate(name, customTemplates).protocols.includes(protocol)
+    } catch {
+      return false
+    }
+  }
 
   const options = [
     {
       label: 'Auto-detect (recommended for known providers)',
       value: 'auto',
     },
-    ...builtins.map(name => ({
+    ...builtins.filter(fitsProtocol).map(name => ({
       label: `${name} — built-in`,
       value: name,
     })),
-    ...customs.map(name => ({
+    ...customs.filter(fitsProtocol).map(name => ({
       label: `${name} — custom`,
       value: name,
     })),
@@ -503,7 +535,8 @@ function VendorStep({
       <Text dimColor>
         How axiomate translates `thinking: {'{...}'}` into wire fields. Pick
         Auto unless your provider's wire schema doesn't match any built-in
-        (then create a new template).
+        (then create a new template). Only templates compatible with
+        protocol '{protocol}' are shown.
       </Text>
       <Select
         defaultValue={initial}
