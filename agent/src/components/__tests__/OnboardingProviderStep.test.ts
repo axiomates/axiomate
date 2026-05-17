@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import {
   buildModelConfig,
+  getThinkingChoicesForVendor,
   initialOnboardingProviderState,
+  isThinkingChoiceSupported,
   onboardingProviderReducer,
   type OnboardingProviderState,
 } from '../OnboardingProviderStep.reducer.js'
@@ -103,10 +105,25 @@ describe('onboardingProviderReducer', () => {
   it('submitVendor advances to thinking and stores the vendor', () => {
     const next = onboardingProviderReducer(
       { ...initialOnboardingProviderState, stage: 'vendor' },
-      { type: 'submitVendor', value: 'deepseek-reasoning' },
+      { type: 'submitVendor', value: 'deepseek-reasoning', nextThinking: 'high' },
     )
     expect(next.stage).toBe('thinking')
     expect(next.vendor).toBe('deepseek-reasoning')
+  })
+
+  it('submitVendor honors the dispatcher-provided nextThinking (vendor mismatch resets)', () => {
+    // Caller (dispatcher) decides whether the previous thinking choice
+    // is still supported — the reducer just stores what it's given.
+    const next = onboardingProviderReducer(
+      {
+        ...initialOnboardingProviderState,
+        stage: 'vendor',
+        thinking: 'low',
+      },
+      { type: 'submitVendor', value: 'deepseek-reasoning', nextThinking: 'off' },
+    )
+    expect(next.stage).toBe('thinking')
+    expect(next.thinking).toBe('off')
   })
 
   it('startCreateTemplate enters createTemplate stage', () => {
@@ -120,7 +137,7 @@ describe('onboardingProviderReducer', () => {
   it('finishCreateTemplate sets vendor to new template name and advances to thinking', () => {
     const next = onboardingProviderReducer(
       { ...initialOnboardingProviderState, stage: 'createTemplate' },
-      { type: 'finishCreateTemplate', templateName: 'my-private-api' },
+      { type: 'finishCreateTemplate', templateName: 'my-private-api', nextThinking: 'off' },
     )
     expect(next.stage).toBe('thinking')
     expect(next.vendor).toBe('my-private-api')
@@ -312,6 +329,7 @@ describe('full happy-path transition', () => {
     state = onboardingProviderReducer(state, {
       type: 'submitVendor',
       value: 'auto',
+      nextThinking: 'high',
     })
     state = onboardingProviderReducer(state, {
       type: 'submitThinking',
@@ -429,5 +447,118 @@ describe('buildModelConfig', () => {
     })
     const withoutUa = buildModelConfig({ ...base, userAgent: '' })
     expect('userAgent' in withoutUa).toBe(false)
+  })
+})
+
+describe('getThinkingChoicesForVendor', () => {
+  it("'auto' returns all 5 choices (vendor not yet known)", () => {
+    expect(getThinkingChoicesForVendor('auto')).toEqual([
+      'off',
+      'low',
+      'medium',
+      'high',
+      'max',
+    ])
+  })
+
+  it('undefined vendor returns all 5 choices', () => {
+    expect(getThinkingChoicesForVendor(undefined)).toEqual([
+      'off',
+      'low',
+      'medium',
+      'high',
+      'max',
+    ])
+  })
+
+  it('anthropic offers off/low/medium/high (no max)', () => {
+    expect(getThinkingChoicesForVendor('anthropic')).toEqual([
+      'off',
+      'low',
+      'medium',
+      'high',
+    ])
+  })
+
+  it('deepseek-reasoning offers off/high/max only', () => {
+    expect(getThinkingChoicesForVendor('deepseek-reasoning')).toEqual([
+      'off',
+      'high',
+      'max',
+    ])
+  })
+
+  it('openai-ali-thinking offers off/high/max only', () => {
+    expect(getThinkingChoicesForVendor('openai-ali-thinking')).toEqual([
+      'off',
+      'high',
+      'max',
+    ])
+  })
+
+  it('openai-siliconflow-thinking offers off/high/max only', () => {
+    expect(
+      getThinkingChoicesForVendor('openai-siliconflow-thinking'),
+    ).toEqual(['off', 'high', 'max'])
+  })
+
+  it('openai-default offers all 5 choices', () => {
+    expect(getThinkingChoicesForVendor('openai-default')).toEqual([
+      'off',
+      'low',
+      'medium',
+      'high',
+      'max',
+    ])
+  })
+
+  it('unknown vendor with no custom template falls back to all 5', () => {
+    expect(getThinkingChoicesForVendor('does-not-exist')).toEqual([
+      'off',
+      'low',
+      'medium',
+      'high',
+      'max',
+    ])
+  })
+
+  it('custom template with partial valueMap is honored', () => {
+    expect(
+      getThinkingChoicesForVendor('my-vendor', {
+        'my-vendor': {
+          effort: {
+            patch: { reasoning_effort: '<value>' },
+            valueMap: { medium: 'medium', high: 'high' },
+          },
+        },
+      }),
+    ).toEqual(['off', 'medium', 'high'])
+  })
+
+  it('custom template with no effort field offers off only', () => {
+    expect(
+      getThinkingChoicesForVendor('no-effort', {
+        'no-effort': {},
+      }),
+    ).toEqual(['off'])
+  })
+})
+
+describe('isThinkingChoiceSupported', () => {
+  it("'off' is always supported", () => {
+    expect(isThinkingChoiceSupported('off', 'anthropic')).toBe(true)
+    expect(isThinkingChoiceSupported('off', 'deepseek-reasoning')).toBe(true)
+  })
+
+  it("anthropic + 'max' is unsupported (vendor mismatch)", () => {
+    expect(isThinkingChoiceSupported('max', 'anthropic')).toBe(false)
+  })
+
+  it("deepseek + 'low' is unsupported", () => {
+    expect(isThinkingChoiceSupported('low', 'deepseek-reasoning')).toBe(false)
+  })
+
+  it("anthropic + 'high' is supported", () => {
+    expect(isThinkingChoiceSupported('high', 'anthropic')).toBe(true)
   })
 })

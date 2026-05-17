@@ -21,6 +21,8 @@ import {
   onboardingProviderReducer,
   THINKING_HINT,
   USER_AGENT_HINT,
+  getThinkingChoicesForVendor,
+  isThinkingChoiceSupported,
   type OnboardingProviderState,
   type Protocol,
   type ThinkingChoice,
@@ -144,7 +146,17 @@ export function OnboardingProviderStep({
       return (
         <VendorStep
           initial={state.vendor}
-          onSubmit={v => dispatch({ type: 'submitVendor', value: v })}
+          onSubmit={v => {
+            const customTemplates = getGlobalConfig().templates
+            const nextThinking = isThinkingChoiceSupported(
+              state.thinking,
+              v,
+              customTemplates,
+            )
+              ? state.thinking
+              : 'off'
+            dispatch({ type: 'submitVendor', value: v, nextThinking })
+          }}
           onCreateNew={() => dispatch({ type: 'startCreateTemplate' })}
           onBack={() => dispatch({ type: 'back' })}
         />
@@ -152,9 +164,21 @@ export function OnboardingProviderStep({
     case 'createTemplate':
       return (
         <TemplateEditor
-          onComplete={name =>
-            dispatch({ type: 'finishCreateTemplate', templateName: name })
-          }
+          onComplete={name => {
+            const customTemplates = getGlobalConfig().templates
+            const nextThinking = isThinkingChoiceSupported(
+              state.thinking,
+              name,
+              customTemplates,
+            )
+              ? state.thinking
+              : 'off'
+            dispatch({
+              type: 'finishCreateTemplate',
+              templateName: name,
+              nextThinking,
+            })
+          }}
           onCancel={() => dispatch({ type: 'cancelCreateTemplate' })}
         />
       )
@@ -162,6 +186,7 @@ export function OnboardingProviderStep({
       return (
         <ThinkingStep
           initial={state.thinking}
+          vendor={state.vendor}
           onSubmit={v => dispatch({ type: 'submitThinking', value: v })}
           onBack={() => dispatch({ type: 'back' })}
         />
@@ -530,29 +555,39 @@ function SupportsImagesStep({
 
 function ThinkingStep({
   initial,
+  vendor,
   onSubmit,
   onBack,
 }: {
   initial: ThinkingChoice
+  vendor: string
   onSubmit: (v: ThinkingChoice) => void
   onBack: () => void
 }): React.ReactNode {
   useInput((_input, key) => {
     if (key.escape) onBack()
   })
+  const customTemplates = getGlobalConfig().templates
+  const allowed = getThinkingChoicesForVendor(vendor, customTemplates)
+  const allChoices: { label: string; value: ThinkingChoice }[] = [
+    { label: 'Off (no reasoning params sent)', value: 'off' },
+    { label: 'Low', value: 'low' },
+    { label: 'Medium', value: 'medium' },
+    { label: 'High (recommended for reasoning models)', value: 'high' },
+    { label: 'Max (for o-series / DeepSeek max)', value: 'max' },
+  ]
+  const options = allChoices.filter(o => allowed.includes(o.value))
+  // 'initial' may be missing from the filtered set (e.g. user switched
+  // from a vendor that supports 'low' to one that doesn't); fall back
+  // to 'off' which is always present.
+  const defaultValue = options.some(o => o.value === initial) ? initial : 'off'
   return (
     <Box flexDirection="column" paddingLeft={1} gap={1}>
       <Text bold>Reasoning depth</Text>
       <Text dimColor>{THINKING_HINT}</Text>
       <Select
-        defaultValue={initial}
-        options={[
-          { label: 'Off (no reasoning params sent)', value: 'off' },
-          { label: 'Low', value: 'low' },
-          { label: 'Medium', value: 'medium' },
-          { label: 'High (recommended for reasoning models)', value: 'high' },
-          { label: 'Max (for o-series / DeepSeek max)', value: 'max' },
-        ]}
+        defaultValue={defaultValue}
+        options={options}
         onChange={v => onSubmit(v as ThinkingChoice)}
         onCancel={onBack}
       />

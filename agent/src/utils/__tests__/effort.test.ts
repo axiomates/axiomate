@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
 const mockGetGlobalConfig = vi.hoisted(() =>
-  vi.fn(() => ({ models: undefined })),
+  vi.fn(
+    (): { models?: any; templates?: any } => ({ models: undefined }),
+  ),
 )
 
 vi.mock('../config.js', () => ({

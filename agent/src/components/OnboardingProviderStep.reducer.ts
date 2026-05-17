@@ -5,6 +5,11 @@
  * without pulling in the LLM / provider registry / ink render chain.
  */
 
+import {
+  resolveTemplate,
+  type VendorTemplate,
+} from '../services/api/vendorTemplates.js'
+
 export type Protocol = 'openai-chat' | 'openai-responses' | 'anthropic'
 
 export type Stage =
@@ -23,6 +28,47 @@ export type Stage =
 
 /** Wizard's neutral thinking choice. Maps to ThinkingDecl in buildModelConfig. */
 export type ThinkingChoice = 'off' | 'low' | 'medium' | 'high' | 'max'
+
+/**
+ * Returns the thinking choices the wizard should offer for a given vendor.
+ * 'off' is always present (it means "don't write any thinking field").
+ * The other tiers are filtered by the resolved vendor template's
+ * effort.valueMap — vendors that only accept high/max won't expose low/medium.
+ *
+ * Falls back to all 5 choices if the vendor name can't be resolved (e.g.
+ * 'auto' before inferVendor runs, or an unknown custom template).
+ */
+export function getThinkingChoicesForVendor(
+  vendor: string | undefined,
+  customTemplates?: Record<string, VendorTemplate>,
+): ThinkingChoice[] {
+  if (!vendor || vendor === 'auto') {
+    return ['off', 'low', 'medium', 'high', 'max']
+  }
+  let template: VendorTemplate
+  try {
+    template = resolveTemplate(vendor, customTemplates)
+  } catch {
+    return ['off', 'low', 'medium', 'high', 'max']
+  }
+  if (!template.effort) return ['off']
+  const valueMap = template.effort.valueMap
+  if (!valueMap) return ['off', 'low', 'medium', 'high', 'max']
+  const tiers: ThinkingChoice[] = (
+    ['low', 'medium', 'high', 'max'] as const
+  ).filter(t => t in valueMap)
+  return ['off', ...tiers]
+}
+
+/** Returns true iff the wizard's thinking choice is offerable for this vendor. */
+export function isThinkingChoiceSupported(
+  choice: ThinkingChoice,
+  vendor: string | undefined,
+  customTemplates?: Record<string, VendorTemplate>,
+): boolean {
+  return getThinkingChoicesForVendor(vendor, customTemplates).includes(choice)
+}
+
 
 export type OnboardingProviderState = {
   stage: Stage
@@ -56,9 +102,9 @@ export type OnboardingProviderAction =
   | { type: 'submitModelId'; value: string }
   | { type: 'submitContextWindow'; value: string }
   | { type: 'submitSupportsImages'; value: boolean }
-  | { type: 'submitVendor'; value: string }
+  | { type: 'submitVendor'; value: string; nextThinking: ThinkingChoice }
   | { type: 'startCreateTemplate' }
-  | { type: 'finishCreateTemplate'; templateName: string }
+  | { type: 'finishCreateTemplate'; templateName: string; nextThinking: ThinkingChoice }
   | { type: 'cancelCreateTemplate' }
   | { type: 'submitThinking'; value: ThinkingChoice }
   | { type: 'submitUserAgent'; value: string }
@@ -173,6 +219,7 @@ export function onboardingProviderReducer(
         ...state,
         stage: 'thinking',
         vendor: action.value,
+        thinking: action.nextThinking,
         error: undefined,
       }
     case 'startCreateTemplate':
@@ -186,6 +233,7 @@ export function onboardingProviderReducer(
         ...state,
         stage: 'thinking',
         vendor: action.templateName,
+        thinking: action.nextThinking,
         error: undefined,
       }
     case 'cancelCreateTemplate':
