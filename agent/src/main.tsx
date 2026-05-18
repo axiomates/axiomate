@@ -93,7 +93,6 @@ import { processSessionStartHooks, processSetupHooks } from './utils/sessionStar
 import { cacheSessionTitle, getSessionIdFromLog, loadTranscriptFromFile, saveAgentSetting, saveMode, searchSessionsByCustomTitle, sessionIdExists } from './utils/sessionStorage.js';
 import { ensureMdmSettingsLoaded } from './utils/settings/mdm/settings.js';
 import { getInitialSettings, getManagedSettingsKeysForLogging, getSettingsForSource, getSettingsWithErrors } from './utils/settings/settings.js';
-import { migrateLegacyEffortLevelField } from './utils/settings/migrateLegacyEffortField.js';
 import { migrateOrphanModelReferences } from './utils/settings/migrateOrphanModelReferences.js';
 import { resetSettingsCache } from './utils/settings/settingsCache.js';
 import type { ValidationError } from './utils/settings/validation.js';
@@ -553,9 +552,6 @@ async function run(): Promise<CommanderCommand> {
     await init();
     profileCheckpoint('preAction_after_init');
 
-    // One-shot legacy settings migration. Removes the old global
-    // `effortLevel` field replaced by per-model `effortByModel`.
-    migrateLegacyEffortLevelField();
     // Self-heal references to deleted models in ~/.axiomate.json and
     // settings.json so axiomate can boot even when currentModel was a
     // hand-deleted model entry. Must run before getInitialMainLoopModel()

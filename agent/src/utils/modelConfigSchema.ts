@@ -247,7 +247,7 @@ export const ModelProviderConfigSchema = z
     // makes user error impossible at the entry level — a model template
     // either matches the entry's model+vendor+protocol or doesn't.
     baseUrl: z.string().min(1),
-    apiKey: z.string().min(1),
+    apiKey: z.string(),
     contextWindow: z.number().int().positive().optional(),
     maxOutputTokens: z.number().int().positive().optional(),
     supportsImages: z.boolean().optional(),
@@ -277,7 +277,7 @@ export function validateModelProviderConfig(
       .map(i => `  • models.${modelKey}.${i.path.join('.') || '<root>'}: ${i.message}`)
       .join('\n')
     throw new Error(
-      `Invalid model configuration for '${modelKey}' in ~/.axiomate.json:\n${issues}\n\nDid you migrate from the legacy schema? See README → "Configuration".`,
+      `Invalid model configuration for '${modelKey}' in ~/.axiomate.json:\n${issues}`,
     )
   }
 }
