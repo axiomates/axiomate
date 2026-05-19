@@ -27,6 +27,7 @@ import { maybeRecordPluginHint } from '../../utils/plugins/hintRecommendation.js
 import { exec } from '../../utils/Shell.js';
 import { rtkRewrite } from '../../utils/rtk.js';
 import { getInitialSettings } from '../../utils/settings/settings.js';
+import { logForDebugging } from '../../utils/debug.js';
 import type { ExecResult } from '../../utils/ShellCommand.js';
 import { SandboxManager } from '../../utils/sandbox/sandbox-adapter.js';
 import { semanticBoolean } from '../../utils/semanticBoolean.js';
@@ -831,12 +832,16 @@ async function* runShellCommand({
   // (use rewrite) and drop exit 2 (deny) back to the original command, which
   // axiomate's own deny rules will catch if applicable.
   let commandToExec = command;
-  if (getInitialSettings().rtk?.enabled) {
+  const rtkEnabled = getInitialSettings().rtk?.enabled;
+  logForDebugging(`[rtk-trace] BashTool: rtk.enabled=${rtkEnabled} command=${JSON.stringify(command).slice(0, 200)}`);
+  if (rtkEnabled) {
     const result = await rtkRewrite(command, abortController.signal);
+    logForDebugging(`[rtk-trace] BashTool: rtkRewrite result kind=${result.kind}${'cmd' in result ? ` cmd=${JSON.stringify(result.cmd).slice(0, 200)}` : ''}`);
     if (result.kind === 'rewrite' || result.kind === 'ask') {
       commandToExec = result.cmd;
     }
   }
+  logForDebugging(`[rtk-trace] BashTool: final commandToExec=${JSON.stringify(commandToExec).slice(0, 200)}`);
 
   const shellCommand = await exec(commandToExec, abortController.signal, 'bash', {
     timeout: timeoutMs,

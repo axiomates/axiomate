@@ -138,7 +138,11 @@ export async function rtkRewrite(
   abortSignal: AbortSignal,
 ): Promise<RtkRewriteResult> {
   const config = getRtkConfig()
-  if (!config) return { kind: 'error' }
+  if (!config) {
+    logForDebugging(`[rtk-trace] rtkRewrite: no config (resolver returned null), cmd=${JSON.stringify(cmd).slice(0, 200)}`)
+    return { kind: 'error' }
+  }
+  logForDebugging(`[rtk-trace] rtkRewrite: invoking ${config.path} rewrite <cmd> where cmd=${JSON.stringify(cmd).slice(0, 200)}`)
 
   return new Promise<RtkRewriteResult>(resolve => {
     let settled = false
@@ -159,6 +163,7 @@ export async function rtkRewrite(
         windowsHide: true,
       },
       (error, stdout) => {
+        logForDebugging(`[rtk-trace] rtkRewrite callback: error=${error ? JSON.stringify({ code: (error as NodeJS.ErrnoException).code, signal: (error as NodeJS.ErrnoException & {signal?: string|null}).signal, message: error.message }) : 'null'} stdout=${JSON.stringify(stdout).slice(0, 200)}`)
         // execFile surfaces non-zero exits as an error whose `code` is the
         // numeric exit code. Spawn failures use string codes ('ENOENT' etc.),
         // and timeouts/aborts set `error.signal`. Fail open on anything that

@@ -33,6 +33,7 @@ import {
   type PermissionMode,
 } from '../../utils/permissions/PermissionMode.js'
 import { logError } from '../../utils/log.js'
+import { logForDebugging } from '../../utils/debug.js'
 import {
   logEvent,
 } from '../../services/analytics/index.js'
@@ -484,13 +485,22 @@ export function Config({
       value: settingsData?.rtk?.enabled ?? false,
       type: 'boolean' as const,
       onChange(enabled: boolean) {
-        updateSettingsForSource('userSettings', {
+        logForDebugging(
+          `[rtk-trace] Config toggle onChange called with enabled=${enabled}`,
+        )
+        const writeResult = updateSettingsForSource('userSettings', {
           rtk: enabled ? { enabled: true } : undefined,
         })
+        logForDebugging(
+          `[rtk-trace] updateSettingsForSource result: ${JSON.stringify(writeResult)}`,
+        )
         setSettingsData(prev => ({
           ...prev,
           rtk: enabled ? { ...prev?.rtk, enabled: true } : undefined,
         }))
+        logForDebugging(
+          `[rtk-trace] getInitialSettings().rtk after write: ${JSON.stringify(getInitialSettings().rtk)}`,
+        )
       },
     },
     ...(isFileCheckpointingAvailable
@@ -963,6 +973,21 @@ export function Config({
       )
     }
     if (
+      (settingsData?.rtk?.enabled ?? false) !==
+      (initialSettingsData.current?.rtk?.enabled ?? false)
+    ) {
+      logForDebugging(
+        `[rtk-trace] handleSaveAndClose: rtk changed ${initialSettingsData.current?.rtk?.enabled ?? false} -> ${settingsData?.rtk?.enabled ?? false}`,
+      )
+      formattedChanges.push(
+        `${settingsData?.rtk?.enabled ? 'Enabled' : 'Disabled'} shell output filtering (via rtk)`,
+      )
+    } else {
+      logForDebugging(
+        `[rtk-trace] handleSaveAndClose: rtk unchanged (current=${settingsData?.rtk?.enabled ?? false}, initial=${initialSettingsData.current?.rtk?.enabled ?? false})`,
+      )
+    }
+    if (
       globalConfig.respectGitignore !== initialConfig.current.respectGitignore
     ) {
       formattedChanges.push(
@@ -1016,6 +1041,7 @@ export function Config({
     mainLoopModel,
     currentOutputStyle,
     currentLanguage,
+    settingsData,
     onClose,
   ])
 
