@@ -17,6 +17,7 @@ const isMac = platform() === 'darwin'
 const isLinux = platform() === 'linux'
 
 const MIN_PNPM_MAJOR = 11
+const PNPM_INSTALL_TARGET = 'pnpm@11'
 
 const options = {
   checkOnly: args.has('--check'),
@@ -336,11 +337,11 @@ function ensurePnpm() {
       return
     }
     if (options.checkOnly || options.skipTools || options.skipInstall) {
-      fail(`pnpm ${firstLine} is too old. pnpm ${MIN_PNPM_MAJOR}+ required. Upgrade with: npm install -g pnpm@latest`)
+      fail(`pnpm ${firstLine} is too old. pnpm ${MIN_PNPM_MAJOR}+ required. Upgrade with: npm install -g ${PNPM_INSTALL_TARGET}`)
       return
     }
     note(`Upgrading pnpm from ${firstLine} to ${MIN_PNPM_MAJOR}+ via npm...`)
-    run('npm', ['install', '-g', 'pnpm@latest'])
+    run('npm', ['install', '-g', PNPM_INSTALL_TARGET])
     if (!checkVersion('pnpm', ['--version'], { required: false, minMajor: MIN_PNPM_MAJOR })) {
       failAndExit(`pnpm upgrade attempted but version still below ${MIN_PNPM_MAJOR}. Restart the terminal or check global npm bin in PATH.`)
     }
@@ -348,7 +349,7 @@ function ensurePnpm() {
   }
 
   if (options.checkOnly || options.skipTools || options.skipInstall) {
-    fail(`pnpm ${MIN_PNPM_MAJOR}+ is required. Install with: npm install -g pnpm@latest`)
+    fail(`pnpm ${MIN_PNPM_MAJOR}+ is required. Install with: npm install -g ${PNPM_INSTALL_TARGET}`)
     return
   }
 
@@ -357,8 +358,11 @@ function ensurePnpm() {
   // paths (corepack enable pnpm; brew install pnpm; standalone
   // installer at https://pnpm.io/installation) work fine — this
   // function only fires when `pnpm --version` already failed.
+  // We pin to pnpm@11 rather than @latest because pnpm 12+ may ship
+  // breaking config changes — bumping the floor should be a deliberate
+  // repo-wide migration, not an opportunistic auto-upgrade.
   note('Installing pnpm globally via npm...')
-  run('npm', ['install', '-g', 'pnpm@latest'])
+  run('npm', ['install', '-g', PNPM_INSTALL_TARGET])
 
   if (!checkVersion('pnpm', ['--version'], { required: false, minMajor: MIN_PNPM_MAJOR })) {
     failAndExit('pnpm installed, but this terminal cannot find it. Restart the terminal or check global npm bin in PATH.')

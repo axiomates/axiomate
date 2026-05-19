@@ -83,18 +83,6 @@ function buildNapiWorkspace(name: string) {
   rmSync(join(root, name, generatedDts), { force: true })
 }
 
-function copyIfExists(relPath: string, destName = basename(relPath)) {
-  const srcPath = join(root, relPath)
-  if (!existsSync(srcPath)) {
-    console.log(`  SKIP ${relPath} (not found)`)
-    return false
-  }
-
-  copyFileSync(srcPath, join(distDir, destName))
-  console.log(`  OK ${destName}`)
-  return true
-}
-
 /**
  * Locate a platform-specific subpackage on disk via shared probe (see
  * packageNatives.ts), then copy the file at `subPath` into dist/. Returns
@@ -291,8 +279,19 @@ runBuildStep('axiomate (ad-hoc codesign)', ['codesign', '--force', '--sign', '-'
 
 console.log('\nStep 3/4: Copying native files ...')
 
-copyIfExists(`node_modules/@img/sharp-darwin-${sharpArch}/lib/${sharpMacRuntimeName}`, sharpMacRuntimeName)
-if (copyIfExists(`node_modules/@img/sharp-libvips-darwin-${sharpArch}/lib/libvips-cpp.42.dylib`)) {
+copyFromPlatformSubpackage(
+  'sharp',
+  `@img/sharp-darwin-${sharpArch}`,
+  `lib/${sharpMacRuntimeName}`,
+  sharpMacRuntimeName,
+)
+if (
+  copyFromPlatformSubpackage(
+    'sharp',
+    `@img/sharp-libvips-darwin-${sharpArch}`,
+    'lib/libvips-cpp.42.dylib',
+  )
+) {
   runOptionalStep(
     `patched sharp rpath for libvips`,
     [
@@ -306,14 +305,32 @@ if (copyIfExists(`node_modules/@img/sharp-libvips-darwin-${sharpArch}/lib/libvip
   )
 }
 
-copyIfExists('node_modules/@nut-tree-fork/libnut-darwin/build/Release/libnut.node')
-copyIfExists('node_modules/@nut-tree-fork/node-mac-permissions/build/Release/permissions.node')
-copyIfExists(`node_modules/node-screenshots-darwin-${macArch}/node-screenshots.${nodePlatformArch}.node`, 'node-screenshots.node')
+copyFromPlatformSubpackage(
+  '@nut-tree-fork/nut-js',
+  '@nut-tree-fork/libnut-darwin',
+  'build/Release/libnut.node',
+)
+copyFromPlatformSubpackage(
+  '@nut-tree-fork/nut-js',
+  '@nut-tree-fork/node-mac-permissions',
+  'build/Release/permissions.node',
+)
+copyFromPlatformSubpackage(
+  'node-screenshots',
+  `node-screenshots-darwin-${macArch}`,
+  `node-screenshots.${nodePlatformArch}.node`,
+  'node-screenshots.node',
+)
 
 // Bundle ripgrep binary alongside the axiomate executable. See package-win.ts
 // for full rationale — same pattern, platform-specific subpackage resolved
-// at packaging time, found at runtime via dirname(process.execPath).
-copyIfExists(`node_modules/@vscode/ripgrep-darwin-${macArch}/bin/rg`)
+// at packaging time via packageNatives.ts, found at runtime via
+// dirname(process.execPath).
+copyFromPlatformSubpackage(
+  '@vscode/ripgrep',
+  `@vscode/ripgrep-darwin-${macArch}`,
+  'bin/rg',
+)
 
 copyWorkspaceNativeFiles('clipboard-axiomate')
 copyWorkspaceNativeFiles('audio-capture-axiomate')

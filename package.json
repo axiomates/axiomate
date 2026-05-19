@@ -1,6 +1,7 @@
 {
   "name": "axiomate",
   "private": true,
+  "packageManager": "pnpm@11.1.3",
   "scripts": {
     "bootstrap": "node scripts/bootstrap.mjs",
     "doctor": "node scripts/bootstrap.mjs --check",

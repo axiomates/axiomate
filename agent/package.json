@@ -130,6 +130,7 @@
   },
   "devDependencies": {
     "@types/lodash-es": "^4.17.0",
+    "@types/lodash": "^4.17.0",
     "@types/node": "^22.0.0",
     "@types/proper-lockfile": "^4.1.0",
     "@types/react": "^19.0.0",
