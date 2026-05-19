@@ -478,6 +478,21 @@ export function Config({
         setSettingsData(prev => ({ ...prev, bashAstEnabled: enabled }))
       },
     },
+    {
+      id: 'rtkEnabled',
+      label: 'Filter shell output (via rtk)',
+      value: settingsData?.rtk?.enabled ?? false,
+      type: 'boolean' as const,
+      onChange(enabled: boolean) {
+        updateSettingsForSource('userSettings', {
+          rtk: enabled ? { enabled: true } : undefined,
+        })
+        setSettingsData(prev => ({
+          ...prev,
+          rtk: enabled ? { ...prev?.rtk, enabled: true } : undefined,
+        }))
+      },
+    },
     ...(isFileCheckpointingAvailable
       ? [
           {
@@ -1034,6 +1049,7 @@ export function Config({
       deepSearchEnabled: iu?.deepSearchEnabled,
       agenticSearchEnabled: iu?.agenticSearchEnabled,
       language: iu?.language,
+      rtk: iu?.rtk,
       // ThemePicker's Ctrl+T writes this key directly — include it so the
       // disk state reverts along with the in-memory AppState.settings restore.
       syntaxHighlightingDisabled: iu?.syntaxHighlightingDisabled,
