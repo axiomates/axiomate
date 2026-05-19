@@ -372,8 +372,25 @@ function ensurePnpm() {
 function ensureBun() {
   const version = commandText('bun', ['--version'])
   if (version) {
-    ok(`bun: ${version.split(/\r?\n/)[0]}`)
-    return
+    const bunPath = commandText(
+      isWindows ? 'where' : 'which',
+      ['bun'],
+    )
+    // WSL trap: Windows installs of Node typically bundle bun.exe and
+    // expose it on PATH from `/mnt/c/`. From WSL that bun runs under
+    // Wine/Win32 semantics (process.platform === 'win32', UNC-path
+    // errors on workspace dirs). Treat a `/mnt/` path on Linux as
+    // "not installed natively" so we install a real Linux Bun.
+    const firstPath = bunPath?.split(/\r?\n/)[0]?.trim()
+    const isCrossPlatformBun =
+      isLinux && firstPath && (firstPath.startsWith('/mnt/') || firstPath.endsWith('.exe'))
+    if (!isCrossPlatformBun) {
+      ok(`bun: ${version.split(/\r?\n/)[0]}`)
+      return
+    }
+    note(
+      `Detected Windows Bun at ${firstPath} via WSL PATH passthrough — installing a native Linux Bun.`,
+    )
   }
 
   const needsBun = options.checkOnly || (!options.noBuild && !options.noAgentBuild)
