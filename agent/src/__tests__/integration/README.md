@@ -19,10 +19,10 @@ test pyramid and catch classes of bugs unit tests can't:
 ## Running
 
 ```bash
-# Default `bun test` excludes integration — these do NOT run automatically.
-bun run test:integration         # run all integration tests
-bun run test:all                 # unit + integration in one go
-bun run test:coverage:all        # coverage including integration
+# Default `pnpm run test` excludes integration — these do NOT run automatically.
+pnpm run test:integration         # run all integration tests (from repo root)
+pnpm run test:all                 # unit + integration in one go
+pnpm run test:coverage:all        # coverage including integration
 ```
 
 ## Required setup
@@ -71,7 +71,7 @@ pointing at the exact fix.
 
 - After landing any PR that modifies compact or jsonRepair / toolCall repair
 - Before cutting a release
-- Manually by developer triggering `bun test:integration` — no CI
+- Manually by developer triggering `pnpm run test:integration` — no CI
   auto-run (yet)
 
 ## Not in this folder

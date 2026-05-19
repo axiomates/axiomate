@@ -14,7 +14,7 @@ const proc = spawn('bun', ['dist/cli.js', '-p', '...'])
 ## Running
 
 ```bash
-bun run test:e2e   # currently runs zero tests
+pnpm run test:e2e   # currently runs zero tests
 ```
 
 Until we have a real need (e.g., verifying `/config` dialog behaves

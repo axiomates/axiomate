@@ -3,7 +3,7 @@
   "_format": "Mirrors the 'models' section of ~/.axiomate.json. Integration tests read from THIS file — they do NOT read from your real ~/.axiomate.json.",
   "models": {
     "Qwen/Qwen3-8B": {
-      "protocol": "openai",
+      "protocol": "openai-chat",
       "baseUrl": "https://api.siliconflow.cn/v1",
       "apiKey": "sk-YOUR-SILICONFLOW-KEY-HERE"
     }
