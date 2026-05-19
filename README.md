@@ -206,6 +206,18 @@ pnpm run bootstrap
 
 This builds the audio-capture NAPI module by default. Pass `--no-native` to skip it.
 
+##### WSL note
+
+If you're running WSL on Windows and the host has Node + Bun installed, WSL's PATH-passthrough exposes `bun.exe` as `/mnt/c/.../bun`. Bootstrap detects this and installs a native Linux Bun, but you need to make sure your shell picks it up afterwards. The Bun installer appends `BUN_INSTALL` + `PATH` lines to `~/.bashrc`; for login shells (which is what pnpm scripts spawn), copy the same two lines into `~/.profile`:
+
+```bash
+echo '' >> ~/.profile
+echo 'export BUN_INSTALL="$HOME/.bun"' >> ~/.profile
+echo 'export PATH="$BUN_INSTALL/bin:$PATH"' >> ~/.profile
+```
+
+Then start a new WSL session. Verify with `which bun` — it should print `/root/.bun/bin/bun` (or wherever your HOME is), not `/mnt/c/...`.
+
 ## Configuration
 
 Models are configured in `~/.axiomate.json`. On first run the file is created automatically — add your models to it:
