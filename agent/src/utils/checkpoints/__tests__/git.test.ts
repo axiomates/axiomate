@@ -1,5 +1,5 @@
 import { mkdtempSync, rmSync, writeFileSync } from 'fs'
-import { tmpdir } from 'os'
+import { homedir, tmpdir } from 'os'
 import { join } from 'path'
 import { afterAll, beforeAll, describe, expect, test } from 'vitest'
 import { runCheckpointGit, type CheckpointGitResult } from '../git.js'
@@ -57,5 +57,22 @@ describe('runCheckpointGit pre-flight', () => {
         workTree: '/totally/bogus/path/that/cannot/exist/anywhere',
       }),
     ).resolves.toBeDefined()
+  })
+
+  test('canonicalizes tilde-prefixed workTree before pre-flight (Hermes _run_git:287)', async () => {
+    // Regression for a bug introduced when we aligned spawn cwd with
+    // GIT_WORK_TREE: a literal `~` in workTree would land in
+    // GIT_WORK_TREE *and* in execa's cwd. Node does not tilde-expand
+    // at the chdir syscall, so spawn fails. Fix is to normalize once
+    // at the runCheckpointGit boundary, then pass canonical strings
+    // downstream — same shape as Hermes _run_git:287/297/307.
+    const r = await runCheckpointGit(['status'], {
+      store: realDir,
+      workTree: '~/this-folder-definitely-does-not-exist-axiomate-test',
+    })
+    expectFailure(r)
+    // Error message should reflect the EXPANDED path, not literal `~`.
+    expect(r.message).toContain(homedir())
+    expect(r.message).not.toContain('~')
   })
 })

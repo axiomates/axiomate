@@ -23,6 +23,7 @@ import {
   checkpointInitEnv,
   type CheckpointGitEnvOptions,
 } from './gitEnv.js'
+import { normalizePath } from './paths.js'
 
 /**
  * Default timeout for checkpoint git invocations (milliseconds).
@@ -92,18 +93,24 @@ export async function runCheckpointGit(
   args: string[],
   opts: RunCheckpointGitOptions,
 ): Promise<CheckpointGitResult> {
-  const workdirCheck = await ensureWorkTree(opts.workTree)
+  // Canonicalize once at the boundary. Mirrors Hermes `_run_git:287` —
+  // every downstream consumer (pre-flight stat, GIT_WORK_TREE, spawn cwd)
+  // sees the same canonical path. Without this, a caller passing `~/proj`
+  // would land a literal `~` in GIT_WORK_TREE *and* in spawn cwd; Node
+  // does not tilde-expand at the chdir syscall, so spawn would fail.
+  const workTree = normalizePath(opts.workTree)
+  const workdirCheck = await ensureWorkTree(workTree)
   if (workdirCheck) return workdirCheck
 
   const env = checkpointGitEnv({
     store: opts.store,
-    workTree: opts.workTree,
+    workTree,
     indexFile: opts.indexFile,
   })
   // Align cwd with GIT_WORK_TREE so cwd-relative git operations (some
   // hooks, plumbing edge cases) see the same directory the env points at.
   // Hermes does the same (`_run_git` line 307: `cwd=str(normalized_working_dir)`).
-  return runWithEnv(args, env, opts, opts.workTree)
+  return runWithEnv(args, env, opts, workTree)
 }
 
 /**
