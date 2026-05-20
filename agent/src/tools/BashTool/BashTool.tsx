@@ -25,7 +25,7 @@ import { expandPath } from '../../utils/path.js';
 import type { PermissionResult } from '../../utils/permissions/PermissionResult.js';
 import { maybeRecordPluginHint } from '../../utils/plugins/hintRecommendation.js';
 import { exec } from '../../utils/Shell.js';
-import { rtkRewrite } from '../../utils/rtk.js';
+import { rtkRewrite, rtkErrorWarning } from '../../utils/rtk.js';
 import { getInitialSettings } from '../../utils/settings/settings.js';
 import { logForDebugging } from '../../utils/debug.js';
 import { createSystemMessage } from '../../utils/messages.js';
@@ -80,13 +80,14 @@ const BASH_SEMANTIC_NEUTRAL_COMMANDS = new Set(['echo', 'printf', 'true', 'false
 // Commands that typically produce no stdout on success
 const BASH_SILENT_COMMANDS = new Set(['mv', 'cp', 'rm', 'mkdir', 'rmdir', 'chmod', 'chown', 'chgrp', 'touch', 'ln', 'cd', 'export', 'unset', 'wait']);
 
-// Once-per-failure-streak guard: when rtk goes missing, warn the user
-// once via appendSystemMessage. Reset by a subsequent successful rtk
-// rewrite — that way restoring the binary mid-session and then losing
-// it again re-warns. UI is unchanged either way; fallback path still
-// runs the original command. Module-scoped so the latch survives
-// across BashTool.call() invocations in the same process.
-let rtkMissingWarned = false;
+// One-per-streak latch for the "rtk failed" warning. Set on first
+// `kind === 'error'` outcome from rtkRewrite, cleared on the next
+// successful rewrite/ask so a transient failure followed by recovery
+// doesn't permanently silence future warnings. Module-scoped so the
+// latch survives across BashTool.call() invocations in the same
+// process. The warning text varies by reason (binary-missing /
+// timeout / spawn-failed / ...) — see rtkErrorWarning() in utils/rtk.
+let rtkErrorWarned = false;
 
 /**
  * Checks if a bash command is a search or read operation.
@@ -851,23 +852,19 @@ async function* runShellCommand({
     logForDebugging(`[rtk-trace] BashTool: rtkRewrite result kind=${result.kind}${'cmd' in result ? ` cmd=${JSON.stringify(result.cmd).slice(0, 200)}` : ''}`);
     if (result.kind === 'rewrite' || result.kind === 'ask') {
       commandToExec = result.cmd;
-      // Successful rewrite — re-arm the missing-warning latch so that if
-      // rtk disappears later in the session we warn again.
-      rtkMissingWarned = false;
-    } else if (result.kind === 'error' && !rtkMissingWarned && appendSystemMessage) {
-      // rtk-axiomate workspace + dirname(execPath) both missed. User opted
-      // in but bin is gone; surface a yellow once-per-session notice and
-      // continue with the original command. UI-only — Tool.ts strips
-      // SystemMessages at the normalizeMessagesForAPI boundary so the LLM
-      // never sees this; users get a clear signal that their toggle has
-      // no effect. The latch resets on the next successful rewrite so
-      // restoring the binary mid-session and breaking it again re-warns.
-      rtkMissingWarned = true;
+      // Successful rewrite — re-arm the warning latch so a later failure
+      // streak gets to warn again.
+      rtkErrorWarned = false;
+    } else if (result.kind === 'error' && !rtkErrorWarned && appendSystemMessage) {
+      // rtk failed after up to 3 attempts. Surface a yellow once-per-streak
+      // notice and continue with the original command. UI-only — Tool.ts
+      // strips SystemMessages at the normalizeMessagesForAPI boundary so
+      // the LLM never sees this; the user gets a clear signal that their
+      // toggle has no effect this turn. The latch resets on the next
+      // successful rewrite, so a recover-then-fail pattern re-warns.
+      rtkErrorWarned = true;
       appendSystemMessage(createSystemMessage(
-        'rtk is enabled in /config but the rtk binary was not found. ' +
-        'Shell commands will run unfiltered. Re-run `pnpm bootstrap` (dev) ' +
-        'or reinstall axiomate (packaged) to restore rtk, or disable the ' +
-        'toggle in /config to silence this warning.',
+        rtkErrorWarning(result.reason, result.attempts),
         'warning',
       ));
     }

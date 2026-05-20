@@ -5,19 +5,38 @@ import { dirname, join } from 'path'
 import { isInBundledMode } from './bundledMode.js'
 import { logForDebugging } from './debug.js'
 
-const RTK_TIMEOUT_MS = 250
+// Per-attempt timeout for rtk rewrite. Observed hot-path P99 in production
+// is ~110ms, but cold spawn on Windows + AV scanning regularly exceeds
+// 500ms. 1000ms is comfortably above the cold-spawn ceiling without making
+// users wait noticeably when rtk is genuinely broken — combined with the
+// 3-attempt retry below the worst-case wall-clock is ~3.15s, which beats
+// the 2000ms-per-attempt design (~6.15s worst case) on user-perceived UX.
+const RTK_TIMEOUT_MS = 1000
 const RTK_BINARY = process.platform === 'win32' ? 'rtk.exe' : 'rtk'
+const RTK_MAX_ATTEMPTS = 3
+const RTK_RETRY_BACKOFF_MS = [50, 100] as const
 
 export type RtkConfig = {
   path: string
 }
+
+/**
+ * Why an `error` outcome can happen — surfaced so the caller can pick a
+ * useful warning message instead of always claiming the binary is missing.
+ */
+export type RtkErrorReason =
+  | 'binary-missing'    // resolver returned null — rtk[.exe] not found
+  | 'spawn-failed'      // OS rejected the spawn (ENOENT/EBUSY/EPERM/...)
+  | 'timeout'           // hit RTK_TIMEOUT_MS, or upstream abort signal
+  | 'unexpected-exit'   // numeric exit code we don't know how to interpret
+  | 'empty-output'      // exit 0 or 3 but stdout was blank
 
 export type RtkRewriteResult =
   | { kind: 'rewrite'; cmd: string }
   | { kind: 'ask'; cmd: string }
   | { kind: 'passthrough' }
   | { kind: 'deny' }
-  | { kind: 'error' }
+  | { kind: 'error'; reason: RtkErrorReason; attempts: number }
 
 /**
  * Find the bundled rtk binary. Two layouts, mirroring findBundledRipgrep
@@ -41,9 +60,6 @@ function findRtkBinary(): string | null {
   if (isInBundledMode()) {
     const candidate = join(dirname(process.execPath), RTK_BINARY)
     if (existsSync(candidate)) return candidate
-    // Fall through — bundled rtk may be missing from a hand-relocated
-    // install. The require() branch below won't help there either, but
-    // returning null lets the caller surface a friendlier message.
   }
   try {
     const req = createRequire(import.meta.url)
@@ -51,39 +67,23 @@ function findRtkBinary(): string | null {
     if (mod.rtkPath && existsSync(mod.rtkPath)) return mod.rtkPath
   } catch {
     // rtk-axiomate workspace not installed, or we're running from a
-    // Bun-compiled exe whose virtual fs has no node_modules. Either
-    // way the packaged-exe branch above already covered the case.
+    // Bun-compiled exe whose virtual fs has no node_modules.
   }
   return null
 }
 
 /**
- * Resolve the rtk binary fresh on every call.
- *
- * NOT memoized: if rtk goes missing mid-session (rare in production,
- * common in dev when developers move files around) the resolver must
- * recover when the binary returns. `findRtkBinary` is two cheap
- * `existsSync` probes — ~microseconds — and BashTool.tsx itself
- * gates on settings.rtk?.enabled before calling rtkRewrite, so this
- * isn't on the hot path for users who never enabled the feature.
- *
- * The `[rtk ready] / [rtk not found]` log lines fire on every Bash
- * call; that's intentional — debug traces should reflect the
- * actually-observed state, not a one-shot snapshot.
+ * Resolve the rtk binary fresh on every call. NOT memoized — see commit
+ * fdd2d81e for why (mid-session recovery when binary returns).
  */
 export function getRtkConfig(): RtkConfig | null {
   const path = findRtkBinary()
   if (!path) {
     logForDebugging(
-      'rtk not found — run pnpm bootstrap to fetch the binary, or ensure rtk lives next to axiomate.exe in packaged builds',
+      `rtk not found — checked dirname(execPath)=${dirname(process.execPath)} and rtk-axiomate package`,
     )
     return null
   }
-  // No pre-flight execFile probe: it misfired inside Bun-compiled exes
-  // (synchronous throw within ~250ms even for a healthy binary). We
-  // trust existsSync here; if the binary is actually broken, rtkRewrite's
-  // execFile callback logs the real error and BashTool's fail-open path
-  // runs the original command.
   logForDebugging(`rtk ready (path=${path})`)
   return { path }
 }
@@ -111,35 +111,39 @@ function patchRewrittenCommand(rewritten: string, rtkPath: string): string {
   return `${quoteIfNeeded(rtkPath)}${after}`
 }
 
+type AttemptOutcome =
+  | { kind: 'rewrite'; cmd: string }
+  | { kind: 'ask'; cmd: string }
+  | { kind: 'passthrough' }
+  | { kind: 'deny' }
+  | { kind: 'error'; reason: RtkErrorReason; transient: boolean }
+
 /**
- * Invoke `rtk rewrite <cmd>` and map the exit-code protocol
- * (see rtk/src/hooks/rewrite_cmd.rs:7-17) to a discriminated result.
+ * Single attempt at `rtk rewrite <cmd>`. Maps the exit-code protocol
+ * (rtk/src/hooks/rewrite_cmd.rs:7-17) to an outcome and tags errors with
+ * a reason so callers can decide whether to retry.
  *
- * Fail-open: any error (missing binary, timeout, unexpected exit code,
- * malformed output) returns `error` so the caller can run the original
- * command unchanged.
+ * "transient" classification:
+ *   - spawn-failed, timeout, empty-output → likely retryable (AV scan,
+ *     cold-cache, transient OS state)
+ *   - unexpected-exit → NOT retryable (rtk panicked or hit a bug; same
+ *     input + same binary will hit the same path)
  */
-export async function rtkRewrite(
+function runRtkOnce(
+  rtkPath: string,
   cmd: string,
   abortSignal: AbortSignal,
-): Promise<RtkRewriteResult> {
-  const config = getRtkConfig()
-  if (!config) {
-    logForDebugging(`[rtk-trace] rtkRewrite: no config (resolver returned null), cmd=${JSON.stringify(cmd).slice(0, 200)}`)
-    return { kind: 'error' }
-  }
-  logForDebugging(`[rtk-trace] rtkRewrite: invoking ${config.path} rewrite <cmd> where cmd=${JSON.stringify(cmd).slice(0, 200)}`)
-
-  return new Promise<RtkRewriteResult>(resolve => {
+): Promise<AttemptOutcome> {
+  return new Promise<AttemptOutcome>(resolve => {
     let settled = false
-    const settle = (result: RtkRewriteResult) => {
+    const settle = (result: AttemptOutcome) => {
       if (settled) return
       settled = true
       resolve(result)
     }
 
     const child = execFile(
-      config.path,
+      rtkPath,
       ['rewrite', cmd],
       {
         timeout: RTK_TIMEOUT_MS,
@@ -149,20 +153,22 @@ export async function rtkRewrite(
         windowsHide: true,
       },
       (error, stdout) => {
-        logForDebugging(`[rtk-trace] rtkRewrite callback: error=${error ? JSON.stringify({ code: (error as NodeJS.ErrnoException).code, signal: (error as NodeJS.ErrnoException & {signal?: string|null}).signal, message: error.message }) : 'null'} stdout=${JSON.stringify(stdout).slice(0, 200)}`)
-        // execFile surfaces non-zero exits as an error whose `code` is the
-        // numeric exit code. Spawn failures use string codes ('ENOENT' etc.),
-        // and timeouts/aborts set `error.signal`. Fail open on anything that
-        // isn't a clean numeric exit.
+        const stdoutPreview = JSON.stringify(stdout ?? '').slice(0, 200)
         if (error) {
           const err = error as NodeJS.ErrnoException & {
             signal?: string | null
           }
+          logForDebugging(
+            `[rtk-trace] attempt error: code=${JSON.stringify(err.code)} signal=${JSON.stringify(err.signal ?? null)} message=${JSON.stringify(err.message).slice(0, 200)} stdout=${stdoutPreview}`,
+          )
           if (typeof err.code !== 'number') {
-            return settle({ kind: 'error' })
+            // String code: ENOENT, EBUSY, EPERM, etc. Spawn-side failure.
+            return settle({ kind: 'error', reason: 'spawn-failed', transient: true })
           }
-          if (err.signal && err.signal !== null) {
-            return settle({ kind: 'error' })
+          if (err.signal != null) {
+            // Timeout or abort. execFile sets signal on timeout
+            // (SIGTERM by default) and on AbortSignal.
+            return settle({ kind: 'error', reason: 'timeout', transient: true })
           }
           const exitCode = err.code as number
           const rewritten = typeof stdout === 'string' ? stdout.trim() : ''
@@ -172,25 +178,135 @@ export async function rtkRewrite(
             case 2:
               return settle({ kind: 'deny' })
             case 3:
-              if (!rewritten) return settle({ kind: 'error' })
+              if (!rewritten) {
+                return settle({ kind: 'error', reason: 'empty-output', transient: true })
+              }
               return settle({
                 kind: 'ask',
-                cmd: patchRewrittenCommand(rewritten, config.path),
+                cmd: patchRewrittenCommand(rewritten, rtkPath),
               })
             default:
-              return settle({ kind: 'error' })
+              // rtk shouldn't return other numeric codes; treat as a bug,
+              // not a transient hiccup, so we don't waste retries.
+              return settle({ kind: 'error', reason: 'unexpected-exit', transient: false })
           }
         }
         // Exit 0: rewrite found, allowed.
         const rewritten = typeof stdout === 'string' ? stdout.trim() : ''
-        if (!rewritten) return settle({ kind: 'error' })
+        if (!rewritten) {
+          logForDebugging(`[rtk-trace] attempt exit=0 but stdout empty`)
+          return settle({ kind: 'error', reason: 'empty-output', transient: true })
+        }
         settle({
           kind: 'rewrite',
-          cmd: patchRewrittenCommand(rewritten, config.path),
+          cmd: patchRewrittenCommand(rewritten, rtkPath),
         })
       },
     )
 
-    child.on('error', () => settle({ kind: 'error' }))
+    child.on('error', () => {
+      // execFile already surfaces this through the callback as well, but
+      // child.on('error') can fire before the callback in rare cases;
+      // settled-latch keeps both paths idempotent.
+      settle({ kind: 'error', reason: 'spawn-failed', transient: true })
+    })
   })
+}
+
+/**
+ * Invoke `rtk rewrite <cmd>` with up to RTK_MAX_ATTEMPTS tries.
+ *
+ * Retries on transient failures only — spawn errors (AV scan races, file
+ * lock), timeouts (cold spawn on slow machines), and empty stdout. Does
+ * NOT retry on unexpected-exit (rtk panic) or on success/passthrough/deny
+ * outcomes, which are all definitive.
+ *
+ * Fail-open: when all attempts are exhausted, returns `kind: 'error'` so
+ * the caller runs the original command unchanged.
+ */
+export async function rtkRewrite(
+  cmd: string,
+  abortSignal: AbortSignal,
+): Promise<RtkRewriteResult> {
+  const config = getRtkConfig()
+  if (!config) {
+    logForDebugging(
+      `[rtk-trace] rtkRewrite: no config (resolver returned null), cmd=${JSON.stringify(cmd).slice(0, 200)}`,
+    )
+    return { kind: 'error', reason: 'binary-missing', attempts: 0 }
+  }
+  logForDebugging(
+    `[rtk-trace] rtkRewrite: invoking ${config.path} rewrite <cmd> where cmd=${JSON.stringify(cmd).slice(0, 200)}`,
+  )
+
+  let lastReason: RtkErrorReason = 'spawn-failed'
+  for (let attempt = 1; attempt <= RTK_MAX_ATTEMPTS; attempt++) {
+    if (abortSignal.aborted) {
+      return { kind: 'error', reason: 'timeout', attempts: attempt - 1 }
+    }
+    const outcome = await runRtkOnce(config.path, cmd, abortSignal)
+    if (outcome.kind !== 'error') {
+      if (attempt > 1) {
+        logForDebugging(
+          `[rtk-trace] rtkRewrite recovered on attempt ${attempt} with kind=${outcome.kind}`,
+        )
+      }
+      return outcome
+    }
+    lastReason = outcome.reason
+    if (!outcome.transient) {
+      logForDebugging(
+        `[rtk-trace] rtkRewrite giving up after attempt ${attempt}: non-transient reason=${outcome.reason}`,
+      )
+      return { kind: 'error', reason: outcome.reason, attempts: attempt }
+    }
+    if (attempt < RTK_MAX_ATTEMPTS) {
+      const backoff = RTK_RETRY_BACKOFF_MS[attempt - 1] ?? 100
+      logForDebugging(
+        `[rtk-trace] rtkRewrite attempt ${attempt} failed (reason=${outcome.reason}), retrying after ${backoff}ms`,
+      )
+      await new Promise(resolve => setTimeout(resolve, backoff))
+    }
+  }
+  logForDebugging(
+    `[rtk-trace] rtkRewrite exhausted ${RTK_MAX_ATTEMPTS} attempts, last reason=${lastReason}`,
+  )
+  return { kind: 'error', reason: lastReason, attempts: RTK_MAX_ATTEMPTS }
+}
+
+/**
+ * Human-readable warning text per failure reason. Used by BashTool to
+ * surface a yellow ● bullet to the user. Phrased as one short sentence
+ * so it fits the SystemTextMessage layout.
+ */
+export function rtkErrorWarning(reason: RtkErrorReason, attempts: number): string {
+  const tries = attempts === 1 ? '1 try' : `${attempts} tries`
+  switch (reason) {
+    case 'binary-missing':
+      return (
+        'rtk is enabled in /config but the rtk binary was not found. ' +
+        'Shell commands will run unfiltered. Place rtk next to axiomate, ' +
+        'or disable the toggle to silence this warning.'
+      )
+    case 'spawn-failed':
+      return (
+        `rtk failed to start after ${tries} (likely antivirus or file-lock contention). ` +
+        'Shell commands will run unfiltered for this turn.'
+      )
+    case 'timeout':
+      return (
+        `rtk timed out (>${RTK_TIMEOUT_MS}ms) on ${tries}. ` +
+        'Shell commands will run unfiltered for this turn.'
+      )
+    case 'unexpected-exit':
+      return (
+        'rtk exited with an unexpected status — likely a bug. ' +
+        'Shell commands will run unfiltered for this turn.'
+      )
+    case 'empty-output':
+      return (
+        `rtk returned empty output on ${tries} — possible version mismatch. ` +
+        'Shell commands will run unfiltered for this turn.'
+      )
+  }
 }
