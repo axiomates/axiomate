@@ -28,6 +28,14 @@ describe('checkpointGitEnv', () => {
     expect(env.GIT_CONFIG_NOSYSTEM).toBe('1')
   })
 
+  test('disables interactive prompts so auth/askpass cannot wedge the agent', () => {
+    const env = checkpointGitEnv({
+      store: fixtureStore,
+      workTree: fixtureWorktree,
+    })
+    expect(env.GIT_TERMINAL_PROMPT).toBe('0')
+  })
+
   test('omits GIT_INDEX_FILE when no indexFile passed', () => {
     const env = checkpointGitEnv({
       store: fixtureStore,
@@ -92,6 +100,11 @@ describe('checkpointInitEnv', () => {
     expect(env.GIT_CONFIG_GLOBAL).toBe(expectedNullDevice)
     expect(env.GIT_CONFIG_SYSTEM).toBe(expectedNullDevice)
     expect(env.GIT_CONFIG_NOSYSTEM).toBe('1')
+  })
+
+  test('still disables interactive prompts during init', () => {
+    const env = checkpointInitEnv({ store: fixtureStore })
+    expect(env.GIT_TERMINAL_PROMPT).toBe('0')
   })
 
   test('strips inherited GIT_WORK_TREE from parent env', () => {

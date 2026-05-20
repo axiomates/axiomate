@@ -74,6 +74,11 @@ export function checkpointGitEnv(
   env.GIT_CONFIG_SYSTEM = nullDev
   env.GIT_CONFIG_NOSYSTEM = '1'
 
+  // Belt-and-suspenders: even though we mute config, some git invocations
+  // (auth helpers, askpass programs) can still try to prompt. With no TTY
+  // we'd hang until the timeout fires. Force git to fail fast instead.
+  env.GIT_TERMINAL_PROMPT = '0'
+
   return env
 }
 
@@ -92,5 +97,6 @@ export function checkpointInitEnv(opts: { store: string }): NodeJS.ProcessEnv {
   env.GIT_CONFIG_GLOBAL = nullDev
   env.GIT_CONFIG_SYSTEM = nullDev
   env.GIT_CONFIG_NOSYSTEM = '1'
+  env.GIT_TERMINAL_PROMPT = '0'
   return env
 }

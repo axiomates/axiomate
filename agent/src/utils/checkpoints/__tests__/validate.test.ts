@@ -93,4 +93,15 @@ describe('validateRelativePath', () => {
     expect(validateRelativePath('src/../package.json', workdir)).toBeNull()
     expect(validateRelativePath('a/b/../c.ts', workdir)).toBeNull()
   })
+
+  test('canonicalizes tilde-prefixed workdir before traversal check', () => {
+    // Mirrors Hermes `_validate_file_path` calling `_normalize_path(working_dir)`.
+    // If we didn't expand `~`, the relative-to check would compare against
+    // a literal `~/proj/src` base, and benign traversal could falsely escape.
+    expect(validateRelativePath('src/foo.ts', '~/proj')).toBeNull()
+    // Path that escapes home/proj should still be rejected after expansion.
+    expect(validateRelativePath('../../etc/passwd', '~/proj')).toContain(
+      'escapes',
+    )
+  })
 })

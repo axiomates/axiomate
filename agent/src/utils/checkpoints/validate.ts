@@ -15,6 +15,7 @@
  */
 
 import { isAbsolute, relative, resolve, sep } from 'path'
+import { normalizePath } from './paths.js'
 
 /** Valid git commit hash: 4–64 hex chars (short SHA-1 through full SHA-256). */
 const COMMIT_HASH_RE = /^[0-9a-fA-F]{4,64}$/
@@ -69,7 +70,10 @@ export function validateRelativePath(
   if (isAbsolute(filePath)) {
     return `File path must be relative, got absolute path: ${JSON.stringify(filePath)}`
   }
-  const absWorkdir = resolve(workingDir)
+  // Canonicalize workdir first (tilde-expand, resolve relatives) — matches
+  // Hermes `_validate_file_path` calling `_normalize_path(working_dir)`
+  // before doing the relative-to check.
+  const absWorkdir = normalizePath(workingDir)
   const resolved = resolve(absWorkdir, filePath)
   const rel = relative(absWorkdir, resolved)
   // `relative` returns '..' or a string starting with '..' + sep when the

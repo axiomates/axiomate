@@ -1,3 +1,4 @@
+import { homedir } from 'os'
 import { join } from 'path'
 import { describe, expect, test } from 'vitest'
 import {
@@ -6,6 +7,8 @@ import {
   getLastPrunePath,
   getStoreDir,
   indexPath,
+  infoExcludePath,
+  normalizePath,
   projectHash,
   projectMetaPath,
   refName,
@@ -64,6 +67,69 @@ describe('store path helpers', () => {
   test('per-project meta path uses .json suffix', () => {
     expect(projectMetaPath('abc123def456789')).toBe(
       join(getStoreDir(), 'projects', 'abc123def456789.json'),
+    )
+  })
+
+  test('info/exclude lives under the store dir', () => {
+    expect(infoExcludePath()).toBe(join(getStoreDir(), 'info', 'exclude'))
+  })
+})
+
+describe('projectHash invariants', () => {
+  test('different string forms of the same path produce different hashes (caller must canonicalize)', () => {
+    // Documents the JSDoc contract: callers must pass path.resolve()-form
+    // input. The function does not normalize internally — that policy
+    // belongs to the Phase 2 store API boundary, not this value layer.
+    const noisy = process.platform === 'win32'
+      ? 'C:\\proj\\.\\sub'
+      : '/proj/./sub'
+    const clean = process.platform === 'win32'
+      ? 'C:\\proj\\sub'
+      : '/proj/sub'
+    expect(projectHash(noisy)).not.toBe(projectHash(clean))
+  })
+})
+
+describe('normalizePath', () => {
+  test('expands `~` to the user home directory', () => {
+    expect(normalizePath('~')).toBe(homedir())
+  })
+
+  test('expands `~/foo` to <home>/foo', () => {
+    expect(normalizePath('~/foo')).toBe(join(homedir(), 'foo'))
+  })
+
+  test('expands `~\\foo` (Windows form) to <home>/foo', () => {
+    expect(normalizePath('~\\foo')).toBe(join(homedir(), 'foo'))
+  })
+
+  test('leaves absolute paths idempotent (resolve normalizes `.` and `..`)', () => {
+    const abs = process.platform === 'win32' ? 'C:\\proj\\.\\sub' : '/proj/./sub'
+    const expected = process.platform === 'win32' ? 'C:\\proj\\sub' : '/proj/sub'
+    expect(normalizePath(abs)).toBe(expected)
+  })
+
+  test('does NOT expand `~user` form (mirrors Hermes/Node limitation)', () => {
+    // Hermes' Path.expanduser() supports `~user`; Node has no equivalent.
+    // We document the limitation rather than reach for a userdb lookup.
+    const result = normalizePath('~bob/foo')
+    expect(result).not.toBe(join(homedir(), 'foo'))
+    // It just gets path.resolve'd against cwd — the literal `~bob` survives.
+    expect(result.includes('~bob')).toBe(true)
+  })
+
+  test('paired with projectHash, gives stable hashes across noisy/clean inputs', () => {
+    // This is the use case: Phase 2 store API normalizes at the boundary,
+    // then hashes — so `~/proj`, `/home/user/proj`, and `/home/user/./proj`
+    // all collapse to the same project.
+    const noisy = process.platform === 'win32'
+      ? 'C:\\proj\\.\\sub'
+      : '/proj/./sub'
+    const clean = process.platform === 'win32'
+      ? 'C:\\proj\\sub'
+      : '/proj/sub'
+    expect(projectHash(normalizePath(noisy))).toBe(
+      projectHash(normalizePath(clean)),
     )
   })
 })

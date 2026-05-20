@@ -15,13 +15,16 @@
  */
 
 import { createHash } from 'crypto'
-import { join } from 'path'
+import { homedir } from 'os'
+import { join, resolve } from 'path'
 import { getConfigHomeDir } from '../envUtils.js'
 
 const CHECKPOINTS_DIRNAME = 'checkpoints'
 const STORE_DIRNAME = 'store'
 const INDEXES_DIRNAME = 'indexes'
 const PROJECTS_DIRNAME = 'projects'
+const INFO_DIRNAME = 'info'
+const EXCLUDE_FILENAME = 'exclude'
 const REF_PREFIX = 'refs/axiomate'
 const LAST_PRUNE_FILENAME = '.last_prune'
 
@@ -41,10 +44,52 @@ export function getLastPrunePath(): string {
 }
 
 /**
+ * Canonical absolute path for any user-supplied workdir-like string.
+ *
+ * Direct port of Hermes' `_normalize_path` (`tools/checkpoint_manager.py:193-195`,
+ * `Path(value).expanduser().resolve()`). Hermes calls this at every API
+ * entry point — validators, hashers, env builders, metadata writers — so
+ * downstream code never has to think about tildes, relative bits, or `..`.
+ *
+ * We mirror that strategy: `validateRelativePath` and the Phase 2 store
+ * API boundary route every workdir-shaped input through this function
+ * before doing anything that depends on path identity (hashing, comparing,
+ * writing metadata).
+ *
+ * Behavior:
+ *   - Leading `~` → user home (`~`, `~/foo`; `~user` is NOT supported, same
+ *     as Hermes — Python's `expanduser` does support it, but it's vanishingly
+ *     rare in practice and Node has no equivalent).
+ *   - `path.resolve()` against process.cwd() handles relative input.
+ *   - No filesystem access — symlinks are not followed (`realpath`-free).
+ */
+export function normalizePath(value: string): string {
+  let v = value
+  if (v === '~') {
+    v = homedir()
+  } else if (v.startsWith('~/') || v.startsWith('~\\')) {
+    v = join(homedir(), v.slice(2))
+  }
+  return resolve(v)
+}
+
+/**
  * Stable 16-hex-char identifier for a project derived from its absolute
  * worktree path. Two worktrees of the same project (same abs path) collide
  * intentionally so blobs dedup; a worktree at a different abs path is a
  * different project.
+ *
+ * IMPORTANT contract: callers MUST pass an already-resolved absolute path
+ * (e.g. `path.resolve(workdir)`). This function is a pure value-layer
+ * function and does not canonicalize for you. Hashing `'C:\\proj\\.\\sub'`
+ * vs `'C:\\proj\\sub'` would produce two different hashes — silently
+ * breaking blob dedup. Phase 2 store API enforces normalization at its
+ * boundary; downstream of that, hashes are stable.
+ *
+ * Case sensitivity is intentionally preserved: `/Proj/foo` and `/proj/foo`
+ * are treated as distinct projects (see paths.test.ts:30-34). On
+ * case-insensitive filesystems the user's actual abs path is what we get,
+ * and we trust the OS to give us a single canonical form per real project.
  */
 export function projectHash(absoluteWorkdir: string): string {
   return createHash('sha256').update(absoluteWorkdir).digest('hex').slice(0, 16)
@@ -63,6 +108,16 @@ export function indexPath(hash: string): string {
 /** Per-project metadata JSON path: { workdir, created_at, last_touch }. */
 export function projectMetaPath(hash: string): string {
   return join(getStoreDir(), PROJECTS_DIRNAME, `${hash}.json`)
+}
+
+/**
+ * `info/exclude` is git's per-repo gitignore equivalent. We write the
+ * `DEFAULT_EXCLUDES` list here every `ensureStore()` call so the file is
+ * authoritative — users editing the store directly is not a supported
+ * workflow.
+ */
+export function infoExcludePath(): string {
+  return join(getStoreDir(), INFO_DIRNAME, EXCLUDE_FILENAME)
 }
 
 /**
