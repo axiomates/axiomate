@@ -19,13 +19,19 @@ Phase 1 done (2026-05-20):
 - 3 test files: 44/44 passing in 2.4s. `tsc --noEmit` clean.
 - Honest scope: Phase 1 tests are pure-function (env composition, validation, paths). Real git-spawn behavior is exercised end-to-end in Phase 2 against a real on-disk store.
 
-Phase 1 follow-up (2026-05-21, after Hermes deep-read):
+Phase 1 follow-up #1 (2026-05-21, after Hermes deep-read):
 - Added `normalizePath(value)` to `paths.ts` — direct port of Hermes' `_normalize_path` (`tools/checkpoint_manager.py:193-195`). Tilde-expand (`~`, `~/foo`, `~\foo`) + `path.resolve()`. **This is the canonical workdir hygiene function**; Phase 2 store API routes every workdir-shaped input through it before hashing/comparing/persisting.
 - `validateRelativePath` now calls `normalizePath` on its `workingDir` arg, matching Hermes' `_validate_file_path:180`.
 - Added `infoExcludePath()` helper to `paths.ts` (Phase 2 will write `info/exclude` here).
 - Added `GIT_TERMINAL_PROMPT=0` to both `checkpointGitEnv` and `checkpointInitEnv` — defense in depth against auth/askpass hangs. **Hermes does not set this**; we go one step further than parity here, costing one line.
 - Documented `projectHash` JSDoc contract: function stays pure, callers canonicalize via `normalizePath`. Test asserts noisy/clean inputs produce different hashes (so silent-canonicalization can't sneak in later); paired test asserts `projectHash(normalizePath(noisy))` equals `projectHash(normalizePath(clean))` so the layered approach actually delivers dedup.
-- Tests now 55/55 passing. `tsc --noEmit` clean.
+- Tests 55/55 passing. `tsc --noEmit` clean.
+
+Phase 1 follow-up #2 (2026-05-21, second-pass review of `_run_git`):
+- `runCheckpointGit` now pre-flights `workTree`: must exist, must be a directory. Returns typed `spawn-error` with `working directory not found` / `not a directory` message — better diagnostics than letting git fail with "fatal: not a git repository". Mirrors Hermes `_run_git:287-295`. Catches the case where workdir was deleted between calls (`rm -rf` from BashTool against agent's own cwd).
+- Switched from `execFileNoThrow(useCwd: false)` to `execFileNoThrowWithCwd(cwd: workTree)` for non-init invocations. **Aligns cwd with `GIT_WORK_TREE`** so cwd-relative git operations (some hooks, plumbing edge cases) see the same directory the env points at. Mirrors Hermes `_run_git:307`. Init still passes `cwd: undefined` (operates on bare store, parent cwd irrelevant).
+- New `git.test.ts` (3 tests): missing-workdir, regular-file-as-workdir, fail-open contract on bogus paths.
+- Tests now 58/58 passing. `tsc --noEmit` clean.
 
 Phase 0 review answers (locked):
 - Snapshot only state affecting agent continuity; exclude build artifacts and dependency locks. Specifically include `agent/.axiomate/settings.local.json` (anchored `/.axiomate/` exclusion). Cargo.lock kept (binary-crate reproducibility).

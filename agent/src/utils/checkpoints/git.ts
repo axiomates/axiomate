@@ -15,7 +15,8 @@
  * path. Same approach as `context.ts:50` and `hooks/fileSuggestions.ts:267`.
  */
 
-import { execFileNoThrow } from '../execFileNoThrow.js'
+import { stat } from 'fs/promises'
+import { execFileNoThrowWithCwd } from '../execFileNoThrow.js'
 import { gitExe } from '../git.js'
 import {
   checkpointGitEnv,
@@ -80,17 +81,29 @@ export interface RunCheckpointGitOptions extends CheckpointGitEnvOptions {
  * Returns a discriminated union — callers should handle `result.ok` first
  * before reading stdout/stderr. Errors are *never* thrown, matching the
  * "checkpoints must never block the agent" contract.
+ *
+ * Pre-flight: validates that `workTree` exists and is a directory before
+ * spawning. Mirrors Hermes' `_run_git` (`tools/checkpoint_manager.py:287-295`)
+ * which catches the case where workdir was deleted between calls (e.g.
+ * `rm -rf` from BashTool against the agent's own cwd) and returns a clean
+ * error string instead of git's confusing "fatal: not a git repository".
  */
 export async function runCheckpointGit(
   args: string[],
   opts: RunCheckpointGitOptions,
 ): Promise<CheckpointGitResult> {
+  const workdirCheck = await ensureWorkTree(opts.workTree)
+  if (workdirCheck) return workdirCheck
+
   const env = checkpointGitEnv({
     store: opts.store,
     workTree: opts.workTree,
     indexFile: opts.indexFile,
   })
-  return runWithEnv(args, env, opts)
+  // Align cwd with GIT_WORK_TREE so cwd-relative git operations (some
+  // hooks, plumbing edge cases) see the same directory the env points at.
+  // Hermes does the same (`_run_git` line 307: `cwd=str(normalized_working_dir)`).
+  return runWithEnv(args, env, opts, opts.workTree)
 }
 
 /**
@@ -106,7 +119,44 @@ export async function runCheckpointGitInit(
   },
 ): Promise<CheckpointGitResult> {
   const env = checkpointInitEnv({ store: opts.store })
-  return runWithEnv(args, env, opts)
+  // No cwd: init operates on the bare store, the parent process's cwd
+  // doesn't matter, and forcing a cwd that may not exist (the user's
+  // workdir might still be the agent boot dir) is just noise.
+  return runWithEnv(args, env, opts, undefined)
+}
+
+/**
+ * Pre-flight check: workTree exists and is a directory. Returns null on
+ * success, a typed failure result on missing/wrong-type. Hermes-style
+ * (lines 287-295) — better diagnostics than letting git fail with
+ * "not a git repository" when the actual problem is a deleted workdir.
+ */
+async function ensureWorkTree(
+  workTree: string,
+): Promise<CheckpointGitResult | null> {
+  try {
+    const st = await stat(workTree)
+    if (!st.isDirectory()) {
+      return {
+        ok: false,
+        reason: 'spawn-error',
+        code: -1,
+        stdout: '',
+        stderr: '',
+        message: `working directory is not a directory: ${workTree}`,
+      }
+    }
+    return null
+  } catch {
+    return {
+      ok: false,
+      reason: 'spawn-error',
+      code: -1,
+      stdout: '',
+      stderr: '',
+      message: `working directory not found: ${workTree}`,
+    }
+  }
 }
 
 async function runWithEnv(
@@ -117,16 +167,15 @@ async function runWithEnv(
     allowedExitCodes?: ReadonlySet<number>
     input?: string
   },
+  cwd: string | undefined,
 ): Promise<CheckpointGitResult> {
   const timeout = opts.timeoutMs ?? resolveTimeoutMs()
   const exe = gitExe()
-  const result = await execFileNoThrow(exe, args, {
+  const result = await execFileNoThrowWithCwd(exe, args, {
     env,
     timeout,
     preserveOutputOnError: true,
-    // Checkpoints are infrastructure — they should not be tied to the
-    // user's session cwd. The env's GIT_WORK_TREE is what matters.
-    useCwd: false,
+    cwd,
     input: opts.input,
     stdin: opts.input !== undefined ? 'pipe' : 'ignore',
   })
