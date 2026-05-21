@@ -10,7 +10,7 @@
 
 ## Immediate next action
 
-→ **Phase 4**: implement `agent/src/utils/checkpoints/prune.ts` — orphan + stale + size-cap passes, then `git gc --prune=now`. **Triggered async from `agent/src/utils/backgroundHousekeeping.ts:startBackgroundHousekeeping()`** (NOT `processSessionStartHooks`, which is for user-defined hooks — the original plan was wrong on this) with a 24h `.last_prune` idempotency marker. Phase 3 + 3.1 are done; the shadow-git store is the live fileHistory backend. **Read the Phase 4 spec section below before writing code.**
+→ **Phase 5**: `/checkpoints` slash command + CLI subcommand (`axiomate checkpoints status|list|prune|clear`). Phases 1-4 are complete; the shadow-git store is the live fileHistory backend AND self-prunes via the background housekeeping hook. Phase 5 only adds user-facing observability + manual control surface.
 
 Phase 1 done (2026-05-20):
 - 4 source files: `paths.ts` (with `DEFAULT_EXCLUDES` covering VS C++/C#, Python, JS/Bun, Rust, Java, iOS, Android), `validate.ts` (commit-hash + path-traversal guards), `gitEnv.ts` (GIT_DIR/WORK_TREE/INDEX_FILE + mute global/system gitconfig), `git.ts` (typed `runCheckpointGit` wrapper, never throws).
@@ -47,7 +47,7 @@ Phase 0 review answers (locked):
 | 1 | Git isolation primitives | ✅ done | `agent/src/utils/checkpoints/{gitEnv,git,validate,paths}.ts` + tests (44 passing) |
 | 2 | Store API (snapshot / list / rollback) | ✅ done | `agent/src/utils/checkpoints/store.ts`, `createSnapshot.ts`, `listSnapshots.ts`, `rollback.ts` + tests |
 | 3 | Backend swap behind fileHistory.ts (load-bearing) | ✅ done | `8b45c627` swap; `8377acab` + `a4bf49d2` Phase 3.1 review cleanup |
-| 4 | Auto-prune (orphan / stale + size-cap + gc) | 🟡 plan locked, ready to implement | `agent/src/utils/checkpoints/prune.ts` + tests; anchors landed `832a9837` |
+| 4 | Auto-prune (orphan / stale + size-cap + gc) | ✅ done | `agent/src/utils/checkpoints/prune.ts` + tests; commits `c972dbaa` (skel), `feat(checkpoints): orphan + stale passes`, `16e5fa21` (size cap), `5569f631` (housekeeping wire) |
 | 5 | `/checkpoints` slash + CLI subcommand | ⬜ | `agent/src/commands/checkpoints/*` + main.tsx wiring |
 | 6 | Out of scope (placeholder) | — | resume↔rollback union, file-copy migration |
 
@@ -716,6 +716,34 @@ In addition to the 12-test coverage matrix:
 2. **Manual smoke**: `axiomate --print 'echo hi'` runs cleanly with a populated store. No prune triggered (bareMode skip).
 3. **Manual smoke**: 3-minute interactive `axiomate` session against a synthetic 600 MB store with `forceNow=true` injected; verify size-cap brings it under 500 MB and `git fsck` clean.
 4. **No new compile warnings**, no new ESLint errors.
+
+---
+
+
+## Phase 4 done (2026-05-21)
+
+Five-commit sequence shipped against the locked plan:
+
+| Commit | Subject | Notes |
+|---|---|---|
+| `c972dbaa` | prune.ts skeleton + entry-contract tests | git-missing soft-disable, 24h marker, forceNow bypass, marker write |
+| (next) | orphan + stale passes + intermediate gc | Hermes 1255-1370 split into separate orphan/stale loops |
+| `16e5fa21` | size-cap pass + final gc + bytesFreed | round-robin drop, KEEP_LAST_N_PER_REF=1, 20-iter livelock cap |
+| `5569f631` | wire pruneCheckpoints into background housekeeping | runVerySlowOps callsite, fail-open try/catch defense-in-depth |
+| (deferred) | extract `dropOldestCommitsFromRef` shared helper | dropOldest in prune.ts and pruneRefToMaxN.ts share ~50 lines but selectors differ; revisit if a third call site emerges |
+
+### Stricter-than-Hermes behavior (intentional)
+
+1. **droppedThisRound resets per outer iteration** (`prune.ts` size-cap loop). Hermes' `any_dropped` (line 1111) is set *outside* the outer loop, so once any single commit drops, the loop runs the full 20 iterations even after progress halts. We treat that as a Hermes bug — 19 wasted rounds of full-store rev-list+commit-tree work that cannot shrink the store further. Documented at the function header.
+2. **Marker write timing**: Hermes 1508 only writes after the full prune cycle. We write after intermediate gc (which always runs) and the size cap is best-effort beyond it. Net effect: even an empty/no-op store updates the 24h throttle, preventing thrash.
+
+### Bug discovered while testing (worth noting)
+
+`rev-list` and `rev-list --count` against a bare ref name fail with `fatal: ambiguous argument: both revision and filename` after our chain rebuild — the worktree directory at `refs/axiomate/` plus the loose-vs-packed-ref state confuses git's revision parser. Fix: peel to commit explicitly with `${ref}^{commit}` in `dropOldestCommitFromRef`. `pruneRefToMaxN.ts` doesn't hit this in practice because it's only called once per snapshot — but if we ever call it twice in a row on the same ref, we'd need the same fix. Flagged for the future maintainer.
+
+### Phase 5 readiness
+
+Phase 5 (`/checkpoints` slash command + CLI subcommand) can read PruneReport directly from `pruneCheckpoints({ forceNow: true })` and render the bytes-freed/orphan/stale/size-cap counters. No additional hooks needed from Phase 4.
 
 ---
 
