@@ -355,7 +355,7 @@ type SimulatedSedEditContext = Pick<ToolUseContext, 'readFileState' | 'updateFil
 async function applySedEdit(simulatedEdit: {
   filePath: string;
   newContent: string;
-}, toolUseContext: SimulatedSedEditContext, parentMessage?: AssistantMessage): Promise<SimulatedSedEditResult> {
+}, toolUseContext: SimulatedSedEditContext): Promise<SimulatedSedEditResult> {
   const {
     filePath,
     newContent
@@ -381,8 +381,8 @@ async function applySedEdit(simulatedEdit: {
   }
 
   // Track file history before making changes (for undo support)
-  if (fileHistoryEnabled() && parentMessage) {
-    await fileHistoryTrackEdit(toolUseContext.updateFileHistoryState, absoluteFilePath, parentMessage.uuid);
+  if (fileHistoryEnabled()) {
+    await fileHistoryTrackEdit(toolUseContext.updateFileHistoryState, absoluteFilePath);
   }
 
   // Detect line endings and write new content
@@ -601,7 +601,7 @@ export const BashTool = buildTool({
     // Handle simulated sed edit - apply directly instead of running sed
     // This ensures what the user previewed is exactly what gets written
     if (input._simulatedSedEdit) {
-      return applySedEdit(input._simulatedSedEdit, toolUseContext, parentMessage);
+      return applySedEdit(input._simulatedSedEdit, toolUseContext);
     }
     const {
       abortController,

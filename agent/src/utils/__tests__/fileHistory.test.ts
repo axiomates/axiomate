@@ -103,7 +103,7 @@ async function turn(
 ): Promise<UUID> {
   const id = uuid()
   await fileHistoryMakeSnapshot(holder.updater, id)
-  for (const f of files) await fileHistoryTrackEdit(holder.updater, f, id)
+  for (const f of files) await fileHistoryTrackEdit(holder.updater, f)
   return id
 }
 
@@ -397,12 +397,12 @@ describe('concurrency — interleaved trackEdit during makeSnapshot still produc
     writeFileSync(b, 'b-v1')
 
     const holder = makeStateHolder()
-    const m1 = await turn(holder, [a])
+    await turn(holder, [a])
 
     // Start turn 2 — but inject a trackEdit for b mid-flight.
     const m2 = uuid()
     const m2Promise = fileHistoryMakeSnapshot(holder.updater, m2)
-    await fileHistoryTrackEdit(holder.updater, b, m1)
+    await fileHistoryTrackEdit(holder.updater, b)
     await m2Promise
 
     // After m2 settles, both files are restorable through the new turn:

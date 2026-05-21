@@ -414,14 +414,10 @@ export const FileEditTool = buildTool({
     // the staleness check and writeTextContent lets concurrent edits interleave.
     await fs.mkdir(dirname(absoluteFilePath))
     if (fileHistoryEnabled()) {
-      // Backup captures pre-edit content — safe to call before the staleness
-      // check (idempotent v1 backup keyed on content hash; if staleness fails
-      // later we just have an unused backup, not corrupt state).
-      await fileHistoryTrackEdit(
-        updateFileHistoryState,
-        absoluteFilePath,
-        parentMessage.uuid,
-      )
+      // Register the path before the staleness check — the per-turn
+      // shadow-git snapshot already has the pre-edit content; trackEdit
+      // just adds this path to rewind's blast radius.
+      await fileHistoryTrackEdit(updateFileHistoryState, absoluteFilePath)
     }
 
     // 2. Load current state and confirm no changes since last read

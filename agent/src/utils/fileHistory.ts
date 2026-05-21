@@ -110,19 +110,18 @@ function fileHistoryEnabledSdk(): boolean {
 
 /**
  * Register a file path so a future rewind covers it. Tools call this
- * BEFORE editing the file (matches v1 semantics for call-site compat).
+ * BEFORE editing the file (matches the previous file-copy backend's
+ * call-site contract).
  *
- * The third arg is unused — pre-Phase-3 it controlled the per-edit v1
- * backup; with the git backend the snapshot at the start of each turn
- * captures content, so trackEdit only needs to mutate state.
+ * The shadow-git backend captures content via the per-turn snapshot, so
+ * trackEdit only needs to mutate state — no per-edit IO. Hence the lack
+ * of a messageId arg: it's intentionally not the snapshot key here.
  */
 export async function fileHistoryTrackEdit(
   updateFileHistoryState: (
     updater: (prev: FileHistoryState) => FileHistoryState,
   ) => void,
   filePath: string,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  _messageId: UUID,
 ): Promise<void> {
   if (!fileHistoryEnabled()) return
 
@@ -403,6 +402,14 @@ export async function fileHistoryHasAnyChanges(
  * Resume entry: rebuild state from a persisted snapshot list. Each
  * snapshot's `trackedFiles` is unioned into `state.trackedFiles` so
  * rewind blast-radius matches the pre-resume session.
+ *
+ * The persisted log is append-only and can outgrow the in-memory ring
+ * buffer (a long-running session that resumes repeatedly). We mirror the
+ * `fileHistoryMakeSnapshot` cap here: keep only the most recent
+ * MAX_SNAPSHOTS, but union the *whole* persisted log's trackedFiles
+ * because rewind blast-radius is cumulative — a file the user wants to
+ * rewind to a kept snapshot must still be in trackedFiles even if the
+ * snapshot that first registered it has aged out.
  */
 export function fileHistoryRestoreStateFromLog(
   fileHistorySnapshots: FileHistorySnapshot[],
@@ -421,8 +428,10 @@ export function fileHistoryRestoreStateFromLog(
     }
     snapshots.push({ ...snapshot, trackedFiles: trackedList })
   }
+  const trimmed =
+    snapshots.length > MAX_SNAPSHOTS ? snapshots.slice(-MAX_SNAPSHOTS) : snapshots
   onUpdateState({
-    snapshots,
+    snapshots: trimmed,
     trackedFiles,
     snapshotSequence: snapshots.length,
   })
@@ -504,11 +513,22 @@ async function readTree(
 /**
  * Use the relative path as the in-state key so persisted snapshots are
  * portable across sessions (and stay short in storage).
+ *
+ * On Windows the prefix check has to be case-insensitive — a tool can
+ * pass `c:\proj\a.ts` while `getOriginalCwd()` is `C:\proj`, and a
+ * case-sensitive `startsWith` would record those as two different keys
+ * (one absolute, one relative) for the same file. We slice from the raw
+ * input by the cwd's length so the returned relative path keeps the
+ * tool's original casing.
  */
 function maybeShortenFilePath(filePath: string): string {
   if (!isAbsolute(filePath)) return filePath
   const cwd = getOriginalCwd()
-  if (filePath.startsWith(cwd)) return relative(cwd, filePath)
+  const prefixMatches =
+    process.platform === 'win32'
+      ? filePath.slice(0, cwd.length).toLowerCase() === cwd.toLowerCase()
+      : filePath.startsWith(cwd)
+  if (prefixMatches) return relative(cwd, filePath)
   return filePath
 }
 

@@ -981,10 +981,10 @@ const TRANSCRIPT_MESSAGE_TYPES = new Set([
  * Session files typically begin with non-transcript entries (`mode`,
  * `file-history-snapshot`, `attribution-snapshot`) before the first transcript
  * message, so we scan lines until we hit one. Each complete line is JSON-parsed
- * — naive string search is unsafe here because `file-history-snapshot` entries
- * embed a nested `snapshot.timestamp` carrying the *previous* session's date
- * (written by copyFileHistoryForResume), which would cause resumed sessions to
- * be miscategorised as old and silently dropped from stats.
+ * — naive string search is unsafe here because non-transcript entries can
+ * embed nested `timestamp` fields (e.g. a snapshot's commit timestamp) that
+ * are not the session start, which would cause sessions to be miscategorised
+ * by date and silently dropped from stats.
  *
  * Returns a YYYY-MM-DD string, or null if no transcript message fits in the
  * head (caller falls through to the full read — safe default).
