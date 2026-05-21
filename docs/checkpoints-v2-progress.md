@@ -12,6 +12,10 @@
 
 → **Phase 5 in progress (step 2 done)**: `storeStatus` + `clearAll` helpers ported from Hermes, with anchor + behavior tests. Step 3 (`/checkpoints` slash command) is next; tasks #69–#71 pending. Step-by-step plan in section "Phase 5 implementation plan" below.
 
+Phase 5 step 3 design lock-in (2026-05-21):
+- `/checkpoints list` is **read-only**. Hermes' CLI list is also read-only (`hermes_cli/checkpoints.py:106-108` aliases `cmd_list = cmd_status`). The interactive selector that picks a snapshot and rolls the worktree back already exists in axiomate as `/rewind` — it operates on the in-session `appState.fileHistory.snapshots` array (REPL.tsx:4007-4013) and would desync if a slash command rewound at the store level. So `/checkpoints list` shows the store-level commit list with reasons; users wanting to actually roll back are pointed at `/rewind`.
+- One `local-jsx` command, sub-arg dispatch — same shape as `commands/sandbox-toggle/sandbox-toggle.tsx`. `status`/`list`/`prune` render static text views; `clear` renders a `Dialog` + `Select` confirm.
+
 Phase 5 step 2 (2026-05-21):
 - New `agent/src/utils/checkpoints/storeStatus.ts` — read-only summary backing `/checkpoints` and CLI `status`. Port of Hermes `store_status` (`tools/checkpoint_manager.py:1533-1597`). Divergence: drops `legacy_size_bytes` / `legacy_archives` fields; axiomate has no v1, see "`clear-legacy` is NOT ported".
 - New `agent/src/utils/checkpoints/clearAll.ts` — destructive helper backing `/checkpoints clear`. Port of Hermes `clear_all` (1600-1616). Adds `errors[]` to the report so the UI can surface the reason if `rm` partially fails (Windows AV/locked file). Hermes silently swallows.

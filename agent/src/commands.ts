@@ -39,6 +39,7 @@ import agents from './commands/agents/index.js'
 import plugin from './commands/plugin/index.js'
 import reloadPlugins from './commands/reload-plugins/index.js'
 import rewind from './commands/rewind/index.js'
+import checkpoints from './commands/checkpoints/index.js'
 import heapDump from './commands/heapdump/index.js'
 import sandboxToggle from './commands/sandbox-toggle/index.js'
 import { logError } from './utils/log.js'
@@ -140,6 +141,7 @@ const COMMANDS = memoize((): Command[] => [
   theme,
   review,
   rewind,
+  checkpoints,
   securityReview,
   terminalSetup,
   usageReport,
