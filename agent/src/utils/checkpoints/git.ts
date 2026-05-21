@@ -53,7 +53,7 @@ function resolveTimeoutMs(): number {
 
 /** Outcome of a checkpoint git invocation. Never thrown. */
 export type CheckpointGitResult =
-  | { ok: true; stdout: string; stderr: string }
+  | { ok: true; code: number; stdout: string; stderr: string }
   | {
       ok: false
       reason: 'non-zero-exit' | 'timeout' | 'git-not-found' | 'spawn-error'
@@ -191,11 +191,11 @@ async function runWithEnv(
   const { stdout, stderr, code, error } = result
 
   if (code === 0) {
-    return { ok: true, stdout, stderr }
+    return { ok: true, code, stdout, stderr }
   }
 
   if (opts.allowedExitCodes?.has(code)) {
-    return { ok: true, stdout, stderr }
+    return { ok: true, code, stdout, stderr }
   }
 
   // execFileNoThrow surfaces a `signal` field via its error message for
