@@ -349,7 +349,40 @@ No code changes from this review — all four lanes pass. Documented here for th
 
 ---
 
-## Phase 4 spec — prune.ts (locked from Hermes deep-read 2026-05-21)
+## Phase 1-3 audit findings (2026-05-21, before Phase 4 implementation)
+
+Read-only audit of Phases 1-3 against `hermes-agent/tools/checkpoint_manager.py`. Five items found; two fixed, three deferred as documented divergences. This section is the single source of truth — if a future reader thinks they've spotted one of these as a bug, the answer is here.
+
+### Fixed (commit `3d9c579c`)
+
+| ID | File | Issue | Resolution |
+|---|---|---|---|
+| A | `store.ts:70-78` | Top-doc said `info/exclude` is rewritten every `ensureStore` call. Actually only on first init (the whole `mkdir + writeFile` block sits inside the post-`git init` branch, after the HEAD-existence early-return). | Rewrote the docstring to reflect first-init-only and call out the implication: user edits are preserved; new excludes need a versioned bump |
+| B | `createSnapshot.ts` top-doc | Stricter-than-Hermes rev-parse handling was undocumented. We return `transient-error` on rev-parse failure (other than allowed 128); Hermes `_take:904-909` falls through to fresh-root commit, silently orphaning prior chain. | Added a "Stricter-than-Hermes behavior — flagged so future maintainers don't read it as a bug" block to the top-doc |
+
+### Deferred (no code change; documented divergences)
+
+**C — `listSnapshots` parallel `git diff --shortstat` fan-out** (`listSnapshots.ts:140-153`)
+- Phase 2 fans out N parallel `git diff --shortstat` spawns when computing per-snapshot stats. For `limit=100` that's 100 process creations at once. On Windows process spawn is heavier; cost is user-visible.
+- Hermes serializes (line 688).
+- **Why deferred**: not a correctness bug; perf tax. Phase 5 `/checkpoints list` UX is the consumer that will surface it.
+- **When to revisit**: when Phase 5 work touches `listSnapshots`. Two options at that point — chunk into 8-wide pool, or keep parallel and document the cost. Pick based on actual measurements then.
+
+**D — `countFilesUnder` honors `.gitignore`; Hermes does not** (`countFiles.ts` vs `_dir_file_count` 515-525)
+- Hermes uses raw `Path.rglob('*')` — counts every file including ones that would be ignored by `git add -A`. A 100k-file monorepo with 80k inside `node_modules/` would hit the 50k cap and skip the snapshot, despite only ~20k files actually being staged.
+- Axiomate counts only what would be staged (post-ignore).
+- **Why deferred**: this is intentional and behaviorally better. Already documented as above-Hermes in `countFiles.ts` JSDoc. Listed here only so the audit trail is complete.
+- **When to revisit**: never, unless we decide to match Hermes exactly for some unforeseen reason.
+
+**E — `store.ts:130-135` config writes use `workTree: store`**
+- We pass the store path itself as `GIT_WORK_TREE` for `git config` calls. Hermes uses the store's parent dir (`cfg_wd = str(base)`).
+- Both work — `git config` doesn't actually touch the worktree. Hermes' choice is more semantic (the store-as-its-own-worktree is technically a misconfiguration that happens to be harmless for this op).
+- **Why deferred**: pure cosmetic; behavior identical.
+- **When to revisit**: only if a Phase 4 / Phase 5 commit naturally touches `store.ts:130-135` for another reason.
+
+---
+
+
 
 Hermes reference: `tools/checkpoint_manager.py` lines **1086–1526**. Three concrete functions to study side by side:
 
