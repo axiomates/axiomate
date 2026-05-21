@@ -130,8 +130,8 @@ const EMPTY_REPORT: Omit<PruneReport, 'skipped' | 'gitMissing'> = {
 /**
  * Run the full prune cycle. Returns a structured report — never throws.
  *
- * Phase 4 commit 3 of 5: passes 1+2+3 + intermediate gc + final gc are
- * live. Commit 4 wires it into backgroundHousekeeping.
+ * Phase 4 complete: passes 1+2+3 + intermediate gc + final gc + wired
+ * into `backgroundHousekeeping.ts:runVerySlowOps`.
  */
 export async function pruneCheckpoints(
   opts: PruneOptions = {},
