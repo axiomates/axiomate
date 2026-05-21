@@ -1,11 +1,20 @@
-import { mkdtempSync, readFileSync, rmSync, existsSync, writeFileSync } from 'fs'
+import { mkdtempSync, readFileSync, rmSync, existsSync, unlinkSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 import { execFileNoThrowWithCwd } from '../../execFileNoThrow.js'
 import { gitExe } from '../../git.js'
-import { DEFAULT_EXCLUDES, getStoreDir, infoExcludePath } from '../paths.js'
+import { runCheckpointGit } from '../git.js'
+import {
+  DEFAULT_EXCLUDES,
+  getStoreDir,
+  indexPath,
+  infoExcludePath,
+  projectHash,
+  refName,
+} from '../paths.js'
 import { ensureStore } from '../store.js'
+import { buildFixtureCommit } from './fixtures.js'
 
 /**
  * Tests run against a tmpdir-rooted store via AXIOMATE_CHECKPOINT_BASE
@@ -145,5 +154,78 @@ describe('ensureStore — error handling', () => {
     writeFileSync(fakeFile, 'content')
     process.env.AXIOMATE_CHECKPOINT_BASE = join(fakeFile, 'nested')
     await expect(ensureStore()).resolves.toBeDefined()
+  })
+})
+
+/**
+ * Phase 4 anchor: pins behaviors that Phase 4 might inadvertently change.
+ *
+ * 1. `info/exclude` first-init-only — audit finding A documented this in
+ *    docs but not in a test. A refactor that "fixes" the docstring's old
+ *    claim by rewriting on every call would silently destroy user edits.
+ * 2. `for-each-ref refs/axiomate/*` enumerability — Phase 4 size-cap
+ *    pass 3 enumerates refs via this exact prefix query (Hermes
+ *    `_enforce_size_cap:1102-1106`). If a future refactor moves ref
+ *    location, this query goes silently empty and size-cap zero-ops.
+ */
+describe('ensureStore — Phase 4 behavior anchors', () => {
+  test('does not rewrite info/exclude on a second call (audit A)', async () => {
+    await ensureStore()
+    const path = infoExcludePath()
+
+    // Simulate a user edit to info/exclude after first init.
+    const userEdit =
+      DEFAULT_EXCLUDES.join('\n') + '\nuser-added-pattern/\n'
+    writeFileSync(path, userEdit, 'utf-8')
+
+    await ensureStore()
+    expect(readFileSync(path, 'utf-8')).toBe(userEdit)
+  })
+
+  test('does not recreate info/exclude after user deletion', async () => {
+    // Mirror image of the above: if the user deletes the file (or it
+    // never made it through a botched first init), the *current*
+    // contract is to leave it absent on subsequent calls. Phase 4
+    // must not change this without an explicit decision.
+    await ensureStore()
+    unlinkSync(infoExcludePath())
+
+    await ensureStore()
+    expect(existsSync(infoExcludePath())).toBe(false)
+  })
+})
+
+describe('Phase 4 anchor: refs/axiomate/* enumerable via for-each-ref', () => {
+  test('for-each-ref refs/axiomate returns the per-project ref after a fixture commit', async () => {
+    // Phase 4 size-cap pass uses this exact query to find candidates.
+    // Lock the assumption now so a refs-location refactor cannot silently
+    // make size-cap a no-op.
+    const r = await ensureStore()
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+
+    const workTree = mkdtempSync(join(tmpRoot, 'wt-'))
+    const hash = projectHash(workTree)
+    const ref = refName(hash)
+    await buildFixtureCommit({
+      store: r.store,
+      workTree,
+      indexFile: indexPath(hash),
+      ref,
+      files: { 'a.txt': 'content' },
+      subject: 'axiomate:m1:turn 1',
+    })
+
+    const enumeration = await runCheckpointGit(
+      ['for-each-ref', '--format=%(refname)', 'refs/axiomate'],
+      { store: r.store, workTree },
+    )
+    expect(enumeration.ok).toBe(true)
+    if (!enumeration.ok) return
+    const refs = enumeration.stdout
+      .split('\n')
+      .map(s => s.trim())
+      .filter(s => s.length > 0)
+    expect(refs).toContain(ref)
   })
 })
