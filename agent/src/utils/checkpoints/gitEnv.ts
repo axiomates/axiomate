@@ -1,6 +1,7 @@
 /**
- * Build the environment for spawning git against the Checkpoints v2 shadow
- * store, completely isolated from the user's project `.git/` and gitconfig.
+ * Build the environment for spawning git against the shadow-git
+ * checkpoint store, completely isolated from the user's project `.git/`
+ * and gitconfig.
  *
  * Direct port of Hermes' `_git_env()` (`tools/checkpoint_manager.py:236-269`).
  * The notes there explain the consequences of *not* doing this: GPG signing

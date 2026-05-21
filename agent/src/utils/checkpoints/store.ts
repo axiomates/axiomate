@@ -1,5 +1,5 @@
 /**
- * Checkpoints v2 — shared shadow-git store API.
+ * Shared shadow-git checkpoint store API.
  *
  * Public surface (built up across Phase 2 commits):
  *   - ensureStore()     idempotent init of the shared store
@@ -10,13 +10,15 @@
  * Architecture: one bare-ish repo at `~/.axiomate/checkpoints/store/`,
  * per-project ref `refs/axiomate/<hash16>`, per-project index file under
  * `indexes/<hash16>`. Git's content-addressable object DB gives us blob
- * dedup across worktrees for free — the entire reason v2 exists.
+ * dedup across worktrees for free — that dedup is the main reason this
+ * store replaced the per-session file-copy backend.
  *
- * Direct port of Hermes' `_init_store` / `_register_project` family at
+ * Adapted from Hermes' `_init_store` / `_register_project` family at
  * `tools/checkpoint_manager.py:387-493`. The big divergence: we do not
- * port the legacy v1 migration shim — Axiomate has no v1 file-copy store
- * to migrate from. Phase 3 swaps the fileHistory backend in place; old
- * file-copy entries age out naturally.
+ * port Hermes' v1→v2 migration shim — Axiomate never shipped a v1, the
+ * pre-Phase-3 file-copy backend was an unreleased early implementation.
+ * Phase 3 swaps the fileHistory backend in place; old file-copy entries
+ * age out naturally.
  */
 
 import { mkdir, writeFile } from 'fs/promises'

@@ -1,5 +1,5 @@
 /**
- * Input validation helpers for the Checkpoints v2 shadow-git store.
+ * Input validation helpers for the shadow-git checkpoint store.
  *
  * Direct port of Hermes' `_validate_commit_hash` and `_validate_file_path`
  * (`tools/checkpoint_manager.py:155-186`). These exist to defend against:

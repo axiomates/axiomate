@@ -1,5 +1,5 @@
 /**
- * fileHistory — turn-keyed snapshot/rewind built on the Checkpoints v2
+ * fileHistory — turn-keyed snapshot/rewind built on the Checkpoints
  * shadow-git store.
  *
  * Public API surface (call sites in REPL, QueryEngine, Tools, etc.):
@@ -19,11 +19,23 @@
  * touched. That scoping invariant is the load-bearing contract — see
  * `__tests__/fileHistory.test.ts` "only restores tracked files…".
  *
- * Schema vs v1: the legacy file-copy backend stored per-snapshot
- * `trackedFileBackups: Record<path, {backupFileName, version}>`. v2
- * replaces that with `gitHash: string` + a per-snapshot
- * `trackedFiles: readonly string[]` (cumulative-at-commit) so resume can
- * rebuild `state.trackedFiles` without reading the git history.
+ * Persisted-snapshot schema: `{ messageId, gitHash, trackedFiles, timestamp }`.
+ * `trackedFiles` is the cumulative set at (or shortly after) the commit,
+ * stored per-snapshot so `fileHistoryRestoreStateFromLog` can rebuild
+ * `state.trackedFiles` without scanning git history. Replaced an earlier
+ * file-copy backend that kept `trackedFileBackups: Record<path,
+ * {backupFileName, version}>`; that backend wrote one file per edit per
+ * turn and is no longer in use (cleanup.ts archives any leftover copy
+ * directory at `~/.axiomate/file-history/`).
+ *
+ * Updater protocol: every API takes `updateFileHistoryState`, a
+ * synchronous setState-style dispatcher. Several functions here read
+ * the current state by passing an identity updater
+ * (`updateFileHistoryState(s => { captured = s; return s })`); this
+ * relies on the dispatcher invoking the reducer synchronously. All
+ * current consumers (REPL useState, SDK in-memory state) satisfy that.
+ * If a future state layer becomes async, switch to a separate read API
+ * rather than racing on `captured`.
  */
 
 import type { UUID } from 'crypto'
@@ -148,14 +160,47 @@ export async function fileHistoryTrackEdit(
   })
 
   if (updatedSnapshot) {
-    void recordFileHistorySnapshot(
-      updatedSnapshot.messageId,
-      updatedSnapshot,
-      true,
-    ).catch(error => {
-      logError(new Error(`FileHistory: Failed to record snapshot: ${error}`))
-    })
+    scheduleSnapshotPersist(updatedSnapshot)
     logForDebugging(`FileHistory: Tracked file modification for ${filePath}`)
+  }
+}
+
+/**
+ * Coalesce per-trackEdit persistence: a single turn often calls trackEdit
+ * many times in rapid succession (one per file the tool will edit). Each
+ * call would otherwise produce its own jsonl append — but the persisted
+ * record is a full snapshot keyed by messageId, and the reader takes the
+ * *last* one (`fileHistorySnapshots.set(messageId, entry)` at
+ * sessionStorage.ts:3269), so all but the final write are wasted IO.
+ *
+ * We keep a per-messageId latest-pending entry and at most one in-flight
+ * write per messageId. When the in-flight write resolves, if a newer
+ * entry showed up while it was running, we kick off one more — this
+ * collapses N writes into at most 2 round-trips per turn (instead of N).
+ */
+const pendingSnapshotPersists = new Map<UUID, FileHistorySnapshot>()
+const inFlightSnapshotPersists = new Set<UUID>()
+
+function scheduleSnapshotPersist(snapshot: FileHistorySnapshot): void {
+  pendingSnapshotPersists.set(snapshot.messageId, snapshot)
+  if (inFlightSnapshotPersists.has(snapshot.messageId)) return
+  void drainSnapshotPersist(snapshot.messageId)
+}
+
+async function drainSnapshotPersist(messageId: UUID): Promise<void> {
+  inFlightSnapshotPersists.add(messageId)
+  try {
+    while (pendingSnapshotPersists.has(messageId)) {
+      const next = pendingSnapshotPersists.get(messageId)!
+      pendingSnapshotPersists.delete(messageId)
+      try {
+        await recordFileHistorySnapshot(messageId, next, true)
+      } catch (error) {
+        logError(new Error(`FileHistory: Failed to record snapshot: ${error}`))
+      }
+    }
+  } finally {
+    inFlightSnapshotPersists.delete(messageId)
   }
 }
 
@@ -306,8 +351,13 @@ export async function fileHistoryGetDiffStats(
     }
   }
 
-  const nameOnly = await runCheckpointGit(
-    ['diff', '--name-only', target.gitHash, '--', ...paths],
+  // One diff invocation: --numstat gives `<ins>\t<del>\t<path>` per file
+  // (or `-\t-\t<path>` for binary). The per-project GIT_INDEX_FILE is
+  // required even for worktree-vs-commit diff: the shared bare store
+  // would otherwise reuse `$GIT_DIR/index` left over from a previous
+  // project, producing stale diffs.
+  const numstat = await runCheckpointGit(
+    ['diff', '--numstat', target.gitHash, '--', ...paths],
     {
       store: storeResult.store,
       workTree: canonical,
@@ -315,28 +365,21 @@ export async function fileHistoryGetDiffStats(
       allowedExitCodes: REF_NOT_PRESENT,
     },
   )
-  const filesRel = nameOnly.ok
-    ? nameOnly.stdout.split('\n').filter(line => line.length > 0)
-    : []
-  const allChangedRel = new Set([...filesRel, ...flipped])
-
-  const shortstat = await runCheckpointGit(
-    ['diff', '--shortstat', target.gitHash, '--', ...paths],
-    {
-      store: storeResult.store,
-      workTree: canonical,
-      indexFile,
-      allowedExitCodes: REF_NOT_PRESENT,
-    },
-  )
+  const filesRel: string[] = []
   let insertions = 0
   let deletions = 0
-  if (shortstat.ok) {
-    const ins = shortstat.stdout.match(/(\d+) insertions?\(\+\)/)
-    const del = shortstat.stdout.match(/(\d+) deletions?\(-\)/)
-    if (ins) insertions = Number.parseInt(ins[1], 10)
-    if (del) deletions = Number.parseInt(del[1], 10)
+  if (numstat.ok) {
+    for (const line of numstat.stdout.split('\n')) {
+      if (line.length === 0) continue
+      const parts = line.split('\t')
+      if (parts.length < 3) continue
+      const [insStr, delStr, path] = parts as [string, string, string]
+      filesRel.push(path)
+      if (insStr !== '-') insertions += Number.parseInt(insStr, 10) || 0
+      if (delStr !== '-') deletions += Number.parseInt(delStr, 10) || 0
+    }
   }
+  const allChangedRel = new Set([...filesRel, ...flipped])
 
   return {
     filesChanged: Array.from(allChangedRel, p => maybeExpandFilePath(p)),
@@ -384,7 +427,10 @@ export async function fileHistoryHasAnyChanges(
   if (inBoth.length === 0) return false
 
   // diff --quiet exits 0 if no changes, 1 if changes. allowedExitCodes
-  // covers both so neither path becomes a transient-error miss.
+  // covers both so neither path becomes a transient-error miss. The
+  // per-project GIT_INDEX_FILE matters even for worktree-vs-commit diff:
+  // without it, the shared bare store would reuse a stale index left by
+  // a prior project, producing wrong answers.
   const result = await runCheckpointGit(
     ['diff', '--quiet', target.gitHash, '--', ...inBoth],
     {

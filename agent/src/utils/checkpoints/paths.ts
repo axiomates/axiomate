@@ -1,5 +1,5 @@
 /**
- * Path helpers for the Checkpoints v2 shadow-git store.
+ * Path helpers for the shadow-git checkpoint store.
  *
  * Layout (see docs/checkpoints-v2-design.md):
  *   ~/.axiomate/checkpoints/
