@@ -150,6 +150,7 @@ import { partialCompactConversation } from '../services/compact/compact.js';
 import type { LogOption } from '../types/logs.js';
 import type { AgentColorName } from '../tools/AgentTool/agentColorManager.js';
 import { fileHistoryMakeSnapshot, type FileHistoryState, fileHistoryRewind, type FileHistorySnapshot, fileHistoryEnabled, fileHistoryHasAnyChanges } from '../utils/fileHistory.js';
+import { computeResumeRewindHint } from '../utils/checkpoints/resumeRewindHint.js';
 import { type AttributionState, incrementPromptCount } from '../utils/commitAttribution.js';
 import { recordAttributionSnapshot } from '../utils/sessionStorage.js';
 import { computeStandaloneAgentContext, restoreAgentFromSession, restoreSessionStateFromLog, restoreWorktreeForResume, exitRestoredWorktree } from '../utils/sessionRestore.js';
@@ -1576,6 +1577,22 @@ export function REPL({
       // JSONL with the fork's sessionId, so `axiomate -r {forkId}` also works.
       if (contentReplacementStateRef.current && entrypoint !== 'fork') {
         contentReplacementStateRef.current = reconstructContentReplacementState(messages, log.contentReplacements ?? []);
+      }
+
+      // 6A — surface a one-line hint about whether the resumed session's
+      // last fileHistory snapshot is still rewindable. Reachable → info,
+      // detached/pruned → warning, anything else → silent. Probe lives
+      // in resumeRewindHint.ts; this site only formats the system message.
+      try {
+        const hint = await computeResumeRewindHint({
+          workdir: log.projectPath ?? getOriginalCwd(),
+          snapshots: log.fileHistorySnapshots ?? [],
+        });
+        if (hint) {
+          messages.push(createSystemMessage(hint.text, hint.severity));
+        }
+      } catch {
+        // Probe is purely advisory — never block resume on its failures.
       }
 
       // Reset messages to the provided initial messages
