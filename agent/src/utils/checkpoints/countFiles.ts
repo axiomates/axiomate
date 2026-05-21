@@ -5,7 +5,7 @@
  * `DEFAULT_EXCLUDES` + `.gitignore`, abort once count exceeds the cap.
  * The point is to bail BEFORE paying the cost of `git add -A` on a
  * 100k-file monorepo. Hermes does this with `_dir_file_count`
- * (`tools/checkpoint_manager.py:515-525`) using `Path.rglob('*')` —
+ * (`tools/checkpoint_manager.py::_dir_file_count`) using `Path.rglob('*')` —
  * we go a step further by also honoring excludes during the walk so
  * `node_modules/` etc. don't even get traversed.
  *

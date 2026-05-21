@@ -2,7 +2,8 @@
  * `touchProject` — write/update `projects/<hash16>.json` for orphan
  * tracking and prune passes.
  *
- * Direct port of Hermes `_touch_project` (`tools/checkpoint_manager.py:474-493`).
+ * Direct port of Hermes `_touch_project`
+ * (`tools/checkpoint_manager.py::_touch_project`).
  *
  * **Why this runs BEFORE the file-count guard in `createSnapshot`**:
  * even if a snapshot is skipped (workdir too broad, too many files,

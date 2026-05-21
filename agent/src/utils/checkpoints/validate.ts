@@ -2,7 +2,8 @@
  * Input validation helpers for the shadow-git checkpoint store.
  *
  * Direct port of Hermes' `_validate_commit_hash` and `_validate_file_path`
- * (`tools/checkpoint_manager.py:155-186`). These exist to defend against:
+ * (`tools/checkpoint_manager.py::_validate_commit_hash` /
+ * `::_validate_file_path`). These exist to defend against:
  *
  *   1. Git argument injection via `-`-prefixed values that would be
  *      interpreted as flags (e.g. `-p`, `--patch`, `--upload-pack`).

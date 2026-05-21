@@ -8,9 +8,9 @@
  * command, the CLI subcommand, and tests.
  *
  * Format-wise this mirrors Hermes `cmd_status` / `cmd_prune`
- * (`hermes_cli/checkpoints.py:66-133`). One divergence:
- * `legacy_size_bytes` / "Legacy archives" sections are dropped — see
- * progress doc "`clear-legacy` is NOT ported".
+ * (`hermes_cli/checkpoints.py::cmd_status` / `::cmd_prune`). One
+ * divergence: `legacy_size_bytes` / "Legacy archives" sections are
+ * dropped — see progress doc "`clear-legacy` is NOT ported".
  */
 
 import type { PruneReport } from '../../utils/checkpoints/prune.js'
@@ -118,7 +118,7 @@ function parseIsoToEpochSeconds(iso: string): number {
 /**
  * Multi-line `/checkpoints prune` report view.
  *
- * Hermes prints six fixed labels (`hermes_cli/checkpoints.py:128-132`).
+ * Hermes prints six fixed labels (`hermes_cli/checkpoints.py::cmd_prune`).
  * We surface the equivalent fields from PruneReport, plus axiomate-only
  * `sizeCapRefsTouched` / `sizeCapCommitsDropped` and `gcInvocations` so
  * users can see what the size-cap pass actually did.

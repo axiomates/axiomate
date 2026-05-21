@@ -1,7 +1,8 @@
 /**
  * `pruneRefToMaxN` — per-project ring-buffer prune.
  *
- * Direct port of Hermes `_prune` (`tools/checkpoint_manager.py:1020-1084`).
+ * Direct port of Hermes `_prune`
+ * (`tools/checkpoint_manager.py::CheckpointManager._prune`).
  *
  * **What it does**: rewrites `refs/axiomate/<hash16>` to keep only the
  * most recent N commits, then runs `git gc --prune=now` so unreachable

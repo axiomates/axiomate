@@ -4,7 +4,7 @@
  * built by `gitEnv.ts`, applies a configurable timeout, and returns a typed
  * result that callers can pattern-match on without try/catch.
  *
- * Mirrors Hermes' `_run_git()` (`tools/checkpoint_manager.py:282-332`):
+ * Mirrors Hermes' `_run_git()` (`tools/checkpoint_manager.py::_run_git`):
  *   - silent on success
  *   - structured failure (timeout vs non-zero exit vs git-not-found)
  *   - never throws
@@ -95,7 +95,7 @@ export interface RunCheckpointGitOptions extends CheckpointGitEnvOptions {
  * "checkpoints must never block the agent" contract.
  *
  * Pre-flight: validates that `workTree` exists and is a directory before
- * spawning. Mirrors Hermes' `_run_git` (`tools/checkpoint_manager.py:287-295`)
+ * spawning. Mirrors Hermes' `_run_git` (`tools/checkpoint_manager.py::_run_git`)
  * which catches the case where workdir was deleted between calls (e.g.
  * `rm -rf` from BashTool against the agent's own cwd) and returns a clean
  * error string instead of git's confusing "fatal: not a git repository".

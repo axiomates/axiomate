@@ -2,7 +2,7 @@
  * `listSnapshots` — read the per-project ref backwards (newest → oldest)
  * and return structured entries for `/checkpoints list` and Phase 6 UX.
  *
- * Direct port of Hermes `list_checkpoints` (`tools/checkpoint_manager.py:657-696`).
+ * Direct port of Hermes `list_checkpoints` (`tools/checkpoint_manager.py::CheckpointManager.list_checkpoints`).
  *
  * Parity with Hermes:
  *   - `git log <ref> --format=%H|%h|%aI|%s -n <max>` with allowedExitCodes

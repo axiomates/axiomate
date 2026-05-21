@@ -63,7 +63,7 @@ export function getLastPrunePath(): string {
 /**
  * Canonical absolute path for any user-supplied workdir-like string.
  *
- * Direct port of Hermes' `_normalize_path` (`tools/checkpoint_manager.py:193-195`,
+ * Direct port of Hermes' `_normalize_path` (`tools/checkpoint_manager.py::_normalize_path` —
  * `Path(value).expanduser().resolve()`). Hermes calls this at every API
  * entry point — validators, hashers, env builders, metadata writers — so
  * downstream code never has to think about tildes, relative bits, or `..`.

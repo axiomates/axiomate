@@ -2,7 +2,7 @@
  * `/checkpoints` slash command — sub-arg dispatcher.
  *
  * Subcommands (matches `axiomate checkpoints` CLI shape, Hermes parity
- * `hermes_cli/checkpoints.py:158-237`):
+ * `hermes_cli/checkpoints.py::cmd_prune` / `::cmd_clear`):
  *   `/checkpoints`            → status (also `/checkpoints status`)
  *   `/checkpoints list`       → read-only snapshot list for cwd
  *   `/checkpoints prune`      → run prune now (`--force`)

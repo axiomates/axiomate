@@ -2,7 +2,7 @@
  * `dropOversizeFromIndex` — remove staged files larger than the cap from
  * the per-project index, after `git add -A` but before `git write-tree`.
  *
- * Direct port of Hermes `_drop_oversize_from_index` (`tools/checkpoint_manager.py:974-1018`).
+ * Direct port of Hermes `_drop_oversize_from_index` (`tools/checkpoint_manager.py::CheckpointManager._drop_oversize_from_index`).
  * The point: let the agent keep snapshotting source code while refusing
  * to swallow generated assets — datasets, model weights, logs, video
  * captures, profile dumps. These would balloon the shadow store and

@@ -6,7 +6,7 @@
  * Kept in its own component so the rest of `/checkpoints` stays as a
  * pure text path that can shell out to `onDone(string)` immediately —
  * matches Hermes' `cmd_clear` interactive prompt
- * (`hermes_cli/checkpoints.py:189-205`).
+ * (`hermes_cli/checkpoints.py::cmd_clear`).
  */
 
 import React, { useState } from 'react'

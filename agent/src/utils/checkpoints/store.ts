@@ -12,10 +12,11 @@
  * `indexes/<hash16>`. Git's content-addressable object DB gives us blob
  * dedup across worktrees for free — that dedup is the design driver.
  *
- * Adapted from Hermes' `_init_store` / `_register_project` family at
- * `tools/checkpoint_manager.py:387-493`. The big divergence: we do not
- * port Hermes' v1→v2 migration shim. Axiomate has no v1 — the shadow-git
- * store is the first and only fileHistory backend on user installs.
+ * Adapted from Hermes' `_init_store` / `_register_project` family
+ * (`tools/checkpoint_manager.py::_init_store / ::_register_project`).
+ * The big divergence: we do not port Hermes' v1→v2 migration shim.
+ * Axiomate has no v1 — the shadow-git store is the first and only
+ * fileHistory backend on user installs.
  */
 
 import { mkdir, writeFile } from 'fs/promises'
@@ -130,7 +131,7 @@ export async function ensureStore(): Promise<EnsureStoreResult> {
     ['user.name', 'Axiomate Checkpoint'],
   ]
   let configFailures = 0
-  // Match Hermes (`tools/checkpoint_manager.py:436`) by passing the base
+  // Match Hermes (`tools/checkpoint_manager.py::_init_store`) by passing the base
   // dir (store's parent, ~/.axiomate/checkpoints) as workTree. `git config`
   // doesn't actually read the worktree, so any directory works — but using
   // `base` keeps the spawn cwd outside the bare-ish store, which is the

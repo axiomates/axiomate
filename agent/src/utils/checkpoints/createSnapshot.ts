@@ -1,8 +1,8 @@
 /**
  * `createSnapshot` — the 13-step pipeline that stages and commits a
  * single snapshot to the shadow store. Direct port of Hermes `_take`
- * (`tools/checkpoint_manager.py:830-972`) plus `_prune` (1020-1084)
- * folded in as step 12.
+ * (`tools/checkpoint_manager.py::CheckpointManager._take`) plus `_prune`
+ * (`::CheckpointManager._prune`) folded in as step 12.
  *
  * Returns a discriminated union — never throws. Fail-open contract:
  * every transient failure path maps to `{ ok: false, skipped: 'transient-error' }`

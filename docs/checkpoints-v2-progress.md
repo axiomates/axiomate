@@ -2,6 +2,11 @@
 
 > Long-running task. **Resume by reading "Immediate next action" below.**
 
+> **Hermes citation convention**: link to Hermes by `path::function_name`,
+> not `path:line-range`. Hermes evolves quickly and line numbers drift;
+> function names are stable. When a citation needs a snapshot pin, suffix
+> `@<sha7>` (e.g. `tools/checkpoint_manager.py::_take@edb2d91`).
+
 - **Plan (full design + decisions)**: `C:\Users\kiro\.claude\plans\typed-discovering-brook.md`
 - **Reference implementation**: `C:\public\workspace\hermes-agent\tools\checkpoint_manager.py` + `C:\public\workspace\hermes-agent\hermes_cli\checkpoints.py`
 - **Started**: 2026-05-20
@@ -22,12 +27,12 @@ Phase 5 step 4 (2026-05-22):
 - 5 CLI handler tests covering the gating + numeric branches; 1370/1370 tests passing, `tsc --noEmit` clean.
 
 Phase 5 step 3 design lock-in (2026-05-21):
-- `/checkpoints list` is **read-only**. Hermes' CLI list is also read-only (`hermes_cli/checkpoints.py:106-108` aliases `cmd_list = cmd_status`). The interactive selector that picks a snapshot and rolls the worktree back already exists in axiomate as `/rewind` — it operates on the in-session `appState.fileHistory.snapshots` array (REPL.tsx:4007-4013) and would desync if a slash command rewound at the store level. So `/checkpoints list` shows the store-level commit list with reasons; users wanting to actually roll back are pointed at `/rewind`.
+- `/checkpoints list` is **read-only**. Hermes' CLI list is also read-only (`hermes_cli/checkpoints.py::cmd_list` aliases to `::cmd_status`). The interactive selector that picks a snapshot and rolls the worktree back already exists in axiomate as `/rewind` — it operates on the in-session `appState.fileHistory.snapshots` array (REPL.tsx:4007-4013) and would desync if a slash command rewound at the store level. So `/checkpoints list` shows the store-level commit list with reasons; users wanting to actually roll back are pointed at `/rewind`.
 - One `local-jsx` command, sub-arg dispatch — same shape as `commands/sandbox-toggle/sandbox-toggle.tsx`. `status`/`list`/`prune` render static text views; `clear` renders a `Dialog` + `Select` confirm.
 
 Phase 5 step 2 (2026-05-21):
-- New `agent/src/utils/checkpoints/storeStatus.ts` — read-only summary backing `/checkpoints` and CLI `status`. Port of Hermes `store_status` (`tools/checkpoint_manager.py:1533-1597`). Divergence: drops `legacy_size_bytes` / `legacy_archives` fields; axiomate has no v1, see "`clear-legacy` is NOT ported".
-- New `agent/src/utils/checkpoints/clearAll.ts` — destructive helper backing `/checkpoints clear`. Port of Hermes `clear_all` (1600-1616). Adds `errors[]` to the report so the UI can surface the reason if `rm` partially fails (Windows AV/locked file). Hermes silently swallows.
+- New `agent/src/utils/checkpoints/storeStatus.ts` — read-only summary backing `/checkpoints` and CLI `status`. Port of Hermes `store_status` (`tools/checkpoint_manager.py::store_status`). Divergence: drops `legacy_size_bytes` / `legacy_archives` fields; axiomate has no v1, see "`clear-legacy` is NOT ported".
+- New `agent/src/utils/checkpoints/clearAll.ts` — destructive helper backing `/checkpoints clear`. Port of Hermes `clear_all` (`tools/checkpoint_manager.py::clear_all`). Adds `errors[]` to the report so the UI can surface the reason if `rm` partially fails (Windows AV/locked file). Hermes silently swallows.
 - Refactor: `loadProjectMetas` extracted from `prune.ts` into shared `agent/src/utils/checkpoints/projectMetas.ts` so `prune` and `storeStatus` read `projects/<hash16>.json` through the same code path.
 - `dirSizeBytes` exported from `prune.ts` (was unexported) so `storeStatus` and `clearAll` reuse it.
 - 7 storeStatus + 5 clearAll tests added. Tests 1349/1349 passing. `tsc --noEmit` clean.
@@ -40,7 +45,7 @@ Phase 1 done (2026-05-20):
 - Honest scope: Phase 1 tests are pure-function (env composition, validation, paths). Real git-spawn behavior is exercised end-to-end in Phase 2 against a real on-disk store.
 
 Phase 1 follow-up #1 (2026-05-21, after Hermes deep-read):
-- Added `normalizePath(value)` to `paths.ts` — direct port of Hermes' `_normalize_path` (`tools/checkpoint_manager.py:193-195`). Tilde-expand (`~`, `~/foo`, `~\foo`) + `path.resolve()`. **This is the canonical workdir hygiene function**; Phase 2 store API routes every workdir-shaped input through it before hashing/comparing/persisting.
+- Added `normalizePath(value)` to `paths.ts` — direct port of Hermes' `_normalize_path` (`tools/checkpoint_manager.py::_normalize_path`). Tilde-expand (`~`, `~/foo`, `~\foo`) + `path.resolve()`. **This is the canonical workdir hygiene function**; Phase 2 store API routes every workdir-shaped input through it before hashing/comparing/persisting.
 - `validateRelativePath` now calls `normalizePath` on its `workingDir` arg, matching Hermes' `_validate_file_path:180`.
 - Added `infoExcludePath()` helper to `paths.ts` (Phase 2 will write `info/exclude` here).
 - Added `GIT_TERMINAL_PROMPT=0` to both `checkpointGitEnv` and `checkpointInitEnv` — defense in depth against auth/askpass hangs. **Hermes does not set this**; we go one step further than parity here, costing one line.
@@ -390,10 +395,10 @@ Read-only audit of Phases 1-3 against `hermes-agent/tools/checkpoint_manager.py`
 - **Why deferred**: not a correctness bug; perf tax. Phase 5 `/checkpoints list` UX is the consumer that will surface it.
 - **When to revisit**: when Phase 5 work touches `listSnapshots`. Two options at that point — chunk into 8-wide pool, or keep parallel and document the cost. Pick based on actual measurements then.
 
-**D — `countFilesUnder` honors `.gitignore`; Hermes does not** (`countFiles.ts` vs `_dir_file_count` 515-525)
+**D — `countFilesUnder` honors `.gitignore`; Hermes does not** (`countFiles.ts` vs `_dir_file_count`)
 - Hermes uses raw `Path.rglob('*')` — counts every file including ones that would be ignored by `git add -A`. A 100k-file monorepo with 80k inside `node_modules/` would hit the 50k cap and skip the snapshot, despite only ~20k files actually being staged.
 - Axiomate counts only what would be staged (post-ignore).
-- **Sub-divergence (F3, recorded 2026-05-21)**: even on the same input set, the count differs. Hermes' `rglob('*')` yields both files AND directories and `count += 1` runs for each (`checkpoint_manager.py:519-522`). Axiomate counts files only (`countFiles.ts:91-95`, gated by `!entry.isDirectory()`). On a deeply nested workdir Axiomate's effective threshold is therefore higher — the `MAX_FILES = 50_000` constant is "files" for us and "files + dirs" for Hermes. Same direction as the gitignore divergence (cap what `git add -A` actually pays for), no behavior bug. Recorded only so the parity claim in the JSDoc isn't read as exact.
+- **Sub-divergence (F3, recorded 2026-05-21)**: even on the same input set, the count differs. Hermes' `rglob('*')` yields both files AND directories and `count += 1` runs for each (`checkpoint_manager.py::_dir_file_count`). Axiomate counts files only (`countFiles.ts:91-95`, gated by `!entry.isDirectory()`). On a deeply nested workdir Axiomate's effective threshold is therefore higher — the `MAX_FILES = 50_000` constant is "files" for us and "files + dirs" for Hermes. Same direction as the gitignore divergence (cap what `git add -A` actually pays for), no behavior bug. Recorded only so the parity claim in the JSDoc isn't read as exact.
 - **Why deferred**: this is intentional and behaviorally better. Already documented as above-Hermes in `countFiles.ts` JSDoc. Listed here only so the audit trail is complete.
 - **When to revisit**: never, unless we decide to match Hermes exactly for some unforeseen reason.
 
@@ -671,7 +676,7 @@ Existing 173-test suite is the broader anchor — Phase 4 must not regress any o
 
 ### Hermes deep-read corrections to the existing Phase 4 spec
 
-Reading `tools/checkpoint_manager.py:1086-1526` again precisely, two divergences from the prior spec surfaced:
+Reading `tools/checkpoint_manager.py::prune_checkpoints` again precisely, two divergences from the prior spec surfaced:
 
 | Spec line | Spec said | Hermes actually does | Decision for Axiomate |
 |---|---|---|---|
@@ -792,7 +797,7 @@ Three parallel sub-agents audited Phases 1, 2, and 3+4 against Hermes. Each find
 
 | ID | File | Issue | Fix |
 |---|---|---|---|
-| F1 | `fileHistory.ts:478-488` (`fileHistoryRestoreStateFromLog`) | No shape detection for legacy `trackedFileBackups`-shape snapshots persisted before the Phase 3 swap. Decision #9 said "Old file-copy backups: read-only compat" but the loop attaches the legacy snapshot with `gitHash: undefined`; a subsequent `/rewind` to that turn calls `git ls-tree undefined` and throws (`fileHistory.ts:520-523`). Concrete failure path on cross-version session resume. | Skip-and-log when `snapshot.gitHash` is missing in the fold loop. Add a focused test in `fileHistory.test.ts`. |
+| F1 | `fileHistory.ts:478-488` (`fileHistoryRestoreStateFromLog`) | A malformed JSONL row missing `gitHash` would attach a snapshot with `gitHash: undefined`; a subsequent `/rewind` to that turn calls `git ls-tree undefined` and throws (`fileHistory.ts:520-523`). axiomate has no v1 (this is the first version, no real user has a pre-`gitHash` log to resume from), but defensive skip is cheap and the failure mode is also reachable via a corrupted JSONL line. | Skip-and-log when `snapshot.gitHash` is missing in the fold loop. Add a focused test in `fileHistory.test.ts`. |
 
 #### Real, doc-only
 
@@ -832,7 +837,7 @@ Three parallel sub-agents audited Phases 1, 2, and 3+4 against Hermes. Each find
 
 ### Remaining audit confidence
 
-After this pass, no 🔴 (must-fix-now) issues remain in Phases 1-4 except F1 (legacy-shape resume crash). All other findings are 🟡 doc-only, deferred-by-design, or test-tightening that doesn't gate Phase 5.
+After this pass, no 🔴 (must-fix-now) issues remain in Phases 1-4 except F1 (malformed JSONL crash on resume). All other findings are 🟡 doc-only, deferred-by-design, or test-tightening that doesn't gate Phase 5.
 
 ---
 
@@ -883,7 +888,7 @@ Hermes reference (read-only, do not modify):
 
 ## Phase 5 implementation plan (locked 2026-05-21)
 
-### Hermes Phase 5 surface (read from `hermes_cli/checkpoints.py` + `tools/checkpoint_manager.py:1533-1638`)
+### Hermes Phase 5 surface (read from `hermes_cli/checkpoints.py` + `tools/checkpoint_manager.py::store_status`)
 
 5 subcommands, all plain stdout (no TUI): `status` (default), `list` (alias for status), `prune`, `clear`, `clear-legacy`. axiomate ports **only** `status` / `prune` / `clear` — `clear-legacy` is dropped (see below). Underlying helpers we still need: `store_status`, `clear_all`.
 

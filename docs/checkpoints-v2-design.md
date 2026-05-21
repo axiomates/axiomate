@@ -68,7 +68,7 @@ Spawn pattern: direct `execFileNoThrow(gitExe(), [...args], { env })`. No shell.
 
 ## Missing-git policy
 
-Hermes-style soft disable (`tools/checkpoint_manager.py:632-636`):
+Hermes-style soft disable (`tools/checkpoint_manager.py::_git_available`):
 
 - Probe `gitExe()` lazily on first checkpoint operation
 - Cache result in module-local `_gitAvailable`
@@ -115,7 +115,7 @@ Snapshot/prune failures are **fail-open**: log via `logForDebugging`, skip the o
    - **Top-level Axiomate state**: `/.axiomate/` (anchored — does *not* match nested `agent/.axiomate/`, so the user's `agent/.axiomate/settings.local.json` is rewindable as intended)
 2. **Default caps**: `retentionDays = 14`, `maxTotalSizeMb = 500` — same shape as Hermes' production defaults; configurable via Phase 5 CLI flags.
 3. **Phase sequencing**: Phase 1 → 2 → 3 → 4 → 5 confirmed. Each phase independently shippable; rollback is `git revert` on agent code.
-4. **User `.gitignore` is honored automatically**: `createSnapshot` calls plain `git add -A` (no flag to disable gitignore), matching Hermes' approach (`tools/checkpoint_manager.py:890-893`). Effective exclusion is the **union** of three layers:
+4. **User `.gitignore` is honored automatically**: `createSnapshot` calls plain `git add -A` (no flag to disable gitignore), matching Hermes' approach (`tools/checkpoint_manager.py::CheckpointManager._take`). Effective exclusion is the **union** of three layers:
    - **`info/exclude`** — our `DEFAULT_EXCLUDES` (the safety net for users with no `.gitignore`)
    - **Worktree `.gitignore` files** — user's own ignore rules at any depth, auto-respected by `git add`
    - **`core.excludesFile` (global gitignore)** — *not* honored, because `GIT_CONFIG_GLOBAL=/dev/null` mutes user config. Acceptable trade-off — global gitignore is typically `.DS_Store`/`Thumbs.db` which we cover already, and the muting is necessary to avoid GPG pinentry mid-session.

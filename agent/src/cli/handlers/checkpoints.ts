@@ -10,7 +10,7 @@
  * so the slash command and the CLI print identical output. The single
  * divergence is `clear`: in the slash command it shows a confirm dialog;
  * in the CLI we require `--force` (matches Hermes `cmd_clear` style at
- * `hermes_cli/checkpoints.py:189-205` — Hermes prompts; we prefer a
+ * `hermes_cli/checkpoints.py::cmd_clear` — Hermes prompts; we prefer a
  * non-interactive `--force` because users will sometimes pipe this in
  * scripts and prompts hang).
  */

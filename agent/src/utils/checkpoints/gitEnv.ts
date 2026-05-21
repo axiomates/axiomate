@@ -3,7 +3,7 @@
  * checkpoint store, completely isolated from the user's project `.git/`
  * and gitconfig.
  *
- * Direct port of Hermes' `_git_env()` (`tools/checkpoint_manager.py:236-269`).
+ * Direct port of Hermes' `_git_env()` (`tools/checkpoint_manager.py::_git_env`).
  * The notes there explain the consequences of *not* doing this: GPG signing
  * configured in `~/.gitconfig` would fire pinentry GUI prompts on every file
  * write; credential helpers would launch interactive flows; signing hooks

@@ -6,9 +6,9 @@
  * Single source of truth: the file shape was previously read by both
  * `prune.ts` and `storeStatus.ts`; consolidating here keeps the
  * field-validation rules (`workdir: string`, `created_at: number`,
- * `last_touch: number`) in one place. Mirrors Hermes `_load_projects`
- * (`tools/checkpoint_manager.py:1233-1252`) plus `_list_projects`
- * (`496-512`); both Hermes helpers walk the same directory the same way.
+ * `last_touch: number`) in one place. Mirrors Hermes `_list_projects`
+ * (`tools/checkpoint_manager.py::_list_projects`); both Hermes call sites
+ * (orphan-prune and store-status) walk this directory the same way.
  *
  * Never throws: corrupt files and unreadable directories surface as
  * entries on `errors` and are skipped. Caller chooses whether to surface

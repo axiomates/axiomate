@@ -5,8 +5,8 @@
  * caller is expected to have shown a confirmation prompt before calling
  * this; `clearAll` itself does not prompt. Irreversible.
  *
- * Adapted from Hermes `clear_all` (`tools/checkpoint_manager.py:1600-
- * 1616`). Divergence from Hermes: it returns the same `{bytes_freed,
+ * Adapted from Hermes `clear_all` (`tools/checkpoint_manager.py::clear_all`).
+ * Divergence from Hermes: it returns the same `{bytes_freed,
  * deleted}` shape. axiomate also reports `errors` so the UI can show
  * the reason if `rm` partially fails on Windows (AV scanner, locked
  * file). Hermes silently swallows `OSError` and reports `deleted: false`

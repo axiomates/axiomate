@@ -1,8 +1,9 @@
 /**
  * Pure formatters for `/checkpoints` and `axiomate checkpoints` views.
  *
- * Mirrors Hermes `_fmt_bytes` / `_fmt_age` (`hermes_cli/checkpoints.py:31-63`)
- * with one divergence: `formatBytes` here delegates to axiomate's existing
+ * Mirrors Hermes `_fmt_bytes` / `_fmt_age`
+ * (`hermes_cli/checkpoints.py::_fmt_bytes` / `::_fmt_age`) with one
+ * divergence: `formatBytes` here delegates to axiomate's existing
  * `formatFileSize` (`utils/format.ts:9`) when the value fits its grammar
  * ("1.5KB"). Hermes prints "1.5 KB" with a space; axiomate's house style
  * is no space — pick one and stay consistent.
@@ -41,7 +42,7 @@ export function formatTimestamp(epochSeconds: number): string {
 /**
  * Right-truncate to `width`, replacing the leading characters with `…`
  * when the string overflows. Mirrors Hermes' "…" + tail-59 trick at
- * `hermes_cli/checkpoints.py:88` so the workdir column lines up.
+ * `hermes_cli/checkpoints.py::cmd_status` so the workdir column lines up.
  */
 export function ellipsisLeft(s: string, width: number): string {
   if (s.length <= width) return s

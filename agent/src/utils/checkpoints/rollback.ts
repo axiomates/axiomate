@@ -2,7 +2,7 @@
  * `rollback` — restore a workdir (or a single relative path within it)
  * to the state at a given snapshot commit.
  *
- * Direct port of Hermes `restore` (`tools/checkpoint_manager.py:761-816`).
+ * Direct port of Hermes `restore` (`tools/checkpoint_manager.py::CheckpointManager.restore`).
  *
  * Pipeline:
  *   1.  validateCommitHash(hash) — reject `-`-prefixed and non-hex
