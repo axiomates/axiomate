@@ -199,7 +199,7 @@ export async function pruneCheckpoints(
   //    only runs when the cap actually triggered (Hermes 1090-1095 early
   //    return + 1164-1171 unconditional gc within the > cap branch).
   if (maxTotalSizeMb > 0) {
-    await runSizeCapPass(store, base, maxTotalSizeMb, report)
+    await runSizeCapPass(store, maxTotalSizeMb, report)
   }
 
   // 7. Compute bytes freed. Hermes `bytes_freed = max(prev, before − after)`
@@ -408,33 +408,37 @@ async function writeMarker(report: PruneReport): Promise<void> {
 /**
  * Cross-project size cap. Drops the oldest commit from each ref in
  * round-robin fashion until the store is under `maxMb` MB or no progress
- * was made in a full round. Direct port of Hermes `_enforce_size_cap`
- * (1086-1171) with one corrected behavior:
+ * was made in a full round. Direct port of Hermes `prune_checkpoints`
+ * size-cap branch (1385-1453).
  *
- * **Stricter than Hermes**: `droppedThisRound` resets per outer iteration.
- * Hermes' `any_dropped` (line 1111) is set *outside* the outer loop, so
- * once any single commit is dropped it never resets — meaning the loop
- * runs the full 20 iterations even after progress halts. We treat that
- * as a Hermes bug: 19 wasted rounds of full-store rev-list+commit-tree
- * work that won't shrink the store. Fix: reset per iteration so we can
- * actually break early when no ref can give up another commit.
+ * Per-round `droppedThisRound` reset matches Hermes line 1399 (inside the
+ * outer 20-iter loop). The anti-livelock break out at line 1444-1445 is
+ * the same.
  *
- * Final gc only runs when this function actually entered (size > cap
- * at start). Hermes 1090-1095 + 1164-1171 — the unconditional gc lives
- * inside the `if size > cap_bytes` branch.
+ * Inner-loop size measurement uses the store dir, not the base dir —
+ * matches Hermes 1388 `_dir_size_bytes(store)`. We measure `base` only at
+ * entry/exit for the user-facing `bytesFreed` field, which deliberately
+ * counts everything under `~/.axiomate/checkpoints/` (including the
+ * `.last_prune` marker) so it lines up with what `du` would report.
+ *
+ * Final gc only runs when this function actually entered (size > cap at
+ * start). Hermes 1385 early-skip + 1446-1453 unconditional gc within the
+ * `> cap_bytes` branch.
  */
 async function runSizeCapPass(
   store: string,
-  base: string,
   maxMb: number,
   report: PruneReport,
 ): Promise<void> {
   const capBytes = maxMb * 1024 * 1024
-  const sizeNow = dirSizeBytes(base)
-  if (sizeNow <= capBytes) return
+  // Match Hermes 1388 — measure the store dir for cap decisions, not base.
+  // base may grow with files outside the store's control (`.last_prune`,
+  // future legacy archives), and Hermes deliberately bounds the cap to
+  // what the bare repo itself holds.
+  if (dirSizeBytes(store) <= capBytes) return
 
   logForDebugging(
-    `pruneCheckpoints: size-cap triggered — store=${Math.round(sizeNow / (1024 * 1024))}MB cap=${maxMb}MB`,
+    `pruneCheckpoints: size-cap triggered — store=${Math.round(dirSizeBytes(store) / (1024 * 1024))}MB cap=${maxMb}MB`,
   )
 
   const refs = await listProjectRefs(store, report)
@@ -450,8 +454,7 @@ async function runSizeCapPass(
   const touchedRefs = new Set<string>()
 
   for (let iter = 0; iter < SIZE_CAP_MAX_ITERATIONS; iter++) {
-    const size = dirSizeBytes(base)
-    if (size <= capBytes) break
+    if (dirSizeBytes(store) <= capBytes) break
 
     let droppedThisRound = false
     for (const ref of refs) {
@@ -466,7 +469,7 @@ async function runSizeCapPass(
   }
   report.sizeCapRefsTouched = touchedRefs.size
 
-  // Final gc — Hermes 1164-1171. Unconditional within this branch.
+  // Final gc — Hermes 1446-1453. Unconditional within this branch.
   if (await runReflogExpireAndGc(store, report)) report.gcInvocations++
 }
 
