@@ -19,13 +19,17 @@
  * touched. That scoping invariant is the load-bearing contract — see
  * `__tests__/fileHistory.test.ts` "only restores tracked files…".
  *
- * Persisted-snapshot schema: `{ messageId, gitHash, trackedFiles, timestamp }`.
- * `trackedFiles` is the cumulative set at (or shortly after) the commit,
- * stored per-snapshot so `fileHistoryRestoreStateFromLog` can rebuild
- * `state.trackedFiles` without scanning git history. Replaced an earlier
- * file-copy backend that kept `trackedFileBackups: Record<path,
- * {backupFileName, version}>`; that backend wrote one file per edit per
- * turn and is no longer in use (cleanup.ts archives any leftover copy
+ * Persisted-snapshot schema: `{ messageId, gitHash, addedTrackedFiles,
+ * timestamp }`. `addedTrackedFiles` is the **delta** — only paths newly
+ * registered between the previous snapshot and this one (or trackEdits
+ * since this snapshot was committed, see scheduleSnapshotPersist below).
+ * `fileHistoryRestoreStateFromLog` folds these in chronological order to
+ * rebuild `state.trackedFiles`. Disk usage is O(M) total (each path
+ * recorded exactly once) instead of O(K×M) for the prior cumulative
+ * shape. Replaced an earlier file-copy backend that kept
+ * `trackedFileBackups: Record<path, {backupFileName, version}>`; that
+ * backend wrote one file per edit per turn and is no longer in use
+ * (cleanup.ts archives any leftover copy
  * directory at `~/.axiomate/file-history/`).
  *
  * Updater protocol: every API takes `updateFileHistoryState`, a
@@ -68,12 +72,13 @@ export type FileHistorySnapshot = {
   /** Commit hash in the shared shadow store. */
   gitHash: string
   /**
-   * Cumulative tracked-paths set at (or shortly after) the commit. Stored
-   * per-snapshot so `fileHistoryRestoreStateFromLog` can rebuild
-   * `state.trackedFiles` without scanning git history. trackEdit during
-   * an open turn updates the most-recent snapshot's entry.
+   * Paths newly registered as tracked between the prior snapshot (or
+   * session start) and this one. **Delta**, not cumulative — readers
+   * fold these chronologically to rebuild `state.trackedFiles`. trackEdit
+   * calls that arrive after this snapshot was committed append to this
+   * array (and re-persist via the coalescing latch).
    */
-  trackedFiles: readonly string[]
+  addedTrackedFiles: readonly string[]
   timestamp: Date
 }
 
@@ -147,10 +152,10 @@ export async function fileHistoryTrackEdit(
     const trackedFiles = new Set(state.trackedFiles).add(trackingPath)
     let snapshots = state.snapshots
     const last = state.snapshots.at(-1)
-    if (last && !last.trackedFiles.includes(trackingPath)) {
+    if (last && !last.addedTrackedFiles.includes(trackingPath)) {
       const updated: FileHistorySnapshot = {
         ...last,
-        trackedFiles: [...last.trackedFiles, trackingPath],
+        addedTrackedFiles: [...last.addedTrackedFiles, trackingPath],
       }
       updatedSnapshot = updated
       snapshots = state.snapshots.slice()
@@ -245,7 +250,12 @@ export async function fileHistoryMakeSnapshot(
     const snapshot: FileHistorySnapshot = {
       messageId,
       gitHash: result.hash,
-      trackedFiles: Array.from(state.trackedFiles),
+      // Empty at emit time: makeSnapshot fires at turn start, before any
+      // trackEdit. trackEdit calls during the turn append to this snapshot's
+      // addedTrackedFiles. The fold-on-read invariant
+      //   union(snapshots[].addedTrackedFiles) === state.trackedFiles
+      // is what lets us store O(M) total instead of O(K×M).
+      addedTrackedFiles: [],
       timestamp: new Date(),
     }
     committed = snapshot
@@ -446,16 +456,17 @@ export async function fileHistoryHasAnyChanges(
 
 /**
  * Resume entry: rebuild state from a persisted snapshot list. Each
- * snapshot's `trackedFiles` is unioned into `state.trackedFiles` so
- * rewind blast-radius matches the pre-resume session.
+ * snapshot's `addedTrackedFiles` is unioned into `state.trackedFiles` so
+ * rewind blast-radius matches the pre-resume session — chronological
+ * fold over the deltas.
  *
  * The persisted log is append-only and can outgrow the in-memory ring
  * buffer (a long-running session that resumes repeatedly). We mirror the
  * `fileHistoryMakeSnapshot` cap here: keep only the most recent
- * MAX_SNAPSHOTS, but union the *whole* persisted log's trackedFiles
+ * MAX_SNAPSHOTS, but fold the *whole* persisted log's addedTrackedFiles
  * because rewind blast-radius is cumulative — a file the user wants to
  * rewind to a kept snapshot must still be in trackedFiles even if the
- * snapshot that first registered it has aged out.
+ * snapshot that first registered it has aged out of the in-memory ring.
  */
 export function fileHistoryRestoreStateFromLog(
   fileHistorySnapshots: FileHistorySnapshot[],
@@ -466,13 +477,14 @@ export function fileHistoryRestoreStateFromLog(
   const trackedFiles = new Set<string>()
   const snapshots: FileHistorySnapshot[] = []
   for (const snapshot of fileHistorySnapshots) {
-    const trackedList: string[] = []
-    for (const path of snapshot.trackedFiles ?? []) {
+    const addedList: string[] = []
+    for (const path of snapshot.addedTrackedFiles ?? []) {
       const trackingPath = maybeShortenFilePath(path)
+      if (trackedFiles.has(trackingPath)) continue
       trackedFiles.add(trackingPath)
-      trackedList.push(trackingPath)
+      addedList.push(trackingPath)
     }
-    snapshots.push({ ...snapshot, trackedFiles: trackedList })
+    snapshots.push({ ...snapshot, addedTrackedFiles: addedList })
   }
   const trimmed =
     snapshots.length > MAX_SNAPSHOTS ? snapshots.slice(-MAX_SNAPSHOTS) : snapshots
