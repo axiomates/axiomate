@@ -156,7 +156,7 @@ but not delivered:
 | 6E | Observability — snapshot p50/p95, store-size telemetry | `plan.md:End-to-end verification` |
 | 6F | One-week dogfood metrics report | Same |
 
-### 6A — `/resume`↔rollback union
+### 6A — `/resume`↔rollback union ✅ landed
 
 **Problem.** `/resume` rebuilds transcript state from JSONL. `/rewind`
 rolls the worktree back. Today they're independent. If a user resumes
@@ -164,17 +164,12 @@ session A and then wants the worktree at turn N of A, they have to do
 two commands; if turn N's `gitHash` was orphan-pruned in the meantime,
 `/rewind` fails.
 
-**Approach.** Smallest viable surface:
-- After `/resume` completes, run `findReachableSnapshot(targetMessageId)`
-  which returns `{gitHash}` if any project's ref chain still has it.
-- If found, present a one-line offer in the resume confirmation:
-  "Worktree state from this session is still rewindable; `/rewind` to
-   restore." If not found, no message.
-- No new UX surface; `/rewind` itself unchanged.
-
-**Cost.** ~1 day. Implementation in
-`agent/src/commands/resume/` as a post-resume hook + a 3-test pin
-(reachable / orphan-pruned / cross-worktree case).
+**Shipped.** Helper `findReachableSnapshot` + `computeResumeRewindHint`
+in `agent/src/utils/checkpoints/`. Tri-state reachability probe (cat-file
+-e then merge-base --is-ancestor); REPL pushes a one-line system message
+right before `setMessages(() => messages)` after `/resume` finishes —
+info on reachable, warning on unreachable, silent on `unknown` /
+disabled / no snapshots. 11 vitest cases (6 helper + 5 hint).
 
 ### 6B — Cross-worktree resume reachability
 
