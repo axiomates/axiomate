@@ -101,14 +101,16 @@ function quoteIfNeeded(p: string): string {
 /**
  * The rewritten command starts with the bare token `rtk`. If our binary lives
  * next to axiomate.exe (bundled mode), the shell can't find it on PATH —
- * substitute the absolute path for the leading token.
+ * substitute the absolute path for the leading token. Also inject --quiet
+ * so the second rtk invocation (the one bash actually runs) doesn't emit
+ * a hook-not-installed warning to the user's terminal.
  */
 function patchRewrittenCommand(rewritten: string, rtkPath: string): string {
   const trimmed = rewritten.trimEnd()
   if (!trimmed.startsWith('rtk')) return trimmed
   const after = trimmed.slice(3)
   if (after.length > 0 && !/\s/.test(after[0]!)) return trimmed
-  return `${quoteIfNeeded(rtkPath)}${after}`
+  return `${quoteIfNeeded(rtkPath)} --quiet${after}`
 }
 
 type AttemptOutcome =
@@ -144,7 +146,13 @@ function runRtkOnce(
 
     const child = execFile(
       rtkPath,
-      ['rewrite', cmd],
+      // --quiet suppresses rtk's "No hook installed" advisory on stderr.
+      // axiomate doesn't use Claude Code's hook pipeline (we call rewrite
+      // directly via execFile), so that warning is misleading for our
+      // users — and stderr can leak through BashTool's exec of the
+      // rewritten command (`rtk <cmd>`), surfacing as red text in the
+      // user's terminal. Requires rtk >= axiomate-v0.40.0+2.
+      ['--quiet', 'rewrite', cmd],
       {
         timeout: RTK_TIMEOUT_MS,
         signal: abortSignal,
