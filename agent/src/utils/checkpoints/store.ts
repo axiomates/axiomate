@@ -67,9 +67,15 @@ export type EnsureStoreResult =
  *          them when no global config is readable, and we've muted the
  *          global config. Distinct values from Hermes (`hermes@local`)
  *          so we can recognize axiomate commits in shared dev repos.
- *   5. `info/exclude` — write the full DEFAULT_EXCLUDES list, every
- *      ensureStore call. The file is authoritative; user edits are not
- *      a supported workflow. Same policy as Hermes (line 445-447).
+ *   5. `info/exclude` — write the full DEFAULT_EXCLUDES list ONCE on
+ *      first init only (this whole `try { mkdir + writeFile }` block is
+ *      gated by the HEAD-existence check above). Subsequent ensureStore
+ *      calls early-return at step 2 and never touch the file. Matches
+ *      Hermes (line 445-447 also runs only inside `_init_store`'s post-
+ *      `git init` path). Implication: user edits to `info/exclude` are
+ *      preserved; if we ever want to roll out new excludes, we'll need
+ *      a versioned bump (excluded for now — `DEFAULT_EXCLUDES` is the
+ *      one-and-only source).
  *
  * Returns `{ ok: true, store }` on success, `{ ok: false, reason }` on
  * any failure. Caller logs and proceeds without checkpoints for that

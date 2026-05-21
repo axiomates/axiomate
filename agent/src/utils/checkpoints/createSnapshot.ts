@@ -24,6 +24,15 @@
  *   11. commit via write-tree + commit-tree + update-ref CAS
  *   12. per-project ring-buffer prune
  *   13. (cross-project size cap deferred to Phase 4 startup hook)
+ *
+ * Stricter-than-Hermes behavior — flagged so future maintainers don't
+ * read it as a bug:
+ *   - On rev-parse failure other than the allowed 128 ("ref not found"),
+ *     step 7 returns `transient-error` instead of falling through to a
+ *     fresh-root commit like Hermes does (`_take` 904-909). A glitchy
+ *     rev-parse on an existing ref would, under Hermes' branch, orphan
+ *     the prior history with a new root commit; we'd rather drop this
+ *     turn's snapshot and retry next turn than silently break the chain.
  */
 
 import { homedir } from 'os'
