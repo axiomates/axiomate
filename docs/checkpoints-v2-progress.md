@@ -10,13 +10,9 @@
 
 ## Immediate next action
 
-→ **Phase 2**: implement `agent/src/utils/checkpoints/store.ts` — the user-facing API (`ensureStore`, `createSnapshot`, `listSnapshots`, `rollback`, `currentRef`; `probeGitAvailable` lives in `git.ts` per Decision #15). Backed by the Phase 1 primitives. Round-trip integration test against a real on-disk shadow store.
+→ **Phase 4**: implement `agent/src/utils/checkpoints/prune.ts` — orphan + stale + size-cap passes, then `git gc --prune=now`. Triggered async from `processSessionStartHooks('startup', ...)` with a 24h `.last_prune` idempotency marker. Phase 3 + 3.1 are done; the shadow-git store is the live fileHistory backend.
 
-**Read the Phase 2 spec below before writing code.** It's the result of (a) a deep read of Hermes' `checkpoint_manager.py` (2026-05-20) and (b) a 2026-05-21 audit pass that locked decisions #12-#15 and folded back in two pieces the original spec had over-deferred:
-- **Per-project ring-buffer prune** (Hermes `_prune`, 1020-1084) — now step 12 of `createSnapshot`. Without it, every project's ref grows linearly forever.
-- **`_touchProject` ordering** — now step 4, *before* the file-count guard, so even skipped snapshots register the project (matches Hermes 849 vs 852).
-
-The spec also locks the precise step ordering, plumbing-vs-porcelain choices, and edge cases the TS port must preserve.
+**Read the Phase 4 spec below before writing code.** Hermes reference: `tools/checkpoint_manager.py` `prune_checkpoints` family. Three sequential passes (orphan refs whose workdir vanished, stale refs older than `retentionDays`, then size-cap drop-oldest until under `maxTotalSizeMb`), each followed by `git gc --prune=now`.
 
 Phase 1 done (2026-05-20):
 - 4 source files: `paths.ts` (with `DEFAULT_EXCLUDES` covering VS C++/C#, Python, JS/Bun, Rust, Java, iOS, Android), `validate.ts` (commit-hash + path-traversal guards), `gitEnv.ts` (GIT_DIR/WORK_TREE/INDEX_FILE + mute global/system gitconfig), `git.ts` (typed `runCheckpointGit` wrapper, never throws).
@@ -51,8 +47,8 @@ Phase 0 review answers (locked):
 |---|-------|--------|--------|
 | 0 | Design memo | ✅ done | `docs/checkpoints-v2-design.md` |
 | 1 | Git isolation primitives | ✅ done | `agent/src/utils/checkpoints/{gitEnv,git,validate,paths}.ts` + tests (44 passing) |
-| 2 | Store API (snapshot / list / rollback) | ⬜ | `agent/src/utils/checkpoints/store.ts` + tests |
-| 3 | Backend swap behind fileHistory.ts (load-bearing) | ⬜ | edits to `fileHistory.ts` + `sessionStorage.ts` |
+| 2 | Store API (snapshot / list / rollback) | ✅ done | `agent/src/utils/checkpoints/store.ts`, `createSnapshot.ts`, `listSnapshots.ts`, `rollback.ts` + tests |
+| 3 | Backend swap behind fileHistory.ts (load-bearing) | ✅ done | `8b45c627` swap; `8377acab` + `a4bf49d2` Phase 3.1 review cleanup |
 | 4 | Auto-prune (orphan / stale / size-cap + gc) | ⬜ | `agent/src/utils/checkpoints/prune.ts` + tests |
 | 5 | `/checkpoints` slash + CLI subcommand | ⬜ | `agent/src/commands/checkpoints/*` + main.tsx wiring |
 | 6 | Out of scope (placeholder) | — | resume↔rollback union, file-copy migration |
@@ -82,6 +78,7 @@ Legend: ⬜ not started · 🟡 in progress · ✅ done · ⛔ blocked
     - **Phase 6 resume↔rollback union** can `find(snap => snap.messageId === targetMsg)` without scanning `projects/<hash16>.json` or stuffing `messageId` into a side index.
     - Cost: ~5 lines (one parser, one formatter), centralized so the format can evolve without rewriting consumers.
 15. **`probeGitAvailable` lives in `git.ts`, cached forever per process** (Decision 4A, 2026-05-21). Sits next to `runCheckpointGit` since it's a git-spawning concern. One probe per process (mid-session git installs require restart — rare scenario, accepted). Matches Hermes `_git_available` pattern. Lets `store.ts` *and* any future probe-before-init guard reuse the same cache without circular imports.
+16. **Persisted snapshot trackedFiles shape stays cumulative** (Decision 5A, 2026-05-21, locked from Phase 3.1 review issue C8). Each `file-history-snapshot` JSONL entry carries the full cumulative `trackedFiles` set as of that messageId. Storage is O(K×M) where K ≤ MAX_SNAPSHOTS=100 and M is final tracked-files-set size. Real-world ceiling ≤ 10k path entries — well under any session-storage budget concern. **Rejected alternative**: per-snapshot delta with fold-on-read. Would change `recordFileHistorySnapshot` reader semantics from messageId-keyed map (`sessionStorage.ts:3269`, last-write-wins) to ordered-fold, breaking the resume/replay invariant. Cost-to-benefit doesn't justify it. Revisit only if profiling shows session-log size as a real bottleneck.
 
 ---
 
@@ -279,6 +276,78 @@ Each test creates a temp workdir under `os.tmpdir()`. `getCheckpointBase()` is r
 ### What's now *in* Phase 2 that the original spec deferred
 
 - **Per-project ring-buffer prune** (`_prune`, Hermes 1020-1084) — folded back in as step 12 of `createSnapshot`. The original spec's "defer all pruning to Phase 4" was over-simplification; without per-project ring buffer, every project's ref grows linearly forever and Phase 4's cross-project pass can't reclaim because reachable commits aren't `git gc` candidates.
+
+---
+
+## Phase 3 done — backend swap + 3.1 review (2026-05-21)
+
+**Phase 3 (commit `8b45c627`)** swapped fileHistory's storage backend from per-session file copies (`~/.axiomate/file-history/<sid>/<file>@vN`) to one commit per turn in the shared shadow-git store. Public API surface preserved verbatim — `FileEditTool`, `FileWriteTool`, `BashTool`, `NotebookEditTool`, `QueryEngine`, `REPL`, `cli/print`, `handlePromptSubmit` need zero changes. New schema:
+```ts
+type FileHistorySnapshot = { messageId, gitHash, trackedFiles: readonly string[], timestamp }
+```
+Old shape (`trackedFileBackups: Record<path, {backupFileName, version}>`) gone, no read-side compat shim. Pre-Phase-3 file-copy directory archived to `file-history.legacy-<ts>/` on first boot via `cleanup.ts`.
+
+**Phase 3.1 review (commits `8377acab` + `a4bf49d2`)** addressed 9 issues raised in post-merge review:
+
+| # | Issue | Resolution |
+|---|---|---|
+| A1 | `restoreStateFromLog` didn't truncate to MAX_SNAPSHOTS — append-only log could outgrow ring buffer on long resume chains | Cap rebuilt list to MAX_SNAPSHOTS; trackedFiles still unioned over the full log so rewind blast-radius preserved |
+| A2 | `maybeShortenFilePath` case-sensitive prefix on Windows — `c:\` vs `C:\` would record same file under two keys | win32 branch lowercase-compares the prefix; relative path keeps tool's original casing |
+| B4 | `fileHistoryTrackEdit`'s `_messageId` arg dead post-Phase-3 | Removed from signature; updated 5 call sites (FileEdit, FileWrite, Bash sed-sim, NotebookEdit, tests) |
+| B9 | `stats.ts:986` referenced removed `copyFileHistoryForResume` | Reframed comment to describe the actual hazard (embedded nested timestamps) without naming a deleted function |
+| C5 | `getDiffStats` ran 3 git invocations | Collapsed to 1 `git diff --numstat` (gives per-file ins/del + path list together); readTree stays for flipped-path detection |
+| C6 | Initially flagged `indexFile` as dead in worktree-vs-commit diff | **Reverted with comment**: shared bare store reuses `$GIT_DIR/index` from whichever project last touched it; per-project `GIT_INDEX_FILE` is the isolation boundary even though the diff "doesn't read the index" — without it, neighboring projects pollute results |
+| C7 | `fileHistoryTrackEdit` triggered N writes per turn (one per new tracked file); reader takes last-write-wins, so all but the last were wasted IO | Per-messageId latest-pending Map + in-flight latch — N writes collapse to ≤2 round-trips |
+| C8 | Per-snapshot cumulative `trackedFiles[]` is O(K×M) on disk | **Decision recorded** (locked decision #16): keep current shape. Real-world ceiling ≤ 10k entries, alternative (delta-fold) breaks reader semantics. Defer indefinitely, revisit only if profiling forces it |
+| D3 | Three sites use setter-as-getter (`updater(s => { captured = s; return s })`); fragile if state layer ever becomes async | Documented as a contract in `fileHistory.ts` top-doc rather than refactored. All current consumers honor the synchronous-dispatcher invariant; refactor would change every public signature |
+
+Naming cleanup also folded in: dropped Hermes' "v1/v2" framing from comments across `gitEnv.ts`, `paths.ts`, `store.ts`, `validate.ts`, `cleanup.ts`, `fileHistory.ts`. Hermes had a real production v1; Axiomate's pre-Phase-3 file-copy was unreleased — the v1/v2 dichotomy doesn't apply here. Renamed to neutral terms ("shadow-git checkpoint store", "previous file-copy backend").
+
+Test coverage post-3.1: 1300/1300 passing, including 25 fileHistory behavior tests that survive the backend swap unchanged. Build (`pnpm run build`) clean; bundle 10628 KB.
+
+### Test files now anchoring the new backend
+
+| File | Coverage |
+|---|---|
+| `agent/src/utils/__tests__/fileHistory.test.ts` | 25 behavior tests: trackEdit, makeSnapshot, rewind, getDiffStats, hasAnyChanges, restoreStateFromLog, MAX_SNAPSHOTS eviction, concurrency latch |
+| `agent/src/utils/checkpoints/__tests__/gitEnv.test.ts` | env var composition (NUL on Win32, /dev/null on Unix), GIT_TERMINAL_PROMPT, init vs run env shapes |
+| `agent/src/utils/checkpoints/__tests__/paths.test.ts` | normalizePath tilde-expand, projectHash purity (case-sensitive, noisy-vs-clean differs), DEFAULT_EXCLUDES coverage |
+| `agent/src/utils/checkpoints/__tests__/validate.test.ts` | hash injection guards (`-p`, `--patch`), path-traversal guards (`../etc/passwd`) |
+| `agent/src/utils/checkpoints/__tests__/git.test.ts` | workdir pre-flight (missing / not-a-dir → typed error), fail-open on bogus paths |
+| `agent/src/utils/checkpoints/__tests__/store.test.ts` | ensureStore idempotency, GPG-config muting, malformed-metadata recovery |
+| `agent/src/utils/checkpoints/__tests__/createSnapshot.test.ts` | round-trip, oversize-file drop, MAX_FILES skip-with-touch, no-changes path |
+| `agent/src/utils/checkpoints/__tests__/listSnapshots.test.ts` | ref ordering, limit, empty-ref handling |
+| `agent/src/utils/checkpoints/__tests__/rollback.test.ts` | hash + path validation, pre-rollback safety snapshot, unknown-hash error |
+
+---
+
+## Phase 3 architectural review (2026-05-21)
+
+Triggered by user request after Phase 3.1 review fixes landed: "phase 3 modified existing code's architecture, should do a comprehensive review". Walked every existing file Phase 3 touched and verified downstream consumers.
+
+**Files Phase 3 modified (non-checkpoints):**
+- `agent/src/utils/fileHistory.ts` — full rewrite (backend swap)
+- `agent/src/utils/sessionStorage.ts` — schema additive: `FileHistorySnapshot.gitHash` replaces `trackedFileBackups`; reader at 3268 still keys by messageId
+- `agent/src/utils/cleanup.ts` — `cleanupOldFileHistoryBackups` rewritten to archive-rename `~/.axiomate/file-history/` → `file-history.legacy-<ts>/`
+- `agent/src/utils/conversationRecovery.ts` — `copyFileHistoryForResume` call removed (dead post-shadow-git)
+- `agent/src/screens/REPL.tsx` — same removal
+- `agent/src/utils/stats.ts:982` — comment reframed to describe nested-timestamp hazard without naming the deleted helper
+
+**Findings (all four lanes ✅ verified):**
+
+1. **API call sites (8 sites across 4 tools + 2 engines + 2 screens)**: every `fileHistoryTrackEdit` / `fileHistoryMakeSnapshot` / `fileHistoryRewind` / `fileHistoryGetDiffStats` / `fileHistoryHasAnyChanges` / `fileHistoryRestoreStateFromLog` call matches the new signatures. The trackEdit dropped-`messageId` change (B4) propagated cleanly to FileWriteTool, FileEditTool, BashTool (sed-sim path), NotebookEditTool. Confirmed via grep: no orphan call sites.
+
+2. **Schema readers**: `buildFileHistorySnapshotChain` (sessionStorage:1856), `recordFileHistorySnapshot` (1245), `insertFileHistorySnapshot` (940), and the JSONL parse branch (3268) all consume the new `{ messageId, gitHash, trackedFiles, timestamp }` shape. No reader anywhere in the codebase still references `trackedFileBackups` / `FileHistoryBackup` / `backupFileName` (only doc-comment historical mentions remain). Clean break, as intended.
+
+3. **Resume flow without `copyFileHistoryForResume`**: verified the path JSONL → `loadConversationForResume` → `buildFileHistorySnapshotChain` → `useFileHistorySnapshotInit` → `fileHistoryRestoreStateFromLog` is intact. The reason the old physical-copy step is dead: shadow-git is project-keyed by abs path with a shared object DB. Same-cwd resume reads the same ref the prior session wrote. Same-repo-worktree resume (different abs path → different `projectHash` → different ref) still resolves snapshot `gitHash` directly because checkout takes a hash, not a ref — so cross-worktree rewind works as long as the hash is reachable. **Latent risk for Phase 4**: a stale-prune of the original session's ref in a different worktree could orphan the resumed gitHash. Document in Phase 4 spec; not a Phase 3 regression.
+
+4. **Cleanup boot path**: `cleanupOldFileHistoryBackups` is called once from `cleanupOldMessageFilesInBackground` (cleanup.ts:434), itself triggered by the existing background-cleanup hook. It no-ops cleanly when `~/.axiomate/file-history/` doesn't exist (try/catch on `stat`). Archive name `file-history.legacy-<ISO-ts>` cannot collide with the new `~/.axiomate/checkpoints/` (separate sibling). Best-effort error swallowing matches the rest of cleanup.ts.
+
+**Architectural follow-ups (deferred, none blocking):**
+- Phase 4 must consider: cross-worktree rewind reachability when source-worktree's ref is pruned. Either (a) keep refs alive across worktrees of the same git repo, or (b) accept that resumed-from-other-worktree rewinds may be lost after retention. Decision deferred to Phase 4 implementation.
+- The synchronous-dispatcher invariant (D3) is now contract-bound in `fileHistory.ts` top-doc. If a future state layer becomes async (zustand, redux thunks, etc.), the read-via-identity-updater pattern must be replaced with a separate read API. No refactor needed today.
+
+No code changes from this review — all four lanes pass. Documented here for the Phase 4 author's reference.
 
 ---
 
