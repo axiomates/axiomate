@@ -45,7 +45,10 @@ export function renderStatus(report: StoreStatusReport, limit = 20): string {
   lines.push(`  store/         ${formatBytes(report.store_size_bytes)}`)
   lines.push(`Projects:        ${report.project_count}`)
 
-  if (report.projects.length === 0) return lines.join('\n')
+  if (report.projects.length === 0) {
+    appendMetricsSection(lines, report)
+    return lines.join('\n')
+  }
 
   const sorted = [...report.projects].sort(
     (a, b) => (b.last_touch ?? 0) - (a.last_touch ?? 0),
@@ -64,7 +67,35 @@ export function renderStatus(report: StoreStatusReport, limit = 20): string {
   if (sorted.length > limit) {
     lines.push(`  … +${sorted.length - limit} more`)
   }
+  appendMetricsSection(lines, report)
   return lines.join('\n')
+}
+
+/**
+ * Render the rolling snapshot-metrics block.
+ *
+ * Hermes has no equivalent — completion-plan 6E is an axiomate-only
+ * addition. We surface the rolling p50/p95 of `ok` snapshot durations
+ * plus failure / no-changes / skipped-other counters, all over the
+ * last ≤100 snapshots. Skipped entirely when `sample_size === 0` so
+ * a fresh install doesn't show empty stats.
+ *
+ * Format note: `ok_p50_ms` / `ok_p95_ms` are null when the ok-sample
+ * is < 2 (percentile on 0-1 points is misleading). Render those as
+ * "—" rather than 0ms so users don't read "0ms p50" as "instant".
+ */
+function appendMetricsSection(
+  lines: string[],
+  report: StoreStatusReport,
+): void {
+  const m = report.metrics
+  if (m.sample_size === 0) return
+  const p50 = m.ok_p50_ms === null ? '—' : `${Math.round(m.ok_p50_ms)}ms`
+  const p95 = m.ok_p95_ms === null ? '—' : `${Math.round(m.ok_p95_ms)}ms`
+  lines.push('')
+  lines.push(`Snapshot metrics (last ${m.sample_size}):`)
+  lines.push(`  ok ${m.ok_count}, no-changes ${m.no_changes_count}, skipped ${m.skipped_other_count}, failed ${m.failure_count}`)
+  lines.push(`  duration p50 ${p50}, p95 ${p95}`)
 }
 
 /**

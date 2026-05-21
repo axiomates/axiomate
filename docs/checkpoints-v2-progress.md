@@ -926,3 +926,22 @@ In Hermes, `legacy-*` directories are v1→v2 migration archives — Hermes ship
 3. **Slash command** (task #69) — `agent/src/commands/checkpoints/{index.ts,checkpoints.tsx}`, sub-args `status`/`list`/`prune`/`clear` (no `clear-legacy`), shaped like `commands/sandbox-toggle/sandbox-toggle.tsx:40-50`
 4. **CLI subcommand** (task #70) — `agent/src/cli/handlers/checkpoints.ts` + commander wiring in `main.tsx` next to `doctor`/`agents` (~line 2333). Subcommands: `status`/`list`/`prune`/`clear` only.
 5. **Verify + progress doc** (task #71) — `tsc --noEmit`, full vitest, manual smoke, mark Phase 5 ✅
+
+## Phase 6 dogfood metrics (rolling sample, 6F)
+
+> Filled in passively from `/checkpoints` output. Each row is a single
+> snapshot of the user's `axiomate checkpoints` state on the date listed.
+> The percentile fields use `metrics.ts` (≤100 most-recent snapshots).
+> When the sample is < 2 ok rows, `p50/p95` show as "—".
+
+| Date | total_size | projects | sample_size | ok / no-changes / skipped / failed | p50 | p95 | Notes |
+|---|---|---|---|---|---|---|---|
+| _baseline_ | _to fill_ | _to fill_ | _to fill_ | _to fill_ | _to fill_ | _to fill_ | First measurement after 6E lands |
+| _+1 week_ | | | | | | | |
+| _+2 weeks_ | | | | | | | |
+
+**Watch list** (what would prompt action):
+- `failed` count > 0 across multiple snapshots → investigate `~/.axiomate/debug/*.log`; the failure modes are AV-scan races, EBUSY on the index, timeouts. If a single specific reason dominates, file a fix.
+- `total_size` exceeding the size cap → confirm `pruneCheckpoints` is running on startup (`.last_prune` should be ≤ 24h old).
+- `p95` jumping > 5× over baseline → likely a workdir grew past `MAX_FILES` headroom; the file walk dominates. Consider raising `MAX_FILES` or excluding the new generated-asset directory.
+- `no-changes` ratio > 80% → benign; just means the agent is mostly reading. Not actionable.

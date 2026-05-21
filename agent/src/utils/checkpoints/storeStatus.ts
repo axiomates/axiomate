@@ -21,6 +21,7 @@
 
 import { existsSync } from 'fs'
 import { runCheckpointGit } from './git.js'
+import { loadRecentMetrics, summarizeMetrics, type MetricsSummary } from './metrics.js'
 import { getCheckpointBase, getStoreDir, refName } from './paths.js'
 import { loadProjectMetas } from './projectMetas.js'
 import { dirSizeBytes } from './prune.js'
@@ -52,6 +53,13 @@ export interface StoreStatusReport {
   project_count: number
   /** Per-project rows. Order is whatever `readdir` returned. */
   projects: StoreStatusProject[]
+  /**
+   * Rolling-window summary of recent `createSnapshot` outcomes.
+   * Source: `metrics.jsonl` ring (≤ 100 rows). Empty file / fresh
+   * install → `metrics.sample_size === 0` and percentile fields null.
+   * Status renderer treats null/0-sample as "—".
+   */
+  metrics: MetricsSummary
 }
 
 /**
@@ -61,12 +69,14 @@ export interface StoreStatusReport {
  */
 export async function storeStatus(): Promise<StoreStatusReport> {
   const base = getCheckpointBase()
+  const metricRows = await loadRecentMetrics()
   const report: StoreStatusReport = {
     base,
     store_size_bytes: 0,
     total_size_bytes: 0,
     project_count: 0,
     projects: [],
+    metrics: summarizeMetrics(metricRows),
   }
   if (!existsSync(base)) return report
 

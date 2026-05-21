@@ -47,6 +47,10 @@ import {
   type CheckpointGitResult,
 } from './git.js'
 import {
+  recordSnapshotOutcome,
+  type SnapshotOutcome,
+} from './metrics.js'
+import {
   indexPath,
   normalizePath,
   projectHash,
@@ -112,11 +116,61 @@ const TRANSIENT = (message: string): CreateSnapshotResult => ({
  * Caller passes a logical workdir (may be tilde-prefixed or relative);
  * we canonicalize at this boundary before any operation that depends on
  * path identity (hashing, touchProject metadata, GIT_WORK_TREE).
+ *
+ * Wraps the inner pipeline (`_runCreateSnapshot`) with start/finish
+ * timing so the metrics ring (`metrics.ts`) gets one row per call —
+ * input to `/checkpoints status`'s rolling p50/p95 + failure count.
+ * Recording is fire-and-forget: a metrics-write failure can never
+ * influence the snapshot's own result.
  */
 export async function createSnapshot(
   workdir: string,
   reason: CreateSnapshotReason,
   opts: CreateSnapshotOptions = {},
+): Promise<CreateSnapshotResult> {
+  const start = Date.now()
+  const result = await _runCreateSnapshot(workdir, reason, opts)
+  const duration_ms = Date.now() - start
+  void recordSnapshotOutcome({
+    ts: start,
+    duration_ms,
+    outcome: outcomeFor(result),
+    project_hash: projectHashOrEmpty(workdir),
+    reason: reasonFor(result),
+  })
+  return result
+}
+
+function outcomeFor(r: CreateSnapshotResult): SnapshotOutcome {
+  if (r.ok === true) return 'ok'
+  if (r.skipped === 'no-changes') return 'no-changes'
+  if (r.skipped === 'transient-error' || r.skipped === 'race') return 'error'
+  return 'skipped-other'
+}
+
+function reasonFor(r: CreateSnapshotResult): string | undefined {
+  if (r.ok === true) return undefined
+  if (r.skipped === 'no-changes') return undefined
+  return r.skipped
+}
+
+/**
+ * Hash the workdir for the metrics row. Wrapped in try because
+ * `projectHash` calls `normalizePath` which can fail on bizarre inputs;
+ * we'd rather log "" than block the metric write.
+ */
+function projectHashOrEmpty(workdir: string): string {
+  try {
+    return projectHash(normalizePath(workdir))
+  } catch {
+    return ''
+  }
+}
+
+async function _runCreateSnapshot(
+  workdir: string,
+  reason: CreateSnapshotReason,
+  opts: CreateSnapshotOptions,
 ): Promise<CreateSnapshotResult> {
   // 1. Soft-disable when git is missing.
   if (!(await probeGitAvailable())) {

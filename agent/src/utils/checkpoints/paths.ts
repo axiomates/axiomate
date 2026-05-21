@@ -27,6 +27,7 @@ const INFO_DIRNAME = 'info'
 const EXCLUDE_FILENAME = 'exclude'
 const REF_PREFIX = 'refs/axiomate'
 const LAST_PRUNE_FILENAME = '.last_prune'
+const METRICS_FILENAME = 'metrics.jsonl'
 
 /**
  * Root of the checkpoints subsystem under ~/.axiomate/.
@@ -58,6 +59,17 @@ export function getStoreDir(): string {
 /** Marker file for 24h auto-prune idempotency. */
 export function getLastPrunePath(): string {
   return join(getCheckpointBase(), LAST_PRUNE_FILENAME)
+}
+
+/**
+ * Append-only JSONL ring buffer of recent snapshot outcomes (one row per
+ * `createSnapshot` invocation). Capped at ~100 entries by the metrics
+ * module — see `metrics.ts`. Sits at the checkpoints base (not inside
+ * `store/`) because it's axiomate observability, not a git artifact, and
+ * `git fsck` shouldn't see it.
+ */
+export function getMetricsPath(): string {
+  return join(getCheckpointBase(), METRICS_FILENAME)
 }
 
 /**

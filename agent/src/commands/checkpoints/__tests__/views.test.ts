@@ -30,6 +30,15 @@ function emptyStatus(): StoreStatusReport {
     total_size_bytes: 0,
     project_count: 0,
     projects: [],
+    metrics: {
+      sample_size: 0,
+      ok_p50_ms: null,
+      ok_p95_ms: null,
+      failure_count: 0,
+      no_changes_count: 0,
+      skipped_other_count: 0,
+      ok_count: 0,
+    },
   }
 }
 
@@ -112,6 +121,15 @@ describe('renderStatus', () => {
           commits: 1,
         },
       ],
+      metrics: {
+        sample_size: 0,
+        ok_p50_ms: null,
+        ok_p95_ms: null,
+        failure_count: 0,
+        no_changes_count: 0,
+        skipped_other_count: 0,
+        ok_count: 0,
+      },
     }
     const out = renderStatus(report)
     expect(out).toContain('WORKDIR')
@@ -140,6 +158,53 @@ describe('renderStatus', () => {
     const out = renderStatus(report)
     expect(out).toContain('…')
     expect(out).toContain('leaf')
+  })
+
+  test('metrics block hidden when sample_size is zero', () => {
+    const out = renderStatus(emptyStatus())
+    expect(out).not.toContain('Snapshot metrics')
+    expect(out).not.toContain('p50')
+  })
+
+  test('metrics block shows counts + percentiles when sample_size > 0', () => {
+    const report: StoreStatusReport = {
+      ...emptyStatus(),
+      metrics: {
+        sample_size: 25,
+        ok_p50_ms: 42.4,
+        ok_p95_ms: 187.6,
+        failure_count: 1,
+        no_changes_count: 4,
+        skipped_other_count: 0,
+        ok_count: 20,
+      },
+    }
+    const out = renderStatus(report)
+    expect(out).toContain('Snapshot metrics (last 25)')
+    expect(out).toContain('ok 20')
+    expect(out).toContain('failed 1')
+    expect(out).toContain('no-changes 4')
+    expect(out).toContain('p50 42ms')
+    expect(out).toContain('p95 188ms')
+  })
+
+  test('metrics block dashes when sample exists but ok-percentiles null', () => {
+    const report: StoreStatusReport = {
+      ...emptyStatus(),
+      metrics: {
+        sample_size: 5,
+        ok_p50_ms: null,
+        ok_p95_ms: null,
+        failure_count: 0,
+        no_changes_count: 5,
+        skipped_other_count: 0,
+        ok_count: 0,
+      },
+    }
+    const out = renderStatus(report)
+    expect(out).toContain('Snapshot metrics (last 5)')
+    expect(out).toContain('p50 —')
+    expect(out).toContain('p95 —')
   })
 })
 
