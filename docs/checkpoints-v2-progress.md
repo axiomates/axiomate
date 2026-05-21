@@ -10,7 +10,9 @@
 
 ## Immediate next action
 
-→ **Phase 5**: `/checkpoints` slash command + CLI subcommand (`axiomate checkpoints status|list|prune|clear`). All Phase 1-4 audit follow-ups (F1 fix + T6 test + F2/F3 doc updates) landed in commit `fix(checkpoints): legacy-shape filter on resume + audit follow-ups` — none gate Phase 5.
+→ **Phase 5 in progress (step 1)**: anchor existing behaviors with regression tests before any feature code lands. Locked plan in section "Phase 5 implementation plan" below; tasks #67–#71. Step 1 (anchor tests) is the first commit; nothing else may land in Phase 5 until it's green.
+
+Phase 1-4 audit follow-up (2026-05-21): the codebase had three places carrying Hermes-style "pre-Phase-3 file-copy backend" framing. axiomate has no v1 release, so no real user can have any legacy file-copy directory. Fixed: (F1) `fileHistory.ts` `droppedLegacy` filter reframed as defensive malformed-entry skip, log+counter dropped; (F2) `__tests__/fileHistory.test.ts` T6 deleted (premise was false); (F3) `cleanup.ts` `cleanupOldFileHistoryBackups()` deleted entirely along with its caller. JSDoc tightened in `fileHistory.ts:15-30, 128-133` and `store.ts:10-19`.
 
 Phase 1 done (2026-05-20):
 - 4 source files: `paths.ts` (with `DEFAULT_EXCLUDES` covering VS C++/C#, Python, JS/Bun, Rust, Java, iOS, Android), `validate.ts` (commit-hash + path-traversal guards), `gitEnv.ts` (GIT_DIR/WORK_TREE/INDEX_FILE + mute global/system gitconfig), `git.ts` (typed `runCheckpointGit` wrapper, never throws).
@@ -857,3 +859,46 @@ Hermes reference (read-only, do not modify):
 3. Find current phase by `🟡` marker → that's where you stopped. If none, the "Immediate next action" line at top is the next step.
 4. If a phase is `⛔ blocked`, the blocker is in scratch.
 5. **Update this file as you progress** — flip ⬜→🟡 when starting, 🟡→✅ when finishing, append blockers as ⛔.
+
+---
+
+## Phase 5 implementation plan (locked 2026-05-21)
+
+### Hermes Phase 5 surface (read from `hermes_cli/checkpoints.py` + `tools/checkpoint_manager.py:1533-1638`)
+
+5 subcommands, all plain stdout (no TUI): `status` (default), `list` (alias for status), `prune`, `clear`, `clear-legacy`. axiomate ports **only** `status` / `prune` / `clear` — `clear-legacy` is dropped (see below). Underlying helpers we still need: `store_status`, `clear_all`.
+
+### `clear-legacy` is NOT ported (real divergence from Hermes)
+
+In Hermes, `legacy-*` directories are v1→v2 migration archives — Hermes shipped a v1 with per-session git repos, then v2 renamed each old per-session dir to `~/.hermes/checkpoints/legacy-<ts>/` and `clear_legacy` cleans those up.
+
+**axiomate has no v1.** The pre-Phase-3 file-copy backend was an unreleased early implementation. No user install can have any legacy archive — the shadow-git store is the first and only fileHistory backend on real machines. The audit fix (2026-05-21) also deleted the `cleanupOldFileHistoryBackups()` archive path, so even dev machines no longer accumulate `~/.axiomate/file-history.legacy-*/`. A UI command for a code path that has no inputs anywhere is dead weight, so `clear-legacy` does not exist in axiomate.
+
+### Surface decisions (locked)
+
+| Decision | Choice | Rationale |
+|---|---|---|
+| Slash command name | `/checkpoints` (plural) | `/rewind`'s alias is `'checkpoint'` (singular). Set-based lookup keeps both distinct. |
+| `/checkpoints list` UI | `components/CustomSelect/select.js` `Select` | `LogSelector` is too heavy (fuse + agentic search + branch lookup, session-log-shaped). `Select` matches what `Settings/Config.tsx:49` uses. |
+| Bytes formatter | `formatFileSize` from `utils/format.ts:9` | Already exists. Don't add `formatBytes`. |
+| CLI confirm | readline prompt; `-f/--force` skips | Hermes parity. Slash command uses `Dialog`. |
+
+### Touched axiomate surface (and how each fuses)
+
+| Touch point | Current state | How Phase 5 fuses |
+|---|---|---|
+| `commands.ts` `COMMANDS` | 47 entries | one `import` + one array entry |
+| `/rewind` aliases `['checkpoint']` | `commands/rewind/index.ts:6` | unchanged; new `/checkpoints` is independent |
+| `pruneCheckpoints({forceNow:true})` | Phase 4 ready | `/checkpoints prune` calls directly; `PruneReport` printed verbatim |
+| `listSnapshots(workdir)` | Phase 2 ready | `/checkpoints list` Ink picker → `fileHistoryRewind` (mirroring `REPL.tsx:4007`) |
+| `projects/<hash16>.json` metadata | Phase 2 writes; nothing reads beyond prune | `storeStatus` reads it — pin with anchor test before adding consumers |
+
+### Execution sequence (one commit per step)
+
+1. **Anchor existing behaviors** (task #67) — two tests:
+   - `/rewind`'s `'checkpoint'` alias resolves correctly even with future `/checkpoints` registered
+   - `projects/<hash16>.json` + `listSnapshots` round-trip pinned (data source for `storeStatus`)
+2. **Port `store_status`/`clear_all`** (task #68) — `agent/src/utils/checkpoints/storeStatus.ts` + `__tests__/storeStatus.test.ts`. Note: `clear_legacy` is intentionally NOT ported (see "`clear-legacy` is NOT ported" above).
+3. **Slash command** (task #69) — `agent/src/commands/checkpoints/{index.ts,checkpoints.tsx}`, sub-args `status`/`list`/`prune`/`clear` (no `clear-legacy`), shaped like `commands/sandbox-toggle/sandbox-toggle.tsx:40-50`
+4. **CLI subcommand** (task #70) — `agent/src/cli/handlers/checkpoints.ts` + commander wiring in `main.tsx` next to `doctor`/`agents` (~line 2333). Subcommands: `status`/`list`/`prune`/`clear` only.
+5. **Verify + progress doc** (task #71) — `tsc --noEmit`, full vitest, manual smoke, mark Phase 5 ✅

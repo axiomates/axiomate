@@ -25,12 +25,7 @@
  * since this snapshot was committed, see scheduleSnapshotPersist below).
  * `fileHistoryRestoreStateFromLog` folds these in chronological order to
  * rebuild `state.trackedFiles`. Disk usage is O(M) total (each path
- * recorded exactly once) instead of O(K×M) for the prior cumulative
- * shape. Replaced an earlier file-copy backend that kept
- * `trackedFileBackups: Record<path, {backupFileName, version}>`; that
- * backend wrote one file per edit per turn and is no longer in use
- * (cleanup.ts archives any leftover copy
- * directory at `~/.axiomate/file-history/`).
+ * recorded exactly once).
  *
  * Updater protocol: every API takes `updateFileHistoryState`, a
  * synchronous setState-style dispatcher. Several functions here read
@@ -127,12 +122,11 @@ function fileHistoryEnabledSdk(): boolean {
 
 /**
  * Register a file path so a future rewind covers it. Tools call this
- * BEFORE editing the file (matches the previous file-copy backend's
- * call-site contract).
+ * BEFORE editing the file.
  *
- * The shadow-git backend captures content via the per-turn snapshot, so
- * trackEdit only needs to mutate state — no per-edit IO. Hence the lack
- * of a messageId arg: it's intentionally not the snapshot key here.
+ * Content is captured by the per-turn shadow-git snapshot, so trackEdit
+ * only mutates state — no per-edit IO. That's also why there's no
+ * messageId arg: trackEdit is not the snapshot key.
  */
 export async function fileHistoryTrackEdit(
   updateFileHistoryState: (
@@ -476,17 +470,11 @@ export function fileHistoryRestoreStateFromLog(
 
   const trackedFiles = new Set<string>()
   const snapshots: FileHistorySnapshot[] = []
-  let droppedLegacy = 0
   for (const snapshot of fileHistorySnapshots) {
-    // Pre-Phase-3 sessions persisted snapshots in the file-copy backend
-    // shape (`{trackedFileBackups, ...}`, no `gitHash`). Decision #9 commits
-    // to read-only compat for those entries — but a missing `gitHash` would
-    // crash on rewind (`restoreTrackedToSnapshot:520-523` calls `git
-    // ls-tree undefined`). Skip them here so the user can still resume the
-    // session and snapshot fresh turns going forward; old turns are simply
-    // not rewindable.
+    // Defense: a malformed entry without `gitHash` would crash rewind at
+    // `restoreTrackedToSnapshot` (calls `git ls-tree undefined`). Skip it
+    // so resume still succeeds; the malformed turn is simply not rewindable.
     if (typeof snapshot.gitHash !== 'string' || snapshot.gitHash === '') {
-      droppedLegacy++
       continue
     }
     const addedList: string[] = []
@@ -497,11 +485,6 @@ export function fileHistoryRestoreStateFromLog(
       addedList.push(trackingPath)
     }
     snapshots.push({ ...snapshot, addedTrackedFiles: addedList })
-  }
-  if (droppedLegacy > 0) {
-    logForDebugging(
-      `fileHistoryRestoreStateFromLog: skipped ${droppedLegacy} legacy snapshot(s) without gitHash (pre-Phase-3 file-copy backend; not rewindable)`,
-    )
   }
   const trimmed =
     snapshots.length > MAX_SNAPSHOTS ? snapshots.slice(-MAX_SNAPSHOTS) : snapshots

@@ -298,43 +298,6 @@ export function cleanupOldPlanFiles(): Promise<CleanupResult> {
   return cleanupSingleDirectory(plansDir, '.md')
 }
 
-/**
- * Clean-break archive of the previous file-copy backend at
- * `~/.axiomate/file-history/`. After Phase 3 swapped fileHistory to the
- * shadow-git store, that directory is dead weight on upgraded machines.
- * On first boot post-upgrade, rename it to `file-history.legacy-<ts>/`
- * so it stops looking active and the user can delete it themselves.
- * Best-effort — any error is silently swallowed (the new git-backed
- * store works regardless).
- */
-export async function cleanupOldFileHistoryBackups(): Promise<CleanupResult> {
-  const result: CleanupResult = { messages: 0, errors: 0 }
-  const fsImpl = getFsImplementation()
-  const configDir = getConfigHomeDir()
-  const legacyDir = join(configDir, 'file-history')
-
-  try {
-    const stats = await fsImpl.stat(legacyDir)
-    if (!stats.isDirectory()) return result
-  } catch {
-    return result
-  }
-
-  const stamp = new Date().toISOString().replace(/[:.]/g, '-')
-  const archive = join(configDir, `file-history.legacy-${stamp}`)
-  try {
-    await fsImpl.rename(legacyDir, archive)
-    logForDebugging(`Renamed legacy file-copy backups to ${archive}`)
-    result.messages = 1
-  } catch (err) {
-    logForDebugging(
-      `Failed to rename legacy file-history dir: ${err instanceof Error ? err.message : String(err)}`,
-    )
-    result.errors = 1
-  }
-  return result
-}
-
 export async function cleanupOldSessionEnvDirs(): Promise<CleanupResult> {
   const cutoffDate = getCutoffDate()
   const result: CleanupResult = { messages: 0, errors: 0 }
@@ -431,7 +394,6 @@ export async function cleanupOldMessageFilesInBackground(): Promise<void> {
   await cleanupOldMessageFiles()
   await cleanupOldSessionFiles()
   await cleanupOldPlanFiles()
-  await cleanupOldFileHistoryBackups()
   await cleanupOldSessionEnvDirs()
   await cleanupOldDebugLogs()
   await cleanupOldImageCaches()
