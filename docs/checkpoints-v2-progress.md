@@ -47,7 +47,7 @@ Phase 0 review answers (locked):
 | 1 | Git isolation primitives | ✅ done | `agent/src/utils/checkpoints/{gitEnv,git,validate,paths}.ts` + tests (44 passing) |
 | 2 | Store API (snapshot / list / rollback) | ✅ done | `agent/src/utils/checkpoints/store.ts`, `createSnapshot.ts`, `listSnapshots.ts`, `rollback.ts` + tests |
 | 3 | Backend swap behind fileHistory.ts (load-bearing) | ✅ done | `8b45c627` swap; `8377acab` + `a4bf49d2` Phase 3.1 review cleanup |
-| 4 | Auto-prune (orphan / stale / size-cap + gc) | 🟡 spec locked | `agent/src/utils/checkpoints/prune.ts` + tests |
+| 4 | Auto-prune (orphan / stale + size-cap + gc) | 🟡 plan locked, ready to implement | `agent/src/utils/checkpoints/prune.ts` + tests; anchors landed `832a9837` |
 | 5 | `/checkpoints` slash + CLI subcommand | ⬜ | `agent/src/commands/checkpoints/*` + main.tsx wiring |
 | 6 | Out of scope (placeholder) | — | resume↔rollback union, file-copy migration |
 
@@ -406,7 +406,7 @@ export interface PruneReport {
   sizeCapDropped: number          // pass 3: oldest commits trimmed
   storeBytesBefore: number
   storeBytesAfter: number
-  gcInvocations: number           // 0/1/2 — 0 if both passes no-oped
+  gcInvocations: number           // 0/1/2 — intermediate always runs unless skipped on entry; final runs only when max_total_size_mb > 0
   durationMs: number
   errors: string[]                // collected; never thrown
 }
@@ -444,12 +444,14 @@ const KEEP_LAST_N_PER_REF = 1                          // size-cap pass never em
 5. PASS 1 — orphan: for each projects/<hash16>.json, if workdir missing → drop ref + index + meta
 6. PASS 2 — stale: for each remaining projects/<hash16>.json, if last_touch < now − retentionDays → drop ref + index + meta
 7. INTERMEDIATE GC: git reflog expire --expire=now --all  ; git gc --prune=now --quiet (3× timeout)
-   — runs only if pass 1+2 dropped at least one ref (otherwise nothing to reclaim)
+   — runs unconditionally after pass 1+2 (Hermes 1375-1382, deep-read 2026-05-21)
 8. PASS 3 — size cap: while dirSize > cap and iterations < 20:
+     droppedThisRound = false  // reset per iteration; stricter than Hermes (see plan)
      for each ref with rev-list count > 1:
        drop oldest commit via commit-tree chain rebuild + update-ref
-     if no ref dropped this round: break (avoid livelock when every ref is at 1 commit)
-9. FINAL GC: same as intermediate (only if pass 3 dropped anything)
+     if !droppedThisRound: break (avoid livelock when every ref is at 1 commit)
+9. FINAL GC: same as intermediate, runs unconditionally inside the size-cap branch
+   (i.e. when max_total_size_mb > 0). Hermes 1446-1452.
 10. measure storeBytesAfter, write .last_prune = now (timestamp), return report
 ```
 
@@ -485,7 +487,7 @@ async function loadProjectMetas(store: string): Promise<ProjectMeta[]> {
 
 ### Intermediate gc
 
-Only runs when `orphanRefsRemoved + staleRefsRemoved > 0`:
+Runs unconditionally after pass 1+2 (Hermes 1375-1382, verified 2026-05-21):
 
 ```ts
 await runCheckpointGit(['reflog', 'expire', '--expire=now', '--all'],
@@ -529,7 +531,7 @@ The 20-iteration cap (Hermes 1090) is anti-livelock: if every ref is at 1 commit
 
 ### Final gc
 
-Only runs when `sizeCapDropped > 0`. Identical to intermediate gc — same `reflog expire` + `gc --prune=now`, same 3× timeout. After this, the store is at its post-prune steady state and we measure `storeBytesAfter`.
+Runs unconditionally inside the `max_total_size_mb > 0` branch (Hermes 1446-1452). Identical shape to intermediate gc — same `reflog expire` + `gc --prune=now`, same 3× timeout. After this, the store is at its post-prune steady state and we measure `storeBytesAfter`.
 
 ### `.last_prune` marker
 
@@ -598,7 +600,7 @@ Use the Phase 2 test harness pattern: tmp `AXIOMATE_CHECKPOINT_BASE`, real git s
 | `marker-bypassed-by-forceNow` | same setup, call with `forceNow: true` | passes run; new marker written |
 | `corrupted-marker-tolerated` | write `.last_prune = "garbage\n\n"` | passes run; marker overwritten with valid timestamp |
 | `git-missing-skips-cleanly` | mock probeGitAvailable → false | `{ skipped: 'git-missing' }`; no fs writes; no errors[] |
-| `gc-only-runs-when-something-dropped` | empty store, no orphans/stale/size | `gcInvocations === 0`; both gc calls skipped |
+| `gc-runs-unconditionally-when-not-skipped` | empty store (no orphans/stale/size pressure) | `gcInvocations === 2` (intermediate + final, max_total_size_mb default 500) — Hermes parity |
 | `gc-failure-collected-not-thrown` | inject runCheckpointGit failure on `gc` | passes complete; `errors[]` has gc message; report still returned |
 | `fsck-clean-post-prune` | run full prune on mixed store | `git fsck --no-dangling` exits 0 |
 | `concurrent-prune-runs-do-not-corrupt` | invoke `pruneCheckpoints` twice in parallel | both return; one is `{ skipped: 'recent' }`; fsck clean |
@@ -631,6 +633,92 @@ These are **noted, not blocking**. Pull only if cleanup-natural; otherwise leave
 19. **Size-cap pass still belongs in Phase 4, not folded back into `createSnapshot`** (Decision 6C, 2026-05-21, reaffirms Phase 2 spec step 13). Per-project ring buffer (Phase 2 step 12) + cross-project size cap (Phase 4 pass 3) keep the hot snapshot path predictable. The worst case (rapid-fire snapshots between boots) is bounded by per-project ring buffer × project count. **Why:** running size-cap on every snapshot would touch every ref + every commit per project on every turn — N² blowup as project count grows. **How to apply:** if dogfood ever shows a single-session disk runaway, fix it with a tighter `MAX_SNAPSHOTS` per project, not by moving size-cap back into the hot path.
 
 ---
+
+## Phase 4 implementation plan (locked 2026-05-21, before code)
+
+This is the concrete modification plan executed in three steps per the user's mandate: (1) anchor behaviors with tests; (2) deep-read Hermes; (3) propose plan. Steps 1 & 2 already done. This is step 3.
+
+### Behavior anchors landed (commit `832a9837`)
+
+Two new tests in `__tests__/store.test.ts` pin Phase 4-adjacent assumptions before any refactor:
+
+1. `info/exclude` is first-init-only — second `ensureStore()` call does NOT overwrite user edits, AND does NOT recreate the file if the user deleted it. Audit finding A documented this; now test-pinned.
+2. `for-each-ref refs/axiomate/*` enumerates the per-project ref after a fixture commit — pins the prefix Phase 4 size-cap pass will use.
+
+Existing 173-test suite is the broader anchor — Phase 4 must not regress any of them.
+
+### Hermes deep-read corrections to the existing Phase 4 spec
+
+Reading `tools/checkpoint_manager.py:1086-1526` again precisely, two divergences from the prior spec surfaced:
+
+| Spec line | Spec said | Hermes actually does | Decision for Axiomate |
+|---|---|---|---|
+| Algorithm step 7 | "INTERMEDIATE GC … runs only if pass 1+2 dropped at least one ref" | Lines 1375-1382 run gc **unconditionally** after orphan/stale loop | **Mirror Hermes — unconditional intermediate gc.** A no-op `gc --prune=now` on a clean store is cheap (<100ms) and removing the conditional cuts a behavioral divergence. |
+| Algorithm step 9 | "FINAL GC … runs only if pass 3 dropped anything" | Lines 1446-1452 run gc **unconditionally** at end of size-cap branch | **Mirror Hermes — unconditional final gc** (still gated on `max_total_size_mb > 0`). |
+| Spec mentioned `_enforce_size_cap` as the size-cap source | Hermes' `prune_checkpoints` **inlines** the size-cap loop (1384-1453) rather than calling `_enforce_size_cap` (1086) | Both copies exist in Hermes (DRY violation). | **Axiomate ports the inline `prune_checkpoints` version.** We don't have a per-snapshot size cap (Decision #19), so the helper version isn't needed. |
+| Algorithm step 8 | "if no ref dropped this round: break" | Hermes' `any_dropped` is set OUTSIDE the outer 20-iteration loop (line 1111), so once any drop succeeds in iteration 1, the no-progress check never fires in later iterations | **Stricter than Hermes — we reset `droppedThisRound` per iteration.** Genuine improvement; Hermes' shape is a likely bug. Document in code comment. |
+
+These are minor adjustments; the big-picture algorithm is unchanged.
+
+### File list & sequencing
+
+The implementation is a single PR with **one new file** plus **one wiring change**:
+
+| File | Change | Why |
+|---|---|---|
+| `agent/src/utils/checkpoints/prune.ts` | **New.** Exports `pruneCheckpoints(opts)`. ~250 LOC. | The prune module itself. |
+| `agent/src/utils/checkpoints/__tests__/prune.test.ts` | **New.** 12-test coverage matrix from existing spec. ~400 LOC. | Phase 4 verification. |
+| `agent/src/utils/backgroundHousekeeping.ts` | One line added inside `runVerySlowOps`: `void import('./checkpoints/prune.js').then(m => m.pruneCheckpoints({}))`. | The integration point. |
+
+Sequencing inside the PR (commit-by-commit):
+
+1. **Commit 1 — `feat(checkpoints): add prune.ts (orphan + stale + size-cap)` skeleton.** Stub `pruneCheckpoints` returns `{ skipped: 'recent' }`. Tests for the marker / forceNow / git-missing paths land green. **Behavioral compatibility window**: the file exists but is not yet wired in.
+2. **Commit 2 — `feat(checkpoints): orphan + stale passes`**. Pass 1+2 implementation + dropProjectRef helper + intermediate gc (unconditional, mirroring Hermes). Tests for orphan + stale + gc-error-collected land green.
+3. **Commit 3 — `feat(checkpoints): size-cap pass`**. Pass 3 implementation. Tests for size-cap + KEEP_LAST_N_PER_REF + 20-iteration break + droppedThisRound-per-iteration land green.
+4. **Commit 4 — `feat(checkpoints): wire prune into backgroundHousekeeping`**. The single line in `backgroundHousekeeping.ts`. No tests on the wiring (it's one line of glue) — the prune module's tests are the verification. **This is the commit that ships the feature**; everything before it is dormant.
+5. **Commit 5 (if needed) — `refactor(checkpoints): extract dropOldestCommitsFromRef`**. Pull the chain-rebuild dance out of `pruneRefToMaxN.ts` and `prune.ts` into a shared helper. Only land this if it reduces total LOC; otherwise leave the duplication.
+
+### Refactor decision: extract `dropOldestCommitsFromRef`?
+
+The prior spec flagged this as a refactor opportunity. Concrete consideration:
+
+- `pruneRefToMaxN.ts` has the chain-rebuild flow tied to "keep last N" semantics. Steps: `rev-list --count`, `rev-list --reverse`, `slice(-N)`, then per-commit `rev-parse {tree}` + `log %s` + `commit-tree`, then `update-ref`.
+- Phase 4 size-cap pass needs the same chain rebuild but with "drop K oldest" semantics: `slice(K)` instead of `slice(-N)`, K=1 in the per-iteration use, and the `update-ref` happens without CAS.
+
+**Decision: extract on commit 5, only if both call sites end up with structurally identical inner loops after commit 3 lands.** If commit 3 ends up needing slightly different error-handling shapes (likely — size-cap continues to next ref on per-commit failure; pruneRefToMaxN currently bails the whole prune), keep the duplication. The 8-test pruneRefToMaxN suite is the regression net for any extraction.
+
+### Risk surface (pre-Phase-4 specifically)
+
+| Risk | Likelihood | Mitigation |
+|---|---|---|
+| Wiring inside `runVerySlowOps` runs prune in environments where it's unwanted (CI, `axiomate --print`) | Medium | `runVerySlowOps` already gated by `getIsInteractive()` + 1-min idle check + 10-min boot delay. `bareMode` skips the whole housekeeping stack. Safe. |
+| `pruneCheckpoints` throws and crashes the housekeeping timer | Low | Function never throws (fail-open contract). `errors[]` collects per-step issues. Wiring is `void import().then()` — no await on caller, no crash propagation. |
+| Stale-prune of an active project's ref (incorrect `last_touch`) | Low | `touchProject` is called on every `createSnapshot` (steps 4 of the 13). Even skipped snapshots touch. `lastTouch` reflects actual project usage. |
+| Size-cap runaway when one project has a huge single retained commit | Low | 20-iteration cap + KEEP_LAST_N_PER_REF=1 ensure the loop terminates. Edge case is documented; user can `/checkpoints clear` (Phase 5) if it surfaces. |
+| Concurrent prune runs (two axiomate processes booting at the same minute) | Low-medium | `.last_prune` 24h marker is the throttle. If both pass the marker check (race), both proceed; the size-cap CAS-free `update-ref` could race two ref rewrites, but git's update-ref is atomic per-ref so the loser silently overwrites with a slightly older view. **Not a corruption risk; potential lost size-cap drop.** Acceptable; documented as a Phase 4 limitation. |
+| Phase 4 changes accidentally break Phase 3 fileHistory swap | Very low | fileHistory.ts only depends on `createSnapshot` + `rollback` + `listSnapshots`; prune.ts touches none of those, only the projects/<hash16>.json metadata read by orphan/stale passes. |
+
+### What Phase 4 explicitly does NOT do
+
+(Re-stated for clarity since this is the implementation gate.)
+
+- Does **not** call `_enforce_size_cap` per-snapshot. Snapshot path stays Phase 2/3 shape unchanged.
+- Does **not** add new fields to `projects/<hash16>.json` schema. Phase 4 reads `workdir` and `last_touch` only — both already present.
+- Does **not** introduce a new env var or config knob. `AXIOMATE_CHECKPOINT_BASE` continues to be the single test-isolation seam.
+- Does **not** touch fileHistory.ts, sessionStorage.ts, rewind.ts. Pure additive, off the snapshot path.
+- Does **not** add the `/checkpoints` slash command (that's Phase 5). Phase 4 is invisible to users except via store size & disk usage.
+
+### Verification gate before merging Phase 4
+
+In addition to the 12-test coverage matrix:
+
+1. **Full checkpoints suite green**: 173/173 → expect 185/185 after adding the 12 prune tests.
+2. **Manual smoke**: `axiomate --print 'echo hi'` runs cleanly with a populated store. No prune triggered (bareMode skip).
+3. **Manual smoke**: 3-minute interactive `axiomate` session against a synthetic 600 MB store with `forceNow=true` injected; verify size-cap brings it under 500 MB and `git fsck` clean.
+4. **No new compile warnings**, no new ESLint errors.
+
+---
+
 
 ## Anchors (verified file paths to read or modify)
 
