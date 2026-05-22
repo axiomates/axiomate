@@ -333,6 +333,29 @@
       léteztek, törlődnek a lemezről.
     </div>
 
+    <h4>Választó nézet: slash-parancsos fordulók elrejtése vagy mutatása</h4>
+    <p>
+      A slash-parancsok, mint a <code>/checkpoints status</code> vagy a
+      <code>/help</code>, nem készítenek fájl-pillanatképet — csak állapotot
+      olvasnak vagy jelenítenek meg. Hogy a rewind választó azokra a fordulókra
+      koncentráljon, amelyek tényleg módosítottak valamit, a választó
+      alapértelmezésben elrejti a slash-parancsos fordulókat. A tetején egy
+      állapot-sor mutatja, hányat rejtett el (pl. <code>Hidden: 5 slash
+      commands · Tab to show</code>). Nyomd meg a <kbd>Tab</kbd>-ot a
+      megjelenítéshez; újabb <kbd>Tab</kbd> visszarejti őket. A kapcsoló
+      per-mount: a <code>/rewind</code> bezárása és újranyitása visszaáll az
+      alapértelmezésre (rejtve).
+    </p>
+    <p>
+      A szűrés tisztán nézet-szintű — az alapul szolgáló üzenetlistát nem
+      módosítja, így bármelyik látható forduló kiválasztása a kapcsoló
+      állásától függetlenül a helyes pontra ugrik vissza. Ha kifejezetten egy
+      slash-parancsos fordulóra szeretnél visszatérni (például "vissza ahhoz a
+      pillanathoz, mielőtt a <code>/clear</code>-t futtattam volna"), nyomj
+      <kbd>Tab</kbd>-ot a slash-bejegyzések megjelenítéséhez, és válaszd ki a
+      kívántat.
+    </p>
+
     <h3><code>/checkpoints</code> — Állapot, lista és takarítás</h3>
     <table>
       <tr><th>Parancs</th><th>Cél</th></tr>

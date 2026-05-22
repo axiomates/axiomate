@@ -327,6 +327,26 @@
       at the target turn are deleted on disk.
     </div>
 
+    <h4>Picker view: hide vs show slash-command turns</h4>
+    <p>
+      Slash commands like <code>/checkpoints status</code> or <code>/help</code>
+      do not take file snapshots — they only inspect or display state. To keep
+      the rewind picker focused on turns that actually changed something, the
+      picker hides slash-command turns by default. A status row at the top
+      shows how many were hidden (e.g. <code>Hidden: 5 slash commands · Tab to
+      show</code>). Press <kbd>Tab</kbd> to reveal them; press <kbd>Tab</kbd>
+      again to hide. The toggle is per-mount — closing and re-opening
+      <code>/rewind</code> resets to the default (hidden).
+    </p>
+    <p>
+      Filtering is purely a view-layer thing — the underlying message list is
+      not modified, so picking any visible turn rewinds to the correct point
+      regardless of the toggle state. If you specifically need to roll the
+      conversation back to a slash-command turn (for example, "back to the
+      moment before I ran <code>/clear</code>"), press <kbd>Tab</kbd> to show
+      the slash entries and select the one you want.
+    </p>
+
     <h3><code>/checkpoints</code> — Status, list, and cleanup</h3>
     <table>
       <tr><th>Command</th><th>Purpose</th></tr>

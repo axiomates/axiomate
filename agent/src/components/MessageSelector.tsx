@@ -105,9 +105,32 @@ export function MessageSelector({
 
   // Add current prompt as a virtual message
   const currentUUID = useMemo(randomUUID, [])
+
+  // Slash-command turns (`/checkpoints`, `/help`, ...) carry no snapshot
+  // and clutter the picker as `⚠ No code restore` rows. Hidden by
+  // default; Tab toggles "show all". Per-mount state — not persisted.
+  // CRITICAL INVARIANT (don't break): the filter chain below MUST keep
+  // the original message object references. Rewind handlers downstream
+  // call `messages.lastIndexOf(message)` and resolve by `message.uuid`
+  // against the full `messages` array, so the picker filter is purely
+  // cosmetic. `Array.filter` preserves identity — never `map` here.
+  const [showSlashCommands, setShowSlashCommands] = useState(false)
+  const allSelectable = useMemo(
+    () => messages.filter(selectableUserMessagesFilter),
+    [messages],
+  )
+  const visibleSelectable = useMemo(
+    () =>
+      showSlashCommands
+        ? allSelectable
+        : allSelectable.filter(m => !isSlashCommandMessage(m)),
+    [allSelectable, showSlashCommands],
+  )
+  const hiddenSlashCount = allSelectable.length - visibleSelectable.length
+
   const messageOptions = useMemo(
     () => [
-      ...messages.filter(selectableUserMessagesFilter),
+      ...visibleSelectable,
       {
         ...createUserMessage({
           content: '',
@@ -115,9 +138,25 @@ export function MessageSelector({
         uuid: currentUUID,
       } as UserMessage,
     ],
-    [messages, currentUUID],
+    [visibleSelectable, currentUUID],
   )
   const [selectedIndex, setSelectedIndex] = useState(messageOptions.length - 1)
+
+  // When toggling the slash filter, anchor focus by UUID so the user
+  // stays on the same semantic message across the transition. If the
+  // currently focused entry is being hidden (it was a slash and we
+  // just hid them), clamp to the nearest valid index instead.
+  // Two-phase: capture the UUID at toggle time, resolve in an effect
+  // because messageOptions only updates on the next render.
+  const [pendingFocusUuid, setPendingFocusUuid] = useState<string | null>(null)
+  useEffect(() => {
+    if (pendingFocusUuid === null) return
+    const idx = messageOptions.findIndex(m => m.uuid === pendingFocusUuid)
+    setSelectedIndex(prev =>
+      idx >= 0 ? idx : Math.min(prev, messageOptions.length - 1),
+    )
+    setPendingFocusUuid(null)
+  }, [messageOptions, pendingFocusUuid])
 
   // Orient the selected message as the middle of the visible options
   const firstVisibleIndex = Math.max(
@@ -345,6 +384,14 @@ export function MessageSelector({
     }
   }, [messageOptions, selectedIndex, handleSelect])
 
+  // Tab: toggle "show slash commands" view-layer filter. Keep focus on
+  // the same UUID across the transition (see pendingFocusUuid effect).
+  const toggleSlashFilter = useCallback(() => {
+    const currentUuid = messageOptions[selectedIndex]?.uuid ?? null
+    setPendingFocusUuid(currentUuid)
+    setShowSlashCommands(prev => !prev)
+  }, [messageOptions, selectedIndex])
+
   // Escape to close - uses Confirmation context where escape is bound
   useKeybinding('confirm:no', handleEscape, {
     context: 'Confirmation',
@@ -359,6 +406,7 @@ export function MessageSelector({
       'messageSelector:top': jumpToTop,
       'messageSelector:bottom': jumpToBottom,
       'messageSelector:select': handleSelectCurrent,
+      'messageSelector:toggleSlashFilter': toggleSlashFilter,
     },
     {
       context: 'MessageSelector',
@@ -513,6 +561,15 @@ export function MessageSelector({
             ) : (
               <Text>
                 Restore and fork the conversation to the point before…
+              </Text>
+            )}
+            {(hiddenSlashCount > 0 || showSlashCommands) && (
+              <Text dimColor>
+                {showSlashCommands
+                  ? 'Showing all turns · Tab to hide slash commands'
+                  : `Hidden: ${hiddenSlashCount} slash command${
+                      hiddenSlashCount === 1 ? '' : 's'
+                    } · Tab to show`}
               </Text>
             )}
             <Box width="100%" flexDirection="column">
@@ -872,6 +929,41 @@ function computeDiffStatsBetweenMessages(
   }
 }
 
+/**
+ * The user-visible text of a message, mirroring how the picker decides
+ * what label to show. Returns '' for non-text messages.
+ *
+ * Single source of truth: both `selectableUserMessagesFilter` (for tag-
+ * based exclusions) and `isSlashCommandMessage` (for the rewind picker's
+ * slash-noise filter) need the same notion of "the message's primary
+ * text", and they must not drift.
+ */
+export function getMessageText(message: Message): string {
+  if (message.type !== 'user') return ''
+  const content = message.message.content
+  if (typeof content === 'string') return content.trim()
+  const lastBlock = content[content.length - 1]
+  return lastBlock && isTextBlock(lastBlock) ? lastBlock.text.trim() : ''
+}
+
+/**
+ * True when this user message represents a slash command turn —
+ * `/checkpoints`, `/help`, `/clear`, etc. Slash command text is built
+ * by `processSlashCommand` as `/${commandName} ${args}`, so the leading
+ * '/' is the reliable signal.
+ *
+ * Used by the rewind picker as a view-layer filter to suppress noisy
+ * "No code restore" entries by default. The user can `Tab` to show
+ * them again.
+ *
+ * NOTE: this is best-effort — a chat message that legitimately starts
+ * with '/' (e.g. talking about a path like `/etc/...`) would also be
+ * hidden. The Tab toggle is the escape hatch for those cases.
+ */
+export function isSlashCommandMessage(message: UserMessage): boolean {
+  return getMessageText(message).startsWith('/')
+}
+
 export function selectableUserMessagesFilter(
   message: Message,
 ): message is UserMessage {
@@ -894,15 +986,7 @@ export function selectableUserMessagesFilter(
     return false
   }
 
-  const content = message.message.content
-  const lastBlock =
-    typeof content === 'string' ? null : content[content.length - 1]
-  const messageText =
-    typeof content === 'string'
-      ? content.trim()
-      : lastBlock && isTextBlock(lastBlock)
-        ? lastBlock.text.trim()
-        : ''
+  const messageText = getMessageText(message)
 
   // Filter out non-user-authored messages (command outputs, task notifications, ticks).
   if (
