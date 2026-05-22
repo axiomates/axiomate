@@ -49,6 +49,7 @@ import {
   BASH_STDERR_TAG,
   BASH_STDOUT_TAG,
   COMMAND_MESSAGE_TAG,
+  COMMAND_NAME_TAG,
   LOCAL_COMMAND_STDERR_TAG,
   LOCAL_COMMAND_STDOUT_TAG,
   TASK_NOTIFICATION_TAG,
@@ -736,23 +737,22 @@ export function MessageSelector({
                         </Box>
                         {isFileHistoryEnabled && metadataLoaded && (
                           <Box height={1} flexDirection="row">
-                            {metadata ? (
-                              <>
-                                <Text dimColor={!isSelected} color="inactive">
-                                  {numFilesChanged ? (
-                                    <>
-                                      {numFilesChanged === 1 &&
-                                      metadata.filesChanged![0]
-                                        ? `${path.basename(metadata.filesChanged![0])} `
-                                        : `${numFilesChanged} files changed `}
-                                      <DiffStatsText diffStats={metadata} />
-                                    </>
-                                  ) : (
-                                    <>No code changes</>
-                                  )}
-                                </Text>
-                              </>
+                            {metadata && numFilesChanged ? (
+                              <Text dimColor={!isSelected} color="inactive">
+                                {numFilesChanged === 1 &&
+                                metadata.filesChanged![0]
+                                  ? `${path.basename(metadata.filesChanged![0])} `
+                                  : `${numFilesChanged} files changed `}
+                                <DiffStatsText diffStats={metadata} />
+                              </Text>
                             ) : (
+                              // No restore target OR empty diff:
+                              // either way, "Restore code" is a no-op,
+                              // so flag it consistently. Pre-fix only
+                              // the no-target branch carried ⚠, but
+                              // empty-diff is identically meaningless
+                              // for code-restore — different reason,
+                              // same outcome from the user's POV.
                               <Text dimColor color="warning">
                                 {figures.warning} No code restore
                               </Text>
@@ -1120,9 +1120,17 @@ export function selectableUserMessagesFilter(
   const messageText = getMessageText(message)
 
   // Filter out non-user-authored messages (command outputs, task notifications, ticks).
+  // Slash commands (`/checkpoints`, `/help`, ...) come in two shapes:
+  //   - the input itself, wrapped in <command-name>/<command-message>
+  //   - the rendered output, wrapped in <local-command-stdout/stderr>
+  // Both must be excluded for symmetry. Including only the output (as
+  // earlier code did) leaves /command rows in the all-turns picker
+  // view but their stdout invisible — confusing and asymmetric.
   if (
     messageText.indexOf(`<${LOCAL_COMMAND_STDOUT_TAG}>`) !== -1 ||
     messageText.indexOf(`<${LOCAL_COMMAND_STDERR_TAG}>`) !== -1 ||
+    messageText.indexOf(`<${COMMAND_MESSAGE_TAG}>`) !== -1 ||
+    messageText.indexOf(`<${COMMAND_NAME_TAG}>`) !== -1 ||
     messageText.indexOf(`<${BASH_STDOUT_TAG}>`) !== -1 ||
     messageText.indexOf(`<${BASH_STDERR_TAG}>`) !== -1 ||
     messageText.indexOf(`<${TASK_NOTIFICATION_TAG}>`) !== -1 ||
