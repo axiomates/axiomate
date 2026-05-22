@@ -38,7 +38,7 @@
  */
 
 import type { UUID } from 'crypto'
-import { existsSync } from 'fs'
+import { randomUUID } from 'crypto'
 import { unlink } from 'fs/promises'
 import { isAbsolute, join, relative } from 'path'
 import {
@@ -80,8 +80,14 @@ export type FileHistorySnapshot = {
 export type FileHistoryState = {
   snapshots: FileHistorySnapshot[]
   /**
-   * Accumulated set of paths edited by tools during this session.
-   * Monotonically grows; rewind blast-radius is exactly this set.
+   * Paths edited by axiomate tools during this process lifetime.
+   *
+   * UI hint only — NOT load-bearing for rewind or diff. Rewind operates
+   * on git's full disk-vs-tree diff (Hermes-model). Used by
+   * `useLspPluginRecommendation` to spot "first time we touched a .py
+   * file" and suggest the relevant LSP plugin. Empty after restart;
+   * `restoreStateFromLog` repopulates from JSONL on `/resume` for
+   * parity, but no git op consults it.
    */
   trackedFiles: Set<string>
   /**
@@ -216,6 +222,7 @@ export async function fileHistoryMakeSnapshot(
     updater: (prev: FileHistoryState) => FileHistoryState,
   ) => void,
   messageId: UUID,
+  label: string = 'file-history',
 ): Promise<void> {
   if (!fileHistoryEnabled()) return
 
@@ -231,7 +238,7 @@ export async function fileHistoryMakeSnapshot(
   const workdir = getOriginalCwd()
   const result = await createSnapshot(workdir, {
     messageId,
-    label: 'file-history',
+    label,
   })
   if (result.ok === false) {
     logForDebugging(
@@ -340,11 +347,23 @@ export async function fileHistoryRewind(
   logForDebugging(
     `FileHistory: [Rewind] Rewinding to snapshot ${target.messageId} (target ${messageId})`,
   )
-  await restoreTrackedToSnapshot(
-    getOriginalCwd(),
-    target.gitHash,
-    Array.from(captured.trackedFiles),
+
+  // Pre-rewind safety net (Hermes parity, _take("pre-rollback snapshot")).
+  // We synthesize a fresh UUID so the snapshot lands in state.snapshots
+  // and shows up in the rewind picker as a real anchor — the user can
+  // open /rewind, find this row, and undo this rewind. The rollback
+  // step below uses skipPreRollbackSnapshot:true to avoid double-snapping.
+  // Best-effort: makeSnapshot may skip if workdir is unchanged since the
+  // last snapshot, in which case the user can recover by rewinding to
+  // that prior snapshot directly. Failure here never blocks the rewind.
+  const preRewindMessageId = randomUUID() as UUID
+  await fileHistoryMakeSnapshot(
+    updateFileHistoryState,
+    preRewindMessageId,
+    `pre-rewind:${target.messageId}`,
   )
+
+  await restoreFullWorkdirToSnapshot(getOriginalCwd(), target.gitHash)
   logForDebugging(`FileHistory: [Rewind] Finished rewinding to ${messageId}`)
 }
 
@@ -385,11 +404,6 @@ export async function fileHistoryGetDiffStats(
   const target = findRestoreTarget(state, messageId, messages)
   if (!target) return undefined
 
-  const paths = Array.from(state.trackedFiles)
-  if (paths.length === 0) {
-    return { filesChanged: [], insertions: 0, deletions: 0 }
-  }
-
   const storeResult = await ensureStore()
   if (storeResult.ok === false) {
     return { filesChanged: [], insertions: 0, deletions: 0 }
@@ -397,26 +411,22 @@ export async function fileHistoryGetDiffStats(
   const canonical = normalizePath(getOriginalCwd())
   const indexFile = indexPath(projectHash(canonical))
 
-  // Pre-compute tree-vs-disk membership: paths that flipped existence
-  // between the snapshot and now don't show up in `git diff <hash>`
-  // (they're not in any tree it can reach), but they ARE changes.
-  const tree = await readTree(storeResult.store, canonical, target.gitHash)
-  const flipped: string[] = []
-  if (tree) {
-    for (const p of paths) {
-      const inTree = tree.has(toForwardSlash(p))
-      const onDisk = existsSync(maybeExpandFilePath(p))
-      if (inTree !== onDisk) flipped.push(p)
-    }
-  }
-
-  // One diff invocation: --numstat gives `<ins>\t<del>\t<path>` per file
-  // (or `-\t-\t<path>` for binary). The per-project GIT_INDEX_FILE is
-  // required even for worktree-vs-commit diff: the shared bare store
-  // would otherwise reuse `$GIT_DIR/index` left over from a previous
-  // project, producing stale diffs.
+  // Hermes-model: report git's full disk-vs-tree diff. The picker /
+  // chooser uses this to decide whether to offer "Restore code" — it
+  // must see all changes that rewind would touch, not just paths
+  // axiomate edited this session. (state.trackedFiles used to gate
+  // this and was load-bearing for the chooser; restart-fresh emptied
+  // it and silently disabled code-restore. Removed.)
+  //
+  // Stage the workdir into the project's private index first so
+  // `git diff --cached` sees untracked files too. Without this, a file
+  // created by the user (or by a tool that bypassed trackEdit) since
+  // the snapshot wouldn't show up — but rewind would still delete it
+  // (the unlink pass in restoreFullWorkdirToSnapshot picks it up via
+  // --diff-filter=A), so the chooser must surface it.
+  await stageWorkdir(storeResult.store, canonical, indexFile)
   const numstat = await runCheckpointGit(
-    ['diff', '--numstat', target.gitHash, '--', ...paths],
+    ['diff', '--cached', '--numstat', target.gitHash, '--'],
     {
       store: storeResult.store,
       workTree: canonical,
@@ -438,10 +448,9 @@ export async function fileHistoryGetDiffStats(
       if (delStr !== '-') deletions += Number.parseInt(delStr, 10) || 0
     }
   }
-  const allChangedRel = new Set([...filesRel, ...flipped])
 
   return {
-    filesChanged: Array.from(allChangedRel, p => maybeExpandFilePath(p)),
+    filesChanged: filesRel.map(p => maybeExpandFilePath(p)),
     insertions,
     deletions,
   }
@@ -451,11 +460,9 @@ export async function fileHistoryGetDiffStats(
  * Boolean equivalent of `fileHistoryGetDiffStats` — short-circuits via
  * `git diff --quiet` so the dominant cost (counting lines) is skipped.
  *
- * Has to combine three signals because `git diff <hash>` only sees paths
- * that are either in the snapshot tree or in the index — a tracked-but-
- * never-committed path that materializes on disk after the snapshot is
- * invisible to plain diff. So we compare structural state (in-tree vs
- * on-disk) first, then fall through to a content diff for paths in both.
+ * Hermes-model: looks at the full disk-vs-tree diff. trackedFiles used
+ * to gate this; restart-fresh emptied it and made the predicate
+ * permanently false. Removed.
  */
 export async function fileHistoryHasAnyChanges(
   state: FileHistoryState,
@@ -466,33 +473,21 @@ export async function fileHistoryHasAnyChanges(
   const target = findRestoreTarget(state, messageId, messages)
   if (!target) return false
 
-  const paths = Array.from(state.trackedFiles)
-  if (paths.length === 0) return false
-
   const storeResult = await ensureStore()
   if (storeResult.ok === false) return false
   const canonical = normalizePath(getOriginalCwd())
   const indexFile = indexPath(projectHash(canonical))
 
-  const tree = await readTree(storeResult.store, canonical, target.gitHash)
-  if (!tree) return false
-
-  const inBoth: string[] = []
-  for (const p of paths) {
-    const inTree = tree.has(toForwardSlash(p))
-    const onDisk = existsSync(maybeExpandFilePath(p))
-    if (inTree !== onDisk) return true
-    if (inTree && onDisk) inBoth.push(p)
-  }
-  if (inBoth.length === 0) return false
-
+  // diff --cached against the snapshot tree: stage-then-compare so
+  // untracked files (created since snapshot) are counted as changes.
   // diff --quiet exits 0 if no changes, 1 if changes. allowedExitCodes
   // covers both so neither path becomes a transient-error miss. The
   // per-project GIT_INDEX_FILE matters even for worktree-vs-commit diff:
   // without it, the shared bare store would reuse a stale index left by
   // a prior project, producing wrong answers.
+  await stageWorkdir(storeResult.store, canonical, indexFile)
   const result = await runCheckpointGit(
-    ['diff', '--quiet', target.gitHash, '--', ...inBoth],
+    ['diff', '--cached', '--quiet', target.gitHash, '--'],
     {
       store: storeResult.store,
       workTree: canonical,
@@ -552,76 +547,95 @@ export function fileHistoryRestoreStateFromLog(
 }
 
 /**
- * Restore tracked paths to a snapshot commit. Splits into "exists in
- * snapshot tree" vs "absent from tree" because `git checkout <hash> --
- * <path>` errors if a path is missing from the tree. Existing paths go
- * through `rollback` (re-uses its index-seeding); missing paths get
- * unlinked from disk to satisfy "rewind to a turn where this file did
- * not exist" semantics.
+ * Restore the entire workdir to a snapshot commit (Hermes model).
+ *
+ * Two-phase:
+ *   1. `git diff --name-only --diff-filter=A <hash>` lists paths that
+ *      exist on disk but NOT in the target tree. We unlink them so
+ *      "rewind to a turn where this file did not exist" actually
+ *      removes the file. (Plain `git checkout <hash> -- .` would
+ *      leave them on disk — Hermes' literal behavior. axiomate goes
+ *      one step further so the post-rewind workdir == snapshot tree.)
+ *   2. `rollback` runs `git checkout <hash> -- .` and skips its own
+ *      pre-rollback snapshot (the caller, `fileHistoryRewind`, has
+ *      already taken one at the high level).
+ *
+ * Replaced `restoreTrackedToSnapshot`: that one read `state.trackedFiles`
+ * to limit blast radius, but trackedFiles was a per-process in-memory
+ * Set with no persistence — restart-fresh emptied it and silently
+ * disabled rewind. Pre-rewind safety snapshot replaces blast-radius
+ * limiting as the recoverability mechanism.
  */
-async function restoreTrackedToSnapshot(
+/**
+ * `git add -A` into the project's per-project index. Used by
+ * `getDiffStats` and `hasAnyChanges` so `git diff --cached <hash>`
+ * sees untracked files as "added since target snapshot." Idempotent
+ * and best-effort — failures are logged but don't propagate, since
+ * the diff/has-changes callers prefer "false negative" over a hard
+ * fail.
+ *
+ * Mirrors createSnapshot's stage step but without the size cap or
+ * reset — we don't write a commit here, just want the index to
+ * reflect the current workdir for diff comparison.
+ */
+async function stageWorkdir(
+  store: string,
+  workTree: string,
+  indexFile: string,
+): Promise<void> {
+  const result = await runCheckpointGit(['add', '-A'], {
+    store,
+    workTree,
+    indexFile,
+  })
+  if (result.ok === false) {
+    logForDebugging(
+      `FileHistory: stageWorkdir failed (${result.message}); diff may miss untracked files`,
+    )
+  }
+}
+
+async function restoreFullWorkdirToSnapshot(
   workdir: string,
   gitHash: string,
-  trackedFiles: readonly string[],
 ): Promise<void> {
-  if (trackedFiles.length === 0) return
-
   const storeResult = await ensureStore()
   if (storeResult.ok === false) {
     throw new Error(`ensureStore: ${storeResult.reason}`)
   }
   const store = storeResult.store
   const canonical = normalizePath(workdir)
+  const indexFile = indexPath(projectHash(canonical))
 
-  const tree = await readTree(store, canonical, gitHash)
-  if (!tree) {
-    throw new Error(`ls-tree failed for ${gitHash}`)
-  }
-
-  const existing: string[] = []
-  const missing: string[] = []
-  for (const p of trackedFiles) {
-    if (tree.has(toForwardSlash(p))) existing.push(p)
-    else missing.push(p)
-  }
-
-  if (existing.length > 0) {
-    const result = await rollback(canonical, gitHash, { paths: existing })
-    if (result.ok === false) {
-      throw new Error(`rollback: ${result.reason} ${result.message}`)
+  // Phase 1: unlink files that are on disk but not in the target tree.
+  // Stage the workdir first so untracked files are visible to git diff;
+  // without staging, `git diff <hash>` ignores them entirely.
+  await stageWorkdir(store, canonical, indexFile)
+  const diff = await runCheckpointGit(
+    ['diff', '--cached', '--name-only', '--diff-filter=A', gitHash, '--'],
+    { store, workTree: canonical, indexFile },
+  )
+  if (diff.ok === true) {
+    for (const rel of diff.stdout.split('\n')) {
+      if (rel.length === 0) continue
+      const abs = maybeExpandFilePath(rel)
+      try {
+        await unlink(abs)
+        logForDebugging(`FileHistory: [Rewind] Deleted ${abs}`)
+      } catch (err: unknown) {
+        if (!isENOENT(err)) logError(err)
+      }
     }
   }
 
-  for (const p of missing) {
-    const abs = maybeExpandFilePath(p)
-    try {
-      await unlink(abs)
-      logForDebugging(`FileHistory: [Rewind] Deleted ${abs}`)
-    } catch (err: unknown) {
-      if (!isENOENT(err)) logError(err)
-    }
+  // Phase 2: checkout. Skip pre-rollback snapshot — fileHistoryRewind
+  // already took one at the high level so it lands in state.snapshots.
+  const result = await rollback(canonical, gitHash, {
+    skipPreRollbackSnapshot: true,
+  })
+  if (result.ok === false) {
+    throw new Error(`rollback: ${result.reason} ${result.message}`)
   }
-}
-
-/**
- * `git ls-tree -r --name-only <hash>` → set of forward-slash paths in
- * the snapshot tree. Returns null on git failure so callers can decide
- * whether to fail open. The set lets us answer "did this path exist at
- * snapshot time?" without an extra git invocation per path.
- */
-async function readTree(
-  store: string,
-  workTree: string,
-  gitHash: string,
-): Promise<Set<string> | null> {
-  const result = await runCheckpointGit(
-    ['ls-tree', '-r', '--name-only', gitHash],
-    { store, workTree },
-  )
-  if (result.ok === false) return null
-  return new Set(
-    result.stdout.split('\n').filter(line => line.length > 0),
-  )
 }
 
 /**
@@ -649,9 +663,4 @@ function maybeShortenFilePath(filePath: string): string {
 function maybeExpandFilePath(filePath: string): string {
   if (isAbsolute(filePath)) return filePath
   return join(getOriginalCwd(), filePath)
-}
-
-/** Git stores paths with `/` separators on every platform. */
-function toForwardSlash(p: string): string {
-  return p.replace(/\\/g, '/')
 }

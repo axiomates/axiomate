@@ -84,6 +84,14 @@ export interface RollbackOptions {
    * treated as "restore everything" — same as omitting.
    */
   paths?: readonly string[]
+  /**
+   * Skip the pre-rollback safety snapshot (step 6). Set when the
+   * caller has already taken its own pre-rewind snapshot at a higher
+   * level — e.g. `fileHistoryRewind` synthesizes one with a synthetic
+   * UUID so it lands in `state.snapshots` and shows up in the picker
+   * as an undo-rewind anchor.
+   */
+  skipPreRollbackSnapshot?: boolean
 }
 
 /**
@@ -159,10 +167,15 @@ export async function rollback(
   // 6. Pre-rollback snapshot. Best-effort — skip is fine, we don't
   //    block the restore on the safety net failing (Hermes line 787
   //    ignores _take's return value entirely).
-  await createSnapshot(canonical, {
-    messageId: 'pre-rollback',
-    label: `pre-rollback snapshot (restoring to ${commitHash.slice(0, 8)})`,
-  })
+  //    Skipped when the caller (fileHistoryRewind) has already taken
+  //    its own pre-rewind snapshot at the high level so it lands in
+  //    state.snapshots.
+  if (!opts.skipPreRollbackSnapshot) {
+    await createSnapshot(canonical, {
+      messageId: 'pre-rollback',
+      label: `pre-rollback snapshot (restoring to ${commitHash.slice(0, 8)})`,
+    })
+  }
 
   // 7. Per-project index file — checkout writes here, not the user's
   //    .git/index. After a successful restore the next createSnapshot's

@@ -160,10 +160,20 @@ describe('rewind — restore content at the chosen turn', () => {
     expect(existsSync(newPath)).toBe(false)
   })
 
-  test('only restores tracked files; leaves manual user edits to untracked files alone', async () => {
-    // The load-bearing assertion for Phase 3: rewind blast radius must
-    // stay scoped to state.trackedFiles. Phase 3's git-checkout swap
-    // must be invoked with `paths: [...trackedFiles]` to keep this.
+  test('rewinds full workdir, captures pre-rewind anchor for recovery', async () => {
+    // Hermes-model contract: rewind restores everything in the target
+    // tree AND removes everything else from disk. Manual user edits
+    // to "untracked" files are NOT preserved — but a pre-rewind
+    // safety snapshot is automatically captured so the original state
+    // is recoverable.
+    //
+    // This test pins the inverted contract from the previous design,
+    // where rewind only touched state.trackedFiles. That blast-radius
+    // limit was load-bearing for safety but unrecoverable across a
+    // process restart (in-memory Set, no persistence). The new
+    // recoverability mechanism is the pre-rewind anchor (or, when
+    // pre-rewind would be a no-op, the existing post-edit snapshot
+    // itself — workdir is already captured there).
     const tracked = join(workTree, 'tracked.txt')
     const manual = join(workTree, 'manual.txt')
     writeFileSync(tracked, 'tracked-v1')
@@ -172,12 +182,29 @@ describe('rewind — restore content at the chosen turn', () => {
     const holder = makeStateHolder()
     const m1 = await turn(holder, [tracked])
     writeFileSync(tracked, 'tracked-v2')
-    writeFileSync(manual, 'manual-v2-edited-by-user') // never tracked
-    await turn(holder, [tracked])
+    writeFileSync(manual, 'manual-v2-edited-by-user')
+    // Drive a third turn so manual-v2 gets captured in a snapshot
+    // BEFORE rewind. Without this, m2's snapshot would precede the
+    // manual-v2 edit and pre-rewind would have nothing fresh to
+    // capture (since workdir would equal m2's tree).
+    const m2 = await turn(holder, [tracked])
+    writeFileSync(tracked, 'tracked-v3-divergent')
+    const beforeCount = holder.state().snapshots.length
 
     await fileHistoryRewind(holder.updater, m1, [])
+
+    // Both files restored to m1's tree state — even `manual`, which
+    // was never trackEdit'd. (Contract inversion vs. the old
+    // tracked-only blast radius.)
     expect(readFileSync(tracked, 'utf-8')).toBe('tracked-v1')
-    expect(readFileSync(manual, 'utf-8')).toBe('manual-v2-edited-by-user')
+    expect(readFileSync(manual, 'utf-8')).toBe('manual-v1')
+
+    // Pre-rewind anchor captured because workdir at rewind time
+    // (tracked-v3, manual-v2) differed from the last existing
+    // snapshot (m2's tree was tracked-v2, manual-v2).
+    const after = holder.state().snapshots
+    expect(after.length).toBe(beforeCount + 1)
+    expect(m2).toBeDefined()
   })
 
   test('subdirectory paths round-trip through rewind', async () => {
