@@ -445,10 +445,21 @@ export async function fileHistoryGetDiffStats(
   // surfaces, one predicate (`findExactSnapshot`), no surprises.
   void messages // signature stable; no longer needed for ancestor walk
   const target = findExactSnapshot(state, messageId)
-  if (!target) return undefined
+  if (!target) {
+    logForDebugging(
+      `FileHistory: [GetDiff] uuid=${messageId.slice(0, 8)} → no exact snapshot, undefined`,
+    )
+    return undefined
+  }
+  logForDebugging(
+    `FileHistory: [GetDiff] uuid=${messageId.slice(0, 8)} target=${target.gitHash.slice(0, 8)}`,
+  )
 
   const storeResult = await ensureStore()
   if (storeResult.ok === false) {
+    logForDebugging(
+      `FileHistory: [GetDiff] uuid=${messageId.slice(0, 8)} ensureStore failed → empty diff`,
+    )
     return { filesChanged: [], insertions: 0, deletions: 0 }
   }
   const canonical = normalizePath(getOriginalCwd())
@@ -477,6 +488,12 @@ export async function fileHistoryGetDiffStats(
       allowedExitCodes: REF_NOT_PRESENT,
     },
   )
+  if (numstat.ok === false) {
+    logForDebugging(
+      `FileHistory: [GetDiff] uuid=${messageId.slice(0, 8)} target=${target.gitHash.slice(0, 8)} ` +
+        `numstat FAILED ok=false (renders as no-diff)`,
+    )
+  }
   const filesRel: string[] = []
   let insertions = 0
   let deletions = 0
@@ -491,6 +508,11 @@ export async function fileHistoryGetDiffStats(
       if (delStr !== '-') deletions += Number.parseInt(delStr, 10) || 0
     }
   }
+
+  logForDebugging(
+    `FileHistory: [GetDiff] uuid=${messageId.slice(0, 8)} target=${target.gitHash.slice(0, 8)} ` +
+      `→ files=${filesRel.length} ins=${insertions} del=${deletions} numstat.ok=${numstat.ok}`,
+  )
 
   return {
     filesChanged: filesRel.map(p => maybeExpandFilePath(p)),

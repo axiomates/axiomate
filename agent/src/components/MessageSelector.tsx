@@ -619,11 +619,22 @@ export function MessageSelector({
             let diffStats: DiffStats
             if (!canRestore) {
               diffStats = undefined
+              logForDebugging(
+                `MessageSelector: [Meta] uuid=${userMessage.uuid.slice(0, 8)} canRestore=false → undefined (renders ⚠)`,
+              )
             } else if (isSyntheticAnchor) {
               diffStats = await fileHistoryGetDiffStats(
                 fileHistory,
                 userMessage.uuid,
                 messages,
+              )
+              logForDebugging(
+                `MessageSelector: [Meta] uuid=${userMessage.uuid.slice(0, 8)} synthetic ` +
+                  `canRestore=true diffStats=${
+                    diffStats === undefined
+                      ? 'undefined'
+                      : `{filesChanged:${diffStats.filesChanged?.length ?? 0} ins:${diffStats.insertions} del:${diffStats.deletions}}`
+                  }`,
               )
             } else {
               const nextUserMessage = messageOptions.at(itemIndex + 1)
@@ -633,6 +644,14 @@ export function MessageSelector({
                 nextUserMessage?.uuid !== currentUUID
                   ? nextUserMessage?.uuid
                   : undefined,
+              )
+              logForDebugging(
+                `MessageSelector: [Meta] uuid=${userMessage.uuid.slice(0, 8)} regular ` +
+                  `canRestore=true diffStats=${
+                    diffStats === undefined
+                      ? 'undefined'
+                      : `{filesChanged:${diffStats.filesChanged?.length ?? 0} ins:${diffStats.insertions} del:${diffStats.deletions}}`
+                  } nextUuid=${nextUserMessage?.uuid?.slice(0, 8) ?? '<none>'}`,
               )
             }
 
