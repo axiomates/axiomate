@@ -42,7 +42,6 @@ import { existsSync } from 'fs'
 import { unlink } from 'fs/promises'
 import { isAbsolute, join, relative } from 'path'
 import {
-  getIsNonInteractiveSession,
   getOriginalCwd,
 } from '../bootstrap/state.js'
 import { createSnapshot } from './checkpoints/createSnapshot.js'
@@ -103,19 +102,18 @@ const MAX_SNAPSHOTS = 100
 const DIFF_HAS_CHANGES = new Set([0, 1])
 const REF_NOT_PRESENT = new Set([128, 129])
 
+/**
+ * Single gate for both REPL and --print/headless. Upstream Claude Code
+ * had a separate SDK branch that required CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING=1
+ * — sensible for an SDK whose users are mostly CI/automation that doesn't
+ * want a shadow store growing on disk. Axiomate's policy is the opposite:
+ * checkpoints are a user-facing safety net, default-on everywhere, and the
+ * only switches are `fileCheckpointingEnabled` (config) plus
+ * AXIOMATE_CODE_DISABLE_FILE_CHECKPOINTING (env kill-switch).
+ */
 export function fileHistoryEnabled(): boolean {
-  if (getIsNonInteractiveSession()) {
-    return fileHistoryEnabledSdk()
-  }
   return (
     getGlobalConfig().fileCheckpointingEnabled !== false &&
-    !isEnvTruthy(process.env.AXIOMATE_CODE_DISABLE_FILE_CHECKPOINTING)
-  )
-}
-
-function fileHistoryEnabledSdk(): boolean {
-  return (
-    isEnvTruthy(process.env.AXIOMATE_CODE_ENABLE_SDK_FILE_CHECKPOINTING) &&
     !isEnvTruthy(process.env.AXIOMATE_CODE_DISABLE_FILE_CHECKPOINTING)
   )
 }
