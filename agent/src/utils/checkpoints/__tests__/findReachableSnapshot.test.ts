@@ -1,25 +1,26 @@
 /**
- * Behavior tests for `findReachableSnapshot` (6A).
+ * Behavior tests for `findReachableSnapshot` (6A + 6B).
  *
- * Three scenarios:
- *   1. Reachable: gitHash is the tip of the project's ref — must
- *      return `'reachable'`.
- *   2. Unreachable (orphaned by prune): build N commits, then
- *      `update-ref` the project ref backwards so the older commit
- *      objects exist but are no longer ancestors. Must return
- *      `'unreachable'` — this is the failure shape the resumed-but-
- *      pruned hint exists to catch.
- *   3. Cross-worktree: gitHash exists in *another* project's ref but
- *      not the queried workdir's. Must return `'unreachable'` from
- *      the queried project's perspective. (6B will scan across
- *      worktrees; 6A's contract is per-project only.)
+ * Five scenarios:
+ *   1. Reachable (tip): gitHash is the tip of the project's ref — must
+ *      return `{ kind: 'reachable' }`.
+ *   2. Reachable (ancestor): gitHash is an older commit on the same
+ *      ref — also `{ kind: 'reachable' }`.
+ *   3. Unreachable (orphaned by prune): build N commits, then
+ *      `update-ref` the project ref backwards so older commit objects
+ *      exist but are no longer ancestors. Must return
+ *      `{ kind: 'unreachable' }`.
+ *   4. 6B cross-worktree: gitHash is anchored only by another
+ *      project's ref → `{ kind: 'reachable-other-worktree', workdir }`.
+ *   5. 6B miss: object doesn't exist anywhere → `unreachable`.
+ *   6. Validation / empty-ref edge cases (hash flag rejection, no-ref-yet).
  *
  * All tests use a real shadow git store via `AXIOMATE_CHECKPOINT_BASE`
  * redirect so the cat-file / merge-base codepaths are exercised end
  * to end against actual git.
  */
 
-import { mkdirSync, mkdtempSync, rmSync } from 'fs'
+import { mkdtempSync, rmSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import {
@@ -77,7 +78,7 @@ async function bootstrapProject(name: string): Promise<{
 }
 
 describe('findReachableSnapshot', () => {
-  test('reachable: tip-of-ref hash returns "reachable"', async () => {
+  test('reachable: tip-of-ref hash returns reachable', async () => {
     const p = await bootstrapProject('a')
     const sha = await buildFixtureCommit({
       store: p.store,
@@ -91,10 +92,10 @@ describe('findReachableSnapshot', () => {
       workdir: p.workdir,
       gitHash: sha,
     })
-    expect(r).toBe('reachable')
+    expect(r).toEqual({ kind: 'reachable' })
   })
 
-  test('reachable: ancestor (not tip) still resolves "reachable"', async () => {
+  test('reachable: ancestor (not tip) still resolves reachable', async () => {
     const p = await bootstrapProject('b')
     const sha1 = await buildFixtureCommit({
       store: p.store,
@@ -116,10 +117,10 @@ describe('findReachableSnapshot', () => {
       workdir: p.workdir,
       gitHash: sha1,
     })
-    expect(r).toBe('reachable')
+    expect(r).toEqual({ kind: 'reachable' })
   })
 
-  test('unreachable: detached commit (ref rolled back) returns "unreachable"', async () => {
+  test('unreachable: detached commit (ref rolled back, no other ref anchors it)', async () => {
     const p = await bootstrapProject('c')
     const sha1 = await buildFixtureCommit({
       store: p.store,
@@ -137,9 +138,6 @@ describe('findReachableSnapshot', () => {
       files: { 'foo.txt': 'v2\n' },
       subject: 'snap 2',
     })
-    // Simulate a prune that dropped sha2 from the ref tip — sha1 is
-    // still the tip; sha2 is a detached object (still exists in the
-    // object DB until gc, but no longer reachable from the ref).
     await runCheckpointGit(
       ['update-ref', p.ref, sha1],
       { store: p.store, workTree: p.workdir, indexFile: indexPath(p.hash) },
@@ -148,12 +146,17 @@ describe('findReachableSnapshot', () => {
       workdir: p.workdir,
       gitHash: sha2,
     })
-    expect(r).toBe('unreachable')
+    expect(r).toEqual({ kind: 'unreachable' })
   })
 
-  test('unreachable: hash from different project does not satisfy this project', async () => {
+  test('6B: hash anchored only by another project ref returns reachable-other-worktree with that workdir', async () => {
     const a = await bootstrapProject('cross-a')
     const b = await bootstrapProject('cross-b')
+    // Both projects must have a `projects/<hash16>.json` for the scan to
+    // find them — `buildFixtureCommit` writes commits to the ref but
+    // doesn't touch the metadata file. Write minimal metas explicitly.
+    writeProjectMeta(a)
+    writeProjectMeta(b)
     const shaA = await buildFixtureCommit({
       store: a.store,
       workTree: a.workdir,
@@ -162,8 +165,6 @@ describe('findReachableSnapshot', () => {
       files: { 'foo.txt': 'a\n' },
       subject: 'a snap',
     })
-    // Project B has its own ref + commits; A's sha is in the shared
-    // object DB but not reachable from B's ref.
     await buildFixtureCommit({
       store: b.store,
       workTree: b.workdir,
@@ -172,14 +173,38 @@ describe('findReachableSnapshot', () => {
       files: { 'foo.txt': 'b\n' },
       subject: 'b snap',
     })
+    // Querying from B's workdir for A's hash: in-project ref doesn't
+    // anchor it, but A's ref does.
     const r = await findReachableSnapshot({
       workdir: b.workdir,
       gitHash: shaA,
     })
-    expect(r).toBe('unreachable')
+    expect(r).toEqual({ kind: 'reachable-other-worktree', workdir: a.workdir })
   })
 
-  test('malformed gitHash returns "unknown" without spawning git', async () => {
+  test('6B: object exists nowhere → unreachable (no foreign anchor found)', async () => {
+    const a = await bootstrapProject('miss-a')
+    const b = await bootstrapProject('miss-b')
+    writeProjectMeta(a)
+    writeProjectMeta(b)
+    await buildFixtureCommit({
+      store: a.store,
+      workTree: a.workdir,
+      indexFile: indexPath(a.hash),
+      ref: a.ref,
+      files: { 'foo.txt': 'a\n' },
+      subject: 'a snap',
+    })
+    // 40-hex that's not anywhere in either ref. Step 1 cat-file -e
+    // returns 1 → unreachable directly, scan never runs.
+    const r = await findReachableSnapshot({
+      workdir: b.workdir,
+      gitHash: 'a'.repeat(40),
+    })
+    expect(r).toEqual({ kind: 'unreachable' })
+  })
+
+  test('malformed gitHash returns unknown without spawning git', async () => {
     const p = await bootstrapProject('mal')
     await buildFixtureCommit({
       store: p.store,
@@ -191,23 +216,35 @@ describe('findReachableSnapshot', () => {
     })
     expect(
       await findReachableSnapshot({ workdir: p.workdir, gitHash: '-p' }),
-    ).toBe('unknown')
+    ).toEqual({ kind: 'unknown' })
     expect(
       await findReachableSnapshot({ workdir: p.workdir, gitHash: 'xyz' }),
-    ).toBe('unknown')
+    ).toEqual({ kind: 'unknown' })
     expect(
       await findReachableSnapshot({ workdir: p.workdir, gitHash: '' }),
-    ).toBe('unknown')
+    ).toEqual({ kind: 'unknown' })
   })
 
   test('no project ref yet → unreachable, not unknown', async () => {
     const p = await bootstrapProject('empty')
-    // Don't build any commit; ref doesn't exist. cat-file -e against
-    // a never-seen 40-hex returns 1 → unreachable.
     const r = await findReachableSnapshot({
       workdir: p.workdir,
       gitHash: 'a'.repeat(40),
     })
-    expect(r).toBe('unreachable')
+    expect(r).toEqual({ kind: 'unreachable' })
   })
 })
+
+/**
+ * Helper: write a minimal `projects/<hash16>.json` so the 6B scan can
+ * find this project. Real `touchProject` does this through the store
+ * API; the fixture commits skip it because pre-6B tests didn't need it.
+ */
+function writeProjectMeta(p: { store: string; hash: string; workdir: string }): void {
+  const path = join(p.store, 'projects', `${p.hash}.json`)
+  const now = Math.floor(Date.now() / 1000)
+  writeFileSync(
+    path,
+    JSON.stringify({ workdir: p.workdir, created_at: now, last_touch: now }),
+  )
+}

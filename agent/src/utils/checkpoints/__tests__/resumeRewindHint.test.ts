@@ -1,9 +1,10 @@
 /**
  * Behavior tests for `computeResumeRewindHint`.
  *
- * Three outcomes, plus the silence cases:
+ * Four outcomes, plus the silence cases:
  *   - reachable last snapshot → info hint
  *   - unreachable last snapshot (ref rolled back past it) → warning hint
+ *   - reachable-other-worktree → warning hint mentioning the foreign workdir
  *   - empty snapshots list → null (no hint)
  *   - malformed gitHash on the last snapshot → null (no hint)
  *
@@ -11,7 +12,7 @@
  * hash path (validateCommitHash rejects it before any git spawn).
  */
 
-import { mkdtempSync, rmSync } from 'fs'
+import { mkdtempSync, rmSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import {
@@ -129,6 +130,39 @@ describe('computeResumeRewindHint', () => {
     expect(r?.text).toMatch(/pruned|rewind/i)
   })
 
+  test('6B: hash anchored only by another workdir → warning naming that workdir', async () => {
+    // Project A holds the snapshot; user resumes that session sitting
+    // in project B (e.g. same repo, different absolute path).
+    const a = await bootstrap()
+    const b = await bootstrap()
+    writeProjectMeta(a)
+    writeProjectMeta(b)
+    const shaA = await buildFixtureCommit({
+      store: a.store,
+      workTree: a.workdir,
+      indexFile: indexPath(a.hash),
+      ref: a.ref,
+      files: { 'a.txt': 'a\n' },
+      subject: 'snap from a',
+    })
+    await buildFixtureCommit({
+      store: b.store,
+      workTree: b.workdir,
+      indexFile: indexPath(b.hash),
+      ref: b.ref,
+      files: { 'b.txt': 'b\n' },
+      subject: 'snap from b',
+    })
+    const r = await computeResumeRewindHint({
+      workdir: b.workdir,
+      snapshots: [snapshot(shaA)],
+    })
+    expect(r).not.toBeNull()
+    expect(r?.severity).toBe('warning')
+    expect(r?.text).toContain(a.workdir)
+    expect(r?.text).toMatch(/different workdir|cd into/i)
+  })
+
   test('empty snapshots list → null (no hint)', async () => {
     const p = await bootstrap()
     const r = await computeResumeRewindHint({
@@ -167,3 +201,19 @@ describe('computeResumeRewindHint', () => {
     expect(r?.severity).toBe('info')
   })
 })
+
+/**
+ * Helper: write a minimal `projects/<hash16>.json` so the 6B
+ * cross-worktree scan can locate this project. Mirrors the same helper
+ * in `findReachableSnapshot.test.ts` — kept duplicated rather than
+ * extracted because both test files are the only callers and the
+ * fixture surface is intentionally small.
+ */
+function writeProjectMeta(p: { store: string; hash: string; workdir: string }): void {
+  const path = join(p.store, 'projects', `${p.hash}.json`)
+  const now = Math.floor(Date.now() / 1000)
+  writeFileSync(
+    path,
+    JSON.stringify({ workdir: p.workdir, created_at: now, last_touch: now }),
+  )
+}

@@ -171,7 +171,7 @@ right before `setMessages(() => messages)` after `/resume` finishes —
 info on reachable, warning on unreachable, silent on `unknown` /
 disabled / no snapshots. 11 vitest cases (6 helper + 5 hint).
 
-### 6B — Cross-worktree resume reachability
+### 6B — Cross-worktree resume reachability ✅ landed
 
 **Problem.** Two absolute paths to the same git repo (e.g.
 `~/proj/main` and `/tmp/build/proj`) hash to different `<hash16>` →
@@ -183,8 +183,12 @@ find the hash under the current project's ref, scan all `projects/*.json`
 and try `git rev-parse <hash>` against each ref tip's history. If found,
 inform the user the hash exists but under a different worktree.
 
-**Cost.** ~half a day. Adds one helper + 2 tests (same-repo different
-path, different-repo same hash collision).
+**Shipped.** `Reachability` switched from string union to discriminated
+union; new `'reachable-other-worktree'` branch carries the foreign
+`workdir`. Scan walks `projects/*.json` capped at 50 most-recently-touched
+candidates. `computeResumeRewindHint` adds a fourth branch — warning
+naming the foreign workdir so the user knows where to `cd`. 13 vitest
+cases (7 helper + 6 hint) pin the new contract.
 
 ### 6C — Cross-worktree GC reachability
 

@@ -44,14 +44,18 @@ export interface ResumeRewindHint {
  * Compute the post-resume hint. Returns null when nothing should be
  * displayed — keeps the REPL site to a single `if (hint) push(...)`.
  *
- * Three outcomes drive the result:
- *   - reachable   → info: "/rewind to restore worktree"
- *   - unreachable → warning: "snapshots have been pruned; /rewind may
- *                   not be able to restore the worktree"
- *   - unknown     → null (transient probe failure or invalid hash;
- *                   surfacing a hint here would be more confusing than
- *                   helpful — `/rewind` itself will still tell the user
- *                   if it can't find the object)
+ * Four outcomes drive the result:
+ *   - reachable                 → info: "/rewind to restore worktree"
+ *   - reachable-other-worktree  → warning: snapshot lives under a
+ *                                 different workdir; /rewind here will
+ *                                 fail. Tells the user where to cd.
+ *   - unreachable               → warning: "snapshots have been pruned;
+ *                                 /rewind may not be able to restore"
+ *   - unknown                   → null (transient probe failure or
+ *                                 invalid hash; surfacing a hint here
+ *                                 would be more confusing than helpful
+ *                                 — `/rewind` itself will still tell
+ *                                 the user if it can't find the object)
  */
 export async function computeResumeRewindHint(
   input: ResumeRewindHintInput,
@@ -69,13 +73,19 @@ export async function computeResumeRewindHint(
     workdir: input.workdir,
     gitHash: last.gitHash,
   })
-  if (probe === 'reachable') {
+  if (probe.kind === 'reachable') {
     return {
       text: 'Worktree state from this session is still rewindable — use /rewind to restore.',
       severity: 'info',
     }
   }
-  if (probe === 'unreachable') {
+  if (probe.kind === 'reachable-other-worktree') {
+    return {
+      text: `Worktree snapshots from this session are anchored to a different workdir (${probe.workdir}). /rewind here will fail; cd into that workdir to restore.`,
+      severity: 'warning',
+    }
+  }
+  if (probe.kind === 'unreachable') {
     return {
       text: 'Some checkpoint snapshots from this session have been pruned. /rewind may not be able to restore the worktree.',
       severity: 'warning',
