@@ -18,6 +18,7 @@ import {
   fileHistoryHasExactSnapshot,
 } from '../utils/fileHistory.js'
 import { logError } from '../utils/log.js'
+import { logForDebugging } from '../utils/debug.js'
 import { useExitOnCtrlCDWithKeybindings } from '../hooks/useExitOnCtrlCDWithKeybindings.js'
 import { Box, Text } from '../ink.js'
 import { useKeybinding, useKeybindings } from '../keybindings/useKeybinding.js'
@@ -136,6 +137,29 @@ export function MessageSelector({
     [allSelectable, showAllTurns, fileHistory, hasAnySnapshot],
   )
   const hiddenCount = allSelectable.length - visibleSelectable.length
+
+  // Diagnostic: log the picker's filter inputs once per /rewind open so
+  // /resume-path or filter-mismatch bugs leave a paper trail. If a user
+  // reports "picker only shows 2 anchors but /checkpoints list has 6",
+  // the log shows whether the discrepancy is in messages-array
+  // membership, snapshot-state membership, or the strict-anchor predicate.
+  useEffect(() => {
+    if (!isFileHistoryEnabled) return
+    const anchorMatches = allSelectable.filter(m =>
+      fileHistoryHasExactSnapshot(fileHistory, m.uuid),
+    )
+    const orphanSnapshotIds = fileHistory.snapshots
+      .filter(s => !messages.some(m => m.uuid === s.messageId))
+      .map(s => s.messageId.slice(0, 8))
+    logForDebugging(
+      `MessageSelector: [Picker] mount messages=${messages.length} ` +
+        `allSelectable=${allSelectable.length} state.snapshots=${fileHistory.snapshots.length} ` +
+        `anchors-in-conversation=${anchorMatches.length} ` +
+        `orphan-snapshots=[${orphanSnapshotIds.join(',')}] ` +
+        `(orphan = snapshot.messageId not in messages array; usually pre-rewind anchors)`,
+    )
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot mount log
+  }, [])
 
   // Snapshots can come in with `timestamp` as a real Date (created in-
   // process via `new Date()`) OR as a string (loaded from JSONL via

@@ -356,6 +356,11 @@ export async function fileHistoryRewind(
   })
   if (!captured) return
 
+  logForDebugging(
+    `FileHistory: [Rewind] entry messageId=${messageId} state.snapshots.length=${captured.snapshots.length} ` +
+      `messages.length=${messages.length}`,
+  )
+
   const target = findExactSnapshot(captured, messageId)
   if (!target) {
     logError(new Error(`FileHistory: Snapshot for ${messageId} not found`))
@@ -363,7 +368,8 @@ export async function fileHistoryRewind(
   }
 
   logForDebugging(
-    `FileHistory: [Rewind] Rewinding to snapshot ${target.messageId} (target ${messageId})`,
+    `FileHistory: [Rewind] resolved target messageId=${target.messageId} gitHash=${target.gitHash.slice(0, 8)} ` +
+      `(input messageId ${messageId})`,
   )
 
   // Pre-rewind safety net (Hermes parity, _take("pre-rollback snapshot")).
@@ -579,6 +585,10 @@ export function fileHistoryRestoreStateFromLog(
   }
   const trimmed =
     snapshots.length > MAX_SNAPSHOTS ? snapshots.slice(-MAX_SNAPSHOTS) : snapshots
+  logForDebugging(
+    `FileHistory: [Restore] from JSONL: input=${fileHistorySnapshots.length} valid=${snapshots.length} trimmed=${trimmed.length} trackedFiles=${trackedFiles.size} ` +
+      `messageIds=[${trimmed.map(s => s.messageId.slice(0, 8)).join(',')}]`,
+  )
   onUpdateState({
     snapshots: trimmed,
     trackedFiles,
@@ -655,9 +665,16 @@ async function restoreFullWorkdirToSnapshot(
     ['diff', '--cached', '--name-only', '--diff-filter=A', gitHash, '--'],
     { store, workTree: canonical, indexFile },
   )
+  const addedPaths =
+    diff.ok === true
+      ? diff.stdout.split('\n').filter(s => s.length > 0)
+      : []
+  logForDebugging(
+    `FileHistory: [Rewind] Phase 1 unlink: ${addedPaths.length} disk-but-not-in-tree paths ` +
+      `(gitHash=${gitHash.slice(0, 8)} workdir=${canonical})`,
+  )
   if (diff.ok === true) {
-    for (const rel of diff.stdout.split('\n')) {
-      if (rel.length === 0) continue
+    for (const rel of addedPaths) {
       const abs = maybeExpandFilePath(rel)
       try {
         await unlink(abs)
@@ -678,16 +695,25 @@ async function restoreFullWorkdirToSnapshot(
   )
   const targetIsEmpty =
     targetTree.ok === true && targetTree.stdout.trim().length === 0
-  if (targetIsEmpty) return
+  if (targetIsEmpty) {
+    logForDebugging(
+      `FileHistory: [Rewind] Phase 2 skipped (target tree is empty); workdir already cleared`,
+    )
+    return
+  }
 
   // Skip pre-rollback snapshot — fileHistoryRewind already took one at
   // the high level so it lands in state.snapshots.
+  logForDebugging(
+    `FileHistory: [Rewind] Phase 2 checkout: gitHash=${gitHash.slice(0, 8)}`,
+  )
   const result = await rollback(canonical, gitHash, {
     skipPreRollbackSnapshot: true,
   })
   if (result.ok === false) {
     throw new Error(`rollback: ${result.reason} ${result.message}`)
   }
+  logForDebugging(`FileHistory: [Rewind] Phase 2 checkout complete`)
 }
 
 /**
