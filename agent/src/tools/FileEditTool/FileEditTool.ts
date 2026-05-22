@@ -414,9 +414,9 @@ export const FileEditTool = buildTool({
     // the staleness check and writeTextContent lets concurrent edits interleave.
     await fs.mkdir(dirname(absoluteFilePath))
     if (fileHistoryEnabled()) {
-      // Register the path before the staleness check — the per-turn
-      // shadow-git snapshot already has the pre-edit content; trackEdit
-      // just adds this path to rewind's blast radius.
+      // Register the path so the LSP plugin recommendation hook sees
+      // it (state.trackedFiles is no longer load-bearing for rewind —
+      // rewind operates on the full disk-vs-tree diff).
       await fileHistoryTrackEdit(updateFileHistoryState, absoluteFilePath)
     }
 

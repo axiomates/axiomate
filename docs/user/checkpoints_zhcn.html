@@ -314,17 +314,25 @@
     </p>
     <ul>
       <li>对话状态会回到那一回合（之后的消息消失）。</li>
-      <li>被 Axiomate 工具碰过的文件（Edit / Write / NotebookEdit，以及
-        Axiomate 登记过的 Bash 写入）会从对应快照
-        <strong>检出还原</strong>。Axiomate 从没碰过的文件原样保留。</li>
+      <li>工作目录会被还原成跟那一刻的快照<strong>完全一致</strong>。快照里
+        的文件检出还原；磁盘上有但快照里没有的文件会被删掉。</li>
     </ul>
     <div class="callout warn">
-      <strong>注意：</strong>rewind 的作用范围是 <em>tracked</em> 路径 —
-      也就是本次会话里 Axiomate 工具改过的文件。Axiomate 从没碰过的文件
-      上，你的手工改动不会被动到。唯一会丢的情况：Axiomate 改过文件 X、
-      你又手工改了 X，rewind 会把 X 回到快照那一刻的样子。如果某个文件
-      在目标回合时还不存在，rewind 会把它从磁盘上删掉。
+      <strong>注意：</strong>rewind 会把<strong>整个工作目录</strong>还原到
+      目标快照，<strong>包括 Axiomate 工具从没碰过的文件</strong>。你手工
+      改过的也会被覆盖。为了不让你白白丢东西，Axiomate 在 rewind 之前
+      <strong>自动拍一张 "pre-rewind" 安全网快照</strong>，标签格式
+      <code>pre-rewind:&lt;targetMsgId&gt;</code>。如果 rewind 把你重要的
+      改动覆盖掉了，再开 <code>/rewind</code>，挑那条 pre-rewind 锚点
+      回滚回去，原来的状态就回来了。
     </div>
+
+    <h4>空 workdir 行为</h4>
+    <p>
+      如果你在一个全新的空目录里启动 Axiomate，然后让它创建第一个文件，
+      那一次创建会绑定到一个合成的根快照（空 tree 的 commit）。回滚到这个
+      根，会把 Axiomate 之后创建的文件全部删掉。
+    </p>
 
     <h4>选择器视图：代码还原锚点 vs 全部回合</h4>
     <p>

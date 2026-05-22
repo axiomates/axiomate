@@ -317,21 +317,33 @@
     </p>
     <ul>
       <li>A beszélgetés állapota visszatér ahhoz a fordulóhoz, és a későbbi üzenetek eltűnnek.</li>
-      <li>Az Axiomate eszközei által érintett fájlok (Edit / Write / NotebookEdit,
-        valamint az Axiomate által regisztrált Bash írások) <strong>ki lesznek
-        checkoutolva</strong> a pillanatképből. Azok a fájlok, amelyeket az
-        Axiomate soha nem érintett, úgy maradnak, ahogy hagytad őket.</li>
+      <li>A munkakönyvtár <strong>pontosan megegyezik</strong> a
+        pillanatképpel. A pillanatképben szereplő fájlokat checkout-olja;
+        a lemezen lévő, de a pillanatkép fájában nem szereplő fájlokat
+        eltávolítja.</li>
     </ul>
     <div class="callout warn">
-      <strong>Megjegyzés:</strong> a rewind hatóköre a <em>tracked</em>
-      útvonalakra korlátozódik, vagyis csak azokra a fájlokra, amelyeket az
-      Axiomate eszközei módosítottak a munkamenet során. Az Axiomate által soha
-      nem érintett fájlokon végzett kézi módosításaid megmaradnak. Egyetlen
-      esetben veszíthetsz munkát: ha az Axiomate módosított egy fájlt, majd te
-      kézzel módosítottad ugyanazt a fájlt, a rewind visszaállítja azt a fájlt
-      a pillanatkép állapotára. Azok a fájlok, amelyek a célfordulóban még nem
-      léteztek, törlődnek a lemezről.
+      <strong>Megjegyzés:</strong> a rewind <strong>az egész
+      munkakönyvtárat</strong> visszaállítja a céllapra — beleértve
+      azokat a fájlokat is, amelyeket az Axiomate eszközei soha nem
+      érintettek. A kézi módosításaid felülíródnak. Ezt biztonságossá
+      teszi, hogy az Axiomate <strong>automatikusan készít egy
+      "pre-rewind" mentőhálós pillanatképet</strong> közvetlenül a
+      visszaállítás előtt, <code>pre-rewind:&lt;targetMsgId&gt;</code>
+      címkével. Ha a rewind felülírt valamit, amit szerettél volna
+      megtartani, nyisd meg újra a <code>/rewind</code>-et, válaszd ki
+      ezt a pre-rewind sort, és állítsd vissza — az előző állapotod
+      visszatér.
     </div>
+
+    <h4>Üres munkakönyvtár viselkedése</h4>
+    <p>
+      Ha egy teljesen új, üres könyvtárban indítod az Axiomate-et, és
+      megkéred, hogy hozza létre az első fájlt, az a létrehozás egy
+      szintetikus gyökér-pillanatképhez (üres-fa commit) horgonyzódik.
+      Erre a gyökérre visszaállítva eltűnik minden olyan fájl, amelyet
+      az Axiomate azóta létrehozott.
+    </p>
 
     <h4>Választó nézet: kódvisszaállítási horgonyok vs összes forduló</h4>
     <p>

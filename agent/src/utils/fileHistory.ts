@@ -14,18 +14,22 @@
  *
  * Storage model: each turn produces ONE commit in the shared shadow store
  * at `~/.axiomate/checkpoints/store/`, keyed by the per-project ref. The
- * commit captures the full workdir (minus DEFAULT_EXCLUDES), but rewind
- * is scoped via `state.trackedFiles` so untracked manual edits are never
- * touched. That scoping invariant is the load-bearing contract — see
- * `__tests__/fileHistory.test.ts` "only restores tracked files…".
+ * commit captures the full workdir (minus DEFAULT_EXCLUDES). Rewind
+ * restores the workdir to match the target snapshot's tree exactly:
+ * files in the snapshot are checked out, files on disk but not in the
+ * tree are deleted. Manual edits that fall outside the snapshot are
+ * overwritten — to make this safe, `fileHistoryRewind` automatically
+ * takes a `pre-rewind:<targetMsgId>` safety snapshot before restoring,
+ * so any rewind is itself rewindable. See `fileHistoryRewind` and
+ * `__tests__/fileHistory.test.ts`.
  *
  * Persisted-snapshot schema: `{ messageId, gitHash, addedTrackedFiles,
  * timestamp }`. `addedTrackedFiles` is the **delta** — only paths newly
  * registered between the previous snapshot and this one (or trackEdits
  * since this snapshot was committed, see scheduleSnapshotPersist below).
  * `fileHistoryRestoreStateFromLog` folds these in chronological order to
- * rebuild `state.trackedFiles`. Disk usage is O(M) total (each path
- * recorded exactly once).
+ * rebuild `state.trackedFiles` for the LSP-recommendation UI hint.
+ * Disk usage is O(M) total (each path recorded exactly once).
  *
  * Updater protocol: every API takes `updateFileHistoryState`, a
  * synchronous setState-style dispatcher. Several functions here read
@@ -501,17 +505,16 @@ export async function fileHistoryHasAnyChanges(
 
 /**
  * Resume entry: rebuild state from a persisted snapshot list. Each
- * snapshot's `addedTrackedFiles` is unioned into `state.trackedFiles` so
- * rewind blast-radius matches the pre-resume session — chronological
- * fold over the deltas.
+ * snapshot's `addedTrackedFiles` is unioned into `state.trackedFiles`
+ * for the LSP-plugin-recommendation UI hint; not load-bearing for
+ * rewind — rewind walks the ref directly.
  *
  * The persisted log is append-only and can outgrow the in-memory ring
  * buffer (a long-running session that resumes repeatedly). We mirror the
  * `fileHistoryMakeSnapshot` cap here: keep only the most recent
  * MAX_SNAPSHOTS, but fold the *whole* persisted log's addedTrackedFiles
- * because rewind blast-radius is cumulative — a file the user wants to
- * rewind to a kept snapshot must still be in trackedFiles even if the
- * snapshot that first registered it has aged out of the in-memory ring.
+ * so the LSP hook sees the full set of paths axiomate has touched
+ * across resumes.
  */
 export function fileHistoryRestoreStateFromLog(
   fileHistorySnapshots: FileHistorySnapshot[],
@@ -522,9 +525,10 @@ export function fileHistoryRestoreStateFromLog(
   const trackedFiles = new Set<string>()
   const snapshots: FileHistorySnapshot[] = []
   for (const snapshot of fileHistorySnapshots) {
-    // Defense: a malformed entry without `gitHash` would crash rewind at
-    // `restoreTrackedToSnapshot` (calls `git ls-tree undefined`). Skip it
-    // so resume still succeeds; the malformed turn is simply not rewindable.
+    // Defense: a malformed entry without `gitHash` would crash rewind
+    // when `restoreFullWorkdirToSnapshot` runs `git ls-tree undefined`.
+    // Skip it so resume still succeeds; the malformed turn is simply
+    // not rewindable.
     if (typeof snapshot.gitHash !== 'string' || snapshot.gitHash === '') {
       continue
     }

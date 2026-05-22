@@ -314,18 +314,29 @@
     </p>
     <ul>
       <li>The conversation state returns to that turn, and later messages disappear.</li>
-      <li>Files that Axiomate's tools touched (Edit / Write / NotebookEdit, plus
-        Bash writes Axiomate registered) are <strong>checked out</strong> from
-        the snapshot. Files Axiomate never touched stay as you left them.</li>
+      <li>The working directory is restored to match the snapshot exactly.
+        Files in the snapshot are checked out; files that are on disk but
+        weren't in the snapshot tree are removed.</li>
     </ul>
     <div class="callout warn">
-      <strong>Note:</strong> rewind is scoped to <em>tracked</em> paths — only
-      files Axiomate's tools have changed during the session. Manual edits to
-      files Axiomate never touched are preserved. The one case you do lose
-      work: if Axiomate edited a file and you then hand-edited the same file,
-      rewind will roll that file back to the snapshot. Files that didn't exist
-      at the target turn are deleted on disk.
+      <strong>Note:</strong> rewind restores the <strong>full working
+      directory</strong> to match the target snapshot — including files
+      Axiomate's tools never touched. Manual edits to those files are
+      overwritten. To make this safe, Axiomate <strong>automatically takes
+      a "pre-rewind" safety snapshot</strong> right before the restore,
+      labeled <code>pre-rewind:&lt;targetMsgId&gt;</code>. If the rewind
+      destroyed something you wanted to keep, open <code>/rewind</code>
+      again, select that pre-rewind row, and rewind to it — your previous
+      state comes back.
     </div>
+
+    <h4>Empty-workdir behavior</h4>
+    <p>
+      If you start Axiomate in a brand-new empty directory and then ask
+      it to create the first file, that creation gets anchored to a
+      synthetic root snapshot (an empty-tree commit). Rewinding to that
+      root removes any file Axiomate created since.
+    </p>
 
     <h4>Picker view: code-restore anchors vs all turns</h4>
     <p>
