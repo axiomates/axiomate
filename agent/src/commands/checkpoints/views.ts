@@ -67,8 +67,41 @@ export function renderStatus(report: StoreStatusReport, limit = 20): string {
   if (sorted.length > limit) {
     lines.push(`  … +${sorted.length - limit} more`)
   }
+  appendOrphanReachabilityWarning(lines, sorted)
   appendMetricsSection(lines, report)
   return lines.join('\n')
+}
+
+/**
+ * Surface the cross-worktree reachability hole as a single status line.
+ *
+ * Completion-plan 6C2 (the "fallback" path): we don't anchor refs across
+ * worktrees, so when a project's workdir disappears, its `refs/axiomate/
+ * <hash>` ref is the *only* anchor for those commits. The next
+ * `pruneCheckpoints` orphan pass will drop the ref and gc will reclaim
+ * the objects — at which point any resumed session pinned to one of those
+ * commits gets a "missing object" failure on `/rewind`.
+ *
+ * Surfacing this in `/checkpoints status` lets the user notice and
+ * either copy the workdir back into place or accept the loss before the
+ * next prune. Matches Hermes' general pattern of preferring visibility
+ * over silent data loss (`tools/checkpoint_manager.py::_prune_orphan_refs`
+ * logs each orphan ref it removes).
+ *
+ * Skipped when no orphan workdir has any commits — common case on a
+ * tidy install where every registered project still exists on disk.
+ */
+function appendOrphanReachabilityWarning(
+  lines: string[],
+  projects: readonly StoreStatusReport['projects'][number][],
+): void {
+  const orphans = projects.filter(p => !p.exists && p.commits > 0)
+  if (orphans.length === 0) return
+  const totalCommits = orphans.reduce((sum, p) => sum + p.commits, 0)
+  lines.push('')
+  lines.push(
+    `Note: ${totalCommits} snapshot${totalCommits === 1 ? '' : 's'} from ${orphans.length} orphan workdir${orphans.length === 1 ? '' : 's'} will be discarded on next prune.`,
+  )
 }
 
 /**

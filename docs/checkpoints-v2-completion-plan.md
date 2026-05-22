@@ -207,6 +207,15 @@ worktree (single object DB, no anchoring ref).
 **C2 now, defer C1 until a user reports the loss**. Hermes ran with the
 same hole for 2 years uneventfully.
 
+**6C2 ✅ landed.** `/checkpoints status` now appends a one-line warning
+when any registered project's workdir no longer exists on disk and
+still has commits anchored under `refs/axiomate/<hash>`: *"N snapshots
+from K orphan workdirs will be discarded on next prune."* Aggregated by
+total commit count + orphan-workdir count rather than per-session, since
+the status view is keyed on project ref, not session — surfaces the
+right signal (the next prune will drop these) without a session-storage
+scan. 4 new test cases in `commands/checkpoints/__tests__/views.test.ts`.
+
 ### 6D — Test gaps T1 / T2 / T5
 
 | ID | Gap | Approach |

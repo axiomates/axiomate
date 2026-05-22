@@ -206,6 +206,99 @@ describe('renderStatus', () => {
     expect(out).toContain('p50 —')
     expect(out).toContain('p95 —')
   })
+
+  test('orphan reachability warning shown when orphan workdir has commits', () => {
+    const report: StoreStatusReport = {
+      ...emptyStatus(),
+      project_count: 2,
+      projects: [
+        {
+          hash: '0000000000000001',
+          workdir: '/work/live',
+          exists: true,
+          created_at: 1700000000,
+          last_touch: 1716000000,
+          commits: 4,
+        },
+        {
+          hash: '0000000000000002',
+          workdir: '/work/gone',
+          exists: false,
+          created_at: 1700000000,
+          last_touch: 1715000000,
+          commits: 7,
+        },
+      ],
+    }
+    const out = renderStatus(report)
+    expect(out).toMatch(/7 snapshots from 1 orphan workdir/)
+    expect(out).toMatch(/discarded on next prune/)
+  })
+
+  test('orphan reachability warning aggregates across multiple orphans', () => {
+    const report: StoreStatusReport = {
+      ...emptyStatus(),
+      project_count: 2,
+      projects: [
+        {
+          hash: '0000000000000001',
+          workdir: '/work/gone-a',
+          exists: false,
+          created_at: 1700000000,
+          last_touch: 1715000000,
+          commits: 3,
+        },
+        {
+          hash: '0000000000000002',
+          workdir: '/work/gone-b',
+          exists: false,
+          created_at: 1700000000,
+          last_touch: 1715000000,
+          commits: 2,
+        },
+      ],
+    }
+    const out = renderStatus(report)
+    expect(out).toMatch(/5 snapshots from 2 orphan workdirs/)
+  })
+
+  test('orphan with zero commits does not trigger warning', () => {
+    const report: StoreStatusReport = {
+      ...emptyStatus(),
+      project_count: 1,
+      projects: [
+        {
+          hash: '0000000000000001',
+          workdir: '/work/gone',
+          exists: false,
+          created_at: 1700000000,
+          last_touch: 1715000000,
+          commits: 0,
+        },
+      ],
+    }
+    const out = renderStatus(report)
+    expect(out).not.toMatch(/discarded on next prune/)
+  })
+
+  test('all-live projects: no orphan reachability warning', () => {
+    const report: StoreStatusReport = {
+      ...emptyStatus(),
+      project_count: 1,
+      projects: [
+        {
+          hash: '0000000000000001',
+          workdir: '/work/live',
+          exists: true,
+          created_at: 1700000000,
+          last_touch: 1716000000,
+          commits: 9,
+        },
+      ],
+    }
+    const out = renderStatus(report)
+    expect(out).not.toMatch(/discarded on next prune/)
+  })
 })
 
 describe('renderList', () => {
