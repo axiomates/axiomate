@@ -333,27 +333,39 @@
       léteztek, törlődnek a lemezről.
     </div>
 
-    <h4>Választó nézet: slash-parancsos fordulók elrejtése vagy mutatása</h4>
+    <h4>Választó nézet: kódvisszaállítási horgonyok vs összes forduló</h4>
     <p>
-      A slash-parancsok, mint a <code>/checkpoints status</code> vagy a
-      <code>/help</code>, nem készítenek fájl-pillanatképet — csak állapotot
-      olvasnak vagy jelenítenek meg. Hogy a rewind választó azokra a fordulókra
-      koncentráljon, amelyek tényleg módosítottak valamit, a választó
-      alapértelmezésben elrejti a slash-parancsos fordulókat. A tetején egy
-      állapot-sor mutatja, hányat rejtett el (pl. <code>Hidden: 5 slash
-      commands · Tab to show</code>). Nyomd meg a <kbd>Tab</kbd>-ot a
-      megjelenítéshez; újabb <kbd>Tab</kbd> visszarejti őket. A kapcsoló
-      per-mount: a <code>/rewind</code> bezárása és újranyitása visszaáll az
-      alapértelmezésre (rejtve).
+      A választónak két nézete van. Az alapértelmezett nézet csak a
+      <strong>kódvisszaállítási horgonyokat</strong> sorolja fel — vagyis
+      azokat a fordulókat, amelyekben az AI fájl-módosító eszközt
+      (Edit / Write / NotebookEdit) hívott, és pillanatkép készült ehhez a
+      fordulóhoz. Az alapnézet minden sora képes kódot visszaállítani,
+      beszélgetést visszaállítani, vagy mindkettőt.
+      <strong>A <code>⚠ No code restore</code> figyelmeztetés itt
+      szándékosan nem fordul elő.</strong>
     </p>
     <p>
-      A szűrés tisztán nézet-szintű — az alapul szolgáló üzenetlistát nem
-      módosítja, így bármelyik látható forduló kiválasztása a kapcsoló
-      állásától függetlenül a helyes pontra ugrik vissza. Ha kifejezetten egy
-      slash-parancsos fordulóra szeretnél visszatérni (például "vissza ahhoz a
-      pillanathoz, mielőtt a <code>/clear</code>-t futtattam volna"), nyomj
-      <kbd>Tab</kbd>-ot a slash-bejegyzések megjelenítéséhez, és válaszd ki a
-      kívántat.
+      Nyomj <kbd>Tab</kbd>-ot az <strong>összes forduló</strong> nézetre
+      váltáshoz, ami a többi kiválasztható felhasználói fordulót is hozzáadja
+      (csak-olvasás kérdések, slash-parancsok, csupán szöveges üzenetek).
+      Ezek a sorok csak <em>beszélgetés-visszaállítást</em> tudnak — hasznos,
+      ha a beszélgetést a <code>/clear</code> futtatása előtti pillanathoz
+      akarod visszavágni, vagy ha az utolsó kérdést akarod elvenni. Újabb
+      <kbd>Tab</kbd> visszaállítja a horgony-nézetet. Az alsó sor mutatja,
+      melyik nézetben vagy és a kapcsoló mit fed fel:
+    </p>
+    <ul>
+      <li>Alapértelmezett: <code>Tab to show all 8 turns (5 conversation-only)</code></li>
+      <li>Tab után: <code>Tab to show only code-restore anchors (5 hidden)</code></li>
+    </ul>
+    <p>
+      A nézet-kapcsoló per-mount — a <code>/rewind</code> bezárása és
+      újranyitása visszaáll alapértelmezettre (csak horgonyok). A szűrés
+      tisztán nézet-szintű; az alapul szolgáló üzenetlistát nem módosítja,
+      így bármelyik látható sor a helyes pontra ugrik függetlenül attól,
+      melyik nézet aktív. Egy egészen új munkamenetben, ahol még nem készült
+      kódhorgony, a választó automatikusan az összes-forduló nézetre esik
+      vissza, hogy a beszélgetés-visszaállítás továbbra is elérhető maradjon.
     </p>
 
     <h3><code>/checkpoints</code> — Állapot, lista és takarítás</h3>

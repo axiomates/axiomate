@@ -15,6 +15,7 @@ import {
   fileHistoryCanRestore,
   fileHistoryEnabled,
   fileHistoryGetDiffStats,
+  fileHistoryHasExactSnapshot,
 } from '../utils/fileHistory.js'
 import { logError } from '../utils/log.js'
 import { useExitOnCtrlCDWithKeybindings } from '../hooks/useExitOnCtrlCDWithKeybindings.js'
@@ -48,7 +49,6 @@ import {
   BASH_STDERR_TAG,
   BASH_STDOUT_TAG,
   COMMAND_MESSAGE_TAG,
-  COMMAND_NAME_TAG,
   LOCAL_COMMAND_STDERR_TAG,
   LOCAL_COMMAND_STDOUT_TAG,
   TASK_NOTIFICATION_TAG,
@@ -107,27 +107,34 @@ export function MessageSelector({
   // Add current prompt as a virtual message
   const currentUUID = useMemo(randomUUID, [])
 
-  // Slash-command turns (`/checkpoints`, `/help`, ...) carry no snapshot
-  // and clutter the picker as `⚠ No code restore` rows. Hidden by
-  // default; Tab toggles "show all". Per-mount state — not persisted.
+  // Two-view picker:
+  //   default      — only turns where the AI actually edited files
+  //                  (a snapshot exists keyed to that turn's UUID).
+  //                  Every row offers code+conversation+both rewind.
+  //   Tab toggle   — every selectable user turn (slash, readonly, prose),
+  //                  for conversation-only rewind to a non-edit anchor.
   // CRITICAL INVARIANT (don't break): the filter chain below MUST keep
   // the original message object references. Rewind handlers downstream
   // call `messages.lastIndexOf(message)` and resolve by `message.uuid`
   // against the full `messages` array, so the picker filter is purely
   // cosmetic. `Array.filter` preserves identity — never `map` here.
-  const [showSlashCommands, setShowSlashCommands] = useState(false)
+  const [showAllTurns, setShowAllTurns] = useState(false)
   const allSelectable = useMemo(
     () => messages.filter(selectableUserMessagesFilter),
     [messages],
   )
+  const hasAnySnapshot =
+    isFileHistoryEnabled && fileHistory.snapshots.length > 0
   const visibleSelectable = useMemo(
     () =>
-      showSlashCommands
+      showAllTurns || !hasAnySnapshot
         ? allSelectable
-        : allSelectable.filter(m => !isSlashCommandMessage(m)),
-    [allSelectable, showSlashCommands],
+        : allSelectable.filter(m =>
+            fileHistoryHasExactSnapshot(fileHistory, m.uuid),
+          ),
+    [allSelectable, showAllTurns, fileHistory, hasAnySnapshot],
   )
-  const hiddenSlashCount = allSelectable.length - visibleSelectable.length
+  const hiddenCount = allSelectable.length - visibleSelectable.length
 
   const messageOptions = useMemo(
     () => [
@@ -385,12 +392,13 @@ export function MessageSelector({
     }
   }, [messageOptions, selectedIndex, handleSelect])
 
-  // Tab: toggle "show slash commands" view-layer filter. Keep focus on
-  // the same UUID across the transition (see pendingFocusUuid effect).
-  const toggleSlashFilter = useCallback(() => {
+  // Tab: toggle between "code-restore anchors only" (default) and
+  // "all turns" views. Keep focus on the same UUID across the
+  // transition (see pendingFocusUuid effect).
+  const toggleAllTurns = useCallback(() => {
     const currentUuid = messageOptions[selectedIndex]?.uuid ?? null
     setPendingFocusUuid(currentUuid)
-    setShowSlashCommands(prev => !prev)
+    setShowAllTurns(prev => !prev)
   }, [messageOptions, selectedIndex])
 
   // Escape to close - uses Confirmation context where escape is bound
@@ -407,7 +415,7 @@ export function MessageSelector({
       'messageSelector:top': jumpToTop,
       'messageSelector:bottom': jumpToBottom,
       'messageSelector:select': handleSelectCurrent,
-      'messageSelector:toggleSlashFilter': toggleSlashFilter,
+      'messageSelector:toggleAllTurns': toggleAllTurns,
     },
     {
       context: 'MessageSelector',
@@ -645,15 +653,11 @@ export function MessageSelector({
             ) : (
               <>
                 {!error && hasMessagesToSelect && 'Enter to continue · '}
-                {(hiddenSlashCount > 0 || showSlashCommands) && (
+                {(hiddenCount > 0 || showAllTurns) && (
                   <>
-                    {showSlashCommands
-                      ? `Tab to hide ${hiddenSlashCount} slash command${
-                          hiddenSlashCount === 1 ? '' : 's'
-                        }`
-                      : `Tab to show ${hiddenSlashCount} hidden slash command${
-                          hiddenSlashCount === 1 ? '' : 's'
-                        }`}
+                    {showAllTurns
+                      ? `Tab to show only code-restore anchors (${hiddenCount} hidden)`
+                      : `Tab to show all ${allSelectable.length} turns (${hiddenCount} conversation-only)`}
                     {' · '}
                   </>
                 )}
@@ -937,10 +941,9 @@ function computeDiffStatsBetweenMessages(
  * The user-visible text of a message, mirroring how the picker decides
  * what label to show. Returns '' for non-text messages.
  *
- * Single source of truth: both `selectableUserMessagesFilter` (for tag-
- * based exclusions) and `isSlashCommandMessage` (for the rewind picker's
- * slash-noise filter) need the same notion of "the message's primary
- * text", and they must not drift.
+ * Used by `selectableUserMessagesFilter` to detect tag-marked outputs
+ * (command stdout/stderr, bash output, tick markers, task notifications)
+ * that look like user messages but are actually injected metadata.
  */
 export function getMessageText(message: Message): string {
   if (message.type !== 'user') return ''
@@ -948,32 +951,6 @@ export function getMessageText(message: Message): string {
   if (typeof content === 'string') return content.trim()
   const lastBlock = content[content.length - 1]
   return lastBlock && isTextBlock(lastBlock) ? lastBlock.text.trim() : ''
-}
-
-/**
- * True when this user message represents a slash command turn —
- * `/checkpoints`, `/help`, `/clear`, etc.
- *
- * Slash commands are NOT stored as plain `/cmd args` text in the
- * message stream. `processSlashCommand` (and the breadcrumb path in
- * REPL.tsx) wraps them as
- *   <command-name>/cmd</command-name>
- *   <command-message>cmd</command-message>
- *   <command-args>...</command-args>
- * (skill invocations use the `<command-message>` form too). The picker
- * already uses these tags as the canonical "this is a slash command"
- * signal when rendering labels — we mirror that.
- *
- * Used by the rewind picker as a view-layer filter to suppress noisy
- * "No code restore" entries by default. The user can `Tab` to show
- * them again.
- */
-export function isSlashCommandMessage(message: UserMessage): boolean {
-  const text = getMessageText(message)
-  return (
-    text.includes(`<${COMMAND_NAME_TAG}>`) ||
-    text.includes(`<${COMMAND_MESSAGE_TAG}>`)
-  )
 }
 
 export function selectableUserMessagesFilter(

@@ -327,24 +327,36 @@
       at the target turn are deleted on disk.
     </div>
 
-    <h4>Picker view: hide vs show slash-command turns</h4>
+    <h4>Picker view: code-restore anchors vs all turns</h4>
     <p>
-      Slash commands like <code>/checkpoints status</code> or <code>/help</code>
-      do not take file snapshots — they only inspect or display state. To keep
-      the rewind picker focused on turns that actually changed something, the
-      picker hides slash-command turns by default. A status row at the top
-      shows how many were hidden (e.g. <code>Hidden: 5 slash commands · Tab to
-      show</code>). Press <kbd>Tab</kbd> to reveal them; press <kbd>Tab</kbd>
-      again to hide. The toggle is per-mount — closing and re-opening
-      <code>/rewind</code> resets to the default (hidden).
+      The picker has two views. The default view lists only <strong>code-restore
+      anchors</strong> — turns where the AI itself ran a file-modifying tool
+      (Edit / Write / NotebookEdit) and a snapshot was written for that turn.
+      Every row in the default view can restore code, restore conversation, or
+      both. There is no <code>⚠ No code restore</code> noise here by design.
     </p>
     <p>
-      Filtering is purely a view-layer thing — the underlying message list is
-      not modified, so picking any visible turn rewinds to the correct point
-      regardless of the toggle state. If you specifically need to roll the
-      conversation back to a slash-command turn (for example, "back to the
-      moment before I ran <code>/clear</code>"), press <kbd>Tab</kbd> to show
-      the slash entries and select the one you want.
+      Press <kbd>Tab</kbd> to switch to the <strong>all-turns</strong> view,
+      which adds every other selectable user turn (read-only chats, slash
+      commands, prose-only prompts). Those rows can only do
+      <em>conversation-only</em> rewind — useful for "cut the dialogue back
+      to the moment before I ran <code>/clear</code>" or "drop the last
+      question I asked." Press <kbd>Tab</kbd> again to return to
+      anchors-only. The footer line tells you which view you are in and how
+      many entries the toggle exposes:
+    </p>
+    <ul>
+      <li>Default: <code>Tab to show all 8 turns (5 conversation-only)</code></li>
+      <li>After Tab: <code>Tab to show only code-restore anchors (5 hidden)</code></li>
+    </ul>
+    <p>
+      The view toggle is per-mount — closing and re-opening <code>/rewind</code>
+      resets to the default (anchors-only). Filtering is purely a view-layer
+      thing; the underlying message list is not modified, and any visible
+      row rewinds to the correct point regardless of which view is active.
+      In a brand-new session that has not produced any code anchors yet, the
+      picker automatically falls back to the all-turns view so conversation
+      rewind is still reachable.
     </p>
 
     <h3><code>/checkpoints</code> — Status, list, and cleanup</h3>

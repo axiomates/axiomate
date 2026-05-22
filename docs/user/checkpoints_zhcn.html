@@ -326,21 +326,31 @@
       在目标回合时还不存在，rewind 会把它从磁盘上删掉。
     </div>
 
-    <h4>选择器视图：是否显示 slash 命令回合</h4>
+    <h4>选择器视图：代码还原锚点 vs 全部回合</h4>
     <p>
-      像 <code>/checkpoints status</code>、<code>/help</code> 这类 slash 命令
-      不会触发文件快照 —— 它们只查看或显示状态。为了让 rewind 选择器只关注
-      那些真正改过东西的回合，选择器默认会把 slash 命令回合隐藏掉，并在顶部
-      显示一行计数（例如 <code>Hidden: 5 slash commands · Tab to show</code>）。
-      按 <kbd>Tab</kbd> 把它们全部显示出来；再按一次 <kbd>Tab</kbd> 收起来。
-      这个开关是 per-mount 的 —— 关掉再重新打开 <code>/rewind</code>，会回到
-      默认（隐藏）状态。
+      选择器有两种视图。默认视图只列出<strong>代码还原锚点</strong> —— 也就是
+      那些 AI 自己调用了文件修改工具（Edit / Write / NotebookEdit）、并为
+      那一回合写下了 snapshot 的回合。默认视图里每一行都能还原代码、还原
+      对话、或者两者一起，<strong>不会再出现 <code>⚠ No code restore</code></strong>
+      这种困惑标记。
     </p>
     <p>
-      过滤纯属视图层的事 —— 底层消息列表不会被改动，所以不管开关在哪个状态，
-      选中可见的任何一条都会回到正确的位置。如果你确实需要把对话回滚到某条
-      slash 命令那一刻（比如 "回到我执行 <code>/clear</code> 之前"），按
-      <kbd>Tab</kbd> 把 slash 条目显示出来，再选你要的那条。
+      按 <kbd>Tab</kbd> 切到<strong>全部回合</strong>视图，会把其他可选的用户
+      回合（只读的提问、slash 命令、纯聊天）也加进来。这些行只能做<em>仅对话</em>
+      回滚 —— 适合 "把对话剪回我执行 <code>/clear</code> 之前那一刻"
+      或者 "撤回我刚才问的那个问题"。再按一次 <kbd>Tab</kbd> 回到锚点视图。
+      底部一行会告诉你当前视图、以及切换之后能多看到几行：
+    </p>
+    <ul>
+      <li>默认：<code>Tab to show all 8 turns (5 conversation-only)</code></li>
+      <li>Tab 后：<code>Tab to show only code-restore anchors (5 hidden)</code></li>
+    </ul>
+    <p>
+      切换是 per-mount 的 —— 关掉再重新打开 <code>/rewind</code>，会回到
+      默认（仅锚点）。整个过滤纯属视图层 —— 底层消息列表不会被改动，所以
+      不管在哪个视图选中可见的任何一行，都会回到正确位置。在还没产生过任何
+      代码锚点的全新会话里，picker 会自动落到全部回合视图，确保对话回滚
+      照样可达。
     </p>
 
     <h3><code>/checkpoints</code> — 状态、列表、清理</h3>

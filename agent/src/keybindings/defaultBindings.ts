@@ -260,7 +260,7 @@ export const DEFAULT_BINDINGS: KeybindingBlock[] = [
       'meta+down': 'messageSelector:bottom',
       'shift+j': 'messageSelector:bottom',
       enter: 'messageSelector:select',
-      tab: 'messageSelector:toggleSlashFilter',
+      tab: 'messageSelector:toggleAllTurns',
     },
   },
   // PromptInput unmounts while cursor active — no key conflict.

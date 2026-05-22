@@ -357,6 +357,25 @@ export function fileHistoryCanRestore(
   return findRestoreTarget(state, messageId, messages) !== undefined
 }
 
+/**
+ * Strict variant of `fileHistoryCanRestore`: returns true only when
+ * `messageId` is itself the key of a snapshot — i.e. the AI ran an
+ * Edit/Write/NotebookEdit during this exact turn.
+ *
+ * Use this for "is this turn a code-restore anchor?" UI questions
+ * (the rewind picker's default view). Do NOT use for actual rewind
+ * gating — `fileHistoryCanRestore` walks back to the closest ancestor
+ * snapshot, which is the correct semantics for "rewind code to this
+ * point in conversation" even on read-only turns.
+ */
+export function fileHistoryHasExactSnapshot(
+  state: FileHistoryState,
+  messageId: UUID,
+): boolean {
+  if (!fileHistoryEnabled()) return false
+  return state.snapshots.some(s => s.messageId === messageId)
+}
+
 export async function fileHistoryGetDiffStats(
   state: FileHistoryState,
   messageId: UUID,

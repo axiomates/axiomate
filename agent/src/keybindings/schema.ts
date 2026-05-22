@@ -140,7 +140,7 @@ export const KEYBINDING_ACTIONS = [
   'messageSelector:top',
   'messageSelector:bottom',
   'messageSelector:select',
-  'messageSelector:toggleSlashFilter',
+  'messageSelector:toggleAllTurns',
   // Diff dialog actions
   'diff:dismiss',
   'diff:previousSource',
