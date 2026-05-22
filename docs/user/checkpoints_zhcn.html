@@ -1,0 +1,512 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Checkpoints — Axiomate 文件快照系统</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #eef2f3;
+      --panel: #ffffff;
+      --panel-soft: #f7fafb;
+      --border: #d5dde0;
+      --text: #162126;
+      --muted: #5b6b73;
+      --accent: #0f766e;
+      --accent-soft: #dff5f2;
+      --warn: #92400e;
+      --warn-soft: #fef3c7;
+      --danger: #991b1b;
+      --danger-soft: #fee2e2;
+      --good: #166534;
+      --good-soft: #dcfce7;
+      --code: #f3f6f7;
+      --shadow: 0 10px 30px rgba(18, 31, 38, 0.08);
+      --radius: 18px;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font: 15px/1.65 "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at top left, #d8f0ea 0, rgba(216, 240, 234, 0) 28%),
+        radial-gradient(circle at top right, #f6e9c9 0, rgba(246, 233, 201, 0) 24%),
+        linear-gradient(180deg, #edf3f3 0%, #f6f8f8 100%);
+      min-height: 100vh;
+    }
+    .wrap {
+      width: min(1100px, calc(100vw - 32px));
+      margin: 24px auto 48px;
+      display: grid;
+      gap: 20px;
+    }
+    .hero {
+      background: linear-gradient(135deg, #12343b 0%, #204e56 56%, #2c6567 100%);
+      color: #f6fbfb;
+      border-radius: 28px;
+      padding: 30px 34px;
+      box-shadow: var(--shadow);
+      position: relative;
+      overflow: hidden;
+    }
+    .hero::after {
+      content: "";
+      position: absolute;
+      inset: auto -80px -80px auto;
+      width: 260px;
+      height: 260px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.06);
+      filter: blur(2px);
+    }
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(255, 255, 255, 0.12);
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      border-radius: 999px;
+      padding: 6px 11px;
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    h1, h2, h3, h4 { margin: 0; line-height: 1.25; }
+    h1 { margin-top: 14px; font-size: clamp(28px, 4vw, 38px); max-width: 880px; }
+    .lede { margin-top: 12px; font-size: 16px; max-width: 820px; opacity: 0.92; }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 22px 26px;
+      box-shadow: 0 1px 0 rgba(255,255,255,0.5) inset, 0 6px 18px rgba(18, 31, 38, 0.04);
+    }
+    .panel h2 {
+      font-size: 22px;
+      color: var(--accent);
+      letter-spacing: -0.01em;
+    }
+    .panel h2 .num {
+      display: inline-block;
+      width: 28px; height: 28px;
+      line-height: 28px;
+      border-radius: 999px;
+      background: var(--accent-soft);
+      color: var(--accent);
+      text-align: center;
+      font-size: 14px;
+      margin-right: 10px;
+      vertical-align: 2px;
+    }
+    .panel h3 { margin-top: 18px; font-size: 16px; }
+    p { margin: 10px 0; }
+    code, kbd, pre {
+      font-family: "JetBrains Mono", "Fira Code", "Consolas", monospace;
+      font-size: 13px;
+    }
+    code {
+      background: var(--code);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 1px 6px;
+    }
+    .hero code {
+      color: #0f1c20;
+      background: rgba(255, 255, 255, 0.94);
+      border-color: rgba(255, 255, 255, 0.72);
+      font-weight: 600;
+    }
+    pre {
+      background: #0f1c20;
+      color: #d8e9e9;
+      border-radius: 12px;
+      padding: 14px 16px;
+      overflow-x: auto;
+      margin: 10px 0;
+      line-height: 1.55;
+    }
+    pre code {
+      background: transparent;
+      border: 0;
+      padding: 0;
+      color: inherit;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 12px 0;
+      font-size: 14px;
+    }
+    th, td {
+      text-align: left;
+      padding: 9px 10px;
+      border-bottom: 1px solid var(--border);
+      vertical-align: top;
+    }
+    th {
+      background: var(--panel-soft);
+      font-weight: 600;
+      color: var(--muted);
+      font-size: 12px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+    .tag {
+      display: inline-block;
+      padding: 2px 9px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .tag.auto { background: var(--accent-soft); color: var(--accent); }
+    .tag.user { background: var(--warn-soft); color: var(--warn); }
+    .tag.ok { background: var(--good-soft); color: var(--good); }
+    .tag.warn { background: var(--warn-soft); color: var(--warn); }
+    .tag.bad { background: var(--danger-soft); color: var(--danger); }
+    .toc {
+      display: flex; flex-wrap: wrap; gap: 8px;
+      margin-top: 16px;
+    }
+    .toc a {
+      color: var(--accent);
+      text-decoration: none;
+      background: var(--accent-soft);
+      padding: 6px 12px;
+      border-radius: 999px;
+      font-size: 13px;
+      border: 1px solid rgba(15, 118, 110, 0.18);
+    }
+    .toc a:hover { background: #c4ede6; }
+    .callout {
+      border-left: 4px solid var(--accent);
+      background: var(--accent-soft);
+      border-radius: 10px;
+      padding: 12px 14px;
+      margin: 14px 0;
+    }
+    .callout.warn { border-left-color: #d97706; background: var(--warn-soft); }
+    .callout.warn strong { color: var(--warn); }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 14px;
+      margin-top: 12px;
+    }
+    .card {
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 14px 16px;
+      background: var(--panel-soft);
+    }
+    .card h4 { font-size: 14px; color: var(--accent); margin-bottom: 6px; }
+    .card p { margin: 4px 0 0; font-size: 13px; color: var(--muted); }
+    footer {
+      text-align: center;
+      color: var(--muted);
+      font-size: 12px;
+      padding: 16px 0;
+    }
+  </style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="hero">
+    <span class="eyebrow">Axiomate · 用户文档</span>
+    <h1>Checkpoints — 自动文件快照与回滚</h1>
+    <p class="lede">
+      Axiomate 在你和它对话的每一回合，都会偷偷给工作目录拍一张快照，存进
+      一个独立的 git 影子仓库里。如果你后悔了某次改动，<code>/rewind</code>
+      把工作目录回到任意一个历史回合，连带把对话也一起回到那个时刻。整个
+      系统对你近乎透明 — 平时几乎感觉不到，关键时刻它替你兜底。
+    </p>
+    <div class="toc">
+      <a href="#how">它怎么工作</a>
+      <a href="#auto">自动行为</a>
+      <a href="#commands">用户命令</a>
+      <a href="#config">开关与配置</a>
+      <a href="#failure">失败模式</a>
+      <a href="#faq">FAQ</a>
+    </div>
+  </header>
+
+  <section id="how" class="panel">
+    <h2><span class="num">1</span>它怎么工作</h2>
+
+    <p>
+      Checkpoints 是一个独立的 git 仓库，住在
+      <code>~/.axiomate/checkpoints/store/</code>，<strong>跟你项目本身的
+      git 仓库完全分开</strong>。Axiomate 每次准备改文件之前，会在这个
+      影子仓库里写一个 commit 来记录当前状态。
+    </p>
+
+    <h3>关键设计</h3>
+    <div class="grid">
+      <div class="card">
+        <h4>影子仓库</h4>
+        <p>不污染你项目自己的 <code>.git/</code>。你的 git log、git status 都看不到这些快照。</p>
+      </div>
+      <div class="card">
+        <h4>每个项目一条 ref</h4>
+        <p>不同的工作目录写到不同的 <code>refs/axiomate/&lt;hash&gt;</code>，互不干扰。</p>
+      </div>
+      <div class="card">
+        <h4>结构化 commit subject</h4>
+        <p>格式 <code>axiomate:&lt;messageId&gt;:&lt;label&gt;</code>，能反查到对话回合。</p>
+      </div>
+      <div class="card">
+        <h4>遵守 .gitignore</h4>
+        <p>遍历工作目录时不把 <code>node_modules/</code> 这种垃圾目录拍进快照。</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="auto" class="panel">
+    <h2><span class="num">2</span>自动行为 <span class="tag auto">无需手动</span></h2>
+
+    <h3>什么时候会自动拍快照</h3>
+    <p>
+      在每一次模型即将调用文件修改工具（<code>Write</code> / <code>Edit</code> /
+      <code>NotebookEdit</code>）之前，Axiomate 会在影子仓库里写一个
+      commit。这一切默认开启，无需配置。
+    </p>
+
+    <h3>什么时候会自动跳过</h3>
+    <table>
+      <tr><th>条件</th><th>行为</th></tr>
+      <tr><td>当前目录里文件数超过 50,000</td><td>跳过这一次快照（成本太高）</td></tr>
+      <tr><td>单个文件大于 10 MB</td><td>该文件不进 index，其它文件正常拍</td></tr>
+      <tr><td>当前目录是 <code>/</code> / <code>~</code> / 盘符根</td><td>整个快照拒绝（防误伤）</td></tr>
+      <tr><td>跟上一次相比没有变化</td><td>不写空 commit</td></tr>
+      <tr><td>系统里没装 git</td><td>整个 checkpoint 子系统 no-op，不报错</td></tr>
+    </table>
+
+    <h3>什么时候会自动清理</h3>
+    <p>
+      Axiomate 会在你<strong>空闲 ≥1 分钟、且启动满 10 分钟之后</strong>，
+      在后台跑一次 prune。清理的内容包括：
+    </p>
+    <ul>
+      <li><strong>孤儿（orphan）</strong>：工作目录已经被你手动删掉的项目，
+        它们的 ref 会被删掉。</li>
+      <li><strong>过期（stale）</strong>：超过 14 天没碰过的项目 ref。</li>
+      <li><strong>超容量（size-cap）</strong>：所有快照加起来超过 500 MB
+        时，从最旧的开始裁。</li>
+      <li><strong>会话锚定（keep-ref）</strong>：如果某条即将被删的 ref 上
+        还有最近 28 天内 session 引用的 commit，会把它锚到
+        <code>refs/axiomate/_keep/</code> 里，保住到对应 session 也过期为止。</li>
+    </ul>
+    <p>
+      清理至多 24 小时跑一次（用 <code>.last_prune</code> 标记控制），不会
+      重复执行。所有 prune 都是 fail-soft 的，遇到错误只记录、不抛出。
+    </p>
+  </section>
+
+  <section id="commands" class="panel">
+    <h2><span class="num">3</span>用户命令 <span class="tag user">主动调用</span></h2>
+
+    <h3><code>/rewind</code> — 回到某个对话回合</h3>
+    <p>
+      在 REPL 里输入 <code>/rewind</code>，弹出一个交互式选择器，列出本次
+      会话的每一回合。选中某一回合后：
+    </p>
+    <ul>
+      <li>对话状态会回到那一回合（之后的消息消失）。</li>
+      <li>工作目录会从对应的快照 commit <strong>checkout 回去</strong>。</li>
+    </ul>
+    <div class="callout warn">
+      <strong>注意：</strong>工作目录的 checkout 是真实的文件系统改动 —
+      未保存的改动会丢失。如果你刚才有手工改动还没让 axiomate 拍过一次快照，
+      先 <code>/checkpoints status</code> 确认一下，或者把改动备份。
+    </div>
+
+    <h3><code>/checkpoints</code> — 状态、列表、清理</h3>
+    <table>
+      <tr><th>命令</th><th>作用</th></tr>
+      <tr>
+        <td><code>/checkpoints</code><br><code>/checkpoints status</code></td>
+        <td>显示影子仓库总大小、每个项目的快照数和最近活动时间。</td>
+      </tr>
+      <tr>
+        <td><code>/checkpoints list</code></td>
+        <td>列出当前项目的快照，按时间倒序。</td>
+      </tr>
+      <tr>
+        <td><code>/checkpoints prune</code></td>
+        <td>立即跑一次清理。默认带 24h 节流；加 <code>--force</code> 绕过。</td>
+      </tr>
+      <tr>
+        <td><code>/checkpoints clear</code></td>
+        <td>清空整个影子仓库（所有项目的所有快照）。<strong>不可恢复。</strong></td>
+      </tr>
+    </table>
+
+    <h3>命令行版本</h3>
+    <p>
+      同样的子命令也可以从 axiomate 的命令行调用，不进 TUI：
+    </p>
+    <pre><code>axiomate checkpoints status
+axiomate checkpoints list
+axiomate checkpoints prune --force
+axiomate checkpoints prune --retention-days 30 --max-size-mb 1024
+axiomate checkpoints prune --keep-orphans
+axiomate checkpoints clear</code></pre>
+
+    <h3><code>--keep-orphans</code> — 临时保住"假死"工作目录的 ref</h3>
+    <p>
+      默认情况下，prune 会把工作目录已经从磁盘上消失的项目 ref 直接删掉。
+      但如果你只是临时拔了外置盘、改了路径名打算再改回来、或者计划晚点
+      重新 clone 到原路径，可以加 <code>--keep-orphans</code>：这次 prune
+      跳过孤儿那一遍，stale 和 size-cap 照常跑。<code>/checkpoints prune
+      --keep-orphans</code> 在 REPL 里也支持。命中这个安全阀的项目数会以
+      <code>Orphan refs skipped: N</code> 的形式出现在输出里。
+    </p>
+
+    <h3>典型输出</h3>
+    <pre><code>Checkpoint base: C:\Users\you\.axiomate\checkpoints
+Total size:      284.3 MB
+  store/         284.3 MB
+Projects:        7
+
+  WORKDIR                                                        COMMITS    LAST TOUCH  STATE
+  C:\public\workspace\axiomate                                       142          5m ago  live
+  C:\public\workspace\hermes-agent                                    87          2h ago  live
+  C:\Users\you\Desktop\old-prototype                                   3         18d ago  orphan
+
+Note: 3 snapshots from 1 orphan workdir will be discarded on next prune.
+
+Snapshot metrics (last 100):
+  ok 96, no-changes 3, skipped 0, failed 1
+  duration p50 142ms, p95 380ms</code></pre>
+  </section>
+
+  <section id="config" class="panel">
+    <h2><span class="num">4</span>开关与配置</h2>
+
+    <h3>用户配置</h3>
+    <table>
+      <tr><th>位置</th><th>开关</th><th>作用</th></tr>
+      <tr>
+        <td>Settings → Config 界面 <br>或 <code>~/.axiomate.json</code></td>
+        <td><code>fileCheckpointingEnabled</code></td>
+        <td>整个 checkpoint 子系统的总开关。默认 <strong>true</strong>。</td>
+      </tr>
+    </table>
+
+    <h3>环境变量</h3>
+    <table>
+      <tr><th>变量</th><th>作用</th></tr>
+      <tr>
+        <td><code>AXIOMATE_CODE_DISABLE_FILE_CHECKPOINTING</code></td>
+        <td>设为任意 truthy 值（<code>1</code>、<code>true</code>）就能彻底关掉 checkpoints，优先级高于上面的 config。</td>
+      </tr>
+      <tr>
+        <td><code>AXIOMATE_CHECKPOINT_TIMEOUT</code></td>
+        <td>单条 git 命令的超时秒数，默认 <strong>30s</strong>，clamp 到 <strong>3-300</strong>。</td>
+      </tr>
+      <tr>
+        <td><code>AXIOMATE_CHECKPOINT_BASE</code></td>
+        <td>影子仓库根目录，默认 <code>~/.axiomate/checkpoints</code>。主要用于测试隔离。</td>
+      </tr>
+    </table>
+
+    <h3>Prune 阈值</h3>
+    <table>
+      <tr><th>参数</th><th>默认</th><th>覆盖方式</th></tr>
+      <tr><td>保留天数（stale 阈值）</td><td>14 天</td><td><code>--retention-days N</code></td></tr>
+      <tr><td>总大小上限</td><td>500 MB</td><td><code>--max-size-mb N</code></td></tr>
+      <tr><td>每个项目最多快照数</td><td>100</td><td>不可配，硬上限</td></tr>
+      <tr><td>会话锚定窗口</td><td>28 天（=2× 保留天数）</td><td>不可配，硬上限</td></tr>
+    </table>
+  </section>
+
+  <section id="failure" class="panel">
+    <h2><span class="num">5</span>失败模式 <span class="tag warn">兜底</span></h2>
+
+    <p>
+      Checkpoint 子系统的核心契约是<strong>fail-open</strong> — 任何一次
+      快照失败都不能阻塞主流程。这意味着：
+    </p>
+    <ul>
+      <li>系统里没装 git → 整个子系统 no-op，不报错。</li>
+      <li>git 命令瞬时失败（EBUSY、超时） → 这一次跳过，下一回合自动重试。</li>
+      <li>工作目录有 50000 个以上文件 → 跳过，避免 git add 卡死。</li>
+      <li>磁盘满 / 权限不足 → 错误进 <code>logForDebugging</code>，对话继续。</li>
+    </ul>
+
+    <h3>跨工作目录的边界情况</h3>
+    <p>
+      如果你 <code>/resume</code> 了一个旧 session，但当前工作目录跟当时
+      不一样，<code>/rewind</code> 之前 axiomate 会用一行系统消息提示你：
+    </p>
+    <ul>
+      <li><strong>reachable</strong>：快照在当前 ref 里，可以正常 rewind。</li>
+      <li><strong>reachable-other-worktree</strong>：快照存在，但属于另一个
+        工作目录。提示你 <code>cd</code> 过去。</li>
+      <li><strong>unreachable</strong>：快照已被 prune 删掉，rewind 会失败。</li>
+    </ul>
+
+    <h3>清理时的孤儿提醒</h3>
+    <p>
+      <code>/checkpoints status</code> 末尾会附一行类似：
+    </p>
+    <pre><code>Note: 3 snapshots from 1 orphan workdir will be discarded on next prune.</code></pre>
+    <p>
+      如果你看到这行、并且那个工作目录的 commit 还有用（比如刚把外置硬盘
+      拔了），可以把工作目录复原到原路径，下一次 prune 会重新认它为 live。
+    </p>
+  </section>
+
+  <section id="faq" class="panel">
+    <h2><span class="num">6</span>FAQ</h2>
+
+    <h3>会污染我的 git 仓库吗？</h3>
+    <p>
+      不会。所有 commit 都写到 <code>~/.axiomate/checkpoints/store/</code>，
+      跟你项目自己的 <code>.git/</code> 完全独立。<code>git status</code>、
+      <code>git log</code>、<code>git push</code> 全都看不到这些 commit。
+    </p>
+
+    <h3>占多少磁盘？</h3>
+    <p>
+      硬上限 500 MB（可配）。git 自己会做对象去重和 zlib 压缩，所以同一个
+      文件改 100 次，实际只多存了几次 delta。日常使用一般在 100-300 MB。
+    </p>
+
+    <h3>能跨机器同步吗？</h3>
+    <p>
+      不能。Checkpoints 是本机偷偷拍的快照，没设计跨机器的同步、加密、
+      签名机制。换机器就当回到没历史的状态。
+    </p>
+
+    <h3>能导出 / 导入吗？</h3>
+    <p>
+      暂时没有 <code>checkpoints export</code> / <code>import</code>。
+      影子仓库本身是一个标准的 bare git repo，懂 git 的用户可以直接
+      <code>git --git-dir=~/.axiomate/checkpoints/store ...</code> 自己玩。
+    </p>
+
+    <h3>怎么彻底关掉？</h3>
+    <p>
+      在 Settings 里把 <code>fileCheckpointingEnabled</code> 设成 false，
+      或者环境变量 <code>AXIOMATE_CODE_DISABLE_FILE_CHECKPOINTING=1</code>。
+      之前已经攒下的快照不会被自动清理，需要手动 <code>/checkpoints clear</code>。
+    </p>
+
+    <h3><code>/rewind</code> 报错说 commit 找不到，怎么办？</h3>
+    <p>
+      多半是那个回合的 commit 已经被 prune 掉了（超过 14 天 + 当前 session
+      没引用）。这是预期行为。如果是关键节点，把对应工作目录的产物拷一份
+      出来另存，别只依赖 checkpoint。
+    </p>
+  </section>
+
+  <footer>
+    Axiomate · Checkpoints v2 · 文档随实现迭代，最后更新 2026-05-22
+  </footer>
+
+</div>
+</body>
+</html>
