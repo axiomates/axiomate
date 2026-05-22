@@ -136,6 +136,25 @@ export function MessageSelector({
   )
   const hiddenCount = allSelectable.length - visibleSelectable.length
 
+  // Snapshots can come in with `timestamp` as a real Date (created in-
+  // process via `new Date()`) OR as a string (loaded from JSONL via
+  // /resume / fork — JSON.parse turns Dates into ISO strings, no revive
+  // step). Defend both at the read site instead of rebuilding the
+  // restore pipeline; picker is the only consumer that compares them.
+  const snapshotTimeMs = (ts: Date | string | number): number => {
+    if (typeof ts === 'number') return ts
+    if (typeof ts === 'string') return Date.parse(ts) || 0
+    if (ts instanceof Date) return ts.getTime()
+    return 0
+  }
+  const formatSnapshotTime = (ts: Date | string | number): string => {
+    const ms = snapshotTimeMs(ts)
+    return new Date(ms).toLocaleTimeString([], {
+      hour: '2-digit',
+      minute: '2-digit',
+    })
+  }
+
   // Synthetic anchor rows for snapshots whose messageId is NOT in the
   // conversation `messages` array — i.e. pre-rewind safety snapshots
   // (and any future system-synthesized anchors). These rows let the
@@ -153,10 +172,7 @@ export function MessageSelector({
     return fileHistory.snapshots
       .filter(s => !conversationUuids.has(s.messageId))
       .map(s => {
-        const time = s.timestamp.toLocaleTimeString([], {
-          hour: '2-digit',
-          minute: '2-digit',
-        })
+        const time = formatSnapshotTime(s.timestamp)
         return {
           ...createUserMessage({
             content: `↶ Pre-rewind anchor (${time})`,
@@ -178,7 +194,7 @@ export function MessageSelector({
     // implemented as "assign the timestamp of the most recent
     // preceding snapshotted row, or 0 for rows before any snapshot".
     const snapByUuid = new Map(
-      fileHistory.snapshots.map(s => [s.messageId, s.timestamp.getTime()]),
+      fileHistory.snapshots.map(s => [s.messageId, snapshotTimeMs(s.timestamp)]),
     )
     let lastTs = 0
     const realRowsWithTs = visibleSelectable.map(m => {
