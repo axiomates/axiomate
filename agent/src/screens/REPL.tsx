@@ -149,7 +149,7 @@ import { provisionContentReplacementState, reconstructContentReplacementState, t
 import { partialCompactConversation } from '../services/compact/compact.js';
 import type { LogOption } from '../types/logs.js';
 import type { AgentColorName } from '../tools/AgentTool/agentColorManager.js';
-import { fileHistoryMakeSnapshot, type FileHistoryState, fileHistoryRewind, type FileHistorySnapshot, fileHistoryEnabled, fileHistoryHasAnyChanges } from '../utils/fileHistory.js';
+import { type FileHistoryState, fileHistoryRewind, type FileHistorySnapshot, fileHistoryHasAnyChanges } from '../utils/fileHistory.js';
 import { computeResumeRewindHint } from '../utils/checkpoints/resumeRewindHint.js';
 import { type AttributionState, incrementPromptCount } from '../utils/commitAttribution.js';
 import { recordAttributionSnapshot } from '../utils/sessionStorage.js';
@@ -2545,16 +2545,6 @@ export function REPL({
         };
       });
 
-      // Create file history snapshot for code rewind
-      if (fileHistoryEnabled()) {
-        void fileHistoryMakeSnapshot((updater: (prev: FileHistoryState) => FileHistoryState) => {
-          setAppState(prev => ({
-            ...prev,
-            fileHistory: updater(prev.fileHistory)
-          }));
-        }, initialMsg.message.uuid);
-      }
-
       // Ensure SessionStart hook context is available before the first API
       // call. onSubmit calls this internally but the onQuery path below
       // bypasses onSubmit — hoist here so both paths see hook messages.
@@ -3055,7 +3045,7 @@ export function REPL({
       const rawIdx = findRawIndex(msg.uuid);
       const raw = rawIdx >= 0 ? messages[rawIdx] : undefined;
       if (!raw || !selectableUserMessagesFilter(raw)) return;
-      const noFileChanges = !(await fileHistoryHasAnyChanges(fileHistory, raw.uuid));
+      const noFileChanges = !(await fileHistoryHasAnyChanges(fileHistory, raw.uuid, messages));
       const onlySynthetic = messagesAfterAreOnlySynthetic(messages, rawIdx);
       if (noFileChanges && onlySynthetic) {
         // rewindConversationTo's setMessages races stream appends — cancel first (idempotent).
@@ -4027,7 +4017,7 @@ export function REPL({
                 ...prev,
                 fileHistory: updater(prev.fileHistory)
               }));
-            }, message.uuid);
+            }, message.uuid, messages);
           }} onSummarize={async (message: UserMessage, feedback?: string, direction: PartialCompactDirection = 'from') => {
             // Project snipped messages so the compact model
             // doesn't summarize content that was intentionally removed.

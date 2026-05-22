@@ -140,7 +140,7 @@ export function MessageSelector({
   useEffect(() => {
     if (!preselectedMessage || !isFileHistoryEnabled) return
     let cancelled = false
-    void fileHistoryGetDiffStats(fileHistory, preselectedMessage.uuid).then(
+    void fileHistoryGetDiffStats(fileHistory, preselectedMessage.uuid, messages).then(
       stats => {
         if (!cancelled) setDiffStatsForRestore(stats)
       },
@@ -227,7 +227,7 @@ export function MessageSelector({
       return
     }
 
-    const diffStats = await fileHistoryGetDiffStats(fileHistory, message.uuid)
+    const diffStats = await fileHistoryGetDiffStats(fileHistory, message.uuid, messages)
     setMessageToRestore(message)
     setDiffStatsForRestore(diffStats)
   }
@@ -383,6 +383,7 @@ export function MessageSelector({
             const canRestore = fileHistoryCanRestore(
               fileHistory,
               userMessage.uuid,
+              messages,
             )
 
             const nextUserMessage = messageOptions.at(itemIndex + 1)

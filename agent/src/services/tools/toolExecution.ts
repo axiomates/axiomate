@@ -59,6 +59,13 @@ import { count } from '../../utils/array.js'
 import { createAttachmentMessage } from '../../utils/attachments.js'
 import { logForDebugging } from '../../utils/debug.js'
 import {
+  fileHistoryEnabled,
+  fileHistoryMakeSnapshot,
+  type FileHistoryState,
+} from '../../utils/fileHistory.js'
+import { selectableUserMessagesFilter } from '../../components/MessageSelector.js'
+import type { UUID } from 'crypto'
+import {
   AbortError,
   errorMessage,
   getErrnoCode,
@@ -331,6 +338,70 @@ function getMcpServerBaseUrlFromToolName(
     return undefined
   }
   return getLoggingSafeMcpBaseUrl(serverConnection.config)
+}
+
+/**
+ * Walk `messages` backwards and return the UUID of the most recent
+ * user-authored turn message. Filters out synthetic/tool_result/meta
+ * messages via `selectableUserMessagesFilter`. Used as the dedup key
+ * for action-triggered file-history snapshots — every snapshot taken
+ * during one user turn shares the same key.
+ */
+function findCurrentUserMessageId(messages: Message[]): UUID | undefined {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i]
+    if (m && selectableUserMessagesFilter(m)) return m.uuid
+  }
+  return undefined
+}
+
+/**
+ * Take a pre-mutation snapshot before a non-readonly tool runs.
+ *
+ * Trigger model: per-turn dedup keyed by the user message UUID. The
+ * first mutating tool of a turn snapshots; subsequent tools in the same
+ * turn are no-ops. Read-only tools never trigger.
+ *
+ * Hermes parity: mirrors `tool_executor.ensure_checkpoint` (only fires
+ * before writes / destructive bash). Axiomate's `tool.isReadOnly(input)`
+ * already inspects bash command shapes (BashTool.tsx), so we don't need
+ * Hermes's regex allowlist.
+ *
+ * Best-effort: failures inside the snapshot pipeline are swallowed by
+ * `fileHistoryMakeSnapshot` itself; we never let a snapshot mishap
+ * block the actual tool call.
+ *
+ * Exported for unit tests in `__tests__/toolExecutionSnapshot.test.ts`.
+ */
+export async function maybeSnapshotBeforeToolCall(
+  tool: Tool,
+  input: unknown,
+  toolUseContext: ToolUseContext,
+): Promise<void> {
+  if (!fileHistoryEnabled()) return
+  if (tool.isReadOnly(input as never)) return
+
+  const userMessageId = findCurrentUserMessageId(toolUseContext.messages)
+  if (!userMessageId) return
+
+  // Per-turn dedup: snapshot once per user message. Read state via the
+  // capture-in-updater idiom (same pattern fileHistoryMakeSnapshot uses).
+  let already = false
+  toolUseContext.setAppState(prev => {
+    already = prev.fileHistory.snapshots.some(s => s.messageId === userMessageId)
+    return prev
+  })
+  if (already) return
+
+  await fileHistoryMakeSnapshot(
+    (updater: (prev: FileHistoryState) => FileHistoryState) => {
+      toolUseContext.setAppState(prev => ({
+        ...prev,
+        fileHistory: updater(prev.fileHistory),
+      }))
+    },
+    userMessageId,
+  )
 }
 
 export async function* runToolUse(
@@ -1100,6 +1171,13 @@ async function checkPermissionsAndCallTool(
   } else if (processedInput !== backfilledClone) {
     callInput = processedInput
   }
+
+  // Action-triggered file-history snapshot. Fires once per turn, before
+  // the first non-readonly tool runs. Hermes parity:
+  // `tool_executor.ensure_checkpoint`. Read-only tools (Grep, Read, Glob,
+  // ls-style bash, etc.) never trigger this — see `tool.isReadOnly(input)`.
+  await maybeSnapshotBeforeToolCall(tool, callInput, toolUseContext)
+
   try {
     const result = await tool.call(
       callInput,

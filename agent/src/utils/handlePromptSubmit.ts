@@ -1,6 +1,5 @@
 import type { UUID } from 'crypto'
 import { type Command, getCommandName, isCommandEnabled } from '../commands.js'
-import { selectableUserMessagesFilter } from '../components/MessageSelector.js'
 import type { SpinnerMode } from '../components/Spinner/types.js'
 import type { QuerySource } from '../constants/querySource.js'
 import { expandPastedTextRefs, parseReferences } from '../history.js'
@@ -19,8 +18,6 @@ import { createAbortController } from './abortController.js'
 import type { PastedContent } from './config.js'
 import { logForDebugging } from './debug.js'
 import type { EffortValue } from './effort.js'
-import type { FileHistoryState } from './fileHistory.js'
-import { fileHistoryEnabled, fileHistoryMakeSnapshot } from './fileHistory.js'
 import { gracefulShutdownSync } from './gracefulShutdown.js'
 import { enqueue } from './messageQueueManager.js'
 import type { ProcessUserInputContext } from './processUserInput/processUserInput.js'
@@ -505,21 +502,6 @@ async function executeUserInput(params: ExecuteUserInputParams): Promise<void> {
       }
 
       queryCheckpoint('query_process_user_input_end')
-      if (fileHistoryEnabled()) {
-        queryCheckpoint('query_file_history_snapshot_start')
-        newMessages.filter(selectableUserMessagesFilter).forEach(message => {
-          void fileHistoryMakeSnapshot(
-            (updater: (prev: FileHistoryState) => FileHistoryState) => {
-              setAppState(prev => ({
-                ...prev,
-                fileHistory: updater(prev.fileHistory),
-              }))
-            },
-            message.uuid,
-          )
-        })
-        queryCheckpoint('query_file_history_snapshot_end')
-      }
 
       if (newMessages.length) {
         // History is now added in the caller (onSubmit) for direct user submissions.

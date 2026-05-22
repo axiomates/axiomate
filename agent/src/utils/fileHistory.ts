@@ -59,6 +59,7 @@ import { isEnvTruthy } from './envUtils.js'
 import { isENOENT } from './errors.js'
 import { logError } from './log.js'
 import { recordFileHistorySnapshot } from './sessionStorage.js'
+import type { Message } from '../types/message.js'
 
 export type FileHistorySnapshot = {
   /** Anthropic message id this snapshot was taken at the start of. */
@@ -203,9 +204,12 @@ async function drainSnapshotPersist(messageId: UUID): Promise<void> {
 
 /**
  * Capture the current workdir as a snapshot keyed by `messageId`. Called
- * once at the start of every turn. The createSnapshot call uses
- * `allowEmpty: true` so even no-op turns get a gitHash — rewind always
- * has a target to roll back to.
+ * before a mutating tool runs (Edit/Write/destructive Bash/etc.), so the
+ * commit captures the *pre-mutation* state — that's what /rewind needs.
+ *
+ * No-ops when nothing changed since the previous snapshot: createSnapshot
+ * returns `{ skipped: 'no-changes' }` and we record nothing. This is fine
+ * because rewind targets fall back to the closest preceding snapshot.
  */
 export async function fileHistoryMakeSnapshot(
   updateFileHistoryState: (
@@ -225,11 +229,10 @@ export async function fileHistoryMakeSnapshot(
   logForDebugging(`FileHistory: Making snapshot for message ${messageId}`)
 
   const workdir = getOriginalCwd()
-  const result = await createSnapshot(
-    workdir,
-    { messageId, label: 'file-history' },
-    { allowEmpty: true },
-  )
+  const result = await createSnapshot(workdir, {
+    messageId,
+    label: 'file-history',
+  })
   if (result.ok === false) {
     logForDebugging(
       `FileHistory: snapshot skipped for ${messageId} (${result.skipped})`,
@@ -274,15 +277,50 @@ export async function fileHistoryMakeSnapshot(
 }
 
 /**
- * Restore tracked paths to their state at `messageId`. Throws if the
- * messageId is unknown — call sites already gate on
- * `fileHistoryCanRestore` before invoking this.
+ * Resolve which snapshot to restore for a given target turn.
+ *
+ * With action-triggered snapshots a turn that did no mutation has no
+ * snapshot of its own, so an exact `messageId` match isn't always
+ * present. The intent of "rewind to here" is "make the workdir look
+ * like it did when this turn was about to start" — and the snapshot
+ * that captures that state is the most recent snapshot whose own turn
+ * sits at-or-before the target in the conversation.
+ *
+ * Walk snapshots newest→oldest and return the first whose `messageId`
+ * appears at-or-before the target in `messages`. Falls back to an
+ * exact-id match if the target isn't in `messages` (defensive — the
+ * /rewind selector always has the full list, but resume paths might
+ * call with the wrong array).
+ */
+function findRestoreTarget(
+  state: FileHistoryState,
+  targetMessageId: UUID,
+  messages: readonly Message[],
+): FileHistorySnapshot | undefined {
+  const targetIdx = messages.findIndex(m => m.uuid === targetMessageId)
+  if (targetIdx < 0) {
+    return state.snapshots.findLast(s => s.messageId === targetMessageId)
+  }
+  for (let i = state.snapshots.length - 1; i >= 0; i--) {
+    const snap = state.snapshots[i]!
+    const snapIdx = messages.findIndex(m => m.uuid === snap.messageId)
+    if (snapIdx >= 0 && snapIdx <= targetIdx) return snap
+  }
+  return undefined
+}
+
+/**
+ * Restore tracked paths to the state at-or-before `messageId`. Resolves
+ * the target via `findRestoreTarget` — exact match preferred, otherwise
+ * the closest-preceding snapshot wins. Throws if no snapshot is in
+ * range; call sites already gate on `fileHistoryCanRestore`.
  */
 export async function fileHistoryRewind(
   updateFileHistoryState: (
     updater: (prev: FileHistoryState) => FileHistoryState,
   ) => void,
   messageId: UUID,
+  messages: readonly Message[],
 ): Promise<void> {
   if (!fileHistoryEnabled()) return
 
@@ -293,16 +331,14 @@ export async function fileHistoryRewind(
   })
   if (!captured) return
 
-  const target = captured.snapshots.findLast(
-    snapshot => snapshot.messageId === messageId,
-  )
+  const target = findRestoreTarget(captured, messageId, messages)
   if (!target) {
     logError(new Error(`FileHistory: Snapshot for ${messageId} not found`))
     throw new Error('The selected snapshot was not found')
   }
 
   logForDebugging(
-    `FileHistory: [Rewind] Rewinding to snapshot for ${messageId}`,
+    `FileHistory: [Rewind] Rewinding to snapshot ${target.messageId} (target ${messageId})`,
   )
   await restoreTrackedToSnapshot(
     getOriginalCwd(),
@@ -315,17 +351,19 @@ export async function fileHistoryRewind(
 export function fileHistoryCanRestore(
   state: FileHistoryState,
   messageId: UUID,
+  messages: readonly Message[],
 ): boolean {
   if (!fileHistoryEnabled()) return false
-  return state.snapshots.some(snapshot => snapshot.messageId === messageId)
+  return findRestoreTarget(state, messageId, messages) !== undefined
 }
 
 export async function fileHistoryGetDiffStats(
   state: FileHistoryState,
   messageId: UUID,
+  messages: readonly Message[],
 ): Promise<DiffStats> {
   if (!fileHistoryEnabled()) return undefined
-  const target = state.snapshots.findLast(s => s.messageId === messageId)
+  const target = findRestoreTarget(state, messageId, messages)
   if (!target) return undefined
 
   const paths = Array.from(state.trackedFiles)
@@ -403,9 +441,10 @@ export async function fileHistoryGetDiffStats(
 export async function fileHistoryHasAnyChanges(
   state: FileHistoryState,
   messageId: UUID,
+  messages: readonly Message[],
 ): Promise<boolean> {
   if (!fileHistoryEnabled()) return false
-  const target = state.snapshots.findLast(s => s.messageId === messageId)
+  const target = findRestoreTarget(state, messageId, messages)
   if (!target) return false
 
   const paths = Array.from(state.trackedFiles)

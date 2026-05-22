@@ -619,6 +619,7 @@ export async function runHeadless(
       currentAppState,
       setAppState,
       false,
+      initialMessages,
     )
     if (!result.canRewind) {
       process.stderr.write(`Error: ${result.error || 'Unexpected error'}\n`)
@@ -2591,6 +2592,7 @@ function runHeadlessStreaming(
             appState,
             setAppState,
             message.request.dry_run ?? false,
+            mutableMessages,
           )
           if (result.canRewind || message.request.dry_run) {
             sendControlResponseSuccess(message, result)
@@ -3760,11 +3762,12 @@ async function handleRewindFiles(
   appState: AppState,
   setAppState: (updater: (prev: AppState) => AppState) => void,
   dryRun: boolean,
+  messages: readonly Message[],
 ): Promise<RewindFilesResult> {
   if (!fileHistoryEnabled()) {
     return { canRewind: false, error: 'File rewinding is not enabled.' }
   }
-  if (!fileHistoryCanRestore(appState.fileHistory, userMessageId)) {
+  if (!fileHistoryCanRestore(appState.fileHistory, userMessageId, messages)) {
     return {
       canRewind: false,
       error: 'No file checkpoint found for this message.',
@@ -3775,6 +3778,7 @@ async function handleRewindFiles(
     const diffStats = await fileHistoryGetDiffStats(
       appState.fileHistory,
       userMessageId,
+      messages,
     )
     return {
       canRewind: true,
@@ -3792,6 +3796,7 @@ async function handleRewindFiles(
           fileHistory: updater(prev.fileHistory),
         })),
       userMessageId,
+      messages,
     )
   } catch (error) {
     return {

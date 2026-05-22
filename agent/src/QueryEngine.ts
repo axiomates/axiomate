@@ -48,8 +48,6 @@ import { getCwd } from './utils/cwd.js'
 import { isBareMode, isEnvTruthy } from './utils/envUtils.js'
 import {
   type FileHistoryState,
-  fileHistoryEnabled,
-  fileHistoryMakeSnapshot,
 } from './utils/fileHistory.js'
 import {
   cloneFileStateCache,
@@ -611,22 +609,6 @@ export class QueryEngine {
         uuid: randomUUID(),
       }
       return
-    }
-
-    if (fileHistoryEnabled() && persistSession) {
-      messagesFromUserInput
-        .filter(messageSelector().selectableUserMessagesFilter)
-        .forEach(message => {
-          void fileHistoryMakeSnapshot(
-            (updater: (prev: FileHistoryState) => FileHistoryState) => {
-              setAppState(prev => ({
-                ...prev,
-                fileHistory: updater(prev.fileHistory),
-              }))
-            },
-            message.uuid,
-          )
-        })
     }
 
     // Track current message usage (reset on each message_start)

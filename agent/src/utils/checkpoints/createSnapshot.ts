@@ -92,16 +92,7 @@ export interface CreateSnapshotReason {
 }
 
 export interface CreateSnapshotOptions {
-  /**
-   * Force a commit even when there are no changes vs the ref tip (or no
-   * staged content at all). The commit-tree call accepts an empty tree
-   * fine, and an empty commit on top of a parent is also fine — the
-   * useful invariant is that *every* turn-keyed snapshot resolves to a
-   * gitHash, so fileHistoryRewind can always find something to roll back
-   * to. The `/checkpoints` user-facing path keeps the default (skip
-   * empty) since manual rollbacks don't need empty rungs in the ladder.
-   */
-  allowEmpty?: boolean
+  // (no options today — kept as a struct for forward compatibility)
 }
 
 const TRANSIENT = (message: string): CreateSnapshotResult => ({
@@ -275,22 +266,22 @@ async function _runCreateSnapshot(
   })
 
   // 10. No-changes detection. With a ref: diff-index. Without: ls-files.
-  //     `allowEmpty` shorts this — fileHistory needs a gitHash even on
-  //     turns where nothing changed on disk so rewind always has a target.
-  if (!opts.allowEmpty) {
-    const noChanges = await detectNoChanges({
-      store,
-      workTree: canonical,
-      indexFile,
-      refCommit,
-      hasRef,
-    })
-    if (noChanges === 'no-changes') {
-      return { ok: false, skipped: 'no-changes' }
-    }
-    if (noChanges === 'transient') {
-      return TRANSIENT('no-changes detection failed')
-    }
+  //     Always runs — every snapshot is now action-triggered (a tool that
+  //     mutates the workdir is about to call us), so a clean diff means
+  //     the action turned out to be a no-op and we skip rather than commit
+  //     an empty rung onto the ref.
+  const noChanges = await detectNoChanges({
+    store,
+    workTree: canonical,
+    indexFile,
+    refCommit,
+    hasRef,
+  })
+  if (noChanges === 'no-changes') {
+    return { ok: false, skipped: 'no-changes' }
+  }
+  if (noChanges === 'transient') {
+    return TRANSIENT('no-changes detection failed')
   }
 
   // 11. Commit via plumbing.
