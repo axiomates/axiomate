@@ -1876,6 +1876,20 @@ function buildFileHistorySnapshotChain(
       snapshots[existingIndex] = snapshot
     }
   }
+  // Diagnostic: see if any snapshots in the JSONL got dropped because
+  // their messageId isn't in the conversation chain (pre-rewind anchors
+  // use synthetic UUIDs that aren't in `messages`, so they'd be filtered
+  // out here unless we explicitly rescue them).
+  const droppedIds: string[] = []
+  for (const [uuid] of fileHistorySnapshots) {
+    if (!conversation.some(m => m.uuid === uuid)) {
+      droppedIds.push(uuid.slice(0, 8))
+    }
+  }
+  logForDebugging(
+    `SessionStorage: [SnapshotChain] in=${fileHistorySnapshots.size} ` +
+      `out=${snapshots.length} dropped-not-in-conversation=[${droppedIds.join(',')}]`,
+  )
   return snapshots
 }
 

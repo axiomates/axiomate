@@ -274,8 +274,17 @@ export async function fileHistoryMakeSnapshot(
   })
 
   if (committed) {
-    void recordFileHistorySnapshot(messageId, committed, false).catch(
-      error => {
+    logForDebugging(
+      `FileHistory: [Persist] queue write messageId=${messageId.slice(0, 8)} ` +
+        `gitHash=${committed.gitHash.slice(0, 8)} addedTrackedFiles=${committed.addedTrackedFiles.length}`,
+    )
+    void recordFileHistorySnapshot(messageId, committed, false)
+      .then(() =>
+        logForDebugging(
+          `FileHistory: [Persist] write OK messageId=${messageId.slice(0, 8)}`,
+        ),
+      )
+      .catch(error => {
         logError(
           new Error(`FileHistory: Failed to record snapshot: ${error}`),
         )
