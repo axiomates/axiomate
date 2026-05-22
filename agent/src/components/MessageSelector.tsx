@@ -424,8 +424,15 @@ export function MessageSelector({
     },
   )
 
+  // Keyed by message UUID, not by option-list index. Tab toggles change
+  // the index of the same UUID (and the (current) row in particular ends
+  // up at a different index between views), so an index-keyed cache leaks
+  // stale entries after toggling. The `in` check distinguishes
+  //   missing key      → still loading
+  //   key, value=undef → tried, no snapshot (renders the ⚠)
+  //   key, DiffStats   → renders the diff
   const [fileHistoryMetadata, setFileHistoryMetadata] = useState<
-    Record<number, DiffStats>
+    Record<string, DiffStats | undefined>
   >({})
 
   useEffect(() => {
@@ -454,17 +461,10 @@ export function MessageSelector({
                 )
               : undefined
 
-            if (diffStats !== undefined) {
-              setFileHistoryMetadata(prev => ({
-                ...prev,
-                [itemIndex]: diffStats,
-              }))
-            } else {
-              setFileHistoryMetadata(prev => ({
-                ...prev,
-                [itemIndex]: undefined,
-              }))
-            }
+            setFileHistoryMetadata(prev => ({
+              ...prev,
+              [userMessage.uuid]: diffStats,
+            }))
           }
         }),
       )
@@ -583,8 +583,9 @@ export function MessageSelector({
                   const isSelected = optionIndex === selectedIndex
                   const isCurrent = msg.uuid === currentUUID
 
-                  const metadataLoaded = optionIndex in fileHistoryMetadata
-                  const metadata = fileHistoryMetadata[optionIndex]
+                  const metadataLoaded =
+                    !isCurrent && msg.uuid in fileHistoryMetadata
+                  const metadata = fileHistoryMetadata[msg.uuid]
                   const numFilesChanged =
                     metadata?.filesChanged && metadata.filesChanged.length
 
