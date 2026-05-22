@@ -24,9 +24,9 @@ describe('parseSub', () => {
 
   test('list, prune, clear are recognized', () => {
     expect(parseSub('list')).toMatchObject({ sub: 'list' })
-    expect(parseSub('prune --force')).toMatchObject({
+    expect(parseSub('prune force')).toMatchObject({
       sub: 'prune',
-      rest: '--force',
+      rest: 'force',
     })
     expect(parseSub('clear')).toMatchObject({ sub: 'clear' })
   })
@@ -93,55 +93,64 @@ describe('parsePruneFlags', () => {
     expect(parsePruneFlags([])).toEqual({ force: false, keepOrphans: false })
   })
 
-  test('--force only', () => {
-    expect(parsePruneFlags(['--force'])).toEqual({
+  test('force subword only', () => {
+    expect(parsePruneFlags(['force'])).toEqual({
       force: true,
       keepOrphans: false,
     })
   })
 
-  test('-f short alias accepted', () => {
-    expect(parsePruneFlags(['-f'])).toEqual({
-      force: true,
-      keepOrphans: false,
-    })
-  })
-
-  test('--keep-orphans only', () => {
-    expect(parsePruneFlags(['--keep-orphans'])).toEqual({
+  test('keep-orphans subword only', () => {
+    expect(parsePruneFlags(['keep-orphans'])).toEqual({
       force: false,
       keepOrphans: true,
     })
   })
 
-  test('both flags together', () => {
-    expect(parsePruneFlags(['--force', '--keep-orphans'])).toEqual({
+  test('both subwords together (any order)', () => {
+    expect(parsePruneFlags(['force', 'keep-orphans'])).toEqual({
+      force: true,
+      keepOrphans: true,
+    })
+    expect(parsePruneFlags(['keep-orphans', 'force'])).toEqual({
       force: true,
       keepOrphans: true,
     })
   })
 
-  test('typo flag → error', () => {
-    const r = parsePruneFlags(['--frce'])
+  test('typo subword → error', () => {
+    const r = parsePruneFlags(['frce'])
     expect('error' in r).toBe(true)
     if ('error' in r) {
-      expect(r.error).toMatch(/Unknown flag/)
-      expect(r.error).toMatch(/--frce/)
+      expect(r.error).toMatch(/Unknown argument/)
+      expect(r.error).toMatch(/frce/)
     }
   })
 
-  test('unknown flag mixed with valid → error', () => {
-    const r = parsePruneFlags(['--force', '--bogus'])
+  test('--force POSIX-style flag is rejected (slash convention has no --)', () => {
+    // CLI side keeps --force; slash side does not.
+    const r = parsePruneFlags(['--force'])
+    expect('error' in r).toBe(true)
+    if ('error' in r) expect(r.error).toMatch(/Unknown argument/)
+  })
+
+  test('--keep-orphans POSIX-style flag is rejected', () => {
+    const r = parsePruneFlags(['--keep-orphans'])
     expect('error' in r).toBe(true)
   })
 
-  test('positional garbage → error (rejects bare token)', () => {
-    const r = parsePruneFlags(['garbage'])
+  test('-f short alias is no longer recognized', () => {
+    const r = parsePruneFlags(['-f'])
+    expect('error' in r).toBe(true)
+  })
+
+  test('unknown subword mixed with valid → error', () => {
+    const r = parsePruneFlags(['force', 'bogus'])
     expect('error' in r).toBe(true)
   })
 
   test('empty-string tokens skipped (defensive against split artifacts)', () => {
-    expect(parsePruneFlags(['', '--force', ''])).toEqual({
+    expect(parsePruneFlags(['', 'force', ''])).toEqual({
       force: true,
       keepOrphans: false,
     })

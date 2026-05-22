@@ -5,7 +5,7 @@
  * `hermes_cli/checkpoints.py::cmd_prune` / `::cmd_clear`):
  *   `/checkpoints`            → status (also `/checkpoints status`)
  *   `/checkpoints list`       → read-only snapshot list for cwd
- *   `/checkpoints prune`      → run prune now (`--force`)
+ *   `/checkpoints prune`      → run prune now (`force`)
  *   `/checkpoints clear`      → confirm + nuke `~/.axiomate/checkpoints/`
  *
  * One divergence: `/checkpoints list` is read-only; the interactive
@@ -77,9 +77,11 @@ function parsePositionalRows(
 }
 
 /**
- * Parse the rest tokens of `/checkpoints prune`. Allowlist `--force` and
- * `--keep-orphans`; anything else is a typo and gets rejected so a
- * fat-fingered `--frce` doesn't silently run a default prune.
+ * Parse the rest tokens of `/checkpoints prune`. Allowlist `force` and
+ * `keep-orphans` as positional subwords (slash convention — no `--`
+ * prefix). Anything else is a typo and gets rejected so a fat-fingered
+ * `frce` doesn't silently run a default prune. The CLI side
+ * (`axiomate checkpoints prune --force`) keeps POSIX-style flags.
  */
 function parsePruneFlags(
   tokens: readonly string[],
@@ -88,13 +90,13 @@ function parsePruneFlags(
   let keepOrphans = false
   for (const token of tokens) {
     if (token === '') continue
-    if (token === '--force' || token === '-f') force = true
-    else if (token === '--keep-orphans') keepOrphans = true
+    if (token === 'force') force = true
+    else if (token === 'keep-orphans') keepOrphans = true
     else {
       return {
         error:
-          `Unknown flag: ${token}. ` +
-          `Usage: /checkpoints prune [--force] [--keep-orphans].`,
+          `Unknown argument: ${token}. ` +
+          `Usage: /checkpoints prune [force] [keep-orphans].`,
       }
     }
   }

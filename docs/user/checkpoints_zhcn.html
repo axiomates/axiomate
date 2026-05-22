@@ -338,8 +338,8 @@
         <td>列出当前项目的快照，按时间倒序。可选位置参数 <code>N</code> 控制最多显示几行（默认 30，范围 1..500）。</td>
       </tr>
       <tr>
-        <td><code>/checkpoints prune</code><br><code>/checkpoints prune --force</code><br><code>/checkpoints prune --keep-orphans</code></td>
-        <td>立即跑一次清理。默认带 24h 节流；加 <code>--force</code> 绕过。加 <code>--keep-orphans</code> 跳过孤儿（工作目录消失的）那一遍，stale 和 size-cap 仍然跑。拼错的 flag（如 <code>--frce</code>）会被拒绝并报用法错误，不会静默走默认 prune。</td>
+        <td><code>/checkpoints prune</code><br><code>/checkpoints prune force</code><br><code>/checkpoints prune keep-orphans</code></td>
+        <td>立即跑一次清理。默认带 24h 节流；加 <code>force</code> 绕过。加 <code>keep-orphans</code> 跳过孤儿（工作目录消失的）那一遍，stale 和 size-cap 仍然跑。斜杠命令的参数是位置子词（不带 <code>--</code>）；拼错的词（如 <code>frce</code>）会被拒绝并报用法错误。命令行端保留 POSIX 风格 flag &mdash; 见下方。</td>
       </tr>
       <tr>
         <td><code>/checkpoints clear</code></td>
@@ -388,9 +388,10 @@ axiomate checkpoints clear --force</code></pre>
     <p>
       默认情况下，prune 会把工作目录已经从磁盘上消失的项目 ref 直接删掉。
       但如果你只是临时拔了外置盘、改了路径名打算再改回来、或者计划晚点
-      重新 clone 到原路径，可以加 <code>--keep-orphans</code>：这次 prune
-      跳过孤儿那一遍，stale 和 size-cap 照常跑。<code>/checkpoints prune
-      --keep-orphans</code> 在 REPL 里也支持。命中这个安全阀的项目数会以
+      重新 clone 到原路径，可以加 <code>--keep-orphans</code>（CLI）或
+      <code>keep-orphans</code>（斜杠命令）：这次 prune 跳过孤儿那一遍，
+      stale 和 size-cap 照常跑。<code>/checkpoints prune keep-orphans</code>
+      在 REPL 里也支持。命中这个安全阀的项目数会以
       <code>Orphan refs skipped: N</code> 的形式出现在输出里。
     </p>
 

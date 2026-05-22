@@ -5,7 +5,7 @@ const checkpoints = {
   name: 'checkpoints',
   description:
     'View / prune / clear the shadow checkpoint store (~/.axiomate/checkpoints/).',
-  argumentHint: '[status [N] | list [N] | prune [--force] [--keep-orphans] | clear]',
+  argumentHint: '[status [N] | list [N] | prune [force] [keep-orphans] | clear]',
   load: () => import('./checkpoints.js'),
 } satisfies Command
 

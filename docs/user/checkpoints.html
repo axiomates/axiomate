@@ -339,8 +339,8 @@
         <td>List snapshots for the current project in reverse chronological order. The optional positional <code>N</code> caps how many rows are shown (default 30, range 1..500).</td>
       </tr>
       <tr>
-        <td><code>/checkpoints prune</code><br><code>/checkpoints prune --force</code><br><code>/checkpoints prune --keep-orphans</code></td>
-        <td>Run cleanup immediately. It is throttled to 24 hours by default; add <code>--force</code> to bypass that. Add <code>--keep-orphans</code> to skip refs whose working directory is missing (stale and size-cap passes still run). Unknown flags such as <code>--frce</code> are rejected with a usage error.</td>
+        <td><code>/checkpoints prune</code><br><code>/checkpoints prune force</code><br><code>/checkpoints prune keep-orphans</code></td>
+        <td>Run cleanup immediately. It is throttled to 24 hours by default; add <code>force</code> to bypass that. Add <code>keep-orphans</code> to skip refs whose working directory is missing (stale and size-cap passes still run). Slash arguments are bare positional subwords (no <code>--</code>); unknown words such as <code>frce</code> are rejected with a usage error. The CLI side keeps POSIX-style flags — see below.</td>
       </tr>
       <tr>
         <td><code>/checkpoints clear</code></td>
@@ -395,9 +395,10 @@ axiomate checkpoints clear --force</code></pre>
       By default, prune deletes refs whose working directory has vanished
       from disk. If a working directory is only temporarily gone — an
       external drive is unplugged, an in-flight rename you plan to undo,
-      or a re-clone you intend to do later — pass <code>--keep-orphans</code>:
+      or a re-clone you intend to do later — pass <code>--keep-orphans</code>
+      (CLI) or <code>keep-orphans</code> (slash):
       this run skips the orphan pass while stale and size-cap still execute.
-      <code>/checkpoints prune --keep-orphans</code> works inside the REPL
+      <code>/checkpoints prune keep-orphans</code> works inside the REPL
       as well. The number of refs the safety valve protected appears as
       <code>Orphan refs skipped: N</code> in the output.
     </p>

@@ -114,7 +114,7 @@ Resolution happens in `commands/checkpoints/resolveStatusRows.ts` with priority 
 
 **What Hermes does** (`hermes_cli/checkpoints.py::cmd_prune` line 226-227): `--keep-orphans` action="store_true" skips the orphan pass entirely.
 
-**What axiomate does now**: `pruneCheckpoints({ keepOrphans: true })` short-circuits the orphan branch before anchor/drop. CLI exposes `axiomate checkpoints prune --keep-orphans`; slash command exposes `/checkpoints prune --keep-orphans`. Skipped orphans surface as `Orphan refs skipped: N` in the prune output (line hidden when zero).
+**What axiomate does now**: `pruneCheckpoints({ keepOrphans: true })` short-circuits the orphan branch before anchor/drop. CLI exposes `axiomate checkpoints prune --keep-orphans`; slash command exposes `/checkpoints prune keep-orphans` (slash convention — no `--`). Skipped orphans surface as `Orphan refs skipped: N` in the prune output (line hidden when zero).
 
 **Why we shipped it after originally deferring**: the safety valve is cheap (~30 lines incl. CLI plumbing) and the use case is concrete — temporarily-disconnected external drives, in-flight workdir renames, planned re-clones. Better to land the lever than wait for the user incident.
 
