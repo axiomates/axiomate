@@ -79,8 +79,14 @@ function isSummarizeOption(
 type Props = {
   messages: Message[]
   onPreRestore: () => void
-  onRestoreMessage: (message: UserMessage) => Promise<void>
-  onRestoreCode: (message: UserMessage) => Promise<void>
+  onRestoreMessage: (
+    message: UserMessage,
+    mode?: 'conversation-only' | 'both',
+  ) => Promise<void>
+  onRestoreCode: (
+    message: UserMessage,
+    mode?: 'code-only' | 'both',
+  ) => Promise<void>
   onSummarize: (
     message: UserMessage,
     feedback?: string,
@@ -383,7 +389,7 @@ export function MessageSelector({
     onPreRestore()
     setIsRestoring(true)
     try {
-      await onRestoreMessage(message)
+      await onRestoreMessage(message, 'conversation-only')
       setIsRestoring(false)
       onClose()
     } catch (error) {
@@ -474,7 +480,7 @@ export function MessageSelector({
 
     if (option === 'code' || option === 'both') {
       try {
-        await onRestoreCode(messageToRestore)
+        await onRestoreCode(messageToRestore, option === 'both' ? 'both' : 'code-only')
       } catch (error) {
         codeError = error as Error
         logError(codeError)
@@ -483,7 +489,7 @@ export function MessageSelector({
 
     if (option === 'conversation' || option === 'both') {
       try {
-        await onRestoreMessage(messageToRestore)
+        await onRestoreMessage(messageToRestore, option === 'both' ? 'both' : 'conversation-only')
       } catch (error) {
         conversationError = error as Error
         logError(conversationError)

@@ -3013,12 +3013,53 @@ export function REPL({
   }, [rewindConversationTo, setInputValue]);
   restoreMessageSyncRef.current = restoreMessageSync;
 
+  // First ~40 chars of the rewind target's user-visible text — used in the
+  // confirmation feedback so the user knows which prompt the code/
+  // conversation rewound to. Strips slash-command tags and pre-rewind
+  // synthetic-row prefixes; falls back to "(empty prompt)" if nothing
+  // useful remains.
+  const previewMessageText = (m: UserMessage): string => {
+    const raw = (getContentText(m.message.content) ?? '').trim();
+    const stripped = raw
+      .replace(/<command-(name|message|args)>[\s\S]*?<\/command-(name|message|args)>/g, '')
+      .replace(/^↶\s*/, '')
+      .trim();
+    if (!stripped) return '(empty prompt)';
+    return stripped.length > 40 ? stripped.slice(0, 40) + '…' : stripped;
+  };
+
+  // Wraps a one-line confirmation as <local-command-stdout> so it renders
+  // alongside other slash-command output (no special UI). Single source of
+  // truth for the post-rewind feedback message — both handlers funnel here.
+  const pushRewindFeedback = useCallback((text: string) => {
+    setMessages(prev => [
+      ...prev,
+      createCommandInputMessage(`<${LOCAL_COMMAND_STDOUT_TAG}>${escapeXml(text)}</${LOCAL_COMMAND_STDOUT_TAG}>`),
+    ]);
+  }, [setMessages]);
+
   // MessageSelector path: defer via setImmediate so the "Interrupted" message
   // renders to static output before rewind — otherwise it remains vestigial
   // at the top of the screen.
-  const handleRestoreMessage = useCallback(async (message: UserMessage) => {
+  // mode is forwarded by MessageSelector. For 'both' the confirmation is
+  // emitted once here (the conversation handler is called second), so the
+  // user sees a single combined line, not two stacked.
+  const handleRestoreMessage = useCallback(async (
+    message: UserMessage,
+    mode: 'conversation-only' | 'both' = 'conversation-only',
+  ) => {
     setImmediate((restore, message) => restore(message), restoreMessageSync, message);
-  }, [restoreMessageSync]);
+    const preview = previewMessageText(message);
+    if (mode === 'both') {
+      pushRewindFeedback(
+        `✓ Code and conversation rewound to before "${preview}". A safety snapshot of the prior state was saved — pick the latest "↶ Pre-rewind anchor" row from /rewind to undo.`,
+      );
+    } else {
+      pushRewindFeedback(
+        `✓ Conversation rewound to before "${preview}". Code on disk is unchanged.`,
+      );
+    }
+  }, [restoreMessageSync, pushRewindFeedback]);
 
   // Not memoized — hook stores caps via ref, reads latest closure at dispatch.
   // 24-char prefix: deriveUUID preserves first 24, renderable uuid prefix-matches raw source.
@@ -4011,13 +4052,22 @@ export function REPL({
                 {cursor &&
           // inputValue is REPL state; typed text survives the round-trip.
           <MessageActionsBar cursor={cursor} />}
-                {focusedInputDialog === 'message-selector' && <MessageSelector messages={messages} preselectedMessage={messageSelectorPreselect} onPreRestore={onCancel} onRestoreCode={async (message: UserMessage) => {
+                {focusedInputDialog === 'message-selector' && <MessageSelector messages={messages} preselectedMessage={messageSelectorPreselect} onPreRestore={onCancel} onRestoreCode={async (message: UserMessage, mode: 'code-only' | 'both' = 'code-only') => {
             await fileHistoryRewind((updater: (prev: FileHistoryState) => FileHistoryState) => {
               setAppState(prev => ({
                 ...prev,
                 fileHistory: updater(prev.fileHistory)
               }));
             }, message.uuid, messages);
+            // Confirmation: only for 'code-only'. 'both' is handled by
+            // handleRestoreMessage (called after this) so the user sees
+            // one combined line instead of two stacked.
+            if (mode === 'code-only') {
+              const preview = previewMessageText(message);
+              pushRewindFeedback(
+                `✓ Code rewound to before "${preview}". Conversation unchanged. A safety snapshot of the prior state was saved — pick the latest "↶ Pre-rewind anchor" row from /rewind to undo.`,
+              );
+            }
           }} onSummarize={async (message: UserMessage, feedback?: string, direction: PartialCompactDirection = 'from') => {
             // Project snipped messages so the compact model
             // doesn't summarize content that was intentionally removed.
