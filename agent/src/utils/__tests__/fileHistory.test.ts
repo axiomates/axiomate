@@ -207,6 +207,38 @@ describe('rewind — restore content at the chosen turn', () => {
     expect(m2).toBeDefined()
   })
 
+  test('rewind to empty-workdir root removes the file the first edit created', async () => {
+    // End-to-end: fresh empty workdir, AI creates a file, then user
+    // rewinds to before the creation. The empty-tree root commit
+    // anchors that "before" state; the rewind unlink pre-pass
+    // (--diff-filter=A) picks up the new file as on-disk-not-in-tree
+    // and removes it.
+    //
+    // Pre-Hermes-fix this was impossible: the root commit was skipped
+    // for empty workdirs, so there was no anchor for "before any
+    // edit," and rewind couldn't reach the empty state.
+    const newFile = join(workTree, 'created-by-ai.txt')
+    expect(existsSync(newFile)).toBe(false)
+
+    const holder = makeStateHolder()
+    // Turn 1: AI is about to create the file. Snapshot captures the
+    // pre-edit state — empty workdir → empty-tree root commit.
+    const m1 = await turn(holder, [])
+    writeFileSync(newFile, 'created')
+    await fileHistoryTrackEdit(holder.updater, newFile)
+    // Turn 2: another AI action. Snapshot captures workdir with
+    // newFile present.
+    await turn(holder, [])
+
+    expect(existsSync(newFile)).toBe(true)
+
+    await fileHistoryRewind(holder.updater, m1, [])
+
+    // newFile is gone — rewind found it as on-disk-not-in-tree (the
+    // empty-tree root has no files) and unlinked it.
+    expect(existsSync(newFile)).toBe(false)
+  })
+
   test('subdirectory paths round-trip through rewind', async () => {
     mkdirSync(join(workTree, 'src'))
     const f = join(workTree, 'src', 'foo.ts')

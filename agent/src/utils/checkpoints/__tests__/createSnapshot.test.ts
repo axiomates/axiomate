@@ -192,27 +192,44 @@ describe('createSnapshot — skip paths', () => {
     expect(second.skipped).toBe('no-changes')
   })
 
-  test('skipped: no-changes when first call has no files at all', async () => {
-    // Empty workdir → no files to stage → the `no-ref + ls-files empty`
-    // branch returns no-changes. Verifies both branches of detectNoChanges.
+  test('writes empty-tree root commit when first call has no files', async () => {
+    // Empty workdir → first commit anchors "before any AI edit" with the
+    // canonical git empty-tree SHA (4b825dc...). Lets the first edit in
+    // a fresh empty directory produce a rewindable anchor: rewinding to
+    // this root removes the file the first edit created (via the
+    // disk-but-not-in-tree unlink pre-pass in
+    // restoreFullWorkdirToSnapshot).
+    //
+    // Subsequent readonly turns (with hasRef=true) still skip via the
+    // diff-index branch, so we don't stamp empty-tree commits on every
+    // turn — only the very first one when no ref exists yet.
     const r = await createSnapshot(workTree, {
       messageId: 'msg-001',
       label: 'l',
     })
-    expect(r.ok).toBe(false)
-    if (r.ok === true) return
-    expect(r.skipped).toBe('no-changes')
+    expect(r.ok).toBe(true)
+    if (r.ok === false) return
+    expect(r.hash).toBeTruthy()
+
+    // Second readonly call (no edits) on a now-existing ref → skipped.
+    const second = await createSnapshot(workTree, {
+      messageId: 'msg-002',
+      label: 'l',
+    })
+    expect(second.ok).toBe(false)
+    if (second.ok === true) return
+    expect(second.skipped).toBe('no-changes')
   })
 })
 
 describe('createSnapshot — touchProject ordering (step 4 before step 5)', () => {
-  test('projects/<hash>.json is written even on skip (no-changes)', async () => {
-    // Empty workdir → no-changes skip — but touchProject still runs.
+  test('projects/<hash>.json is written for the empty-tree root commit', async () => {
+    // Empty workdir → root commit + projects metadata written.
     const r = await createSnapshot(workTree, {
       messageId: 'msg-001',
       label: 'l',
     })
-    expect(r.ok).toBe(false)
+    expect(r.ok).toBe(true)
     const metaPath = projectMetaPath(projectHash(workTree))
     expect(existsSync(metaPath)).toBe(true)
     const meta = JSON.parse(readFileSync(metaPath, 'utf-8')) as {

@@ -266,10 +266,22 @@ async function _runCreateSnapshot(
   })
 
   // 10. No-changes detection. With a ref: diff-index. Without: ls-files.
-  //     Always runs — every snapshot is now action-triggered (a tool that
-  //     mutates the workdir is about to call us), so a clean diff means
-  //     the action turned out to be a no-op and we skip rather than commit
-  //     an empty rung onto the ref.
+  //     Two branches based on hasRef:
+  //       hasRef + diff-index --quiet exits 0 → workdir matches the ref
+  //         tree, action turned out to be a no-op, skip.
+  //       !hasRef + ls-files --cached empty → workdir is empty AND no
+  //         ref exists yet. We DO NOT skip here — let the pipeline write
+  //         an empty-tree root commit. This anchors "before any AI edit"
+  //         so the first edit in a fresh empty directory produces a
+  //         rewindable anchor. (Without this, the first commit on a
+  //         brand-new empty workdir is silently dropped; rewinding to
+  //         "before that first edit" had no anchor to land on. The
+  //         unlink pre-pass in restoreFullWorkdirToSnapshot picks up the
+  //         created file via --diff-filter=A so rewinding to the empty
+  //         root removes it.)
+  //     Once the root commit is written, the next turn sees hasRef=true
+  //     and falls into the diff-index branch, so we don't stamp empty-
+  //     tree commits on every readonly turn.
   const noChanges = await detectNoChanges({
     store,
     workTree: canonical,
@@ -277,9 +289,11 @@ async function _runCreateSnapshot(
     refCommit,
     hasRef,
   })
-  if (noChanges === 'no-changes') {
+  if (noChanges === 'no-changes' && hasRef) {
     return { ok: false, skipped: 'no-changes' }
   }
+  // 'transient' from detectNoChanges falls through to commit (matches
+  // pre-Hermes-refactor behavior). Logged downstream if commit fails.
   if (noChanges === 'transient') {
     return TRANSIENT('no-changes detection failed')
   }

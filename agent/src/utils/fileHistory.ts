@@ -628,8 +628,20 @@ async function restoreFullWorkdirToSnapshot(
     }
   }
 
-  // Phase 2: checkout. Skip pre-rollback snapshot — fileHistoryRewind
-  // already took one at the high level so it lands in state.snapshots.
+  // Phase 2: checkout — but skip when the target tree is empty.
+  // `git checkout <empty-tree-commit> -- .` exits 1 because there are
+  // zero matching paths. The Phase 1 unlink already emptied the workdir
+  // for this case, so we don't need to do anything more.
+  const targetTree = await runCheckpointGit(
+    ['ls-tree', '--name-only', gitHash],
+    { store, workTree: canonical, indexFile },
+  )
+  const targetIsEmpty =
+    targetTree.ok === true && targetTree.stdout.trim().length === 0
+  if (targetIsEmpty) return
+
+  // Skip pre-rollback snapshot — fileHistoryRewind already took one at
+  // the high level so it lands in state.snapshots.
   const result = await rollback(canonical, gitHash, {
     skipPreRollbackSnapshot: true,
   })
