@@ -153,7 +153,7 @@ but not delivered:
 | # | Item | Source |
 |---|---|---|
 | 6D | T1 / T2 / T5 test gaps | `progress.md:test-gap table` |
-| 6E | Observability — snapshot p50/p95, store-size telemetry | `plan.md:End-to-end verification` |
+| 6E ✅ | Observability — snapshot p50/p95, store-size telemetry | `plan.md:End-to-end verification` |
 | 6F | One-week dogfood metrics report | Same |
 
 ### 6A — `/resume`↔rollback union ✅ landed
@@ -258,20 +258,28 @@ scan. 4 new test cases in `commands/checkpoints/__tests__/views.test.ts`.
   implementation. Four cases: rev-parse code 2, read-tree spawn-error,
   add timeout, code-99 never-throws.
 
-### 6E — Observability
+### 6E — Observability ✅ landed
 
-**Problem.** Plan promised "snapshot p50/p95 latency, prune frequency,
-failures" telemetry. None landed.
+**Shipped.** New `agent/src/utils/checkpoints/metrics.ts` writes one
+JSONL row per `createSnapshot` outcome to
+`~/.axiomate/checkpoints/metrics.jsonl`. Compacts at 200 rows back to
+100 (so the rolling-100 window survives across restarts). Outcomes
+bucketed as `ok` / `no-changes` / `skipped-other` / `error`.
+`summarizeMetrics` computes rolling p50/p95 across `ok` durations,
+returning `null` (rendered as `—`) when the ok-sample is < 2.
+`/checkpoints status` appends the metrics block via
+`appendMetricsSection` (`views.ts:120-132`); the section is suppressed
+entirely when `sample_size === 0` so a fresh install doesn't show empty
+stats. Fail-open: a write failure cannot block a snapshot, a read
+failure cannot block status rendering — both swallow into
+`logForDebugging`.
 
-**Approach (minimum viable).**
-- Add `axiomate.checkpoints.snapshot.duration_ms` to the existing
-  `logForDebugging` channel (one line per snapshot) — already structured,
-  already grep-able.
-- Surface aggregate in `/checkpoints status`: rolling p50/p95 of the
-  last 100 snapshots, rolling failure count.
-- One test: feed 100 fake durations → assert p50/p95 calc.
-
-**Cost.** ~half a day.
+**Render shape (verified live 2026-05-22):**
+```
+Snapshot metrics (last 3):
+  ok 3, no-changes 0, skipped 0, failed 0
+  duration p50 298ms, p95 447ms
+```
 
 ### 6F — Dogfood metrics
 
@@ -292,8 +300,8 @@ a closing observation. No code work — just discipline.
    further rot. Do first.
 2. **Track 2** (v1-compat purge) — clarifies framing for everything
    downstream. Quick.
-3. **6E observability** — landing this before 6A/6B/6C means we have
-   metrics to evaluate the additions.
+3. **6E observability** ✅ landed — provides metrics surface for the
+   additions below.
 4. **6A resume↔rollback union** — the highest user value among the
    remaining gaps.
 5. **6C2** (status-line warning) — 1 hour, ship now.

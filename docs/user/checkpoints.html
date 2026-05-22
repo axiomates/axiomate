@@ -339,8 +339,8 @@
         <td>List snapshots for the current project in reverse chronological order. The optional positional <code>N</code> caps how many rows are shown (default 30, range 1..500).</td>
       </tr>
       <tr>
-        <td><code>/checkpoints prune</code></td>
-        <td>Run cleanup immediately. It is throttled to 24 hours by default; add <code>--force</code> to bypass that.</td>
+        <td><code>/checkpoints prune</code><br><code>/checkpoints prune --force</code><br><code>/checkpoints prune --keep-orphans</code></td>
+        <td>Run cleanup immediately. It is throttled to 24 hours by default; add <code>--force</code> to bypass that. Add <code>--keep-orphans</code> to skip refs whose working directory is missing (stale and size-cap passes still run). Unknown flags such as <code>--frce</code> are rejected with a usage error.</td>
       </tr>
       <tr>
         <td><code>/checkpoints clear</code></td>
@@ -359,8 +359,15 @@ axiomate checkpoints list
 axiomate checkpoints list --rows 50
 axiomate checkpoints prune --force
 axiomate checkpoints prune --retention-days 30 --max-size-mb 1024
-axiomate checkpoints prune --keep-orphans
-axiomate checkpoints clear</code></pre>
+axiomate checkpoints prune --keep-orphans --force
+axiomate checkpoints clear --force</code></pre>
+    <p>
+      Each subcommand rejects unexpected positional arguments with
+      <code>too many arguments</code> rather than silently dropping them.
+      <code>clear</code> requires <code>--force</code> on the CLI side
+      because it bypasses the interactive confirmation that the slash
+      version has.
+    </p>
 
     <h3>Row count for <code>status</code> and <code>list</code></h3>
     <p>
@@ -411,6 +418,16 @@ Note: 3 snapshots from 1 orphan workdir will be discarded on next prune.
 Snapshot metrics (last 100):
   ok 96, no-changes 3, skipped 0, failed 1
   duration p50 142ms, p95 380ms</code></pre>
+    <p>
+      The <code>Snapshot metrics</code> block reports a rolling window of
+      up to the last 100 snapshot attempts (the <em>last N</em> count grows
+      to 100 as you accumulate snapshots). The window is persisted to
+      <code>~/.axiomate/checkpoints/metrics.jsonl</code> so it survives
+      restarts. The block is suppressed entirely until the first snapshot
+      is recorded, and the <code>p50</code> / <code>p95</code> values show
+      <code>&mdash;</code> until at least two <code>ok</code> snapshots
+      have been measured.
+    </p>
   </section>
 
   <section id="config" class="panel">
@@ -451,8 +468,8 @@ Snapshot metrics (last 100):
     <h3>Prune thresholds</h3>
     <table>
       <tr><th>Parameter</th><th>Default</th><th>Override</th></tr>
-      <tr><td>Retention days, or stale threshold</td><td>14 days</td><td><code>--retention-days N</code></td></tr>
-      <tr><td>Total size limit</td><td>500 MB</td><td><code>--max-size-mb N</code></td></tr>
+      <tr><td>Retention days, or stale threshold</td><td>14 days</td><td><code>--retention-days N</code> &mdash; <strong>0 disables the stale pass</strong></td></tr>
+      <tr><td>Total size limit</td><td>500 MB</td><td><code>--max-size-mb N</code> &mdash; <strong>0 disables the size-cap pass</strong></td></tr>
       <tr><td>Maximum snapshots per project</td><td>100</td><td>Not configurable; hard limit.</td></tr>
       <tr><td>Session anchoring window</td><td>28 days, or 2x the retention period</td><td>Not configurable; hard limit.</td></tr>
     </table>
@@ -550,7 +567,7 @@ Snapshot metrics (last 100):
   </section>
 
   <footer>
-    Axiomate · Checkpoints v2 · Documentation evolves with the implementation, last updated 2026-05-22
+    Axiomate · Checkpoints v2 · Documentation evolves with the implementation, last updated 2026-05-23
   </footer>
 
 </div>

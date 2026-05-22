@@ -338,8 +338,8 @@
         <td>列出当前项目的快照，按时间倒序。可选位置参数 <code>N</code> 控制最多显示几行（默认 30，范围 1..500）。</td>
       </tr>
       <tr>
-        <td><code>/checkpoints prune</code></td>
-        <td>立即跑一次清理。默认带 24h 节流；加 <code>--force</code> 绕过。</td>
+        <td><code>/checkpoints prune</code><br><code>/checkpoints prune --force</code><br><code>/checkpoints prune --keep-orphans</code></td>
+        <td>立即跑一次清理。默认带 24h 节流；加 <code>--force</code> 绕过。加 <code>--keep-orphans</code> 跳过孤儿（工作目录消失的）那一遍，stale 和 size-cap 仍然跑。拼错的 flag（如 <code>--frce</code>）会被拒绝并报用法错误，不会静默走默认 prune。</td>
       </tr>
       <tr>
         <td><code>/checkpoints clear</code></td>
@@ -357,8 +357,13 @@ axiomate checkpoints list
 axiomate checkpoints list --rows 50
 axiomate checkpoints prune --force
 axiomate checkpoints prune --retention-days 30 --max-size-mb 1024
-axiomate checkpoints prune --keep-orphans
-axiomate checkpoints clear</code></pre>
+axiomate checkpoints prune --keep-orphans --force
+axiomate checkpoints clear --force</code></pre>
+    <p>
+      每个子命令都拒绝多余的位置参数（输出 <code>too many arguments</code>），
+      不会再静默吞掉。<code>clear</code> 在命令行端必须显式 <code>--force</code>，
+      因为它绕过了斜杠版本里的交互确认。
+    </p>
 
     <h3>控制 <code>status</code> / <code>list</code> 显示几行</h3>
     <p>
@@ -405,6 +410,14 @@ Note: 3 snapshots from 1 orphan workdir will be discarded on next prune.
 Snapshot metrics (last 100):
   ok 96, no-changes 3, skipped 0, failed 1
   duration p50 142ms, p95 380ms</code></pre>
+    <p>
+      <code>Snapshot metrics</code> 块是最近最多 100 次 snapshot 尝试的滚动窗口
+      （<em>last N</em> 那个数字会随快照累计涨到 100）。窗口数据写在
+      <code>~/.axiomate/checkpoints/metrics.jsonl</code> 里，重启不丢。
+      第一次 snapshot 之前这块整段不显示；
+      <code>p50</code> / <code>p95</code> 至少要 2 个 <code>ok</code> 样本才会
+      展示数字，否则显示 <code>&mdash;</code>。
+    </p>
   </section>
 
   <section id="config" class="panel">
@@ -445,8 +458,8 @@ Snapshot metrics (last 100):
     <h3>Prune 阈值</h3>
     <table>
       <tr><th>参数</th><th>默认</th><th>覆盖方式</th></tr>
-      <tr><td>保留天数（stale 阈值）</td><td>14 天</td><td><code>--retention-days N</code></td></tr>
-      <tr><td>总大小上限</td><td>500 MB</td><td><code>--max-size-mb N</code></td></tr>
+      <tr><td>保留天数（stale 阈值）</td><td>14 天</td><td><code>--retention-days N</code> &mdash; <strong>填 0 关掉 stale 这一遍</strong></td></tr>
+      <tr><td>总大小上限</td><td>500 MB</td><td><code>--max-size-mb N</code> &mdash; <strong>填 0 关掉 size-cap 这一遍</strong></td></tr>
       <tr><td>每个项目最多快照数</td><td>100</td><td>不可配，硬上限</td></tr>
       <tr><td>会话锚定窗口</td><td>28 天（=2× 保留天数）</td><td>不可配，硬上限</td></tr>
     </table>
@@ -534,7 +547,7 @@ Snapshot metrics (last 100):
   </section>
 
   <footer>
-    Axiomate · Checkpoints v2 · 文档随实现迭代，最后更新 2026-05-22
+    Axiomate · Checkpoints v2 · 文档随实现迭代，最后更新 2026-05-23
   </footer>
 
 </div>
