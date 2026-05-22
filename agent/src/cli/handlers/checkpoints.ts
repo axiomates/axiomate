@@ -26,16 +26,39 @@ import {
   renderPruneReport,
   renderStatus,
 } from '../../commands/checkpoints/views.js'
+import { resolveStatusRows } from '../../commands/checkpoints/resolveStatusRows.js'
 
-export async function checkpointsStatusHandler(): Promise<void> {
-  const report = await storeStatus()
-  console.log(renderStatus(report))
+export interface CheckpointsRowsOptions {
+  rows?: number | string
 }
 
-export async function checkpointsListHandler(): Promise<void> {
+function parseRowsFlag(opts: CheckpointsRowsOptions): number | undefined {
+  if (opts.rows === undefined) return undefined
+  const n = Number(opts.rows)
+  if (!Number.isFinite(n) || !Number.isInteger(n) || n < 1 || n > 500) {
+    console.error(
+      'Invalid --rows. Expected an integer in [1..500].',
+    )
+    process.exit(1)
+  }
+  return n
+}
+
+export async function checkpointsStatusHandler(
+  opts: CheckpointsRowsOptions = {},
+): Promise<void> {
+  const rowsFlag = parseRowsFlag(opts)
+  const report = await storeStatus()
+  console.log(renderStatus(report, resolveStatusRows(rowsFlag)))
+}
+
+export async function checkpointsListHandler(
+  opts: CheckpointsRowsOptions = {},
+): Promise<void> {
+  const rowsFlag = parseRowsFlag(opts)
   const cwd = getCwd()
   const entries = await listSnapshots(cwd)
-  console.log(renderList(cwd, entries))
+  console.log(renderList(cwd, entries, resolveStatusRows(rowsFlag)))
 }
 
 export interface CheckpointsPruneOptions {

@@ -29,7 +29,9 @@ import {
 } from 'vitest'
 import {
   checkpointsClearHandler,
+  checkpointsListHandler,
   checkpointsPruneHandler,
+  checkpointsStatusHandler,
 } from '../checkpoints.js'
 import { _resetGitAvailableCacheForTesting } from '../../../utils/checkpoints/git.js'
 import { ensureStore } from '../../../utils/checkpoints/store.js'
@@ -138,6 +140,41 @@ describe('checkpointsPruneHandler', () => {
     // handler, plumbed through to pruneCheckpoints, and the run must
     // complete without invoking process.exit.
     await checkpointsPruneHandler({ keepOrphans: true, force: true })
+    expect(exitSpy).not.toHaveBeenCalled()
+  })
+})
+
+describe('--rows flag', () => {
+  test('checkpointsStatusHandler: non-numeric --rows exits 1', async () => {
+    await expect(
+      checkpointsStatusHandler({ rows: 'abc' }),
+    ).rejects.toBeInstanceOf(ExitInvoked)
+    expect(exitSpy).toHaveBeenCalledWith(1)
+    const errMsg = (errSpy.mock.calls[0]?.[0] ?? '') as string
+    expect(errMsg).toMatch(/Invalid --rows/)
+  })
+
+  test('checkpointsStatusHandler: out-of-range --rows exits 1', async () => {
+    await expect(
+      checkpointsStatusHandler({ rows: '99999' }),
+    ).rejects.toBeInstanceOf(ExitInvoked)
+    expect(exitSpy).toHaveBeenCalledWith(1)
+  })
+
+  test('checkpointsStatusHandler: --rows 50 runs to completion on empty store', async () => {
+    await checkpointsStatusHandler({ rows: '50' })
+    expect(exitSpy).not.toHaveBeenCalled()
+  })
+
+  test('checkpointsListHandler: non-numeric --rows exits 1', async () => {
+    await expect(
+      checkpointsListHandler({ rows: 'big' }),
+    ).rejects.toBeInstanceOf(ExitInvoked)
+    expect(exitSpy).toHaveBeenCalledWith(1)
+  })
+
+  test('checkpointsListHandler: --rows 5 runs to completion', async () => {
+    await checkpointsListHandler({ rows: '5' })
     expect(exitSpy).not.toHaveBeenCalled()
   })
 })

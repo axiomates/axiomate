@@ -92,15 +92,15 @@ This audit compares the production checkpoint system in Hermes against axiomate'
 
 ## C — Real gaps that warrant a decision
 
-### 1. CLI `--limit` flag on `status` / `list`
+### 1. CLI `--rows` flag on `status` / `list` ✅ landed (2026-05-22)
 
 **What Hermes does** (`hermes_cli/checkpoints.py::cmd_status` line 206-207): accepts `--limit` (int, default 20) to cap the per-project breakdown rows printed.
 
-**What axiomate does**: hardcoded limit of 20 in `renderStatus(report, limit = 20)`. CLI handler does not expose a `--limit` flag.
+**What axiomate does now**: a new `globalConfig.checkpointsStatusRows: number` (default 20, range 1..500) sets the persistent default, surfaced as a Settings UI row (preset cycle: 10/20/50/100/200/500) and writeable via `/config checkpointsStatusRows N`. Both the CLI subcommands (`axiomate checkpoints status --rows N`, `axiomate checkpoints list --rows N`) and the slash command (`/checkpoints status --rows N`, `/checkpoints list --rows N`) accept a per-call override that beats the config. Resolution happens in `commands/checkpoints/resolveStatusRows.ts` with priority `flag > config > 20`; out-of-range or non-integer config values fall back to 20 to defend against hand-edited `~/.axiomate.json`.
 
-**Why this might matter**: users with hundreds of projects might want to see more rows, or conversely, a tighter view on a slow terminal.
+**Why we renamed `--limit` → `--rows`**: `--limit` is overloaded across CLIs (queries, rate limits, time windows). `--rows` is concrete and matches what the flag actually controls — the row count of the rendered table.
 
-**Recommendation**: **Port**. One-line CLI flag addition + pass through to renderer. Low effort, matches Hermes UX.
+**Test coverage**: `resolveStatusRows.test.ts` 9 cases (precedence + clamping); `parseSub.test.ts` 15 cases (slash subcommand parser + `parseRowsToken`); 5 new cases in `cli/handlers/__tests__/checkpoints.test.ts` covering range validation and end-to-end plumbing.
 
 ---
 
@@ -186,11 +186,11 @@ This audit compares the production checkpoint system in Hermes against axiomate'
 
 ## Recommendations summary
 
-**Status as of 2026-05-22 (post-keep-orphans):**
+**Status as of 2026-05-22 (post-rows):**
 
-1. **`--limit` flag on CLI `status` / `list`** — still open. ~30 min, low risk.
+1. ✅ **`--rows` flag on CLI `status` / `list`** (renamed from Hermes' `--limit`) — landed. Includes a persistent `globalConfig.checkpointsStatusRows` plus Settings UI row and `/config` integration.
 2. ✅ **`--keep-orphans` flag on `prune`** — landed.
 3. ✅ **`delete_orphans` function parameter (`PruneOptions.keepOrphans`)** — landed with #2.
 4. **No action needed on formatting, edge cases, or architectural choices** — axiomate's `formatBytes`, `countFiles`, size-cap deferral, and integration point are all intentional improvements or documented divergences.
 
-**Total effort for full parity: ~30 minutes** (just the remaining `--limit` flag). Everything else is either landed, intentionally divergent, or out of scope.
+**Full Hermes-parity slate from this audit is now closed.** Re-run the `git log --since=...` recipe at the top of the doc when revisiting Hermes upstream.

@@ -26,6 +26,7 @@ import {
   renderPruneReport,
   renderStatus,
 } from './views.js'
+import { resolveStatusRows } from './resolveStatusRows.js'
 
 type Sub = 'status' | 'list' | 'prune' | 'clear'
 
@@ -43,6 +44,35 @@ function parseSub(args: string): { sub: Sub; rest: string } | { error: string } 
   }
 }
 
+/**
+ * Parse `--rows N` (or `--rows=N`) from an already-tokenized arg list.
+ * Returns `{ rows }` on success, `{ error }` on a malformed value, or
+ * `{ rows: undefined }` when the flag is absent.
+ *
+ * Range-checks to [1..500] to match the CLI handler and the renderer's
+ * sane upper bound.
+ */
+function parseRowsToken(
+  tokens: readonly string[],
+): { rows?: number } | { error: string } {
+  for (let i = 0; i < tokens.length; i++) {
+    const t = tokens[i]!
+    let raw: string | undefined
+    if (t === '--rows') raw = tokens[i + 1]
+    else if (t.startsWith('--rows=')) raw = t.slice('--rows='.length)
+    else continue
+    if (raw === undefined || raw === '') {
+      return { error: '--rows requires an integer value (e.g. --rows 50).' }
+    }
+    const n = Number(raw)
+    if (!Number.isFinite(n) || !Number.isInteger(n) || n < 1 || n > 500) {
+      return { error: `Invalid --rows ${raw}. Expected an integer in [1..500].` }
+    }
+    return { rows: n }
+  }
+  return {}
+}
+
 export async function call(
   onDone: (result?: string) => void,
   _context: unknown,
@@ -56,14 +86,26 @@ export async function call(
 
   switch (parsed.sub) {
     case 'status': {
+      const tokens = parsed.rest === '' ? [] : parsed.rest.split(/\s+/)
+      const rowsParsed = parseRowsToken(tokens)
+      if ('error' in rowsParsed) {
+        onDone(rowsParsed.error)
+        return null
+      }
       const report = await storeStatus()
-      onDone(renderStatus(report))
+      onDone(renderStatus(report, resolveStatusRows(rowsParsed.rows)))
       return null
     }
     case 'list': {
+      const tokens = parsed.rest === '' ? [] : parsed.rest.split(/\s+/)
+      const rowsParsed = parseRowsToken(tokens)
+      if ('error' in rowsParsed) {
+        onDone(rowsParsed.error)
+        return null
+      }
       const cwd = getOriginalCwd()
       const entries = await listSnapshots(cwd)
-      onDone(renderList(cwd, entries))
+      onDone(renderList(cwd, entries, resolveStatusRows(rowsParsed.rows)))
       return null
     }
     case 'prune': {
@@ -85,4 +127,4 @@ export async function call(
 
 // Exposed for the CLI subcommand and tests so the same parser/dispatcher
 // table stays the single source of truth for valid sub-args.
-export const _internal = { parseSub }
+export const _internal = { parseSub, parseRowsToken }

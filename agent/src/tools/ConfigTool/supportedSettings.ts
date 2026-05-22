@@ -13,7 +13,7 @@ type SyncableAppStateKey = 'verbose' | 'mainLoopModel' | 'thinkingEnabled'
 
 type SettingConfig = {
   source: 'global' | 'settings'
-  type: 'boolean' | 'string'
+  type: 'boolean' | 'string' | 'number'
   description: string
   path?: string[]
   options?: readonly string[]
@@ -23,6 +23,9 @@ type SettingConfig = {
   validateOnWrite?: (v: unknown) => Promise<{ valid: boolean; error?: string }>
   /** Format value when reading/getting for display */
   formatOnRead?: (v: unknown) => unknown
+  /** Inclusive numeric bounds. Only consulted when type === 'number'. */
+  min?: number
+  max?: number
 }
 
 export const SUPPORTED_SETTINGS: Record<string, SettingConfig> = {
@@ -69,6 +72,14 @@ export const SUPPORTED_SETTINGS: Record<string, SettingConfig> = {
     source: 'global',
     type: 'boolean',
     description: 'Enable file checkpointing for code rewind',
+  },
+  checkpointsStatusRows: {
+    source: 'global',
+    type: 'number',
+    description:
+      'Default row count for `/checkpoints status` and `/checkpoints list` (CLI --rows overrides per call). Range 1..500.',
+    min: 1,
+    max: 500,
   },
   showTurnDuration: {
     source: 'global',

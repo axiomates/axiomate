@@ -145,6 +145,46 @@ export const ConfigTool = buildTool({
       }
     }
 
+    // Coerce and validate numeric values
+    if (config.type === 'number') {
+      if (typeof value === 'string') {
+        const trimmed = value.trim()
+        if (trimmed !== '' && Number.isFinite(Number(trimmed))) {
+          finalValue = Number(trimmed)
+        }
+      }
+      if (typeof finalValue !== 'number' || !Number.isFinite(finalValue)) {
+        return {
+          data: {
+            success: false,
+            operation: 'set',
+            setting,
+            error: `${setting} requires a finite number.`,
+          },
+        }
+      }
+      if (config.min !== undefined && finalValue < config.min) {
+        return {
+          data: {
+            success: false,
+            operation: 'set',
+            setting,
+            error: `${setting} must be >= ${config.min} (got ${finalValue}).`,
+          },
+        }
+      }
+      if (config.max !== undefined && finalValue > config.max) {
+        return {
+          data: {
+            success: false,
+            operation: 'set',
+            setting,
+            error: `${setting} must be <= ${config.max} (got ${finalValue}).`,
+          },
+        }
+      }
+    }
+
     // Check options
     const options = getOptionsForSetting(setting)
     if (options && !options.includes(String(finalValue))) {

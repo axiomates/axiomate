@@ -474,6 +474,10 @@ export type GlobalConfig = {
   // File checkpointing configuration
   fileCheckpointingEnabled: boolean
 
+  // Default row count for `/checkpoints status` and `/checkpoints list`
+  // output. CLI `--rows N` overrides this per-call. Range 1..500.
+  checkpointsStatusRows: number
+
   // Terminal progress bar configuration (OSC 9;4)
   terminalProgressBarEnabled: boolean
 
@@ -633,6 +637,7 @@ function createDefaultGlobalConfig(): GlobalConfig {
     autoConnectIde: false,
     autoInstallIdeExtension: true,
     fileCheckpointingEnabled: true,
+    checkpointsStatusRows: 20,
     terminalProgressBarEnabled: true,
     respectGitignore: true,
     copyFullResponse: false,
@@ -660,6 +665,7 @@ export const GLOBAL_CONFIG_KEYS = [
   'autoConnectIde',
   'autoInstallIdeExtension',
   'fileCheckpointingEnabled',
+  'checkpointsStatusRows',
   'terminalProgressBarEnabled',
   'showStatusInTerminalTab',
   'respectGitignore',
