@@ -336,6 +336,29 @@
       visszatér.
     </div>
 
+    <h4>Beszélgetés-rewind és elágazás</h4>
+    <p>
+      A <em>Restore conversation</em> (és a <em>Restore code and conversation</em>)
+      egy korábbi forduló elé vágja vissza a beszélgetést. A háttérben ez
+      egy <strong>elágazást</strong> hoz létre — a következő promptod a
+      kiválasztott ponttól folytatódik, miközben a "rewind-elt" üzenetek
+      továbbra is benne maradnak a JSONL munkamenet-fájlban, de már nem
+      részei az aktív láncnak.
+    </p>
+    <p>
+      Konkrét következmény: <strong>az elhagyott ágon levő
+      kódvisszaállítási horgonyok nem jelennek meg a választóban</strong>
+      a beszélgetés-rewind után, még resume-után sem. Az árnyék-tárhely
+      git ref-jei még tartalmazzák őket — a <code>/checkpoints list</code>
+      mutatja —, de a választó kiszűri őket, mert a hozzájuk tartozó
+      forduló már nem érhető el a jelenlegi láncból. A
+      <code>↶ Pre-rewind anchor</code> sor (amit maga a beszélgetés-rewind
+      vett fel) megmarad mint visszacsinálási útvonal, de az alatta lévő
+      régi fordulók nem. Ha mégis el kell érned egy elhagyott ág kódját,
+      másold ki a commit hash-t a <code>/checkpoints list</code>-ből és
+      használd közvetlenül az árnyék gitet.
+    </p>
+
     <h4>Üres munkakönyvtár viselkedése</h4>
     <p>
       Ha egy teljesen új, üres könyvtárban indítod az Axiomate-et, és

@@ -1876,19 +1876,29 @@ function buildFileHistorySnapshotChain(
       snapshots[existingIndex] = snapshot
     }
   }
-  // Synthetic-UUID snapshots (e.g. pre-rewind safety anchors) aren't in
-  // the conversation chain — fileHistoryRewind synthesizes a fresh UUID
-  // for them. Without rescuing here, they'd be lost on resume even
-  // though their JSONL entry persisted just fine. Sort by timestamp so
-  // they slot into roughly the right position relative to the
-  // conversation-keyed anchors above (which arrived in conversation
-  // order, not necessarily monotonic-time order — but for this resume
-  // path the two are aligned in practice).
+  // Synthetic-UUID snapshots — specifically pre-rewind safety anchors
+  // taken by fileHistoryRewind — aren't keyed by a conversation message,
+  // so the chain walk above misses them. We rescue them in a second
+  // pass, but ONLY pre-rewind-kind ones: any other orphan likely belongs
+  // to a conversation rewind's abandoned fork (its messageId was once in
+  // a conversation chain that's no longer the active branch). Surfacing
+  // those would let the user rewind the workdir to a state disconnected
+  // from the current conversation — confusing.
+  //
+  // Lookup uses a Set (O(M+N)) instead of conversation.some (O(M*N))
+  // because conversation can run into the thousands on long sessions.
+  const conversationUuids = new Set<UUID>()
+  for (const m of conversation) conversationUuids.add(m.uuid)
   const orphanSnapshots: FileHistorySnapshot[] = []
+  let abandonedForkCount = 0
   for (const [uuid, snapshotMessage] of fileHistorySnapshots) {
-    if (conversation.some(m => m.uuid === uuid)) continue
-    if (snapshotMessage.isSnapshotUpdate) continue // updates are merged inline above
-    orphanSnapshots.push(snapshotMessage.snapshot)
+    if (conversationUuids.has(uuid)) continue
+    if (snapshotMessage.isSnapshotUpdate) continue // updates merged inline above
+    if (snapshotMessage.snapshot.kind === 'pre-rewind') {
+      orphanSnapshots.push(snapshotMessage.snapshot)
+    } else {
+      abandonedForkCount++
+    }
   }
   orphanSnapshots.sort(
     (a, b) =>
@@ -1918,7 +1928,8 @@ function buildFileHistorySnapshotChain(
   logForDebugging(
     `SessionStorage: [SnapshotChain] in=${fileHistorySnapshots.size} ` +
       `out=${merged.length} (conversation-keyed=${snapshots.length}, ` +
-      `orphan-rescued=${orphanSnapshots.length})`,
+      `pre-rewind-rescued=${orphanSnapshots.length}, ` +
+      `abandoned-fork-dropped=${abandonedForkCount})`,
   )
   return merged
 }

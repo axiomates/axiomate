@@ -327,6 +327,23 @@
       回滚回去，原来的状态就回来了。
     </div>
 
+    <h4>对话回滚与分叉</h4>
+    <p>
+      <em>Restore conversation</em>（以及 <em>Restore code and conversation</em>）
+      会把对话剪回某个之前的回合。底层这其实创建了一条<strong>分叉</strong> ——
+      你下一条 prompt 会接到选中那一点继续，而被"rewind 跳过"的消息仍然在
+      JSONL session 文件里，但不再属于当前活动链。
+    </p>
+    <p>
+      具体后果：<strong>属于被废弃分叉的代码还原锚点不会出现在选择器里</strong>，
+      就算 resume 之后也不会显示。影子仓库的 git ref 仍然保有它们 ——
+      <code>/checkpoints list</code> 能看到 —— 但选择器把它们过滤掉了，因为
+      它们对应的 conversation 回合已经不在当前链上。<code>↶ Pre-rewind anchor</code>
+      （这次 conversation rewind 自己拍的）会保留下来作为撤销路径，但它下面
+      的旧回合不会保留。如果你确实需要从废弃分叉恢复代码，从
+      <code>/checkpoints list</code> 里复制 commit 哈希，直接用底层的影子 git。
+    </p>
+
     <h4>空 workdir 行为</h4>
     <p>
       如果你在一个全新的空目录里启动 Axiomate，然后让它创建第一个文件，

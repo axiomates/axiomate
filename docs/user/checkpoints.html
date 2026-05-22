@@ -330,6 +330,27 @@
       state comes back.
     </div>
 
+    <h4>Conversation rewind and branching</h4>
+    <p>
+      <em>Restore conversation</em> (and <em>Restore code and conversation</em>)
+      cuts the conversation back to a previous turn. Internally this creates
+      a <strong>branch</strong> — your next prompt continues from the chosen
+      point, while the messages you "rewound past" stay in the JSONL session
+      file but no longer participate in the active chain.
+    </p>
+    <p>
+      Concrete consequence: <strong>code-restore anchors that belonged to the
+      abandoned branch don't appear in the picker after the conversation
+      rewind</strong>, even on resume. The git refs in the shadow store still
+      hold them — <code>/checkpoints list</code> shows them — but the picker
+      filters them out because their parent turn is no longer reachable from
+      the current chain. The <code>↶ Pre-rewind anchor</code> from the
+      conversation rewind itself <em>is</em> kept (as your undo path), but the
+      old turns underneath it are not. If you need to recover code from an
+      abandoned branch, copy the commit hash from <code>/checkpoints list</code>
+      and use the shadow git directly.
+    </p>
+
     <h4>Empty-workdir behavior</h4>
     <p>
       If you start Axiomate in a brand-new empty directory and then ask
