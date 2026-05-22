@@ -405,7 +405,16 @@ export async function fileHistoryGetDiffStats(
   messages: readonly Message[],
 ): Promise<DiffStats> {
   if (!fileHistoryEnabled()) return undefined
-  const target = findRestoreTarget(state, messageId, messages)
+  // Strict-anchor only — no ancestor fallback. The chooser uses this
+  // result to decide whether to offer "Restore code" (canRestoreCode).
+  // findRestoreTarget would otherwise walk back to the closest preceding
+  // anchor, making a readonly turn ("seed.txt 现在是啥") falsely claim
+  // "Restore code +1 -1" by silently jumping to the last edit. The
+  // picker already shows ⚠ on rows without their own snapshot; the
+  // chooser must agree — no own snapshot means no code-restore option.
+  // (Other findRestoreTarget callers — fileHistoryRewind, hasAnyChanges
+  // — keep the ancestor-fallback semantic; only this one is strict.)
+  const target = state.snapshots.find(s => s.messageId === messageId)
   if (!target) return undefined
 
   const storeResult = await ensureStore()
