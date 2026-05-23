@@ -223,16 +223,18 @@ export function MessageSelector({
   }, [anchors])
 
   const hasAnySnapshot = isFileHistoryEnabled && anchors.length > 0
-  // Code tab: only rows with an anchor (or ↶ synthetic anchors); these
-  // are the ones the user can actually code-rewind to. Falls back to
-  // all-turns if no snapshots exist yet so a fresh project still
-  // shows the conversation in the code tab (chooser will degrade
-  // gracefully). Conversation tab: every selectable user message —
-  // restore conversation works without an anchor.
+  // Code tab: rows with a code anchor (or ↶ synthetic anchors). When
+  // no anchors exist at all (fresh project or post-/checkpoints
+  // clear), show an empty list rather than a polluted view of every
+  // user message marked ⚠ — that earlier fallback was misleading.
+  // The empty-list footer instructs the user to Tab to the
+  // conversation tab if they need conversation-only rewind.
+  // Conversation tab: every selectable user message — restore
+  // conversation works without an anchor.
   const visibleSelectable = useMemo(
     () => {
       if (activeTab === 'conversation') return allSelectable
-      if (!hasAnySnapshot) return allSelectable
+      if (!hasAnySnapshot) return [] // Code tab + no anchors = empty
       return allSelectable.filter(m => anchorByMsgId.has(m.uuid))
     },
     [allSelectable, activeTab, anchorByMsgId, hasAnySnapshot],
@@ -810,7 +812,19 @@ export function MessageSelector({
         )}
         {!hasMessagesToSelect && (
           <>
-            <Text>Nothing to rewind to yet.</Text>
+            {activeTab === 'code' && hasAnySnapshot ? (
+              <Text>Nothing to rewind to yet.</Text>
+            ) : activeTab === 'code' ? (
+              // Code tab + no anchors at all = post-clear or fresh
+              // project. Direct the user to the conversation tab if
+              // they need conversation-only rewind.
+              <Text>
+                No code checkpoints in this session. Press Tab for
+                conversation rewind.
+              </Text>
+            ) : (
+              <Text>Nothing to rewind to yet.</Text>
+            )}
           </>
         )}
         {!error && messageToRestore && hasMessagesToSelect && (
