@@ -89,6 +89,14 @@ export interface CreateSnapshotReason {
   messageId: string
   /** Free-text label. Newlines stripped at format time. */
   label: string
+  /**
+   * Optional commit body. Used to cache human-readable context (e.g. the
+   * original prompt's first ~80 chars) so resume-time picker rendering
+   * can label off-branch anchors meaningfully without round-tripping
+   * through the JSONL session. Plain text, length-capped by the caller;
+   * passed verbatim. Empty / undefined → no body, commit subject only.
+   */
+  bodyText?: string
 }
 
 export interface CreateSnapshotOptions {
@@ -307,6 +315,7 @@ async function _runCreateSnapshot(
     refCommit,
     hasRef,
     subject: formatCommitSubject(reason),
+    bodyText: reason.bodyText,
   })
   if (commitResult.ok === false) return commitResult
   const newSha = commitResult.hash
@@ -381,6 +390,7 @@ interface CommitArgs {
   refCommit: string
   hasRef: boolean
   subject: string
+  bodyText?: string
 }
 
 async function commitSnapshot(
@@ -393,13 +403,22 @@ async function commitSnapshot(
   if (writeTree.ok === false) return TRANSIENT(`write-tree: ${writeTree.message}`)
   const treeSha = writeTree.stdout.trim()
 
-  const args = a.hasRef
-    ? ['commit-tree', treeSha, '-p', a.refCommit, '-m', a.subject, '--no-gpg-sign']
+  // When bodyText is provided, feed the full message via stdin (`-F -`)
+  // so we don't trip Windows' argv length cap on long bodies. Subject-
+  // only commits keep the simpler `-m` form.
+  const useStdin = typeof a.bodyText === 'string' && a.bodyText.length > 0
+  const message = useStdin ? `${a.subject}\n\n${a.bodyText}` : a.subject
+  const baseArgs = useStdin
+    ? ['commit-tree', treeSha, '-F', '-', '--no-gpg-sign']
     : ['commit-tree', treeSha, '-m', a.subject, '--no-gpg-sign']
+  const args = a.hasRef
+    ? [...baseArgs.slice(0, 2), '-p', a.refCommit, ...baseArgs.slice(2)]
+    : baseArgs
   const commitTree = await runCheckpointGit(args, {
     store: a.store,
     workTree: a.workTree,
     indexFile: a.indexFile,
+    input: useStdin ? message : undefined,
   })
   if (commitTree.ok === false) {
     return TRANSIENT(`commit-tree: ${commitTree.message}`)

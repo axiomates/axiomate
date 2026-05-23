@@ -189,9 +189,22 @@ export function MessageSelector({
       .filter(s => !conversationUuids.has(s.messageId))
       .map(s => {
         const time = formatSnapshotTime(s.timestamp)
+        // Pre-rewind safety nets carry a `pre-rewind:<targetMsgId>`
+        // suffix in the commit subject. Other off-branch anchors carry
+        // the original prompt's first ~80 chars in `bodyPreview`. The
+        // distinction lets the picker tell users which row is "undo
+        // your last rewind" vs "the prompt you walked away from."
+        // Source of truth: git commit message (cached on the snapshot
+        // at write time, round-tripped through JSONL on resume).
+        const isPreRewind = s.subject?.includes(':pre-rewind:') ?? false
+        const content = isPreRewind
+          ? `↶ Undo last rewind (${time})`
+          : s.bodyPreview
+            ? `↶ "${s.bodyPreview}" (${time})`
+            : `↶ Off-branch anchor (${time})`
         return {
           ...createUserMessage({
-            content: `↶ Off-branch anchor (${time})`,
+            content,
           }),
           uuid: s.messageId,
         } as UserMessage
@@ -892,7 +905,7 @@ export function MessageSelector({
                 })()}
                 {syntheticAnchors.length > 0 && (
                   <>
-                    {`↶ rows are off-branch anchors — code-only restore`}
+                    {`↶ rows are off-branch anchors — pick to restore code from that point`}
                     {' · '}
                   </>
                 )}

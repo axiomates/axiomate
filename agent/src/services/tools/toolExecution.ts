@@ -347,12 +347,44 @@ function getMcpServerBaseUrlFromToolName(
  * for action-triggered file-history snapshots — every snapshot taken
  * during one user turn shares the same key.
  */
-function findCurrentUserMessageId(messages: Message[]): UUID | undefined {
+function findCurrentUserMessage(messages: Message[]): Message | undefined {
   for (let i = messages.length - 1; i >= 0; i--) {
     const m = messages[i]
-    if (m && selectableUserMessagesFilter(m)) return m.uuid
+    if (m && selectableUserMessagesFilter(m)) return m
   }
   return undefined
+}
+
+function findCurrentUserMessageId(messages: Message[]): UUID | undefined {
+  return findCurrentUserMessage(messages)?.uuid
+}
+
+/**
+ * Best-effort prompt preview for snapshot commit body. First ~80 chars
+ * of the user's prompt text so off-branch ↶ rows on resume can show
+ * "what the user asked for" without needing to round-trip through the
+ * JSONL session file. Strips command tags (slash commands shouldn't
+ * trigger snapshots anyway, but defend) and collapses whitespace.
+ * Returns undefined if there's nothing useful — bodyText will then be
+ * empty and the commit subject-only path is used.
+ */
+function previewPromptText(message: Message | undefined): string | undefined {
+  if (!message || message.type !== 'user') return undefined
+  const content = message.message.content
+  let raw: string
+  if (typeof content === 'string') {
+    raw = content
+  } else {
+    const lastText = [...content].reverse().find(b => b.type === 'text')
+    if (!lastText || lastText.type !== 'text') return undefined
+    raw = lastText.text
+  }
+  const stripped = raw
+    .replace(/<command-(name|message|args)>[\s\S]*?<\/command-(name|message|args)>/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+  if (!stripped) return undefined
+  return stripped.length > 80 ? stripped.slice(0, 80) + '…' : stripped
 }
 
 /**
@@ -381,7 +413,8 @@ export async function maybeSnapshotBeforeToolCall(
   if (!fileHistoryEnabled()) return
   if (tool.isReadOnly(input as never)) return
 
-  const userMessageId = findCurrentUserMessageId(toolUseContext.messages)
+  const userMessage = findCurrentUserMessage(toolUseContext.messages)
+  const userMessageId = userMessage?.uuid
   if (!userMessageId) return
 
   // Per-turn dedup: snapshot once per user message. Read state via the
@@ -401,6 +434,8 @@ export async function maybeSnapshotBeforeToolCall(
       }))
     },
     userMessageId,
+    'file-history',
+    previewPromptText(userMessage),
   )
 }
 

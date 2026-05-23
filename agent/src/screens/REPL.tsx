@@ -3052,7 +3052,7 @@ export function REPL({
     const preview = previewMessageText(message);
     if (mode === 'both') {
       pushRewindFeedback(
-        `✓ Code and conversation rewound to before "${preview}". A safety snapshot of the prior state was saved — pick the latest "↶ Off-branch anchor" row from /rewind to undo.`,
+        `✓ Code and conversation rewound to before "${preview}". A safety snapshot of the prior state was saved — pick the "↶ Undo last rewind" row from /rewind to undo.`,
       );
     } else {
       pushRewindFeedback(
@@ -4065,7 +4065,7 @@ export function REPL({
             if (mode === 'code-only') {
               const preview = previewMessageText(message);
               pushRewindFeedback(
-                `✓ Code rewound to before "${preview}". Conversation unchanged. A safety snapshot of the prior state was saved — pick the latest "↶ Off-branch anchor" row from /rewind to undo.`,
+                `✓ Code rewound to before "${preview}". Conversation unchanged. A safety snapshot of the prior state was saved — pick the "↶ Undo last rewind" row from /rewind to undo.`,
               );
             }
           }} onSummarize={async (message: UserMessage, feedback?: string, direction: PartialCompactDirection = 'from') => {

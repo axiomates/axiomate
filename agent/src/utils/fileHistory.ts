@@ -79,6 +79,26 @@ export type FileHistorySnapshot = {
    */
   addedTrackedFiles: readonly string[]
   timestamp: Date
+  /**
+   * Cache of the commit subject (`axiomate:<msgId>:<label>`) so the picker
+   * can distinguish synthetic-anchor types without re-reading git on
+   * every render. Populated when the snapshot is created in-process
+   * (writer side) and on resume (reader side via batch git log; see
+   * sessionStorage's buildFileHistorySnapshotChain).
+   *
+   * Source of truth is the commit message in git; this field is just a
+   * cache. Optional because legacy JSONL records don't have it — the
+   * picker falls back to the timestamp-only label format when missing.
+   */
+  subject?: string
+  /**
+   * Cache of the commit body — typically the user prompt's first ~80
+   * chars. Lets the picker show abandoned-fork rows as "↶ <prompt>"
+   * instead of a generic timestamp. Same caching rationale as `subject`;
+   * source of truth is git. Optional — pre-rewind safety nets and
+   * legacy snapshots have no body.
+   */
+  bodyPreview?: string
 }
 
 export type FileHistoryState = {
@@ -227,6 +247,7 @@ export async function fileHistoryMakeSnapshot(
   ) => void,
   messageId: UUID,
   label: string = 'file-history',
+  promptPreview?: string,
 ): Promise<void> {
   if (!fileHistoryEnabled()) return
 
@@ -243,6 +264,7 @@ export async function fileHistoryMakeSnapshot(
   const result = await createSnapshot(workdir, {
     messageId,
     label,
+    bodyText: promptPreview,
   })
   if (result.ok === false) {
     logForDebugging(
@@ -263,6 +285,12 @@ export async function fileHistoryMakeSnapshot(
       // is what lets us store O(M) total instead of O(K×M).
       addedTrackedFiles: [],
       timestamp: new Date(),
+      // Cache the commit subject we just wrote so the picker doesn't
+      // need to re-read git for in-session anchors. The wire format is
+      // `axiomate:<msgId>:<label>` — match what formatCommitSubject in
+      // checkpoints/reason.ts produces.
+      subject: `axiomate:${messageId}:${label}`,
+      ...(promptPreview ? { bodyPreview: promptPreview } : {}),
     }
     committed = snapshot
     const all = [...state.snapshots, snapshot]
