@@ -266,8 +266,21 @@ export function MessageSelector({
     // synthetic anchor is meaningless — its messageId isn't in the
     // active conversation chain, so there's nothing to truncate to.
     if (activeTab !== 'code') return []
-    return anchors
+    // Sort orphan anchors oldest→newest so the chronological merge
+    // below (in messageOptions) places them in real time order.
+    // anchors arrives newest-first from listCodeAnchors; without this
+    // explicit sort, two synthetic rows with adjacent timestamps end
+    // up reversed in the picker (a 16:14 pre-rewind row above its
+    // 16:13 abandoned-turn row, etc.). The merge loop's comparator
+    // only handles real-vs-synth ordering, not synth-vs-synth.
+    const sortedOrphans = anchors
       .filter(a => a.messageId !== undefined && !conversationUuids.has(a.messageId))
+      .slice()
+      .sort(
+        (a, b) =>
+          new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
+      )
+    return sortedOrphans
       .map(a => {
         const time = formatSnapshotTime(a.timestamp)
         // Three-template label selection from the cached commit
@@ -440,19 +453,19 @@ export function MessageSelector({
   // anchor (pre-rewind safety snapshot) — those have no conversation
   // to fork, so we only offer code-restore + cancel.
   //
-  // Tab-specific filtering on top of that:
-  //   - Code tab keeps `Restore code` and (when allowed) the combined
-  //     `Restore code and conversation` option. Conversation rewind
-  //     on its own and `Summarize from here` move to the
-  //     conversation tab where they belong semantically.
-  //   - Conversation tab drops every code-related option and keeps
-  //     `Restore conversation` + `Summarize from here`.
-  // The combined option lives only in the code tab on purpose: code
-  // rewind is permanent (git ref), so picking it up alongside a
-  // session-only conversation rewind reads as "the code rewind also
-  // happens to undo my conversation in this session" — a sensible
-  // side effect. The reverse — being on the conversation tab and
-  // accidentally toggling a permanent code change — does not.
+  // Tab governs row visibility, NOT chooser options. Once a row is
+  // picked, all rewind actions valid for that row are offered:
+  //   - Code tab + regular row: Restore code / conversation / both
+  //   - Code tab + ↶ row: Restore code only (no active-chain message
+  //     to truncate to, so conversation rewind is meaningless)
+  //   - Conversation tab + any row: Restore conversation + Summarize
+  //     (code-related actions move out — conversation tab exists for
+  //     readonly turns that have no anchor at all, so "Restore code"
+  //     would never apply)
+  // Earlier I split Restore conversation off the code tab and made
+  // users switch tabs for conversation-only rewind. That violated the
+  // "I picked a row, show me all its options" mental model. Tab now
+  // does the lighter job: filter visible rows.
   function getRestoreOptions(
     canRestoreCode: boolean,
     isSynthetic: boolean = false,
@@ -470,8 +483,9 @@ export function MessageSelector({
         ? [
             { value: 'both', label: 'Restore code and conversation' },
             { value: 'code', label: 'Restore code' },
+            { value: 'conversation', label: 'Restore conversation' },
           ]
-        : []
+        : [{ value: 'conversation', label: 'Restore conversation' }]
     } else {
       baseOptions = [{ value: 'conversation', label: 'Restore conversation' }]
     }
