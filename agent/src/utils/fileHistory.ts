@@ -109,6 +109,27 @@ export function resetFileHistoryDraft(): void {
   // intentional no-op
 }
 
+/**
+ * Result of `fileHistoryMakeSnapshot`. Phase 5 made this explicit so
+ * callers (specifically `fileHistoryRewind`) can distinguish:
+ *   - `ok: true` — anchor committed, hash returned
+ *   - `ok: false, reason: 'no-changes'` — disk already matches the
+ *     previous anchor; semantically equivalent to "anchor exists" for
+ *     transactional purposes (the prior anchor is the safety net)
+ *   - `ok: false, reason: 'failed'` — real error; caller must NOT
+ *     proceed with downstream disk mutation since there's no safety
+ *     net to recover from
+ *
+ * Earlier the function returned `void` and silently swallowed all
+ * `createSnapshot` failures. A pre-rewind safety snapshot that failed
+ * to commit would let the rewind proceed and modify disk with no way
+ * back — invisible to the user, but a hard data-loss path. Explicit
+ * return type plus rewind-aborts-on-failed-prerewind closes the gap.
+ */
+export type MakeSnapshotResult =
+  | { ok: true; hash: string }
+  | { ok: false; reason: 'no-changes' | 'failed' }
+
 export async function fileHistoryMakeSnapshot(
   updateFileHistoryState: (
     updater: (prev: FileHistoryState) => FileHistoryState,
@@ -116,8 +137,10 @@ export async function fileHistoryMakeSnapshot(
   messageId: UUID,
   label: string = 'file-history',
   promptPreview?: string,
-): Promise<void> {
-  if (!fileHistoryEnabled()) return
+): Promise<MakeSnapshotResult> {
+  if (!fileHistoryEnabled()) {
+    return { ok: false, reason: 'failed' }
+  }
 
   logForDebugging(`FileHistory: Making snapshot for message ${messageId}`)
 
@@ -131,7 +154,13 @@ export async function fileHistoryMakeSnapshot(
     logForDebugging(
       `FileHistory: snapshot skipped for ${messageId} (${result.skipped})`,
     )
-    return
+    // `no-changes` is benign — the previous anchor already represents
+    // current disk, no new commit needed. Every other skip reason is
+    // a real failure (git missing, too many files, transient error,
+    // race). Map them so callers can branch on the meaningful axis.
+    return result.skipped === 'no-changes'
+      ? { ok: false, reason: 'no-changes' }
+      : { ok: false, reason: 'failed' }
   }
 
   // Batch-populate trackedFiles from the anchor we just wrote. Earlier
@@ -184,6 +213,8 @@ export async function fileHistoryMakeSnapshot(
     .catch(error => {
       logError(new Error(`FileHistory: Failed to record snapshot: ${error}`))
     })
+
+  return { ok: true, hash: result.hash }
 }
 
 /**
@@ -225,6 +256,29 @@ async function diffPathsAgainstParent(
  * on every rewind and makes the function's atomicity boundary
  * obvious.
  */
+/**
+ * Restore the workdir to the snapshot at `gitHash`.
+ *
+ * Phase 5 transaction model:
+ *   1. Take a pre-rewind safety snapshot. If commit fails (real
+ *      error, NOT "no-changes"), abort BEFORE touching disk — there
+ *      is no safety net to recover from. The user gets a clear error
+ *      and disk is unchanged.
+ *   2. The "no-changes" path is benign: disk already matches the
+ *      previous anchor, which IS the safety net. Proceed.
+ *   3. Restore disk. If restore fails partway, throw a recovery-
+ *      pointing error: pre-rewind anchor exists in the ref, the user
+ *      can pick "↶ Undo last rewind" to roll disk back.
+ *   4. Verify disk matches target tree. If diff is non-empty after a
+ *     "successful" restore, we have silent data corruption — surface
+ *      the same recovery hint.
+ *
+ * What this does NOT do: rollback the ref tip on failure. Earlier
+ * drafts considered `git update-ref --no-deref <ref> <oldTip>` to
+ * unwind the pre-rewind commit, but that REMOVES the user's only
+ * recovery path. Keeping the pre-rewind anchor visible in the picker
+ * is more valuable than ref tidiness on failure.
+ */
 export async function fileHistoryRewind(
   updateFileHistoryState: (
     updater: (prev: FileHistoryState) => FileHistoryState,
@@ -235,24 +289,98 @@ export async function fileHistoryRewind(
 
   logForDebugging(`FileHistory: [Rewind] entry gitHash=${gitHash.slice(0, 8)}`)
 
-  // Pre-rewind safety net (Hermes parity, _take("pre-rollback snapshot")).
-  // Synthesize a fresh UUID so the snapshot lands as a new ref tip and
-  // surfaces in the picker as an off-branch ↶ row — the user can undo
-  // this rewind. Best-effort: if disk is unchanged since the last anchor
-  // createSnapshot returns no-changes and the user can recover by
-  // rewinding to that prior anchor directly.
   const preRewindMessageId = randomUUID() as UUID
-  await fileHistoryMakeSnapshot(
+  const preRewind = await fileHistoryMakeSnapshot(
     updateFileHistoryState,
     preRewindMessageId,
     `pre-rewind:${gitHash.slice(0, 8)}`,
   )
+  if (preRewind.ok === false && preRewind.reason === 'failed') {
+    logForDebugging(
+      `FileHistory: [Rewind] aborted — pre-rewind safety snapshot failed`,
+    )
+    throw new Error(
+      'Cannot create pre-rewind safety snapshot. Rewind aborted, ' +
+        'disk unchanged. Check checkpoints store availability and retry.',
+    )
+  }
+  logForDebugging(
+    `FileHistory: [Rewind] pre-rewind safety net ` +
+      (preRewind.ok ? `committed (${preRewind.hash.slice(0, 8)})` : 'no-op (no-changes)'),
+  )
 
-  await restoreFullWorkdirToSnapshot(getOriginalCwd(), gitHash)
+  try {
+    await restoreFullWorkdirToSnapshot(getOriginalCwd(), gitHash)
+  } catch (error) {
+    logError(
+      new Error(
+        `FileHistory: [Rewind] disk restore failed mid-way: ${error}. ` +
+          `Recover via /rewind picker → "↶ Undo last rewind" row.`,
+      ),
+    )
+    throw new Error(
+      `Rewind failed mid-way. Disk may be partially modified. ` +
+        `Open /rewind, switch to Code tab, select "↶ Undo last rewind" to recover.`,
+    )
+  }
+
+  // Post-restore consistency check: disk should match the target tree
+  // exactly. If it doesn't, restoreFullWorkdirToSnapshot returned
+  // success but git checkout silently failed on some path (a
+  // file-locked external editor, antivirus quarantine, etc).
+  const verified = await verifyDiskMatchesTree(gitHash)
+  if (!verified) {
+    logError(
+      new Error(
+        `FileHistory: [Rewind] verification failed — disk does not match ` +
+          `target tree ${gitHash.slice(0, 8)} after restore`,
+      ),
+    )
+    throw new Error(
+      `Rewind completed but disk does not match the target. Some files ` +
+        `may be locked by another process. Open /rewind, select ` +
+        `"↶ Undo last rewind" to recover, then retry.`,
+    )
+  }
+
   logForDebugging(
     `FileHistory: [Rewind] Finished rewinding to ${gitHash.slice(0, 8)}`,
   )
 }
+
+/**
+ * Verify the workdir matches the tree at `gitHash` exactly. Stages
+ * disk and checks `git diff --cached --quiet` against the target.
+ * Returns true if they match (or if verification itself fails — we
+ * don't want a flaky verification step blocking otherwise-successful
+ * rewinds; the throw-on-mismatch path requires a confident "no").
+ */
+async function verifyDiskMatchesTree(gitHash: string): Promise<boolean> {
+  const storeResult = await ensureStore()
+  if (storeResult.ok === false) return true
+  const canonical = normalizePath(getOriginalCwd())
+  const indexFile = indexPath(projectHash(canonical))
+
+  const stage = await runCheckpointGit(['add', '-A'], {
+    store: storeResult.store,
+    workTree: canonical,
+    indexFile,
+  })
+  if (stage.ok === false) return true // can't verify — don't claim mismatch
+
+  const r = await runCheckpointGit(
+    ['diff', '--cached', '--quiet', gitHash, '--'],
+    {
+      store: storeResult.store,
+      workTree: canonical,
+      indexFile,
+      allowedExitCodes: DIFF_HAS_CHANGES,
+    },
+  )
+  if (r.ok === false) return true // ditto
+  return r.code === 0 // 0 = no diff, 1 = diff present
+}
+
 
 /**
  * Diff between a snapshot tree and the current workdir. Used by chooser

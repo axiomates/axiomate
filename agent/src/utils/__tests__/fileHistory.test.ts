@@ -234,7 +234,7 @@ describe('rewind — restore content at the chosen turn', () => {
         holder.updater,
         '0000000000000000000000000000000000000000',
       ),
-    ).rejects.toThrow(/rollback|snapshot/i)
+    ).rejects.toThrow(/Rewind failed|Undo last rewind/i)
   })
 
   test('rewinding twice in a row restores the same content (idempotent)', async () => {
@@ -262,7 +262,7 @@ describe('rewind — restore content at the chosen turn', () => {
         holder.updater,
         '0000000000000000000000000000000000000000',
       ),
-    ).rejects.toThrow(/rollback|snapshot/i)
+    ).rejects.toThrow(/Rewind failed|Undo last rewind/i)
     expect(readFileSync(a, 'utf-8')).toBe('v2')
   })
 })
@@ -450,5 +450,59 @@ describe('concurrency — interleaved trackEdit during makeSnapshot', () => {
     await fileHistoryRewind(holder.updater, await hashFor(m2))
     expect(readFileSync(a, 'utf-8')).toBe('a-v2')
     expect(readFileSync(b, 'utf-8')).toBe('b-v1')
+  })
+})
+
+describe('rewind transaction — Phase 5 atomicity', () => {
+  test('throws with recovery hint when disk restore fails mid-way', async () => {
+    // Force restore failure by handing a hash that exists in NO
+    // store. ensureStore + pre-rewind both succeed, then
+    // restoreFullWorkdirToSnapshot fails when git checkout can't
+    // find the tree. The user-facing error should mention the
+    // recovery path, not just bubble the raw git error.
+    const a = join(workTree, 'a.txt')
+    writeFileSync(a, 'v1')
+    const holder = makeStateHolder()
+    await turn(holder, [a])
+    writeFileSync(a, 'v2')
+
+    await expect(
+      fileHistoryRewind(
+        holder.updater,
+        '0000000000000000000000000000000000000000',
+      ),
+    ).rejects.toThrow(/Undo last rewind/i)
+  })
+
+  test('preRewind no-changes path does NOT abort rewind', async () => {
+    // When disk equals the previous anchor, pre-rewind makeSnapshot
+    // returns {ok:false, reason:'no-changes'} — that's benign, the
+    // previous anchor is already the safety net. Rewind must proceed.
+    const a = join(workTree, 'a.txt')
+    writeFileSync(a, 'v1')
+    const holder = makeStateHolder()
+    const m1 = await turn(holder, [a])
+    writeFileSync(a, 'v2')
+    const m2 = await turn(holder, [a])
+    // Don't change disk between m2's anchor and rewind — pre-rewind
+    // will return no-changes.
+    await fileHistoryRewind(holder.updater, await hashFor(m1))
+    expect(readFileSync(a, 'utf-8')).toBe('v1')
+    expect(m2).toBeDefined()
+  })
+
+  test('verification passes for a successful rewind (positive case)', async () => {
+    // Round-trip the happy path through the new verifyDiskMatchesTree
+    // gate to make sure it doesn't false-positive on a genuinely
+    // successful restore.
+    const a = join(workTree, 'a.txt')
+    writeFileSync(a, 'v1')
+    const holder = makeStateHolder()
+    const m1 = await turn(holder, [a])
+    writeFileSync(a, 'v2')
+    await turn(holder, [a])
+
+    await fileHistoryRewind(holder.updater, await hashFor(m1))
+    expect(readFileSync(a, 'utf-8')).toBe('v1')
   })
 })
