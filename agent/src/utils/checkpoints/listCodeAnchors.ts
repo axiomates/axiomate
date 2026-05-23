@@ -34,6 +34,14 @@ export interface CodeAnchor {
   messageId: UUID | undefined
   /** Raw commit subject (`axiomate:<msgId>:<label>` or free text). */
   subject: string
+  /**
+   * Commit body — populated when `withBodies: true`, otherwise `''`.
+   * `createSnapshot` writes the user prompt's first ~80 chars here so
+   * the picker can recover an "↶ \"<prompt>\"" label for off-branch
+   * orphan rows when the message UUID is no longer in the active
+   * conversation chain.
+   */
+  body: string
   /** Author timestamp. */
   timestamp: Date
   /** From batched `git log --shortstat`. Zero if commit had no diff. */
@@ -46,6 +54,12 @@ export interface ListCodeAnchorsOptions {
   limit?: number
   /** Skip the per-commit shortstat fetch when caller doesn't need it. */
   withStats?: boolean
+  /**
+   * Include commit body (`%b`) on each anchor. Default `false`. The
+   * picker passes `true` when rendering ↶ rows so it can derive a
+   * prompt-preview label.
+   */
+  withBodies?: boolean
 }
 
 /**
@@ -70,6 +84,7 @@ function toCodeAnchor(entry: SnapshotEntry): CodeAnchor {
     gitHash: entry.hash,
     messageId,
     subject: entry.subject,
+    body: entry.body,
     timestamp: new Date(entry.timestamp),
     filesChanged: entry.filesChanged,
     insertions: entry.insertions,

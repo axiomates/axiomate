@@ -51,6 +51,7 @@ function snapshot(
     timestamp: '2026-05-21T14:30:00+00:00',
     subject: 'axiomate:m_42:edit',
     reason: { kind: 'axiomate', messageId: 'm_42', label: 'edit' },
+    body: '',
     filesChanged: 1,
     insertions: 2,
     deletions: 0,

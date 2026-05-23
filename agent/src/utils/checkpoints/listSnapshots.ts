@@ -53,6 +53,12 @@ export interface SnapshotEntry {
   subject: string
   /** Parsed structured form — `kind: 'axiomate'` for our own commits. */
   reason: ParsedReason
+  /**
+   * Commit body (`%b`) when `withBodies: true`, otherwise `''`. Used by
+   * the picker to recover the prompt-preview text for off-branch
+   * orphan rows. Trimmed of trailing whitespace.
+   */
+  body: string
   /** From `git diff --shortstat`; 0 for the root commit (no parent diff). */
   filesChanged: number
   /** From `git diff --shortstat`. */
@@ -70,6 +76,15 @@ export interface ListSnapshotsOptions {
    * change stats (Phase 6 resume integration may want this). Default `true`.
    */
   withStats?: boolean
+  /**
+   * If `true`, include the commit body (`%b`) in each entry. Used by
+   * the picker to recover the prompt-preview text on off-branch
+   * orphan rows (the body is the first ~80 chars of the user prompt
+   * that produced the snapshot, stored at write time by
+   * `createSnapshot`). Default `false` — bodies cost an extra
+   * delimiter pass and most consumers don't need them.
+   */
+  withBodies?: boolean
 }
 
 /**
@@ -85,6 +100,7 @@ export async function listSnapshots(
 ): Promise<SnapshotEntry[]> {
   const limit = opts.limit ?? LIST_DEFAULT_LIMIT
   const withStats = opts.withStats ?? true
+  const withBodies = opts.withBodies ?? false
   if (limit <= 0) return []
 
   const canonical = normalizePath(workdir)
@@ -111,8 +127,19 @@ export async function listSnapshots(
 
   const ref = refName(projectHash(canonical))
 
+  // Format strategy: subject and body can both contain `|` and newlines,
+  // so we use control characters as field/record separators.
+  //   - record separator (between commits): NUL (\x00)
+  //   - field separator within a record:    SOH (\x01)
+  // This matches `git log -z`-style framing without us needing to plumb
+  // -z through the runner. Falling back to the simpler `|`-separated
+  // single-line format when bodies aren't needed (the prior behavior),
+  // since that path is hot and on-disk-tested.
+  const format = withBodies
+    ? '%H%x01%h%x01%aI%x01%s%x01%b%x00'
+    : '%H|%h|%aI|%s'
   const logResult = await runCheckpointGit(
-    ['log', ref, '--format=%H|%h|%aI|%s', '-n', String(limit)],
+    ['log', ref, `--format=${format}`, '-n', String(limit)],
     {
       store,
       workTree: canonical,
@@ -127,11 +154,17 @@ export async function listSnapshots(
   // stdout and a non-zero exit caught by allowedExitCodes land here.
   if (logResult.stdout.length === 0) return []
 
-  const rows = logResult.stdout
-    .split('\n')
-    .filter(line => line.length > 0)
-    .map(line => parseLogLine(line))
-    .filter((row): row is SnapshotEntry => row !== null)
+  const rows = withBodies
+    ? logResult.stdout
+        .split('\x00')
+        .filter(rec => rec.length > 0)
+        .map(rec => parseLogRecord(rec))
+        .filter((row): row is SnapshotEntry => row !== null)
+    : logResult.stdout
+        .split('\n')
+        .filter(line => line.length > 0)
+        .map(line => parseLogLine(line))
+        .filter((row): row is SnapshotEntry => row !== null)
 
   if (!withStats) return rows
 
@@ -188,6 +221,31 @@ function parseLogLine(line: string): SnapshotEntry | null {
     timestamp,
     subject,
     reason: parseCommitSubject(subject),
+    body: '',
+    filesChanged: 0,
+    insertions: 0,
+    deletions: 0,
+  }
+}
+
+/**
+ * Parse one `--format=...%x01...%x01%b%x00` record. Subject can contain
+ * any character except SOH (\x01) and NUL (\x00) — both unused in normal
+ * commit messages and stripped by git itself if present in input. Body
+ * is everything after the 4th SOH up to the trailing NUL.
+ */
+function parseLogRecord(record: string): SnapshotEntry | null {
+  const parts = splitMax(record, '\x01', 5)
+  if (parts.length < 5) return null
+  const [hash, shortHash, timestamp, subject, body] = parts
+  if (hash.length === 0 || shortHash.length === 0) return null
+  return {
+    hash,
+    shortHash,
+    timestamp,
+    subject,
+    reason: parseCommitSubject(subject),
+    body: body.replace(/\s+$/, ''),
     filesChanged: 0,
     insertions: 0,
     deletions: 0,

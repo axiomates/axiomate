@@ -150,7 +150,10 @@ export function MessageSelector({
       return
     }
     let cancelled = false
-    void listCodeAnchors(getOriginalCwd(), { withStats: false })
+    void listCodeAnchors(getOriginalCwd(), {
+      withStats: false,
+      withBodies: true,
+    })
       .then(rows => {
         if (cancelled) return
         logForDebugging(
@@ -238,15 +241,21 @@ export function MessageSelector({
       .filter(a => a.messageId !== undefined && !conversationUuids.has(a.messageId))
       .map(a => {
         const time = formatSnapshotTime(a.timestamp)
-        // The cached commit subject distinguishes pre-rewind anchors from
-        // off-branch turn anchors. Source of truth: the per-anchor git
-        // commit subject loaded by `listCodeAnchors`. Phase 2 will add
-        // body fetching to recover the prompt-preview wording — until
-        // then off-branch turns share the generic label.
+        // Three-template label selection from the cached commit
+        // metadata. Source of truth: git commit subject + body
+        // (loaded with withBodies: true). The cached commit message
+        // distinguishes pre-rewind safety anchors from off-branch
+        // turn anchors, and recovers the prompt-preview text for the
+        // latter so users can recognize "the prompt I walked away
+        // from" vs the catch-all generic label.
         const isPreRewind = a.subject.includes(':pre-rewind:')
+        const trimmedBody = a.body.trim()
+        const promptPreview = trimmedBody.length > 0 ? trimmedBody : undefined
         const content = isPreRewind
           ? `↶ Undo last rewind (${time})`
-          : `↶ Off-branch anchor (${time})`
+          : promptPreview
+            ? `↶ "${promptPreview}" (${time})`
+            : `↶ Off-branch anchor (${time})`
         return {
           ...createUserMessage({ content }),
           uuid: a.messageId!,

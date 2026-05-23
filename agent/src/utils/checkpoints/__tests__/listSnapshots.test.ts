@@ -85,6 +85,9 @@ describe('listSnapshots — one snapshot', () => {
     expect(e.reason.messageId).toBe('msg-001')
     expect(e.reason.label).toBe('first turn')
 
+    // Default (`withBodies: false`) leaves body empty.
+    expect(e.body).toBe('')
+
     // ISO 8601 with T and timezone offset.
     expect(e.timestamp).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/)
 
@@ -228,5 +231,62 @@ describe('listSnapshots — subject parsing edge cases', () => {
     expect(list[0].reason.kind).toBe('raw')
     if (list[0].reason.kind !== 'raw') return
     expect(list[0].reason.subject).toBe('manual commit no prefix')
+  })
+})
+
+describe('listSnapshots — withBodies', () => {
+  test('returns commit body when withBodies: true', async () => {
+    writeFileSync(join(workTree, 'a.txt'), '1')
+    await createSnapshot(workTree, {
+      messageId: 'msg-bod',
+      label: 'lbl',
+      bodyText: 'rename this function please',
+    })
+
+    const list = await listSnapshots(workTree, { withBodies: true })
+    expect(list.length).toBe(1)
+    expect(list[0].body).toBe('rename this function please')
+    // Default still leaves body empty.
+    const listNoBodies = await listSnapshots(workTree)
+    expect(listNoBodies[0].body).toBe('')
+  })
+
+  test('subject containing | parses correctly with withBodies', async () => {
+    // The withBodies path uses SOH (\x01) as field separator instead
+    // of `|`, so subjects with `|` characters round-trip cleanly —
+    // pinning that this path is `|`-safe even though the legacy path
+    // had to splitMax to preserve them.
+    writeFileSync(join(workTree, 'a.txt'), '1')
+    await createSnapshot(workTree, {
+      messageId: 'msg-pipe',
+      label: 'edit a|b',
+      bodyText: 'first | second | third',
+    })
+    const list = await listSnapshots(workTree, { withBodies: true })
+    expect(list.length).toBe(1)
+    expect(list[0].body).toBe('first | second | third')
+    if (list[0].reason.kind === 'axiomate') {
+      expect(list[0].reason.label).toBe('edit a|b')
+    }
+  })
+
+  test('multiline body preserved up to trailing whitespace', async () => {
+    writeFileSync(join(workTree, 'a.txt'), '1')
+    await createSnapshot(workTree, {
+      messageId: 'msg-multi',
+      label: 'lbl',
+      bodyText: 'line1\nline2\nline3',
+    })
+    const list = await listSnapshots(workTree, { withBodies: true })
+    expect(list.length).toBe(1)
+    expect(list[0].body).toBe('line1\nline2\nline3')
+  })
+
+  test('empty body when no bodyText given', async () => {
+    writeFileSync(join(workTree, 'a.txt'), '1')
+    await createSnapshot(workTree, { messageId: 'msg-no-body', label: 'lbl' })
+    const list = await listSnapshots(workTree, { withBodies: true })
+    expect(list.length).toBe(1)
+    expect(list[0].body).toBe('')
   })
 })
