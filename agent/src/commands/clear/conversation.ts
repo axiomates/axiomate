@@ -28,6 +28,7 @@ import {
   getSessionEndHookTimeoutMs,
 } from '../../utils/hooks.js'
 import { logError } from '../../utils/log.js'
+import { resetFileHistoryDraft } from '../../utils/fileHistory.js'
 import { clearAllPlanSlugs } from '../../utils/plans.js'
 import { setCwd } from '../../utils/Shell.js'
 import { processSessionStartHooks } from '../../utils/sessionStart.js'
@@ -157,7 +158,7 @@ export async function clearConversation({
         // so the new session doesn't display the old session's identity badge
         standaloneAgentContext: undefined,
         fileHistory: {
-          snapshots: [],
+          snapshotMessageIds: new Set(),
           trackedFiles: new Set(),
           snapshotSequence: 0,
         },
@@ -177,6 +178,10 @@ export async function clearConversation({
 
   // Clear plan slug cache so a new plan file is used after /clear
   clearAllPlanSlugs()
+
+  // Drop the module-local fileHistory draft so the next conversation
+  // doesn't inherit stale `addedTrackedFiles` from the previous one.
+  resetFileHistoryDraft()
 
   // Clear cached session metadata (title, tag, agent name/color)
   // so the new session doesn't inherit the previous session's identity

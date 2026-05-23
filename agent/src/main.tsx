@@ -1826,7 +1826,7 @@ async function run(): Promise<CommanderCommand> {
       },
       todos: {},
       fileHistory: {
-        snapshots: [],
+        snapshotMessageIds: new Set(),
         trackedFiles: new Set(),
         snapshotSequence: 0
       },

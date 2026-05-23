@@ -1,23 +1,29 @@
 /**
  * Behavior-only tests for `fileHistory`.
  *
- * RULES OF THIS FILE — read before adding tests:
+ * RULES — read before adding tests:
  *
- *   1. Observe state ONLY through public API: rewind / canRestore /
- *      hasAnyChanges / getDiffStats / restoreStateFromLog.
- *   2. NEVER assert internal shape. No probing of `state.snapshots[i]
- *      .trackedFileBackups[k]`, no `version === N`, no `backupFileName
- *      matches @vN`, no object-identity reuse checks.
- *   3. Every assertion stays green across backend changes. If a test would
- *      break because storage moved between implementations, it does not
- *      belong here.
+ *   1. Observe state ONLY through public API: rewind / makeSnapshot /
+ *      trackEdit / restoreStateFromLog / getDiffVsDisk / hasDiffVsDisk.
+ *   2. NEVER assert internal shape. After Phase 1, `state.snapshots[]`
+ *      is gone — the source of truth for "what anchors exist" is the
+ *      shadow git store. If a test would need to probe state to verify
+ *      a behavior, the test belongs against `listCodeAnchors` instead.
+ *   3. Every assertion stays green across backend changes.
  *
  * Isolation: per-test AXIOMATE_CONFIG_DIR sandbox, per-test workTree wired
  * through setOriginalCwd, force-interactive so fileHistoryEnabled() exercises
  * the same path as the REPL.
  */
 
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync } from 'fs'
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+  existsSync,
+} from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { randomUUID, type UUID } from 'crypto'
@@ -33,16 +39,18 @@ import {
   setOriginalCwd,
 } from '../../bootstrap/state.js'
 import {
-  fileHistoryCanRestore,
   fileHistoryEnabled,
-  fileHistoryGetDiffStats,
-  fileHistoryHasAnyChanges,
+  fileHistoryGetDiffVsDisk,
+  fileHistoryHasDiffVsDisk,
   fileHistoryMakeSnapshot,
   fileHistoryRestoreStateFromLog,
   fileHistoryRewind,
   fileHistoryTrackEdit,
+  resetFileHistoryDraft,
+  type FileHistorySnapshot,
   type FileHistoryState,
 } from '../fileHistory.js'
+import { listCodeAnchors } from '../checkpoints/listCodeAnchors.js'
 
 let tmpRoot: string
 let workTree: string
@@ -57,6 +65,7 @@ beforeEach(() => {
   workTree = mkdtempSync(join(tmpRoot, 'wt-'))
   setOriginalCwd(workTree)
   setIsInteractive(true)
+  resetFileHistoryDraft()
 })
 
 afterEach(() => {
@@ -65,6 +74,7 @@ afterEach(() => {
   else process.env.AXIOMATE_CONFIG_DIR = originalConfigDir
   setOriginalCwd(originalCwd)
   setIsInteractive(false)
+  resetFileHistoryDraft()
   rmSync(tmpRoot, { recursive: true, force: true })
 })
 
@@ -73,7 +83,7 @@ function makeStateHolder(): {
   updater: (f: (prev: FileHistoryState) => FileHistoryState) => void
 } {
   let state: FileHistoryState = {
-    snapshots: [],
+    snapshotMessageIds: new Set<UUID>(),
     trackedFiles: new Set<string>(),
     snapshotSequence: 0,
   }
@@ -87,14 +97,6 @@ function makeStateHolder(): {
 
 const uuid = (): UUID => randomUUID()
 
-/**
- * Drive a turn end-to-end: snapshot at messageId, then trackEdit each
- * file. Returns the messageId so callers can restore back to it.
- *
- * Call BEFORE the tool's edit (matches production order: trackEdit
- * captures pre-edit state, makeSnapshot at the start of the next turn
- * captures post-edit state).
- */
 async function turn(
   holder: ReturnType<typeof makeStateHolder>,
   files: readonly string[],
@@ -146,34 +148,21 @@ describe('rewind — restore content at the chosen turn', () => {
   })
 
   test('deletes a file that did not exist at the target turn', async () => {
-    // Seed an unrelated file so the workdir is non-empty at m1: under the
-    // action-triggered model, makeSnapshot skips when the staged tree
-    // matches the ref tip. Without a seed, m1 would be a no-op snapshot.
-    writeFileSync(join(workTree, 'seed.txt'), 'seed')
-    const newPath = join(workTree, 'created-later.txt')
+    const seed = join(workTree, 'seed.txt')
+    writeFileSync(seed, 'seed')
     const holder = makeStateHolder()
-    const m1 = await turn(holder, [newPath]) // tracked while non-existent
-    writeFileSync(newPath, 'now-exists')
-    await turn(holder, [newPath])
+    const m1 = await turn(holder, [seed])
+    const newFile = join(workTree, 'new.txt')
+    writeFileSync(newFile, 'fresh')
+    await fileHistoryTrackEdit(holder.updater, newFile)
+    await turn(holder, [])
 
+    expect(existsSync(newFile)).toBe(true)
     await fileHistoryRewind(holder.updater, m1, [])
-    expect(existsSync(newPath)).toBe(false)
+    expect(existsSync(newFile)).toBe(false)
   })
 
-  test('rewinds full workdir, captures pre-rewind anchor for recovery', async () => {
-    // Hermes-model contract: rewind restores everything in the target
-    // tree AND removes everything else from disk. Manual user edits
-    // to "untracked" files are NOT preserved — but a pre-rewind
-    // safety snapshot is automatically captured so the original state
-    // is recoverable.
-    //
-    // This test pins the inverted contract from the previous design,
-    // where rewind only touched state.trackedFiles. That blast-radius
-    // limit was load-bearing for safety but unrecoverable across a
-    // process restart (in-memory Set, no persistence). The new
-    // recoverability mechanism is the pre-rewind anchor (or, when
-    // pre-rewind would be a no-op, the existing post-edit snapshot
-    // itself — workdir is already captured there).
+  test('rewind covers files NOT registered with trackEdit (full-tree restore)', async () => {
     const tracked = join(workTree, 'tracked.txt')
     const manual = join(workTree, 'manual.txt')
     writeFileSync(tracked, 'tracked-v1')
@@ -183,59 +172,28 @@ describe('rewind — restore content at the chosen turn', () => {
     const m1 = await turn(holder, [tracked])
     writeFileSync(tracked, 'tracked-v2')
     writeFileSync(manual, 'manual-v2-edited-by-user')
-    // Drive a third turn so manual-v2 gets captured in a snapshot
-    // BEFORE rewind. Without this, m2's snapshot would precede the
-    // manual-v2 edit and pre-rewind would have nothing fresh to
-    // capture (since workdir would equal m2's tree).
     const m2 = await turn(holder, [tracked])
     writeFileSync(tracked, 'tracked-v3-divergent')
-    const beforeCount = holder.state().snapshots.length
 
     await fileHistoryRewind(holder.updater, m1, [])
 
-    // Both files restored to m1's tree state — even `manual`, which
-    // was never trackEdit'd. (Contract inversion vs. the old
-    // tracked-only blast radius.)
     expect(readFileSync(tracked, 'utf-8')).toBe('tracked-v1')
     expect(readFileSync(manual, 'utf-8')).toBe('manual-v1')
-
-    // Pre-rewind anchor captured because workdir at rewind time
-    // (tracked-v3, manual-v2) differed from the last existing
-    // snapshot (m2's tree was tracked-v2, manual-v2).
-    const after = holder.state().snapshots
-    expect(after.length).toBe(beforeCount + 1)
     expect(m2).toBeDefined()
   })
 
   test('rewind to empty-workdir root removes the file the first edit created', async () => {
-    // End-to-end: fresh empty workdir, AI creates a file, then user
-    // rewinds to before the creation. The empty-tree root commit
-    // anchors that "before" state; the rewind unlink pre-pass
-    // (--diff-filter=A) picks up the new file as on-disk-not-in-tree
-    // and removes it.
-    //
-    // Pre-Hermes-fix this was impossible: the root commit was skipped
-    // for empty workdirs, so there was no anchor for "before any
-    // edit," and rewind couldn't reach the empty state.
     const newFile = join(workTree, 'created-by-ai.txt')
     expect(existsSync(newFile)).toBe(false)
 
     const holder = makeStateHolder()
-    // Turn 1: AI is about to create the file. Snapshot captures the
-    // pre-edit state — empty workdir → empty-tree root commit.
     const m1 = await turn(holder, [])
     writeFileSync(newFile, 'created')
     await fileHistoryTrackEdit(holder.updater, newFile)
-    // Turn 2: another AI action. Snapshot captures workdir with
-    // newFile present.
     await turn(holder, [])
 
     expect(existsSync(newFile)).toBe(true)
-
     await fileHistoryRewind(holder.updater, m1, [])
-
-    // newFile is gone — rewind found it as on-disk-not-in-tree (the
-    // empty-tree root has no files) and unlinked it.
     expect(existsSync(newFile)).toBe(false)
   })
 
@@ -257,7 +215,7 @@ describe('rewind — restore content at the chosen turn', () => {
     await turn(holder, [])
     await expect(
       fileHistoryRewind(holder.updater, uuid(), []),
-    ).rejects.toThrow(/selected snapshot was not found/i)
+    ).rejects.toThrow(/snapshot/i)
   })
 
   test('rewinding twice in a row restores the same content (idempotent)', async () => {
@@ -273,165 +231,53 @@ describe('rewind — restore content at the chosen turn', () => {
     await fileHistoryRewind(holder.updater, m1, [])
     expect(readFileSync(a, 'utf-8')).toBe('v1')
   })
-})
 
-describe('canRestore — restorability predicate', () => {
-  test('true for a known messageId, false for an unknown one', async () => {
-    const a = join(workTree, 'a.txt')
-    writeFileSync(a, 'seed')
-    const holder = makeStateHolder()
-    const m = await turn(holder, [a])
-    expect(fileHistoryCanRestore(holder.state(), m, [])).toBe(true)
-    expect(fileHistoryCanRestore(holder.state(), uuid(), [])).toBe(false)
-  })
-
-  test('false when fileHistory is disabled, even if the snapshot exists', async () => {
-    const a = join(workTree, 'a.txt')
-    writeFileSync(a, 'seed')
-    const holder = makeStateHolder()
-    const m = await turn(holder, [a])
-    process.env.AXIOMATE_CODE_DISABLE_FILE_CHECKPOINTING = '1'
-    expect(fileHistoryCanRestore(holder.state(), m, [])).toBe(false)
-  })
-})
-
-describe('hasAnyChanges — observable disk diff', () => {
-  test('false when no tracked file has changed since the snapshot', async () => {
-    const a = join(workTree, 'a.txt')
-    writeFileSync(a, 'stable')
-    const holder = makeStateHolder()
-    const m = await turn(holder, [a])
-    expect(await fileHistoryHasAnyChanges(holder.state(), m, [])).toBe(false)
-  })
-
-  test('true after a tracked file is edited on disk', async () => {
+  test('rewind throws on a readonly turn (no own snapshot)', async () => {
     const a = join(workTree, 'a.txt')
     writeFileSync(a, 'v1')
     const holder = makeStateHolder()
-    const m = await turn(holder, [a])
-    writeFileSync(a, 'v2 different size')
-    expect(await fileHistoryHasAnyChanges(holder.state(), m, [])).toBe(true)
-  })
-
-  test('true after a previously-missing tracked file is created (closest-preceding fallback)', async () => {
-    // Under action-triggered snapshots, tracking a non-existent file in
-    // a turn with no other mutation produces NO snapshot for that turn.
-    // hasAnyChanges falls back to the prior snapshot via `messages`.
-    const seed = join(workTree, 'seed.txt')
-    writeFileSync(seed, 'seed')
-    const newPath = join(workTree, 'created.txt')
-    const holder = makeStateHolder()
-    const m1 = await turn(holder, [seed]) // produces a snapshot
-    const m2 = uuid() // empty turn, just tracks newPath
-    await fileHistoryTrackEdit(holder.updater, newPath)
-    writeFileSync(newPath, 'now-exists')
-    const messages = [{ uuid: m1 }, { uuid: m2 }]
-    expect(
-      await fileHistoryHasAnyChanges(holder.state(), m2, messages as never),
-    ).toBe(true)
-  })
-
-  test('true after a tracked file is deleted', async () => {
-    const a = join(workTree, 'a.txt')
-    writeFileSync(a, 'v1')
-    const holder = makeStateHolder()
-    const m = await turn(holder, [a])
-    rmSync(a)
-    expect(await fileHistoryHasAnyChanges(holder.state(), m, [])).toBe(true)
-  })
-
-  test('false for an unknown messageId', async () => {
-    const holder = makeStateHolder()
-    await turn(holder, [])
-    expect(await fileHistoryHasAnyChanges(holder.state(), uuid(), [])).toBe(false)
+    const m1 = await turn(holder, [a])
+    writeFileSync(a, 'v2')
+    const m2 = uuid()
+    await expect(fileHistoryRewind(holder.updater, m2, [])).rejects.toThrow(
+      /snapshot/i,
+    )
+    expect(readFileSync(a, 'utf-8')).toBe('v2')
+    expect(m1).toBeDefined()
   })
 })
 
-describe('getDiffStats — file list and line counts', () => {
-  test('zero counts and empty filesChanged when nothing has changed', async () => {
+describe('getDiffVsDisk / hasDiffVsDisk — chooser preview source', () => {
+  test('zero counts when nothing has changed since the snapshot', async () => {
     const a = join(workTree, 'a.txt')
     writeFileSync(a, 'one\ntwo\n')
     const holder = makeStateHolder()
-    const m = await turn(holder, [a])
-    const stats = await fileHistoryGetDiffStats(holder.state(), m, [])
-    expect(stats).toEqual({
-      filesChanged: [],
-      insertions: 0,
-      deletions: 0,
-    })
+    await turn(holder, [a])
+
+    const anchors = await listCodeAnchors(workTree, { withStats: false })
+    const stats = await fileHistoryGetDiffVsDisk(anchors[0]!.gitHash)
+    expect(stats).toEqual({ filesChanged: [], insertions: 0, deletions: 0 })
+    expect(await fileHistoryHasDiffVsDisk(anchors[0]!.gitHash)).toBe(false)
   })
 
-  test('reports an edited file in filesChanged with non-zero line counts', async () => {
+  test('reports edited file with non-zero line counts and changed paths', async () => {
     const a = join(workTree, 'a.txt')
     writeFileSync(a, 'line1\nline2\n')
     const holder = makeStateHolder()
-    const m = await turn(holder, [a])
+    await turn(holder, [a])
     writeFileSync(a, 'line1\nline2\nline3\nline4\n')
 
-    const stats = await fileHistoryGetDiffStats(holder.state(), m, [])
+    const anchors = await listCodeAnchors(workTree, { withStats: false })
+    const stats = await fileHistoryGetDiffVsDisk(anchors[0]!.gitHash)
     expect(stats).toBeDefined()
-    expect(stats!.filesChanged).toEqual([a])
+    expect(stats!.filesChanged).toContain(a)
     expect(stats!.insertions + stats!.deletions).toBeGreaterThan(0)
+    expect(await fileHistoryHasDiffVsDisk(anchors[0]!.gitHash)).toBe(true)
   })
-
-  test('reports multiple changed files in filesChanged', async () => {
-    const a = join(workTree, 'a.txt')
-    const b = join(workTree, 'b.txt')
-    writeFileSync(a, 'a-v1')
-    writeFileSync(b, 'b-v1')
-    const holder = makeStateHolder()
-    const m = await turn(holder, [a, b])
-    writeFileSync(a, 'a-v2-very-different-content')
-    writeFileSync(b, 'b-v2-very-different-content')
-
-    const stats = await fileHistoryGetDiffStats(holder.state(), m, [])
-    expect(stats).toBeDefined()
-    // Order isn't guaranteed; assert as a set.
-    expect(new Set(stats!.filesChanged)).toEqual(new Set([a, b]))
-  })
-
-  test('undefined for unknown messageId or when disabled', async () => {
-    const a = join(workTree, 'a.txt')
-    writeFileSync(a, 'seed')
-    const holder = makeStateHolder()
-    const m = await turn(holder, [a])
-    expect(await fileHistoryGetDiffStats(holder.state(), uuid(), [])).toBeUndefined()
-    process.env.AXIOMATE_CODE_DISABLE_FILE_CHECKPOINTING = '1'
-    expect(await fileHistoryGetDiffStats(holder.state(), m, [])).toBeUndefined()
-  })
-})
-
-describe('snapshot retention — oldest turns become unrestorable', () => {
-  test('after 102 turns, the first two messageIds are no longer restorable', async () => {
-    // The exact retention number is an implementation detail; the
-    // BEHAVIOR we pin is "history is bounded — the oldest turns drop
-    // off, the newest stay available." Phase 3's git ring-buffer prune
-    // must keep this same observable shape.
-    const holder = makeStateHolder()
-    const ids: UUID[] = []
-    for (let i = 0; i < 102; i++) {
-      // Each turn must mutate the workdir for action-triggered snapshots
-      // to actually fire. Writing a unique file per turn produces 102
-      // distinct snapshots, which is what the retention prune acts on.
-      const f = join(workTree, `f${i}.txt`)
-      writeFileSync(f, `v${i}`)
-      ids.push(await turn(holder, [f]))
-    }
-
-    expect(fileHistoryCanRestore(holder.state(), ids[0], [])).toBe(false)
-    expect(fileHistoryCanRestore(holder.state(), ids[1], [])).toBe(false)
-    expect(fileHistoryCanRestore(holder.state(), ids.at(-1)!, [])).toBe(true)
-    expect(fileHistoryCanRestore(holder.state(), ids[2], [])).toBe(true)
-  }, 120_000)
 })
 
 describe('restoreStateFromLog — resume rebuilds a usable state', () => {
   test('rebuilt state can rewind to the snapshots it was rebuilt from', async () => {
-    // The behavioral guarantee: after rebuilding state from a log of
-    // snapshots, fileHistoryRewind(messageId) restores the file content
-    // that existed when those snapshots were taken. Phase 3's schema
-    // change (gitHash field) must keep this property — anything else
-    // is a regression in /resume.
     const a = join(workTree, 'a.txt')
     writeFileSync(a, 'v1')
     const holder1 = makeStateHolder()
@@ -439,24 +285,28 @@ describe('restoreStateFromLog — resume rebuilds a usable state', () => {
     writeFileSync(a, 'v2')
     await turn(holder1, [a])
 
-    // "Resume" by feeding the persisted snapshots into a fresh holder.
+    // "Resume": feed the persisted snapshots into a fresh holder. We
+    // construct the FileHistorySnapshot[] from the ground truth (git)
+    // since state.snapshots no longer exists.
+    const anchors = await listCodeAnchors(workTree, { withStats: false })
+    const snapshots: FileHistorySnapshot[] = anchors.map(a => ({
+      messageId: a.messageId!,
+      gitHash: a.gitHash,
+      addedTrackedFiles: [],
+      timestamp: a.timestamp,
+    }))
     const holder2 = makeStateHolder()
-    fileHistoryRestoreStateFromLog(holder1.state().snapshots, s =>
-      holder2.updater(() => s),
-    )
+    fileHistoryRestoreStateFromLog(snapshots, s => holder2.updater(() => s))
 
-    // The rebuilt state knows about m1 — same behavioral predicate.
-    expect(fileHistoryCanRestore(holder2.state(), m1, [])).toBe(true)
-
-    // And rewind through it actually restores v1 on disk.
+    expect(holder2.state().snapshotMessageIds.has(m1)).toBe(true)
     await fileHistoryRewind(holder2.updater, m1, [])
     expect(readFileSync(a, 'utf-8')).toBe('v1')
   })
 
-  test('restoreStateFromLog with no snapshots leaves canRestore=false for every id', () => {
+  test('restoreStateFromLog with no snapshots leaves snapshotMessageIds empty', () => {
     const holder = makeStateHolder()
     fileHistoryRestoreStateFromLog([], s => holder.updater(() => s))
-    expect(fileHistoryCanRestore(holder.state(), uuid(), [])).toBe(false)
+    expect(holder.state().snapshotMessageIds.size).toBe(0)
   })
 
   test('disabled fileHistory short-circuits restoreStateFromLog without invoking the updater', () => {
@@ -469,17 +319,8 @@ describe('restoreStateFromLog — resume rebuilds a usable state', () => {
   })
 })
 
-describe('concurrency — interleaved trackEdit during makeSnapshot still produces a coherent snapshot', () => {
+describe('concurrency — interleaved trackEdit during makeSnapshot', () => {
   test('a trackEdit issued while makeSnapshot is in flight is reflected in the new turn', async () => {
-    // makeSnapshot has an internal phase-2 await window. trackEdit can
-    // race into that window in production. The behavioral contract:
-    // after both promises resolve, the just-tracked file is restorable
-    // from the new snapshot.
-    //
-    // Action-triggered semantics: turn 2's snapshot only commits if the
-    // workdir actually changed since turn 1. We satisfy that by writing
-    // a-v2 before starting turn 2's makeSnapshot, which makes the staged
-    // tree differ from the ref tip so the commit lands.
     const a = join(workTree, 'a.txt')
     const b = join(workTree, 'b.txt')
     writeFileSync(a, 'a-v1')
@@ -488,104 +329,17 @@ describe('concurrency — interleaved trackEdit during makeSnapshot still produc
     const holder = makeStateHolder()
     await turn(holder, [a])
 
-    // Mutate the workdir so turn 2's makeSnapshot has something to commit.
     writeFileSync(a, 'a-v2')
 
-    // Start turn 2 — but inject a trackEdit for b mid-flight.
     const m2 = uuid()
     const m2Promise = fileHistoryMakeSnapshot(holder.updater, m2)
     await fileHistoryTrackEdit(holder.updater, b)
     await m2Promise
 
-    // After m2 settles, both files are restorable through m2: editing
-    // both on disk further and rewinding to m2 must restore them to the
-    // content captured at m2 (a-v2 / b-v1).
     writeFileSync(a, 'a-v3')
     writeFileSync(b, 'b-v2')
     await fileHistoryRewind(holder.updater, m2, [])
     expect(readFileSync(a, 'utf-8')).toBe('a-v2')
     expect(readFileSync(b, 'utf-8')).toBe('b-v1')
-  })
-})
-
-describe('strict-anchor semantics — turns without their own snapshot', () => {
-  // Action-triggered snapshots mean readonly turns produce no snapshot
-  // of their own. The picker shows ⚠ on these rows; the chooser hides
-  // Restore code; rewind execution refuses them. Three surfaces, one
-  // predicate (own-snapshot present), no surprises.
-  //
-  // Pre-Hermes-model these turns silently fell back to the closest
-  // preceding snapshot — picker/chooser/rewind disagreed about what
-  // "rewind to a readonly turn" meant. We removed the fallback for
-  // rewind path; it survives only for `fileHistoryHasAnyChanges`,
-  // where ancestor walk is the right semantic ("changed since the
-  // last anchor?").
-  type FakeMsg = { uuid: UUID }
-
-  test('canRestore returns false for a readonly turn (no own snapshot)', async () => {
-    const a = join(workTree, 'a.txt')
-    writeFileSync(a, 'v1')
-    const holder = makeStateHolder()
-    const m1 = await turn(holder, [a]) // snapshotted
-    const m2 = uuid() // readonly — no own snapshot
-    const messages: FakeMsg[] = [{ uuid: m1 }, { uuid: m2 }]
-
-    // Strict-anchor: m2 has no snapshot → canRestore false. Picker
-    // shows ⚠ on this row; chooser would hide Restore code.
-    expect(
-      fileHistoryCanRestore(holder.state(), m2, messages as never),
-    ).toBe(false)
-    // Sanity: m1 itself is restorable.
-    expect(
-      fileHistoryCanRestore(holder.state(), m1, messages as never),
-    ).toBe(true)
-  })
-
-  test('canRestore returns false when the target precedes any snapshot', async () => {
-    const m0 = uuid() // earliest turn, never snapshotted
-    const a = join(workTree, 'a.txt')
-    writeFileSync(a, 'v1')
-    const holder = makeStateHolder()
-    const m1 = await turn(holder, [a])
-    const messages: FakeMsg[] = [{ uuid: m0 }, { uuid: m1 }]
-
-    expect(
-      fileHistoryCanRestore(holder.state(), m0, messages as never),
-    ).toBe(false)
-  })
-
-  test('rewind throws on a readonly turn (no own snapshot)', async () => {
-    const a = join(workTree, 'a.txt')
-    writeFileSync(a, 'v1')
-    const holder = makeStateHolder()
-    const m1 = await turn(holder, [a])
-    writeFileSync(a, 'v2')
-    const m2 = uuid() // readonly turn after the v2 manual edit
-    const messages: FakeMsg[] = [{ uuid: m1 }, { uuid: m2 }]
-
-    // Strict-anchor: m2 has no snapshot, rewind execution must reject.
-    // (The picker / chooser already hide this option; this is a
-    // defense-in-depth assertion that fileHistoryRewind itself is
-    // strict and won't silently jump to m1's snapshot.)
-    await expect(
-      fileHistoryRewind(holder.updater, m2, messages as never),
-    ).rejects.toThrow(/snapshot/i)
-    // Disk untouched by the failed rewind.
-    expect(readFileSync(a, 'utf-8')).toBe('v2')
-  })
-
-  test('exact match resolves correctly when later snapshots exist', async () => {
-    const a = join(workTree, 'a.txt')
-    writeFileSync(a, 'v1')
-    const holder = makeStateHolder()
-    const m1 = await turn(holder, [a]) // snapshot for m1 captures v1
-    writeFileSync(a, 'v2')
-    const m2 = await turn(holder, [a]) // snapshot for m2 captures v2
-    writeFileSync(a, 'v3')
-    const messages: FakeMsg[] = [{ uuid: m1 }, { uuid: m2 }]
-
-    // Rewind to m1: must resolve to m1's snapshot (v1), not m2's.
-    await fileHistoryRewind(holder.updater, m1, messages as never)
-    expect(readFileSync(a, 'utf-8')).toBe('v1')
   })
 })

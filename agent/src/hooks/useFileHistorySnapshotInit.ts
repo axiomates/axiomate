@@ -19,7 +19,7 @@ export function useFileHistorySnapshotInit(
       `useFileHistorySnapshotInit: fire enabled=${fileHistoryEnabled()} ` +
         `initialized=${initialized.current} ` +
         `initialSnapshots=${initialFileHistorySnapshots?.length ?? 'undefined'} ` +
-        `currentState.snapshots=${fileHistoryState.snapshots.length}`,
+        `currentState.snapshotMessageIds=${fileHistoryState.snapshotMessageIds.size}`,
     )
     if (!fileHistoryEnabled() || initialized.current) {
       return

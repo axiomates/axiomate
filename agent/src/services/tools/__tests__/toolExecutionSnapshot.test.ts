@@ -64,7 +64,7 @@ function makeCtx(opts: {
   fileHistory?: FileHistoryState
 }): ToolUseContext {
   let fh: FileHistoryState = opts.fileHistory ?? {
-    snapshots: [],
+    snapshotMessageIds: new Set(),
     trackedFiles: new Set<string>(),
     snapshotSequence: 0,
   }
@@ -108,14 +108,7 @@ describe('maybeSnapshotBeforeToolCall — gating', () => {
     // Pretend the first snapshot already landed: state already carries
     // an entry keyed by the user message uuid.
     const fileHistory: FileHistoryState = {
-      snapshots: [
-        {
-          messageId: u.uuid,
-          gitHash: 'deadbeef',
-          addedTrackedFiles: [],
-          timestamp: new Date(),
-        } as FileHistorySnapshot,
-      ],
+      snapshotMessageIds: new Set([u.uuid]),
       trackedFiles: new Set<string>(),
       snapshotSequence: 1,
     }

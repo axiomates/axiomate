@@ -149,7 +149,8 @@ import { provisionContentReplacementState, reconstructContentReplacementState, t
 import { partialCompactConversation } from '../services/compact/compact.js';
 import type { LogOption } from '../types/logs.js';
 import type { AgentColorName } from '../tools/AgentTool/agentColorManager.js';
-import { type FileHistoryState, fileHistoryRewind, type FileHistorySnapshot, fileHistoryHasAnyChanges } from '../utils/fileHistory.js';
+import { type FileHistoryState, fileHistoryRewind, type FileHistorySnapshot, fileHistoryHasDiffVsDisk } from '../utils/fileHistory.js';
+import { listCodeAnchors } from '../utils/checkpoints/listCodeAnchors.js';
 import { computeResumeRewindHint } from '../utils/checkpoints/resumeRewindHint.js';
 import { type AttributionState, incrementPromptCount } from '../utils/commitAttribution.js';
 import { recordAttributionSnapshot } from '../utils/sessionStorage.js';
@@ -3090,7 +3091,15 @@ export function REPL({
       const rawIdx = findRawIndex(msg.uuid);
       const raw = rawIdx >= 0 ? messages[rawIdx] : undefined;
       if (!raw || !selectableUserMessagesFilter(raw)) return;
-      const noFileChanges = !(await fileHistoryHasAnyChanges(fileHistory, raw.uuid, messages));
+      // Anchor lookup: fileHistory state is no longer the source of
+      // truth for "is there an anchor for this turn?" — git is. Pull
+      // it once and reuse for both the existence check and the
+      // disk-diff check.
+      const anchors = await listCodeAnchors(getOriginalCwd(), { withStats: false });
+      const anchor = anchors.find(a => a.messageId === raw.uuid);
+      const noFileChanges = anchor === undefined
+        ? true
+        : !(await fileHistoryHasDiffVsDisk(anchor.gitHash));
       const onlySynthetic = messagesAfterAreOnlySynthetic(messages, rawIdx);
       if (noFileChanges && onlySynthetic) {
         // rewindConversationTo's setMessages races stream appends — cancel first (idempotent).

@@ -421,7 +421,7 @@ export async function maybeSnapshotBeforeToolCall(
   // capture-in-updater idiom (same pattern fileHistoryMakeSnapshot uses).
   let already = false
   toolUseContext.setAppState(prev => {
-    already = prev.fileHistory.snapshots.some(s => s.messageId === userMessageId)
+    already = prev.fileHistory.snapshotMessageIds.has(userMessageId)
     return prev
   })
   if (already) return

@@ -9,14 +9,16 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   logEvent,
 } from '../services/analytics/index.js'
-import { useAppState } from '../state/AppState.js'
 import {
   type DiffStats,
-  fileHistoryCanRestore,
   fileHistoryEnabled,
-  fileHistoryGetDiffStats,
-  fileHistoryHasExactSnapshot,
+  fileHistoryGetDiffVsDisk,
 } from '../utils/fileHistory.js'
+import {
+  type CodeAnchor,
+  listCodeAnchors,
+} from '../utils/checkpoints/listCodeAnchors.js'
+import { getOriginalCwd } from '../bootstrap/state.js'
 import { logError } from '../utils/log.js'
 import { logForDebugging } from '../utils/debug.js'
 import { useExitOnCtrlCDWithKeybindings } from '../hooks/useExitOnCtrlCDWithKeybindings.js'
@@ -44,8 +46,6 @@ function isTextBlock(block: ContentBlockParam): block is TextBlockParam {
 
 import * as path from 'path'
 import { useTerminalSize } from '../hooks/useTerminalSize.js'
-import type { FileEditOutput } from '../tools/FileEditTool/types.js'
-import type { Output as FileWriteToolOutput } from '../tools/FileWriteTool/FileWriteTool.js'
 import {
   BASH_STDERR_TAG,
   BASH_STDOUT_TAG,
@@ -108,7 +108,6 @@ export function MessageSelector({
   onClose,
   preselectedMessage,
 }: Props): React.ReactNode {
-  const fileHistory = useAppState(s => s.fileHistory)
   const [error, setError] = useState<string | undefined>(undefined)
   const isFileHistoryEnabled = fileHistoryEnabled()
 
@@ -131,16 +130,49 @@ export function MessageSelector({
     () => messages.filter(selectableUserMessagesFilter),
     [messages],
   )
-  const hasAnySnapshot =
-    isFileHistoryEnabled && fileHistory.snapshots.length > 0
+
+  // Anchors come from git (the shadow checkpoint store) — single source
+  // of truth for "what code anchors exist". Picker fetches once on mount;
+  // re-mounts after rewind / clear / prune naturally pull fresh state.
+  const [anchors, setAnchors] = useState<readonly CodeAnchor[]>([])
+  const [anchorsLoaded, setAnchorsLoaded] = useState(false)
+  useEffect(() => {
+    if (!isFileHistoryEnabled) {
+      setAnchorsLoaded(true)
+      return
+    }
+    let cancelled = false
+    void listCodeAnchors(getOriginalCwd(), { withStats: false })
+      .then(rows => {
+        if (cancelled) return
+        setAnchors(rows)
+        setAnchorsLoaded(true)
+      })
+      .catch(err => {
+        if (cancelled) return
+        logError(err)
+        setAnchorsLoaded(true)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [isFileHistoryEnabled])
+
+  const anchorByMsgId = useMemo(() => {
+    const m = new Map<UUID, CodeAnchor>()
+    for (const a of anchors) {
+      if (a.messageId) m.set(a.messageId, a)
+    }
+    return m
+  }, [anchors])
+
+  const hasAnySnapshot = isFileHistoryEnabled && anchors.length > 0
   const visibleSelectable = useMemo(
     () =>
       showAllTurns || !hasAnySnapshot
         ? allSelectable
-        : allSelectable.filter(m =>
-            fileHistoryHasExactSnapshot(fileHistory, m.uuid),
-          ),
-    [allSelectable, showAllTurns, fileHistory, hasAnySnapshot],
+        : allSelectable.filter(m => anchorByMsgId.has(m.uuid)),
+    [allSelectable, showAllTurns, anchorByMsgId, hasAnySnapshot],
   )
   const hiddenCount = allSelectable.length - visibleSelectable.length
 
@@ -185,31 +217,25 @@ export function MessageSelector({
   )
   const syntheticAnchors = useMemo<UserMessage[]>(() => {
     if (!isFileHistoryEnabled) return []
-    return fileHistory.snapshots
-      .filter(s => !conversationUuids.has(s.messageId))
-      .map(s => {
-        const time = formatSnapshotTime(s.timestamp)
-        // Pre-rewind safety nets carry a `pre-rewind:<targetMsgId>`
-        // suffix in the commit subject. Other off-branch anchors carry
-        // the original prompt's first ~80 chars in `bodyPreview`. The
-        // distinction lets the picker tell users which row is "undo
-        // your last rewind" vs "the prompt you walked away from."
-        // Source of truth: git commit message (cached on the snapshot
-        // at write time, round-tripped through JSONL on resume).
-        const isPreRewind = s.subject?.includes(':pre-rewind:') ?? false
+    return anchors
+      .filter(a => a.messageId !== undefined && !conversationUuids.has(a.messageId))
+      .map(a => {
+        const time = formatSnapshotTime(a.timestamp)
+        // The cached commit subject distinguishes pre-rewind anchors from
+        // off-branch turn anchors. Source of truth: the per-anchor git
+        // commit subject loaded by `listCodeAnchors`. Phase 2 will add
+        // body fetching to recover the prompt-preview wording — until
+        // then off-branch turns share the generic label.
+        const isPreRewind = a.subject.includes(':pre-rewind:')
         const content = isPreRewind
           ? `↶ Undo last rewind (${time})`
-          : s.bodyPreview
-            ? `↶ "${s.bodyPreview}" (${time})`
-            : `↶ Off-branch anchor (${time})`
+          : `↶ Off-branch anchor (${time})`
         return {
-          ...createUserMessage({
-            content,
-          }),
-          uuid: s.messageId,
+          ...createUserMessage({ content }),
+          uuid: a.messageId!,
         } as UserMessage
       })
-  }, [fileHistory.snapshots, conversationUuids, isFileHistoryEnabled])
+  }, [anchors, conversationUuids, isFileHistoryEnabled])
 
   // Diagnostic: tracks state.snapshots / messages / syntheticAnchors
   // across re-renders so resume-path and filter-mismatch bugs leave a
@@ -217,25 +243,24 @@ export function MessageSelector({
   // we capture each transition, not just the initial mount.
   useEffect(() => {
     if (!isFileHistoryEnabled) return
-    const anchorMatches = allSelectable.filter(m =>
-      fileHistoryHasExactSnapshot(fileHistory, m.uuid),
-    )
-    const orphanSnapshotIds = fileHistory.snapshots
-      .filter(s => !messages.some(m => m.uuid === s.messageId))
-      .map(s => s.messageId.slice(0, 8))
+    const anchorMatches = allSelectable.filter(m => anchorByMsgId.has(m.uuid))
+    const orphanIds = anchors
+      .filter(a => a.messageId !== undefined && !messages.some(m => m.uuid === a.messageId))
+      .map(a => a.messageId!.slice(0, 8))
     const synthIds = syntheticAnchors.map(s => s.uuid.slice(0, 8))
     logForDebugging(
       `MessageSelector: [Picker] state messages=${messages.length} ` +
-        `allSelectable=${allSelectable.length} state.snapshots=${fileHistory.snapshots.length} ` +
+        `allSelectable=${allSelectable.length} anchors=${anchors.length} ` +
         `anchors-in-conversation=${anchorMatches.length} ` +
-        `orphan-snapshots=[${orphanSnapshotIds.join(',')}] ` +
+        `orphan-anchors=[${orphanIds.join(',')}] ` +
         `syntheticAnchors=[${synthIds.join(',')}]`,
     )
   }, [
     isFileHistoryEnabled,
     messages,
     allSelectable,
-    fileHistory.snapshots,
+    anchors,
+    anchorByMsgId,
     syntheticAnchors,
   ])
 
@@ -250,17 +275,18 @@ export function MessageSelector({
     // message position relative to neighboring snapshotted rows —
     // implemented as "assign the timestamp of the most recent
     // preceding snapshotted row, or 0 for rows before any snapshot".
-    const snapByUuid = new Map(
-      fileHistory.snapshots.map(s => [s.messageId, snapshotTimeMs(s.timestamp)]),
-    )
+    const tsByUuid = new Map<UUID, number>()
+    for (const a of anchors) {
+      if (a.messageId) tsByUuid.set(a.messageId, snapshotTimeMs(a.timestamp))
+    }
     let lastTs = 0
     const realRowsWithTs = visibleSelectable.map(m => {
-      const ts = snapByUuid.get(m.uuid)
+      const ts = tsByUuid.get(m.uuid)
       if (ts !== undefined) lastTs = ts
       return { row: m, ts: lastTs }
     })
     const synthRowsWithTs = syntheticAnchors.map(m => {
-      const ts = snapByUuid.get(m.uuid) ?? 0
+      const ts = tsByUuid.get(m.uuid) ?? 0
       return { row: m, ts }
     })
     // Stable merge — when timestamps tie, real rows come first so
@@ -290,7 +316,7 @@ export function MessageSelector({
         uuid: currentUUID,
       } as UserMessage,
     ]
-  }, [visibleSelectable, syntheticAnchors, fileHistory.snapshots, currentUUID])
+  }, [visibleSelectable, syntheticAnchors, anchors, currentUUID])
   const [selectedIndex, setSelectedIndex] = useState(messageOptions.length - 1)
 
   // When toggling the slash filter, anchor focus by UUID so the user
@@ -330,15 +356,18 @@ export function MessageSelector({
   useEffect(() => {
     if (!preselectedMessage || !isFileHistoryEnabled) return
     let cancelled = false
-    void fileHistoryGetDiffStats(fileHistory, preselectedMessage.uuid, messages).then(
-      stats => {
-        if (!cancelled) setDiffStatsForRestore(stats)
-      },
-    )
+    const anchor = anchorByMsgId.get(preselectedMessage.uuid)
+    if (!anchor) {
+      setDiffStatsForRestore(undefined)
+      return
+    }
+    void fileHistoryGetDiffVsDisk(anchor.gitHash).then(stats => {
+      if (!cancelled) setDiffStatsForRestore(stats)
+    })
     return () => {
       cancelled = true
     }
-  }, [preselectedMessage, isFileHistoryEnabled, fileHistory])
+  }, [preselectedMessage, isFileHistoryEnabled, anchorByMsgId])
 
   const [isRestoring, setIsRestoring] = useState(false)
   const [restoringOption, setRestoringOption] = useState<RestoreOption | null>(
@@ -435,11 +464,10 @@ export function MessageSelector({
         onClose()
         return
       }
-      const diffStats = await fileHistoryGetDiffStats(
-        fileHistory,
-        message.uuid,
-        messages,
-      )
+      const anchor = anchorByMsgId.get(message.uuid)
+      const diffStats = anchor
+        ? await fileHistoryGetDiffVsDisk(anchor.gitHash)
+        : undefined
       setMessageToRestore(message)
       setDiffStatsForRestore(diffStats)
       return
@@ -450,7 +478,10 @@ export function MessageSelector({
       return
     }
 
-    const diffStats = await fileHistoryGetDiffStats(fileHistory, message.uuid, messages)
+    const anchor = anchorByMsgId.get(message.uuid)
+    const diffStats = anchor
+      ? await fileHistoryGetDiffVsDisk(anchor.gitHash)
+      : undefined
     setMessageToRestore(message)
     setDiffStatsForRestore(diffStats)
   }
@@ -612,81 +643,31 @@ export function MessageSelector({
   >({})
 
   useEffect(() => {
-    async function loadFileHistoryMetadata() {
-      if (!isFileHistoryEnabled) {
-        return
+    if (!isFileHistoryEnabled) return
+    // Picker row stats are now derived from `listCodeAnchors`'s batched
+    // shortstat (single git invocation, regex-parsed). Each anchor's
+    // {insertions, deletions} reflects the diff vs its parent commit —
+    // i.e., what THAT TURN produced. Rows without an anchor (no edit
+    // happened on that turn) get undefined → render ⚠ "No code changes".
+    //
+    // Source of truth alignment: same git store, same ref. Picker can't
+    // disagree with chooser/execution about whether an anchor exists.
+    const next: Record<string, DiffStats | undefined> = {}
+    for (const userMessage of messageOptions) {
+      if (userMessage.uuid === currentUUID) continue
+      const anchor = anchorByMsgId.get(userMessage.uuid)
+      if (!anchor) {
+        next[userMessage.uuid] = undefined
+        continue
       }
-      // Load file snapshot metadata
-      void Promise.all(
-        messageOptions.map(async (userMessage, itemIndex) => {
-          if (userMessage.uuid !== currentUUID) {
-            const canRestore = fileHistoryCanRestore(
-              fileHistory,
-              userMessage.uuid,
-              messages,
-            )
-
-            // Synthetic anchor rows (pre-rewind safety snapshots) have a
-            // messageId that's NOT in conversation `messages`, so the
-            // tool_use scan in computeDiffStatsBetweenMessages always
-            // returns 0 files for them — the picker would then render
-            // ⚠ on a row whose chooser correctly offers Restore code.
-            // Match the chooser's strict-anchor lookup
-            // (fileHistoryGetDiffStats) for these rows so picker badge
-            // and chooser options agree.
-            const isSyntheticAnchor = !messages.some(
-              m => m.uuid === userMessage.uuid,
-            )
-
-            let diffStats: DiffStats
-            if (!canRestore) {
-              diffStats = undefined
-              logForDebugging(
-                `MessageSelector: [Meta] uuid=${userMessage.uuid.slice(0, 8)} canRestore=false → undefined (renders ⚠)`,
-              )
-            } else if (isSyntheticAnchor) {
-              diffStats = await fileHistoryGetDiffStats(
-                fileHistory,
-                userMessage.uuid,
-                messages,
-              )
-              logForDebugging(
-                `MessageSelector: [Meta] uuid=${userMessage.uuid.slice(0, 8)} synthetic ` +
-                  `canRestore=true diffStats=${
-                    diffStats === undefined
-                      ? 'undefined'
-                      : `{filesChanged:${diffStats.filesChanged?.length ?? 0} ins:${diffStats.insertions} del:${diffStats.deletions}}`
-                  }`,
-              )
-            } else {
-              const nextUserMessage = messageOptions.at(itemIndex + 1)
-              diffStats = computeDiffStatsBetweenMessages(
-                messages,
-                userMessage.uuid,
-                nextUserMessage?.uuid !== currentUUID
-                  ? nextUserMessage?.uuid
-                  : undefined,
-              )
-              logForDebugging(
-                `MessageSelector: [Meta] uuid=${userMessage.uuid.slice(0, 8)} regular ` +
-                  `canRestore=true diffStats=${
-                    diffStats === undefined
-                      ? 'undefined'
-                      : `{filesChanged:${diffStats.filesChanged?.length ?? 0} ins:${diffStats.insertions} del:${diffStats.deletions}}`
-                  } nextUuid=${nextUserMessage?.uuid?.slice(0, 8) ?? '<none>'}`,
-              )
-            }
-
-            setFileHistoryMetadata(prev => ({
-              ...prev,
-              [userMessage.uuid]: diffStats,
-            }))
-          }
-        }),
-      )
+      next[userMessage.uuid] = {
+        filesChanged: undefined,
+        insertions: anchor.insertions,
+        deletions: anchor.deletions,
+      }
     }
-    void loadFileHistoryMetadata()
-  }, [messageOptions, messages, currentUUID, fileHistory, isFileHistoryEnabled])
+    setFileHistoryMetadata(next)
+  }, [messageOptions, currentUUID, anchorByMsgId, isFileHistoryEnabled])
 
   const canRestoreCode =
     isFileHistoryEnabled &&
@@ -898,9 +879,8 @@ export function MessageSelector({
                   // savings.
                   const conversationOnlyCount = !hasAnySnapshot
                     ? 0
-                    : allSelectable.filter(
-                        m => !fileHistoryHasExactSnapshot(fileHistory, m.uuid),
-                      ).length
+                    : allSelectable.filter(m => !anchorByMsgId.has(m.uuid))
+                        .length
                   if (conversationOnlyCount === 0 && !showAllTurns) return null
                   const text = showAllTurns
                     ? `Tab to hide ${conversationOnlyCount} conversation-only turn${conversationOnlyCount === 1 ? '' : 's'}`
@@ -1129,69 +1109,6 @@ function UserMessageOption({
       </Text>
     </Box>
   )
-}
-
-/**
- * Computes the diff stats for all the file edits in-between two messages.
- */
-function computeDiffStatsBetweenMessages(
-  messages: Message[],
-  fromMessageId: UUID,
-  toMessageId: UUID | undefined,
-): DiffStats | undefined {
-  const startIndex = messages.findIndex(msg => msg.uuid === fromMessageId)
-  if (startIndex === -1) {
-    return undefined
-  }
-
-  let endIndex = toMessageId
-    ? messages.findIndex(msg => msg.uuid === toMessageId)
-    : messages.length
-  if (endIndex === -1) {
-    endIndex = messages.length
-  }
-
-  const filesChanged: string[] = []
-  let insertions = 0
-  let deletions = 0
-
-  for (let i = startIndex + 1; i < endIndex; i++) {
-    const msg = messages[i]
-    if (!msg || !isToolUseResultMessage(msg)) {
-      continue
-    }
-
-    const result = msg.toolUseResult as FileEditOutput | FileWriteToolOutput
-    if (!result || !result.filePath || !result.structuredPatch) {
-      continue
-    }
-
-    if (!filesChanged.includes(result.filePath)) {
-      filesChanged.push(result.filePath)
-    }
-
-    try {
-      if ('type' in result && result.type === 'create') {
-        insertions += result.content.split(/\r?\n/).length
-      } else {
-        for (const hunk of result.structuredPatch) {
-          const additions = count(hunk.lines, line => line.startsWith('+'))
-          const removals = count(hunk.lines, line => line.startsWith('-'))
-
-          insertions += additions
-          deletions += removals
-        }
-      }
-    } catch {
-      continue
-    }
-  }
-
-  return {
-    filesChanged,
-    insertions,
-    deletions,
-  }
 }
 
 /**

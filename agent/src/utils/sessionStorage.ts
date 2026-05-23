@@ -1851,99 +1851,35 @@ export function checkResumeConsistency(chain: Message[]): void {
 }
 
 /**
- * Builds a filie history snapshot chain from the conversation
+ * Flatten the persisted snapshot Map into the array shape `LogOption`
+ * exposes. Picker / chooser / rewind read git directly via
+ * `listCodeAnchors` (Phase 1 disk-as-source migration), so this list
+ * is only used to restore `state.trackedFiles` and `snapshotMessageIds`
+ * in `fileHistoryRestoreStateFromLog` — no orphan rescue or
+ * conversation-keyed merging needed here anymore.
+ *
+ * Late `isSnapshotUpdate` records take precedence over the original
+ * snapshot for the same `messageId` (so `addedTrackedFiles` from
+ * post-snapshot trackEdit calls win). Iteration order on Map is
+ * insertion order, which mirrors JSONL append order.
  */
-function buildFileHistorySnapshotChain(
+function flattenFileHistorySnapshots(
   fileHistorySnapshots: Map<UUID, FileHistorySnapshotMessage>,
-  conversation: TranscriptMessage[],
 ): FileHistorySnapshot[] {
-  const snapshots: FileHistorySnapshot[] = []
-  // messageId → last index in snapshots[] for O(1) update lookup
-  const indexByMessageId = new Map<string, number>()
-  for (const message of conversation) {
-    const snapshotMessage = fileHistorySnapshots.get(message.uuid)
-    if (!snapshotMessage) {
-      continue
-    }
-    const { snapshot, isSnapshotUpdate } = snapshotMessage
-    const existingIndex = isSnapshotUpdate
-      ? indexByMessageId.get(snapshot.messageId)
-      : undefined
-    if (existingIndex === undefined) {
-      indexByMessageId.set(snapshot.messageId, snapshots.length)
-      snapshots.push(snapshot)
-    } else {
-      snapshots[existingIndex] = snapshot
-    }
+  const byMessageId = new Map<string, FileHistorySnapshot>()
+  for (const [, snapshotMessage] of fileHistorySnapshots) {
+    const { snapshot } = snapshotMessage
+    byMessageId.set(snapshot.messageId, snapshot)
   }
-  // Orphan snapshots — `messageId` not in the active conversation chain.
-  // Two sources, treated identically: pre-rewind safety anchors
-  // (synthetic UUID from fileHistoryRewind) and abandoned-fork anchors
-  // (turn UUIDs whose conversation branch was rewound away).
-  //
-  // Both are surfaced in the picker as off-branch ↶ rows. Users can
-  // restore code from any of them; conversation rewind is rejected for
-  // them at the picker level (they have no active-chain message to
-  // truncate to). Surfacing all orphans keeps every persisted snapshot
-  // reachable through the UI; the prior kind-based filter created a
-  // dead zone where /checkpoints list showed anchors the picker hid.
-  //
-  // Two-pass merge: collect base snapshots, then apply isSnapshotUpdate
-  // records. Mirrors the conversation-keyed merge above so synthetic
-  // snapshots that received trackEdit-driven re-persists still surface
-  // their full addedTrackedFiles.
-  //
-  // Set lookup is O(1) per check; conversation iteration is O(N) once,
-  // total O(M+N) where M = persisted snapshots, N = conversation length.
-  const conversationUuids = new Set<UUID>()
-  for (const m of conversation) conversationUuids.add(m.uuid)
-  const orphanSnapshots: FileHistorySnapshot[] = []
-  const orphanIndexByMessageId = new Map<string, number>()
-  for (const [uuid, snapshotMessage] of fileHistorySnapshots) {
-    if (conversationUuids.has(uuid)) continue
-    const { snapshot, isSnapshotUpdate } = snapshotMessage
-    const existingIndex = isSnapshotUpdate
-      ? orphanIndexByMessageId.get(snapshot.messageId)
-      : undefined
-    if (existingIndex === undefined) {
-      orphanIndexByMessageId.set(snapshot.messageId, orphanSnapshots.length)
-      orphanSnapshots.push(snapshot)
-    } else {
-      orphanSnapshots[existingIndex] = snapshot
-    }
-  }
-  orphanSnapshots.sort(
+  const out = Array.from(byMessageId.values())
+  out.sort(
     (a, b) =>
       new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
   )
-  // Merge: orphans slot in by timestamp so state.snapshots stays
-  // chronological. Pre-rewind anchors typically land right after the
-  // anchor they protect; abandoned-fork anchors land where their turn
-  // would have been before the conversation rewind cut them off.
-  const merged: FileHistorySnapshot[] = []
-  let i = 0
-  let j = 0
-  while (i < snapshots.length && j < orphanSnapshots.length) {
-    const a = snapshots[i]!
-    const b = orphanSnapshots[j]!
-    if (new Date(a.timestamp).getTime() <= new Date(b.timestamp).getTime()) {
-      merged.push(a)
-      i++
-    } else {
-      merged.push(b)
-      j++
-    }
-  }
-  while (i < snapshots.length) merged.push(snapshots[i++]!)
-  while (j < orphanSnapshots.length) merged.push(orphanSnapshots[j++]!)
-
-  // Diagnostic: see what happened on this load.
   logForDebugging(
-    `SessionStorage: [SnapshotChain] in=${fileHistorySnapshots.size} ` +
-      `out=${merged.length} (conversation-keyed=${snapshots.length}, ` +
-      `orphan-rescued=${orphanSnapshots.length})`,
+    `SessionStorage: [SnapshotChain] in=${fileHistorySnapshots.size} out=${out.length}`,
   )
-  return merged
+  return out
 }
 
 /**
@@ -2010,7 +1946,7 @@ export async function loadTranscriptFromFile(
         0,
         summary,
         customTitle,
-        buildFileHistorySnapshotChain(fileHistorySnapshots, transcript),
+        flattenFileHistorySnapshots(fileHistorySnapshots),
         tag,
         filePath,
         buildAttributionSnapshotChain(attributionSnapshots, transcript),
@@ -2691,10 +2627,7 @@ export async function loadFullLog(log: LogOption): Promise<LogOption> {
       isSidechain: transcript[0]?.isSidechain ?? log.isSidechain,
       teamName: transcript[0]?.teamName ?? log.teamName,
       leafUuid: mostRecentLeaf?.uuid ?? log.leafUuid,
-      fileHistorySnapshots: buildFileHistorySnapshotChain(
-        fileHistorySnapshots,
-        transcript,
-      ),
+      fileHistorySnapshots: flattenFileHistorySnapshots(fileHistorySnapshots),
       attributionSnapshots: buildAttributionSnapshotChain(
         attributionSnapshots,
         transcript,
@@ -3586,7 +3519,7 @@ export async function getLastSessionLog(
       0,
       summary,
       customTitle,
-      buildFileHistorySnapshotChain(fileHistorySnapshots, transcript),
+      flattenFileHistorySnapshots(fileHistorySnapshots),
       tag,
       getTranscriptPathForSession(sessionId),
       buildAttributionSnapshotChain(attributionSnapshots, transcript),
@@ -4349,10 +4282,7 @@ export async function loadAllLogsFromSessionFile(
       prRepository: prRepositories.get(sessionId),
       gitBranch: leafMessage.gitBranch,
       projectPath: projectPathOverride ?? firstMessage.cwd,
-      fileHistorySnapshots: buildFileHistorySnapshotChain(
-        fileHistorySnapshots,
-        chain,
-      ),
+      fileHistorySnapshots: flattenFileHistorySnapshots(fileHistorySnapshots),
       attributionSnapshots: buildAttributionSnapshotChain(
         attributionSnapshots,
         chain,

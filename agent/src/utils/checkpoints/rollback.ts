@@ -168,8 +168,8 @@ export async function rollback(
   //    block the restore on the safety net failing (Hermes line 787
   //    ignores _take's return value entirely).
   //    Skipped when the caller (fileHistoryRewind) has already taken
-  //    its own pre-rewind snapshot at the high level so it lands in
-  //    state.snapshots.
+  //    its own pre-rewind snapshot at the high level so it lands as a
+  //    new git ref tip the picker can show.
   if (!opts.skipPreRollbackSnapshot) {
     await createSnapshot(canonical, {
       messageId: 'pre-rollback',

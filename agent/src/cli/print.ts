@@ -150,6 +150,7 @@ import {
   setInitJsonSchema,
   getInitJsonSchema,
   setSdkAgentProgressSummariesEnabled,
+  getOriginalCwd,
 } from '../bootstrap/state.js'
 import { createSyntheticOutputTool } from '../tools/SyntheticOutputTool/SyntheticOutputTool.js'
 import { parseSessionIdentifier } from '../utils/sessionUrl.js'
@@ -228,10 +229,10 @@ import type { ContentBlockParam } from '../services/api/streamTypes.js'
 import type { AppState } from '../state/AppStateStore.js'
 import {
   fileHistoryRewind,
-  fileHistoryCanRestore,
   fileHistoryEnabled,
-  fileHistoryGetDiffStats,
+  fileHistoryGetDiffVsDisk,
 } from '../utils/fileHistory.js'
+import { listCodeAnchors } from '../utils/checkpoints/listCodeAnchors.js'
 import {
   restoreAgentFromSession,
   restoreSessionStateFromLog,
@@ -3767,7 +3768,16 @@ async function handleRewindFiles(
   if (!fileHistoryEnabled()) {
     return { canRewind: false, error: 'File rewinding is not enabled.' }
   }
-  if (!fileHistoryCanRestore(appState.fileHistory, userMessageId, messages)) {
+
+  // Resolve the requested userMessageId → an anchor on disk. The shadow
+  // git store is the single source of truth for "does an anchor exist
+  // for this turn?" — picker, chooser, and execution all read this same
+  // path.
+  const anchors = await listCodeAnchors(getOriginalCwd(), {
+    withStats: false,
+  })
+  const target = anchors.find(a => a.messageId === userMessageId)
+  if (!target) {
     return {
       canRewind: false,
       error: 'No file checkpoint found for this message.',
@@ -3775,14 +3785,10 @@ async function handleRewindFiles(
   }
 
   if (dryRun) {
-    const diffStats = await fileHistoryGetDiffStats(
-      appState.fileHistory,
-      userMessageId,
-      messages,
-    )
+    const diffStats = await fileHistoryGetDiffVsDisk(target.gitHash)
     return {
       canRewind: true,
-      filesChanged: diffStats?.filesChanged,
+      filesChanged: diffStats?.filesChanged?.length,
       insertions: diffStats?.insertions,
       deletions: diffStats?.deletions,
     }
