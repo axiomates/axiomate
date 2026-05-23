@@ -381,6 +381,49 @@ describe('bulkDiffVsDisk — picker stats agree with chooser', () => {
     expect(stats!.filesChanged).toEqual([a])
   })
 
+  test('bulkDiff against anchors loaded with withBodies returns valid stats for every row', async () => {
+    // Regression for production sandbox: picker fetches anchors with
+    // withBodies: true, bulkDiff was then called on the resulting
+    // hashes. Earlier, all but the first hash returned by listSnapshots
+    // (withBodies path) had a leading newline because git emits one
+    // newline AFTER each NUL terminator. Polluted hashes made
+    // diff-tree fail silently → picker rendered ⚠ on every row except
+    // the newest. Pin the end-to-end shape: anchors loaded with bodies
+    // produce hashes that bulkDiff can use unchanged.
+    //
+    // Sandbox sequence (mirrored): pre-tool snapshot fires BEFORE the
+    // tool changes disk, so anchorN.tree captures state AT turn N -
+    // which is what existed before turn N's edit landed. After 3 such
+    // turns, all 3 anchors differ from disk (newest, mid, oldest).
+    const a = join(workTree, 'a.txt')
+    const holder = makeStateHolder()
+    const m1 = uuid()
+    await fileHistoryMakeSnapshot(holder.updater, m1)
+    writeFileSync(a, 'v1')
+    await fileHistoryTrackEdit(holder.updater, a)
+    const m2 = uuid()
+    await fileHistoryMakeSnapshot(holder.updater, m2)
+    writeFileSync(a, 'v2')
+    await fileHistoryTrackEdit(holder.updater, a)
+    const m3 = uuid()
+    await fileHistoryMakeSnapshot(holder.updater, m3)
+    writeFileSync(a, 'v3')
+    await fileHistoryTrackEdit(holder.updater, a)
+
+    const anchors = await listCodeAnchors(workTree, { withBodies: true })
+    expect(anchors.length).toBe(3)
+    for (const x of anchors) expect(x.gitHash).toMatch(/^[0-9a-f]{40}$/)
+
+    const bulk = await fileHistoryBulkDiffVsDisk(anchors.map(x => x.gitHash))
+    expect(bulk.size).toBe(3)
+    for (const x of anchors) {
+      const stats = bulk.get(x.gitHash)
+      expect(stats).toBeDefined()
+      expect(stats!.filesChanged).toEqual([a])
+      expect(stats!.insertions + stats!.deletions).toBeGreaterThan(0)
+    }
+  })
+
   test('returns empty map for empty input', async () => {
     const bulk = await fileHistoryBulkDiffVsDisk([])
     expect(bulk.size).toBe(0)

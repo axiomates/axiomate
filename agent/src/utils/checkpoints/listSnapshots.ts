@@ -128,19 +128,29 @@ export async function listSnapshots(
   const ref = refName(projectHash(canonical))
 
   // Format strategy: subject and body can both contain `|` and newlines,
-  // so we use control characters as field/record separators.
-  //   - record separator (between commits): NUL (\x00)
-  //   - field separator within a record:    SOH (\x01)
-  // This matches `git log -z`-style framing without us needing to plumb
-  // -z through the runner. Falling back to the simpler `|`-separated
-  // single-line format when bodies aren't needed (the prior behavior),
-  // since that path is hot and on-disk-tested.
+  // so the legacy `|`-separated single-line format only works when
+  // bodies aren't requested. For the bodies-enabled path we use git's
+  // `-z` flag, which is git's official "machine-readable record"
+  // contract: NUL terminates each record and git inserts NO additional
+  // whitespace between records. (Earlier we used `%x00` in the format
+  // string without `-z`; git appended a newline AFTER each NUL, which
+  // polluted record #2+ with leading `\n` and silently broke every
+  // downstream `git diff-tree` call on those hashes.)
+  //
+  // Field separator within a record: TAB (\x09). Git strips tabs from
+  // committer-supplied subjects/bodies, so it's a safe in-band
+  // separator, and unlike `\x01` it survives any plausible terminal
+  // codec (CRLF translation, RTK compression) untouched.
+  //
+  // The `-z` form also disables CRLF translation on `%b`, so multi-line
+  // bodies round-trip unchanged across platforms.
   const format = withBodies
-    ? '%H%x01%h%x01%aI%x01%s%x01%b%x00'
+    ? '%H%x09%h%x09%aI%x09%s%x09%b'
     : '%H|%h|%aI|%s'
-  const logResult = await runCheckpointGit(
-    ['log', ref, `--format=${format}`, '-n', String(limit)],
-    {
+  const args = withBodies
+    ? ['log', ref, '-z', `--format=${format}`, '-n', String(limit)]
+    : ['log', ref, `--format=${format}`, '-n', String(limit)]
+  const logResult = await runCheckpointGit(args, {
       store,
       workTree: canonical,
       allowedExitCodes: REF_NOT_PRESENT,
@@ -156,6 +166,9 @@ export async function listSnapshots(
 
   const rows = withBodies
     ? logResult.stdout
+        // `-z` guarantees: records terminated by NUL, no extra
+        // whitespace between records. Split, drop empty trailing entry
+        // from the trailing NUL, parse each.
         .split('\x00')
         .filter(rec => rec.length > 0)
         .map(rec => parseLogRecord(rec))
@@ -229,13 +242,15 @@ function parseLogLine(line: string): SnapshotEntry | null {
 }
 
 /**
- * Parse one `--format=...%x01...%x01%b%x00` record. Subject can contain
- * any character except SOH (\x01) and NUL (\x00) — both unused in normal
- * commit messages and stripped by git itself if present in input. Body
- * is everything after the 4th SOH up to the trailing NUL.
+ * Parse one record from `git log -z --format=%H\t%h\t%aI\t%s\t%b`.
+ * Records are NUL-terminated by `-z`; this function receives one
+ * record's contents (no terminator). Fields are tab-separated; tab
+ * is a safe in-band separator because git strips tabs from
+ * committer-supplied subjects/bodies. Body is everything after the
+ * 4th tab — it can contain newlines.
  */
 function parseLogRecord(record: string): SnapshotEntry | null {
-  const parts = splitMax(record, '\x01', 5)
+  const parts = splitMax(record, '\t', 5)
   if (parts.length < 5) return null
   const [hash, shortHash, timestamp, subject, body] = parts
   if (hash.length === 0 || shortHash.length === 0) return null

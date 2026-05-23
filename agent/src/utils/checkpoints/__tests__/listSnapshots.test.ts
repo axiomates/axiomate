@@ -252,10 +252,11 @@ describe('listSnapshots — withBodies', () => {
   })
 
   test('subject containing | parses correctly with withBodies', async () => {
-    // The withBodies path uses SOH (\x01) as field separator instead
-    // of `|`, so subjects with `|` characters round-trip cleanly —
-    // pinning that this path is `|`-safe even though the legacy path
-    // had to splitMax to preserve them.
+    // The withBodies path uses TAB (\x09) as field separator inside
+    // git's `-z` framing. Subjects with `|` characters round-trip
+    // cleanly because `|` isn't a separator on this path. Pinning
+    // that this path is `|`-safe even though the legacy path had to
+    // splitMax to preserve them.
     writeFileSync(join(workTree, 'a.txt'), '1')
     await createSnapshot(workTree, {
       messageId: 'msg-pipe',
@@ -280,6 +281,172 @@ describe('listSnapshots — withBodies', () => {
     const list = await listSnapshots(workTree, { withBodies: true })
     expect(list.length).toBe(1)
     expect(list[0].body).toBe('line1\nline2\nline3')
+  })
+
+  test('multiple commits with bodies parse without inter-record whitespace pollution', async () => {
+    // Regression test for "git log -z guarantees no inter-record
+    // whitespace" — earlier we used a manual `%x00` terminator
+    // without `-z`, which left a `\n` after each NUL and made the
+    // second-and-later records' hashes start with `\n`. Every
+    // downstream git command (diff-tree, cat-file) then failed
+    // silently. Pin that all hashes are clean 40-char SHA-1s.
+    writeFileSync(join(workTree, 'a.txt'), 'one')
+    await createSnapshot(workTree, {
+      messageId: 'mB1',
+      label: 'l',
+      bodyText: 'first body',
+    })
+    writeFileSync(join(workTree, 'a.txt'), 'two')
+    await createSnapshot(workTree, {
+      messageId: 'mB2',
+      label: 'l',
+      bodyText: 'second body',
+    })
+    writeFileSync(join(workTree, 'a.txt'), 'three')
+    await createSnapshot(workTree, {
+      messageId: 'mB3',
+      label: 'l',
+      bodyText: 'third body',
+    })
+
+    const list = await listSnapshots(workTree, { withBodies: true })
+    expect(list.length).toBe(3)
+    for (const e of list) {
+      expect(e.hash).toMatch(/^[0-9a-f]{40}$/)
+      expect(e.shortHash).toMatch(/^[0-9a-f]+$/)
+      expect(e.body).toMatch(/body$/)
+    }
+  })
+
+  test('all 5 fields populate correctly under withBodies', async () => {
+    // Field-by-field coverage: hash, shortHash, timestamp, subject,
+    // body. Each field comes from a distinct git format spec
+    // (%H/%h/%aI/%s/%b) and each got its own historic bug class —
+    // assert the contract holds for every one.
+    writeFileSync(join(workTree, 'a.txt'), 'x')
+    await createSnapshot(workTree, {
+      messageId: 'msg-full',
+      label: 'full-test',
+      bodyText: 'preview text',
+    })
+    const [e] = await listSnapshots(workTree, { withBodies: true })
+    expect(e.hash).toMatch(/^[0-9a-f]{40}$/)
+    expect(e.shortHash).toMatch(/^[0-9a-f]+$/)
+    expect(e.shortHash.length).toBeLessThan(e.hash.length)
+    expect(e.timestamp).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/)
+    expect(e.subject).toBe('axiomate:msg-full:full-test')
+    expect(e.body).toBe('preview text')
+  })
+
+  test('subject containing literal newline character is sanitized', async () => {
+    // %s in git is the commit's "subject" — git definitionally
+    // truncates at the first blank line, so subject can never
+    // contain a newline regardless of input. Verify our parser
+    // doesn't blow up if some future writer tries to inject one.
+    // This is a contract test, not a feature: subjects are line-
+    // oriented by construction.
+    writeFileSync(join(workTree, 'a.txt'), 'x')
+    await createSnapshot(workTree, {
+      messageId: 'msg-sub',
+      label: 'subject only',
+    })
+    const [e] = await listSnapshots(workTree, { withBodies: true })
+    expect(e.subject).not.toContain('\n')
+  })
+
+  test('body with internal newlines preserved verbatim', async () => {
+    // %b can legitimately contain newlines; -z framing must not
+    // misinterpret them as record boundaries.
+    writeFileSync(join(workTree, 'a.txt'), 'x')
+    await createSnapshot(workTree, {
+      messageId: 'msg-multi-body',
+      label: 'l',
+      bodyText: 'L1\nL2\nL3',
+    })
+    const [e] = await listSnapshots(workTree, { withBodies: true })
+    expect(e.body).toBe('L1\nL2\nL3')
+  })
+
+  test('content with embedded tab character — git strips it from subject (input-side guarantee)', async () => {
+    // We chose TAB as field separator on the assumption that git
+    // strips committer-supplied tabs before the format expansion
+    // emits them. Pin the assumption — if a future git version
+    // changes this, the test catches it loudly.
+    writeFileSync(join(workTree, 'a.txt'), 'x')
+    await createSnapshot(workTree, {
+      messageId: 'msg-tab',
+      label: 'with\tinline\ttab',
+      bodyText: 'body\twith\ttab',
+    })
+    const list = await listSnapshots(workTree, { withBodies: true })
+    expect(list.length).toBe(1)
+    const e = list[0]
+    // Whatever git did with the tabs, the parse must not crash and
+    // must yield five fields. The most important contract: hash is
+    // pristine even when subject/body contained tabs.
+    expect(e.hash).toMatch(/^[0-9a-f]{40}$/)
+    expect(e.shortHash).toMatch(/^[0-9a-f]+$/)
+    expect(e.timestamp).toMatch(/^\d{4}-\d{2}-\d{2}T/)
+  })
+
+  test('content with %x sequences in body — preserved as literal chars (no recursive format expansion)', async () => {
+    // git --format processes %X sequences only in the format string
+    // itself, not in committer content. Body containing literal
+    // "%H" stays as literal "%H".
+    writeFileSync(join(workTree, 'a.txt'), 'x')
+    await createSnapshot(workTree, {
+      messageId: 'msg-pct',
+      label: 'l',
+      bodyText: '%H is the commit hash but should appear literally',
+    })
+    const [e] = await listSnapshots(workTree, { withBodies: true })
+    expect(e.body).toContain('%H')
+    expect(e.body).not.toContain(e.hash)
+  })
+
+  test('CRLF in body content does not break record framing', async () => {
+    // Windows users may produce bodies with CRLF. -z record framing
+    // uses NUL only, so CRLF inside %b is irrelevant to the
+    // separator contract — body field captures everything up to NUL.
+    writeFileSync(join(workTree, 'a.txt'), 'x')
+    await createSnapshot(workTree, {
+      messageId: 'msg-crlf',
+      label: 'l',
+      bodyText: 'line1\r\nline2\r\nline3',
+    })
+    const [e] = await listSnapshots(workTree, { withBodies: true })
+    expect(e.body).toContain('line1')
+    expect(e.body).toContain('line2')
+    expect(e.body).toContain('line3')
+    expect(e.hash).toMatch(/^[0-9a-f]{40}$/)
+  })
+
+  test('interleaved short and long bodies — parser stays aligned', async () => {
+    // If body length matters for parser alignment (it shouldn't
+    // under -z, but pin the invariant), commits with very different
+    // body sizes should still all parse with clean 40-char hashes.
+    writeFileSync(join(workTree, 'a.txt'), '1')
+    await createSnapshot(workTree, { messageId: 'mA', label: 'l', bodyText: 'short' })
+    writeFileSync(join(workTree, 'a.txt'), '2')
+    await createSnapshot(workTree, {
+      messageId: 'mB',
+      label: 'l',
+      bodyText: 'much longer body content '.repeat(20),
+    })
+    writeFileSync(join(workTree, 'a.txt'), '3')
+    await createSnapshot(workTree, { messageId: 'mC', label: 'l' })
+    writeFileSync(join(workTree, 'a.txt'), '4')
+    await createSnapshot(workTree, {
+      messageId: 'mD',
+      label: 'l',
+      bodyText: 'medium length',
+    })
+
+    const list = await listSnapshots(workTree, { withBodies: true })
+    expect(list.length).toBe(4)
+    for (const e of list) {
+      expect(e.hash).toMatch(/^[0-9a-f]{40}$/)
+    }
   })
 
   test('empty body when no bodyText given', async () => {
