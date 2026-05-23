@@ -135,22 +135,36 @@ export async function listSnapshots(
 
   if (!withStats) return rows
 
-  // Parallelize the N per-commit shortstats. Each is independent, none
-  // mutate state, and they're the dominant latency cost of `list`.
-  await Promise.all(
-    rows.map(async row => {
-      const stat = await runCheckpointGit(
-        ['diff', '--shortstat', `${row.hash}~1`, row.hash],
-        {
-          store,
-          workTree: canonical,
-          allowedExitCodes: REF_NOT_PRESENT,
-        },
-      )
-      if (stat.ok === false || stat.stdout.length === 0) return
-      applyShortstat(stat.stdout, row)
-    }),
+  // One git log --shortstat instead of N per-row diffs. Saves N-1 spawns.
+  // On Windows ~40ms per spawn × N anchors is the dominant picker latency
+  // cost; this batched form is sub-50ms regardless of N. Parses output
+  // shape:
+  //   commit <hash>
+  //    N files changed, M insertions(+), K deletions(-)
+  // The custom format `--format=---%H` makes the per-commit boundary
+  // unambiguous and lets us skip the default header entirely. A row with
+  // zero diff (root commit, or empty diff) gets no shortstat line — left
+  // at zero, matching the per-row fallback behavior.
+  const statResult = await runCheckpointGit(
+    [
+      'log',
+      ref,
+      '--shortstat',
+      '--format=---%H',
+      '-n',
+      String(limit),
+    ],
+    {
+      store,
+      workTree: canonical,
+      allowedExitCodes: REF_NOT_PRESENT,
+    },
   )
+  if (statResult.ok === false) {
+    logForDebugging(`listSnapshots: shortstat fetch failed: ${statResult.message}`)
+    return rows
+  }
+  applyBatchedShortstat(statResult.stdout, rows)
 
   return rows
 }
@@ -200,6 +214,42 @@ function splitMax(s: string, delim: string, n: number): string[] {
   }
   out.push(rest)
   return out
+}
+
+/**
+ * Parse `git log --shortstat --format=---<hash>` output into the rows.
+ * Walks the stdout once, tracking the current commit (set when seeing
+ * `---<hash>`) and applying any subsequent shortstat line to that
+ * commit's row.
+ *
+ * Output shape (whitespace varies):
+ *   ---<hash1>
+ *
+ *    3 files changed, 12 insertions(+), 4 deletions(-)
+ *   ---<hash2>
+ *   ---<hash3>
+ *
+ *    1 file changed, 2 insertions(+)
+ *
+ * Commits with no diff (root commit, empty diff) have no shortstat
+ * line — left at the parseLogLine default of 0/0/0.
+ */
+function applyBatchedShortstat(stdout: string, rows: SnapshotEntry[]): void {
+  const byHash = new Map<string, SnapshotEntry>()
+  for (const row of rows) byHash.set(row.hash, row)
+
+  let currentRow: SnapshotEntry | undefined
+  for (const line of stdout.split('\n')) {
+    if (line.startsWith('---')) {
+      const hash = line.slice(3).trim()
+      currentRow = byHash.get(hash)
+      continue
+    }
+    if (!currentRow) continue
+    if (!line.includes('changed')) continue
+    applyShortstat(line, currentRow)
+    currentRow = undefined // one shortstat per commit; defensive reset
+  }
 }
 
 /**

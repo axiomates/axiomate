@@ -88,10 +88,13 @@ describe('listSnapshots — one snapshot', () => {
     // ISO 8601 with T and timezone offset.
     expect(e.timestamp).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/)
 
-    // Root commit has no parent → diff against ~1 errors → stats stay 0.
-    expect(e.filesChanged).toBe(0)
-    expect(e.insertions).toBe(0)
-    expect(e.deletions).toBe(0)
+    // Root commit's batched `git log --shortstat` reports its full-tree
+    // diff (vs empty) — so a single-file root commit shows that file
+    // changed. Previous per-row implementation ran `git diff <hash>~1`
+    // which errors on root and left stats at 0; the batched form is
+    // strictly more informative.
+    expect(e.filesChanged).toBe(1)
+    expect(e.insertions).toBeGreaterThan(0)
   })
 })
 
@@ -138,12 +141,16 @@ describe('listSnapshots — many snapshots', () => {
 
     const list = await listSnapshots(workTree)
     expect(list.length).toBe(2)
-    // newest first → m1 (with stats), m0 (root, no stats)
+    // newest first → m1 (delta), m0 (root, full-tree diff vs empty)
     const m1 = list[0]
     const m0 = list[1]
     expect(m1.filesChanged).toBe(1)
     expect(m1.insertions).toBe(2) // two new lines
-    expect(m0.filesChanged).toBe(0)
+    // Batched git log --shortstat reports root commit's full-tree diff
+    // (vs empty); previous per-row diff <hash>~1 errored on root and
+    // left stats at 0. The new value is more informative.
+    expect(m0.filesChanged).toBe(1)
+    expect(m0.insertions).toBe(1)
   })
 
   test('withStats: false skips per-commit diff invocations', async () => {
