@@ -413,6 +413,15 @@ export function MessageSelector({
   }
 
   async function handleSelect(message: UserMessage) {
+    // (current) is a virtual placeholder showing where the next prompt
+    // will land — rewinding to it is a no-op (disk unchanged,
+    // conversation unchanged). Pressing Enter on it used to open the
+    // chooser with "((empty message))" and two useless restore options.
+    // Treat it as a no-op: stay in the picker, do nothing. User can
+    // navigate elsewhere or press Esc to exit.
+    if (message.uuid === currentUUID) {
+      return
+    }
     const isSynthetic = !messages.includes(message)
 
     if (isSynthetic) {
