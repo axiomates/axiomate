@@ -126,7 +126,25 @@ export function MessageSelector({
   // call `messages.lastIndexOf(message)` and resolve by `message.uuid`
   // against the full `messages` array, so the picker filter is purely
   // cosmetic. `Array.filter` preserves identity — never `map` here.
-  const [showAllTurns, setShowAllTurns] = useState(false)
+  // Phase 3: Tab key now switches between two semantically distinct
+  // rewind modes (was: a row-filter toggle that left chooser options
+  // unchanged, which left users guessing what Tab did). After this
+  // change Tab maps to "what kind of rewind am I doing?":
+  //   - 'code' (default): row set = anchors + ↶ rows; chooser offers
+  //     code restore and the "code + conversation" combined option;
+  //     this is the persistent rewind regime backed by the git store.
+  //   - 'conversation': row set = every selectable user message,
+  //     no ↶ rows; chooser offers conversation restore and summarize;
+  //     this is the in-memory regime (current-session only) — note
+  //     surfaced at the top of the picker so users see the asymmetry
+  //     before they pick.
+  // Mode and view stay coupled: visible rows match what the chooser
+  // can do for them. Earlier the visible row set and the chooser
+  // options were independent, leading to "selected this row, why
+  // does the chooser say I can't?" confusion.
+  const [activeTab, setActiveTab] = useState<'code' | 'conversation'>(
+    'code',
+  )
   const allSelectable = useMemo(
     () => messages.filter(selectableUserMessagesFilter),
     [messages],
@@ -187,12 +205,19 @@ export function MessageSelector({
   }, [anchors])
 
   const hasAnySnapshot = isFileHistoryEnabled && anchors.length > 0
+  // Code tab: only rows with an anchor (or ↶ synthetic anchors); these
+  // are the ones the user can actually code-rewind to. Falls back to
+  // all-turns if no snapshots exist yet so a fresh project still
+  // shows the conversation in the code tab (chooser will degrade
+  // gracefully). Conversation tab: every selectable user message —
+  // restore conversation works without an anchor.
   const visibleSelectable = useMemo(
-    () =>
-      showAllTurns || !hasAnySnapshot
-        ? allSelectable
-        : allSelectable.filter(m => anchorByMsgId.has(m.uuid)),
-    [allSelectable, showAllTurns, anchorByMsgId, hasAnySnapshot],
+    () => {
+      if (activeTab === 'conversation') return allSelectable
+      if (!hasAnySnapshot) return allSelectable
+      return allSelectable.filter(m => anchorByMsgId.has(m.uuid))
+    },
+    [allSelectable, activeTab, anchorByMsgId, hasAnySnapshot],
   )
   const hiddenCount = allSelectable.length - visibleSelectable.length
 
@@ -237,6 +262,10 @@ export function MessageSelector({
   )
   const syntheticAnchors = useMemo<UserMessage[]>(() => {
     if (!isFileHistoryEnabled) return []
+    // ↶ rows belong to the code tab only. Conversation rewind on a
+    // synthetic anchor is meaningless — its messageId isn't in the
+    // active conversation chain, so there's nothing to truncate to.
+    if (activeTab !== 'code') return []
     return anchors
       .filter(a => a.messageId !== undefined && !conversationUuids.has(a.messageId))
       .map(a => {
@@ -261,7 +290,7 @@ export function MessageSelector({
           uuid: a.messageId!,
         } as UserMessage
       })
-  }, [anchors, conversationUuids, isFileHistoryEnabled])
+  }, [anchors, conversationUuids, isFileHistoryEnabled, activeTab])
 
   // Diagnostic: tracks state.snapshots / messages / syntheticAnchors
   // across re-renders so resume-path and filter-mismatch bugs leave a
@@ -410,6 +439,20 @@ export function MessageSelector({
   // `isSynthetic` is set when the selected row is a system-synthesized
   // anchor (pre-rewind safety snapshot) — those have no conversation
   // to fork, so we only offer code-restore + cancel.
+  //
+  // Tab-specific filtering on top of that:
+  //   - Code tab keeps `Restore code` and (when allowed) the combined
+  //     `Restore code and conversation` option. Conversation rewind
+  //     on its own and `Summarize from here` move to the
+  //     conversation tab where they belong semantically.
+  //   - Conversation tab drops every code-related option and keeps
+  //     `Restore conversation` + `Summarize from here`.
+  // The combined option lives only in the code tab on purpose: code
+  // rewind is permanent (git ref), so picking it up alongside a
+  // session-only conversation rewind reads as "the code rewind also
+  // happens to undo my conversation in this session" — a sensible
+  // side effect. The reverse — being on the conversation tab and
+  // accidentally toggling a permanent code change — does not.
   function getRestoreOptions(
     canRestoreCode: boolean,
     isSynthetic: boolean = false,
@@ -421,13 +464,17 @@ export function MessageSelector({
       ]
     }
 
-    const baseOptions: OptionWithDescription<RestoreOption>[] = canRestoreCode
-      ? [
-          { value: 'both', label: 'Restore code and conversation' },
-          { value: 'conversation', label: 'Restore conversation' },
-          { value: 'code', label: 'Restore code' },
-        ]
-      : [{ value: 'conversation', label: 'Restore conversation' }]
+    let baseOptions: OptionWithDescription<RestoreOption>[]
+    if (activeTab === 'code') {
+      baseOptions = canRestoreCode
+        ? [
+            { value: 'both', label: 'Restore code and conversation' },
+            { value: 'code', label: 'Restore code' },
+          ]
+        : []
+    } else {
+      baseOptions = [{ value: 'conversation', label: 'Restore conversation' }]
+    }
 
     const summarizeInputProps = {
       type: 'input' as const,
@@ -437,12 +484,14 @@ export function MessageSelector({
       showLabelWithValue: true,
       labelValueSeparator: ': ',
     }
-    baseOptions.push({
-      value: 'summarize',
-      label: 'Summarize from here',
-      ...summarizeInputProps,
-      onChange: setSummarizeFromFeedback,
-    })
+    if (activeTab === 'conversation') {
+      baseOptions.push({
+        value: 'summarize',
+        label: 'Summarize from here',
+        ...summarizeInputProps,
+        onChange: setSummarizeFromFeedback,
+      })
+    }
 
     baseOptions.push({ value: 'nevermind', label: 'Never mind' })
     return baseOptions
@@ -628,10 +677,16 @@ export function MessageSelector({
   // Tab: toggle between "code-restore anchors only" (default) and
   // "all turns" views. Keep focus on the same UUID across the
   // transition (see pendingFocusUuid effect).
-  const toggleAllTurns = useCallback(() => {
+  const toggleActiveTab = useCallback(() => {
     const currentUuid = messageOptions[selectedIndex]?.uuid ?? null
     setPendingFocusUuid(currentUuid)
-    setShowAllTurns(prev => !prev)
+    setActiveTab(prev => (prev === 'code' ? 'conversation' : 'code'))
+    // Reset selectedRestoreOption to a value that exists in the
+    // target tab's option set so the chooser doesn't flash a missing
+    // selection on first open after toggle.
+    setSelectedRestoreOption(prev =>
+      prev === 'both' || prev === 'code' ? 'conversation' : 'code',
+    )
   }, [messageOptions, selectedIndex])
 
   // Escape to close - uses Confirmation context where escape is bound
@@ -648,7 +703,7 @@ export function MessageSelector({
       'messageSelector:top': jumpToTop,
       'messageSelector:bottom': jumpToBottom,
       'messageSelector:select': handleSelectCurrent,
-      'messageSelector:toggleAllTurns': toggleAllTurns,
+      'messageSelector:toggleAllTurns': toggleActiveTab,
     },
     {
       context: 'MessageSelector',
@@ -803,11 +858,22 @@ export function MessageSelector({
           <>
             {isFileHistoryEnabled ? (
               <Text>
-                Restore the code and/or conversation to the point before…
+                {activeTab === 'code'
+                  ? 'Restore the code to the point before…'
+                  : 'Restore the conversation to the point before…'}
               </Text>
             ) : (
               <Text>
                 Restore and fork the conversation to the point before…
+              </Text>
+            )}
+            {activeTab === 'conversation' && isFileHistoryEnabled && (
+              // Conversation rewind is in-memory only — the JSONL chain
+              // head doesn't move with restoreMessageSync. On /resume
+              // the picker will reflect the pre-rewind state. Tracked
+              // in [[project-conversation-rewind-persistence]].
+              <Text dimColor italic>
+                {figures.warning} Conversation rewind is current-session only — restart restores the original chain.
               </Text>
             )}
             <Box width="100%" flexDirection="column">
@@ -919,24 +985,14 @@ export function MessageSelector({
               <>
                 {!error && hasMessagesToSelect && 'Enter to continue · '}
                 {(() => {
-                  // Hidden count = how many rows the *anchors-only* view
-                  // hides relative to the all-turns view. Compute from
-                  // allSelectable vs the strict snapshot filter, NOT from
-                  // visibleSelectable — which equals allSelectable while
-                  // showAllTurns is true and would yield "0 hidden" on
-                  // the very view where the user wants to know the
-                  // savings.
-                  const conversationOnlyCount = !hasAnySnapshot
-                    ? 0
-                    : allSelectable.filter(m => !anchorByMsgId.has(m.uuid))
-                        .length
-                  if (conversationOnlyCount === 0 && !showAllTurns) return null
-                  const text = showAllTurns
-                    ? `Tab to hide ${conversationOnlyCount} conversation-only turn${conversationOnlyCount === 1 ? '' : 's'}`
-                    : `Tab to show all ${allSelectable.length} turns (${conversationOnlyCount} conversation-only)`
+                  // Footer Tab-prompt now reflects mode-tab semantics:
+                  // tells the user what tab they'd switch to, not how
+                  // many rows would change. Mode is the load-bearing
+                  // concept; row count is incidental.
+                  const target = activeTab === 'code' ? 'conversation' : 'code'
                   return (
                     <>
-                      {text}
+                      Tab to switch to {target} rewind
                       {' · '}
                     </>
                   )
