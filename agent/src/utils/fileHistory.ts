@@ -409,17 +409,28 @@ export async function fileHistoryBulkDiffVsDisk(
   const diskTree = wt.stdout.trim()
   if (diskTree.length === 0) return out
 
-  const tasks = gitHashes.map(async hash => {
+  // Serial loop instead of Promise.all: parallel git children sharing
+  // the same indexFile + store directory race in subtle ways on
+  // Windows (output of all-but-the-last call comes back empty even
+  // though each call's args are correct individually). Serial keeps
+  // one git process at a time and is still fast (~5ms per spawn × N
+  // anchors); for typical N <= 30 the total is well under the
+  // ~150ms picker-mount budget.
+  for (const hash of gitHashes) {
     const r = await runCheckpointGit(
       ['diff-tree', '--numstat', '-r', hash, diskTree, '--'],
       {
         store,
         workTree: canonical,
         indexFile,
-        allowedExitCodes: REF_NOT_PRESENT,
       },
     )
-    if (r.ok === false) return
+    if (r.ok === false) {
+      logForDebugging(
+        `FileHistory: [BulkDiff] diff-tree failed hash=${hash.slice(0, 8)}: ${r.message}`,
+      )
+      continue
+    }
     const filesRel: string[] = []
     let insertions = 0
     let deletions = 0
@@ -437,9 +448,7 @@ export async function fileHistoryBulkDiffVsDisk(
       insertions,
       deletions,
     })
-  })
-
-  await Promise.all(tasks)
+  }
   return out
 }
 
