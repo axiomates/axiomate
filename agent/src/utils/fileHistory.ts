@@ -98,95 +98,15 @@ export function fileHistoryEnabled(): boolean {
 }
 
 /**
- * Module-local draft for the current turn's snapshot. Holds the latest
- * snapshot record so `fileHistoryTrackEdit` can append `addedTrackedFiles`
- * and re-persist via the latch protocol below.
- *
- * Single-slot is sufficient: `maybeSnapshotBeforeToolCall` dedups per turn
- * (toolExecution.ts:424), so each turn produces at most one makeSnapshot.
- * trackEdit always fires after that snapshot within the same turn. Turn
- * transitions overwrite the slot via the next makeSnapshot.
- *
- * Picker / chooser / rewind never read this — they read git. The draft
- * exists purely to chain `trackEdit` calls into the JSONL persistence
- * record so resume can rebuild `state.trackedFiles` for the LSP hint.
- */
-let currentTurnDraft: FileHistorySnapshot | undefined
-
-/**
- * Reset the module-local draft. Called by `/clear` so a stale draft from
- * the previous conversation can't leak `addedTrackedFiles` into a new one.
+ * No-op kept for backward compatibility with persisted JSONL records.
+ * Earlier the module held a turn-local snapshot draft slot so trackEdit
+ * could append addedTrackedFiles between makeSnapshot and persistence.
+ * Phase 4.5 dropped that path entirely — trackedFiles is populated as
+ * a batch in fileHistoryMakeSnapshot from the anchor's filesChanged.
+ * Older sessions may still call this on /clear; safe to leave a stub.
  */
 export function resetFileHistoryDraft(): void {
-  currentTurnDraft = undefined
-}
-
-export async function fileHistoryTrackEdit(
-  updateFileHistoryState: (
-    updater: (prev: FileHistoryState) => FileHistoryState,
-  ) => void,
-  filePath: string,
-): Promise<void> {
-  if (!fileHistoryEnabled()) return
-
-  const trackingPath = maybeShortenFilePath(filePath)
-
-  let alreadyTracked = false
-  updateFileHistoryState(state => {
-    if (state.trackedFiles.has(trackingPath)) {
-      alreadyTracked = true
-      return state
-    }
-    const trackedFiles = new Set(state.trackedFiles).add(trackingPath)
-    return { ...state, trackedFiles }
-  })
-  if (alreadyTracked) return
-
-  if (
-    currentTurnDraft &&
-    !currentTurnDraft.addedTrackedFiles.includes(trackingPath)
-  ) {
-    currentTurnDraft = {
-      ...currentTurnDraft,
-      addedTrackedFiles: [...currentTurnDraft.addedTrackedFiles, trackingPath],
-    }
-    scheduleSnapshotPersist(currentTurnDraft)
-    logForDebugging(`FileHistory: Tracked file modification for ${filePath}`)
-  }
-}
-
-/**
- * Coalesce per-trackEdit persistence: a single turn often calls trackEdit
- * many times in rapid succession. Each call would otherwise produce its
- * own jsonl append — but the persisted record is a full snapshot keyed by
- * messageId, and the reader takes the *last* one, so all but the final
- * write are wasted IO. Latch collapses N writes into at most 2 round-trips
- * per turn.
- */
-const pendingSnapshotPersists = new Map<UUID, FileHistorySnapshot>()
-const inFlightSnapshotPersists = new Set<UUID>()
-
-function scheduleSnapshotPersist(snapshot: FileHistorySnapshot): void {
-  pendingSnapshotPersists.set(snapshot.messageId, snapshot)
-  if (inFlightSnapshotPersists.has(snapshot.messageId)) return
-  void drainSnapshotPersist(snapshot.messageId)
-}
-
-async function drainSnapshotPersist(messageId: UUID): Promise<void> {
-  inFlightSnapshotPersists.add(messageId)
-  try {
-    while (pendingSnapshotPersists.has(messageId)) {
-      const next = pendingSnapshotPersists.get(messageId)!
-      pendingSnapshotPersists.delete(messageId)
-      try {
-        await recordFileHistorySnapshot(messageId, next, true)
-      } catch (error) {
-        logError(new Error(`FileHistory: Failed to record snapshot: ${error}`))
-      }
-    }
-  } finally {
-    inFlightSnapshotPersists.delete(messageId)
-  }
+  // intentional no-op
 }
 
 export async function fileHistoryMakeSnapshot(
@@ -214,26 +134,47 @@ export async function fileHistoryMakeSnapshot(
     return
   }
 
+  // Batch-populate trackedFiles from the anchor we just wrote. Earlier
+  // each tool called fileHistoryTrackEdit per file, but trackedFiles is
+  // only consumed by useLspPluginRecommendation (the LSP plugin hint
+  // hook) — Phase 1 deleted every other consumer. The hook just wants
+  // "what files has axiomate touched in this session?" and the per-
+  // anchor diff vs the previous anchor is exactly that signal,
+  // computed in one git invocation regardless of how many files
+  // changed. Falls back gracefully if the diff-tree call fails: the
+  // snapshot itself already landed; trackedFiles can stay stale.
+  let addedTrackedFiles: string[] = []
+  try {
+    addedTrackedFiles = await diffPathsAgainstParent(workdir, result.hash)
+  } catch (error) {
+    logError(new Error(`FileHistory: trackedFiles diff failed: ${error}`))
+  }
+
+  updateFileHistoryState(state => {
+    const trackedFiles = new Set(state.trackedFiles)
+    for (const p of addedTrackedFiles) {
+      trackedFiles.add(maybeShortenFilePath(p))
+    }
+    return {
+      ...state,
+      trackedFiles,
+      snapshotMessageIds: new Set(state.snapshotMessageIds).add(messageId),
+      snapshotSequence: (state.snapshotSequence ?? 0) + 1,
+    }
+  })
+
+  logForDebugging(
+    `FileHistory: [Persist] queue write messageId=${messageId.slice(0, 8)} ` +
+      `gitHash=${result.hash.slice(0, 8)} addedTrackedFiles=${addedTrackedFiles.length}`,
+  )
   const draft: FileHistorySnapshot = {
     messageId,
     gitHash: result.hash,
-    addedTrackedFiles: [],
+    addedTrackedFiles,
     timestamp: new Date(),
     subject: `axiomate:${messageId}:${label}`,
     ...(promptPreview ? { bodyPreview: promptPreview } : {}),
   }
-  currentTurnDraft = draft
-
-  updateFileHistoryState(state => ({
-    ...state,
-    snapshotMessageIds: new Set(state.snapshotMessageIds).add(messageId),
-    snapshotSequence: (state.snapshotSequence ?? 0) + 1,
-  }))
-
-  logForDebugging(
-    `FileHistory: [Persist] queue write messageId=${messageId.slice(0, 8)} ` +
-      `gitHash=${draft.gitHash.slice(0, 8)}`,
-  )
   void recordFileHistorySnapshot(messageId, draft, false)
     .then(() =>
       logForDebugging(
@@ -243,6 +184,34 @@ export async function fileHistoryMakeSnapshot(
     .catch(error => {
       logError(new Error(`FileHistory: Failed to record snapshot: ${error}`))
     })
+}
+
+/**
+ * One-shot diff: list paths changed by `gitHash` versus its parent.
+ * For root commits (no parent) this returns the full tree contents.
+ * Best-effort — failures are surfaced to the caller as exceptions and
+ * handled there; no fallback here.
+ */
+async function diffPathsAgainstParent(
+  workdir: string,
+  gitHash: string,
+): Promise<string[]> {
+  const storeResult = await ensureStore()
+  if (storeResult.ok === false) return []
+  const canonical = normalizePath(workdir)
+  const r = await runCheckpointGit(
+    ['log', '-1', '--name-only', '--pretty=format:', '--root', gitHash],
+    {
+      store: storeResult.store,
+      workTree: canonical,
+      indexFile: indexPath(projectHash(canonical)),
+    },
+  )
+  if (r.ok === false) return []
+  return r.stdout
+    .split('\n')
+    .map(s => s.trim())
+    .filter(s => s.length > 0)
 }
 
 /**

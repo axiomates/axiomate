@@ -1,9 +1,5 @@
 import { feature } from 'bun:bundle'
 import { extname, isAbsolute, resolve } from 'path'
-import {
-  fileHistoryEnabled,
-  fileHistoryTrackEdit,
-} from '../../utils/fileHistory.js'
 import { z } from 'zod/v4'
 import { buildTool, type ToolDef, type ToolUseContext } from '../../Tool.js'
 import type { NotebookCell, NotebookContent } from '../../types/notebook.js'
@@ -300,10 +296,6 @@ export const NotebookEditTool = buildTool({
     const fullPath = isAbsolute(notebook_path)
       ? notebook_path
       : resolve(getCwd(), notebook_path)
-
-    if (fileHistoryEnabled()) {
-      await fileHistoryTrackEdit(updateFileHistoryState, fullPath)
-    }
 
     try {
       // readFileSyncWithMetadata gives content + encoding + line endings in

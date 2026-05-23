@@ -17,7 +17,6 @@ import { extractAxiomateHints } from '../../utils/codeHints.js';
 import { isEnvTruthy } from '../../utils/envUtils.js';
 import { isENOENT, ShellError } from '../../utils/errors.js';
 import { detectFileEncoding, detectLineEndings, getFileModificationTime, writeTextContent } from '../../utils/file.js';
-import { fileHistoryEnabled, fileHistoryTrackEdit } from '../../utils/fileHistory.js';
 import { truncate } from '../../utils/format.js';
 import { getFsImplementation } from '../../utils/fsOperations.js';
 import { lazySchema } from '../../utils/lazySchema.js';
@@ -378,11 +377,6 @@ async function applySedEdit(simulatedEdit: {
       };
     }
     throw e;
-  }
-
-  // Track file history before making changes (for undo support)
-  if (fileHistoryEnabled()) {
-    await fileHistoryTrackEdit(toolUseContext.updateFileHistoryState, absoluteFilePath);
   }
 
   // Detect line endings and write new content

@@ -46,7 +46,6 @@ import {
   fileHistoryMakeSnapshot,
   fileHistoryRestoreStateFromLog,
   fileHistoryRewind,
-  fileHistoryTrackEdit,
   resetFileHistoryDraft,
   type FileHistorySnapshot,
   type FileHistoryState,
@@ -104,7 +103,13 @@ async function turn(
 ): Promise<UUID> {
   const id = uuid()
   await fileHistoryMakeSnapshot(holder.updater, id)
-  for (const f of files) await fileHistoryTrackEdit(holder.updater, f)
+  // Production: tools mutate disk AFTER pre-tool makeSnapshot. The
+  // `files` array here represents the per-turn mutation set; it's
+  // recorded by the next makeSnapshot's diff-vs-parent. The turn
+  // helper preserves the parameter for backward compatibility with
+  // existing tests that pass mutation paths positionally — they're
+  // expected to be already on disk by this point.
+  void files
   return id
 }
 
@@ -167,7 +172,6 @@ describe('rewind — restore content at the chosen turn', () => {
     const m1 = await turn(holder, [seed])
     const newFile = join(workTree, 'new.txt')
     writeFileSync(newFile, 'fresh')
-    await fileHistoryTrackEdit(holder.updater, newFile)
     await turn(holder, [])
 
     expect(existsSync(newFile)).toBe(true)
@@ -202,7 +206,6 @@ describe('rewind — restore content at the chosen turn', () => {
     const holder = makeStateHolder()
     const m1 = await turn(holder, [])
     writeFileSync(newFile, 'created')
-    await fileHistoryTrackEdit(holder.updater, newFile)
     await turn(holder, [])
 
     expect(existsSync(newFile)).toBe(true)
@@ -370,7 +373,6 @@ describe('bulkDiffVsDisk — picker stats agree with chooser', () => {
     const id = uuid()
     await fileHistoryMakeSnapshot(holder.updater, id)
     writeFileSync(a, 'one\ntwo\nthree\n')
-    await fileHistoryTrackEdit(holder.updater, a)
 
     const anchors = await listCodeAnchors(workTree, { withStats: false })
     const root = anchors[anchors.length - 1]!
@@ -400,15 +402,12 @@ describe('bulkDiffVsDisk — picker stats agree with chooser', () => {
     const m1 = uuid()
     await fileHistoryMakeSnapshot(holder.updater, m1)
     writeFileSync(a, 'v1')
-    await fileHistoryTrackEdit(holder.updater, a)
     const m2 = uuid()
     await fileHistoryMakeSnapshot(holder.updater, m2)
     writeFileSync(a, 'v2')
-    await fileHistoryTrackEdit(holder.updater, a)
     const m3 = uuid()
     await fileHistoryMakeSnapshot(holder.updater, m3)
     writeFileSync(a, 'v3')
-    await fileHistoryTrackEdit(holder.updater, a)
 
     const anchors = await listCodeAnchors(workTree, { withBodies: true })
     expect(anchors.length).toBe(3)
@@ -444,7 +443,6 @@ describe('concurrency — interleaved trackEdit during makeSnapshot', () => {
 
     const m2 = uuid()
     const m2Promise = fileHistoryMakeSnapshot(holder.updater, m2)
-    await fileHistoryTrackEdit(holder.updater, b)
     await m2Promise
 
     writeFileSync(a, 'a-v3')

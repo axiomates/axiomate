@@ -21,10 +21,6 @@ import {
   suggestPathUnderCwd,
   writeTextContent,
 } from '../../utils/file.js'
-import {
-  fileHistoryEnabled,
-  fileHistoryTrackEdit,
-} from '../../utils/fileHistory.js'
 import { logFileOperation } from '../../utils/fileOperationAnalytics.js'
 import {
   type LineEndingType,
@@ -413,12 +409,6 @@ export const FileEditTool = buildTool({
     // These awaits must stay OUTSIDE the critical section below — a yield between
     // the staleness check and writeTextContent lets concurrent edits interleave.
     await fs.mkdir(dirname(absoluteFilePath))
-    if (fileHistoryEnabled()) {
-      // Register the path so the LSP plugin recommendation hook sees
-      // it (state.trackedFiles is no longer load-bearing for rewind —
-      // rewind operates on the full disk-vs-tree diff).
-      await fileHistoryTrackEdit(updateFileHistoryState, absoluteFilePath)
-    }
 
     // 2. Load current state and confirm no changes since last read
     // Please avoid async operations between here and writing to disk to preserve atomicity
