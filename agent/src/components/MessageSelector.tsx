@@ -11,6 +11,7 @@ import {
 } from '../services/analytics/index.js'
 import {
   type DiffStats,
+  fileHistoryBulkDiffVsDisk,
   fileHistoryEnabled,
   fileHistoryGetDiffVsDisk,
 } from '../utils/fileHistory.js'
@@ -142,7 +143,7 @@ export function MessageSelector({
       return
     }
     let cancelled = false
-    void listCodeAnchors(getOriginalCwd())
+    void listCodeAnchors(getOriginalCwd(), { withStats: false })
       .then(rows => {
         if (cancelled) return
         logForDebugging(
@@ -653,33 +654,32 @@ export function MessageSelector({
 
   useEffect(() => {
     if (!isFileHistoryEnabled) return
-    // Picker row stats are now derived from `listCodeAnchors`'s batched
-    // shortstat (single git invocation, regex-parsed). Each anchor's
-    // {insertions, deletions} reflects the diff vs its parent commit —
-    // i.e., what THAT TURN produced. Rows without an anchor (no edit
-    // happened on that turn) get undefined → render ⚠ "No code changes".
-    //
-    // Source of truth alignment: same git store, same ref. Picker can't
-    // disagree with chooser/execution about whether an anchor exists.
-    const next: Record<string, DiffStats | undefined> = {}
-    for (const userMessage of messageOptions) {
-      if (userMessage.uuid === currentUUID) continue
-      const anchor = anchorByMsgId.get(userMessage.uuid)
-      if (!anchor) {
-        next[userMessage.uuid] = undefined
-        continue
+    let cancelled = false
+    // Picker rows answer the SAME question the chooser does for the
+    // selected row: "if I rewind to anchor X, how many lines change on
+    // disk?" Sharing one git query (anchor → disk) means picker and
+    // chooser line counts agree by construction. Earlier this used
+    // `git log --shortstat` (anchor vs parent commit), which gave
+    // off-by-one labels — root commit always 0/0/0, every other row
+    // showed the previous turn's edit count.
+    const hashes = Array.from(anchorByMsgId.values()).map(a => a.gitHash)
+    void fileHistoryBulkDiffVsDisk(hashes).then(byHash => {
+      if (cancelled) return
+      const next: Record<string, DiffStats | undefined> = {}
+      for (const userMessage of messageOptions) {
+        if (userMessage.uuid === currentUUID) continue
+        const anchor = anchorByMsgId.get(userMessage.uuid)
+        next[userMessage.uuid] = anchor ? byHash.get(anchor.gitHash) : undefined
       }
-      next[userMessage.uuid] = {
-        filesChanged: undefined,
-        insertions: anchor.insertions,
-        deletions: anchor.deletions,
-      }
+      setFileHistoryMetadata(next)
+      logForDebugging(
+        `MessageSelector: [Meta] write keys=${Object.keys(next).map(k => k.slice(0, 8)).join(',')} ` +
+          `values=${Object.entries(next).map(([k, v]) => `${k.slice(0, 8)}:${v ? `ins=${v.insertions}/del=${v.deletions}/files=${v.filesChanged?.length ?? 'undef'}` : 'undef'}`).join(' ')}`,
+      )
+    })
+    return () => {
+      cancelled = true
     }
-    setFileHistoryMetadata(next)
-    logForDebugging(
-      `MessageSelector: [Meta] write keys=${Object.keys(next).map(k => k.slice(0, 8)).join(',')} ` +
-        `values=${Object.entries(next).map(([k, v]) => `${k.slice(0, 8)}:${v ? `ins=${v.insertions}/del=${v.deletions}/files=${v.filesChanged?.length ?? 'undef'}` : 'undef'}`).join(' ')}`,
-    )
   }, [messageOptions, currentUUID, anchorByMsgId, isFileHistoryEnabled])
 
   const canRestoreCode =
@@ -807,16 +807,6 @@ export function MessageSelector({
                   const metadata = fileHistoryMetadata[msg.uuid]
                   const numFilesChanged =
                     metadata?.filesChanged && metadata.filesChanged.length
-                  // Picker stats come from `git log --shortstat` per commit
-                  // and don't carry the changed-paths list (we only need
-                  // the line counts for the picker badge — the chooser
-                  // refetches with paths). Treat any non-zero ins/del as
-                  // "this turn made changes" even when filesChanged is
-                  // absent.
-                  const hasLineChanges =
-                    metadata !== undefined &&
-                    ((metadata.insertions ?? 0) > 0 ||
-                      (metadata.deletions ?? 0) > 0)
 
                   return (
                     <Box
@@ -852,16 +842,6 @@ export function MessageSelector({
                                 metadata.filesChanged![0]
                                   ? `${path.basename(metadata.filesChanged![0])} `
                                   : `${numFilesChanged} files changed `}
-                                <DiffStatsText diffStats={metadata} />
-                              </Text>
-                            ) : metadata && hasLineChanges ? (
-                              // Picker stats path: insertions/deletions
-                              // populated by `git log --shortstat` but
-                              // no per-file path list (chooser refetches
-                              // with paths if user dives in). Show the
-                              // line counts so the user sees the turn
-                              // produced changes.
-                              <Text dimColor={!isSelected} color="inactive">
                                 <DiffStatsText diffStats={metadata} />
                               </Text>
                             ) : metadata ? (
@@ -1030,7 +1010,9 @@ function DiffStatsText({
 }: {
   diffStats: DiffStats | undefined
 }): React.ReactNode {
-  if (!diffStats) return undefined
+  if (!diffStats || !diffStats.filesChanged) {
+    return undefined
+  }
   return (
     <>
       <Text color="diffAddedWord">+{diffStats.insertions} </Text>

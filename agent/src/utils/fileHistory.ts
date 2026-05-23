@@ -376,6 +376,84 @@ export async function fileHistoryHasDiffVsDisk(
 }
 
 /**
+ * Bulk version of `fileHistoryGetDiffVsDisk`. Picker-row stats answer
+ * "if I rewind to anchor X, how many lines change on disk?" — the same
+ * question the chooser preview answers for the selected row. Sharing
+ * the same git query means picker and chooser line counts match by
+ * construction; no more "picker says +1 -0, chooser says +1 -1".
+ *
+ * Implementation: stage the workdir once into a temp index file
+ * (write-tree captures the current disk state as an immutable tree
+ * object), then run one `git diff-tree --numstat <anchor> <diskTree>`
+ * per anchor in parallel. diff-tree is index-free so the parallel
+ * reads can't race each other or the rest of the system. ~80ms for 20
+ * anchors on Windows.
+ *
+ * Returns a Map keyed by gitHash. Anchors that fail their diff-tree
+ * call get omitted (caller falls back to "stats unavailable" UI). The
+ * function never throws — checkpoints subsystem is best-effort.
+ */
+export async function fileHistoryBulkDiffVsDisk(
+  gitHashes: readonly string[],
+): Promise<Map<string, DiffStats>> {
+  const out = new Map<string, DiffStats>()
+  if (!fileHistoryEnabled() || gitHashes.length === 0) return out
+
+  const storeResult = await ensureStore()
+  if (storeResult.ok === false) return out
+  const store = storeResult.store
+  const canonical = normalizePath(getOriginalCwd())
+  const indexFile = indexPath(projectHash(canonical))
+
+  await stageWorkdir(store, canonical, indexFile)
+
+  // Lock disk state into an immutable tree. Subsequent diff-tree calls
+  // read this tree object, not the index, so they're safe to parallelize
+  // and free of any further `git add` race.
+  const wt = await runCheckpointGit(['write-tree'], {
+    store,
+    workTree: canonical,
+    indexFile,
+  })
+  if (wt.ok === false) return out
+  const diskTree = wt.stdout.trim()
+  if (diskTree.length === 0) return out
+
+  const tasks = gitHashes.map(async hash => {
+    const r = await runCheckpointGit(
+      ['diff-tree', '--numstat', '-r', hash, diskTree, '--'],
+      {
+        store,
+        workTree: canonical,
+        indexFile,
+        allowedExitCodes: REF_NOT_PRESENT,
+      },
+    )
+    if (r.ok === false) return
+    const filesRel: string[] = []
+    let insertions = 0
+    let deletions = 0
+    for (const line of r.stdout.split('\n')) {
+      if (line.length === 0) continue
+      const parts = line.split('\t')
+      if (parts.length < 3) continue
+      const [insStr, delStr, path] = parts as [string, string, string]
+      filesRel.push(path)
+      if (insStr !== '-') insertions += Number.parseInt(insStr, 10) || 0
+      if (delStr !== '-') deletions += Number.parseInt(delStr, 10) || 0
+    }
+    out.set(hash, {
+      filesChanged: filesRel.map(p => maybeExpandFilePath(p)),
+      insertions,
+      deletions,
+    })
+  })
+
+  await Promise.all(tasks)
+  return out
+}
+
+/**
  * Resume entry: rebuild `trackedFiles` and `snapshotMessageIds` from the
  * persisted snapshot list. Neither is load-bearing for rewind — git is
  * the source of truth — so this fn is purely for resume parity (LSP

@@ -39,6 +39,7 @@ import {
   setOriginalCwd,
 } from '../../bootstrap/state.js'
 import {
+  fileHistoryBulkDiffVsDisk,
   fileHistoryEnabled,
   fileHistoryGetDiffVsDisk,
   fileHistoryHasDiffVsDisk,
@@ -316,6 +317,57 @@ describe('restoreStateFromLog — resume rebuilds a usable state', () => {
       called = true
     })
     expect(called).toBe(false)
+  })
+})
+
+describe('bulkDiffVsDisk — picker stats agree with chooser', () => {
+  test('every anchor reports the same line counts as getDiffVsDisk for that anchor', async () => {
+    const a = join(workTree, 'a.txt')
+    writeFileSync(a, 'v1')
+    const holder = makeStateHolder()
+    await turn(holder, [a])
+    writeFileSync(a, 'v1\nv2')
+    await turn(holder, [a])
+    writeFileSync(a, 'v1\nv2\nv3')
+    await turn(holder, [a])
+
+    const anchors = await listCodeAnchors(workTree, { withStats: false })
+    const hashes = anchors.map(x => x.gitHash)
+    const bulk = await fileHistoryBulkDiffVsDisk(hashes)
+    expect(bulk.size).toBe(hashes.length)
+
+    for (const hash of hashes) {
+      const single = await fileHistoryGetDiffVsDisk(hash)
+      const fromBulk = bulk.get(hash)
+      expect(fromBulk).toBeDefined()
+      expect(fromBulk!.insertions).toBe(single!.insertions)
+      expect(fromBulk!.deletions).toBe(single!.deletions)
+    }
+  })
+
+  test('root anchor (empty pre-snapshot) reports the disk content as +N', async () => {
+    const a = join(workTree, 'a.txt')
+    // Mirror the sandbox sequence: pre-tool snapshot fires on an empty
+    // workdir, AI then writes the file. Anchor's tree is empty; disk
+    // has 3 lines → bulk diff vs disk reports +3 insertions.
+    const holder = makeStateHolder()
+    const id = uuid()
+    await fileHistoryMakeSnapshot(holder.updater, id)
+    writeFileSync(a, 'one\ntwo\nthree\n')
+    await fileHistoryTrackEdit(holder.updater, a)
+
+    const anchors = await listCodeAnchors(workTree, { withStats: false })
+    const root = anchors[anchors.length - 1]!
+    const bulk = await fileHistoryBulkDiffVsDisk([root.gitHash])
+    const stats = bulk.get(root.gitHash)
+    expect(stats).toBeDefined()
+    expect(stats!.insertions).toBeGreaterThan(0)
+    expect(stats!.filesChanged).toEqual([a])
+  })
+
+  test('returns empty map for empty input', async () => {
+    const bulk = await fileHistoryBulkDiffVsDisk([])
+    expect(bulk.size).toBe(0)
   })
 })
 
