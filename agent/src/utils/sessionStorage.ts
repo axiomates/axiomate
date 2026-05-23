@@ -2606,8 +2606,15 @@ export function isLiteLog(log: LogOption): boolean {
 export async function loadFullLog(log: LogOption): Promise<LogOption> {
   // If already full, return as-is
   if (!isLiteLog(log)) {
+    logForDebugging(
+      `SessionStorage: [LoadFullLog] already-full sessionId=${log.sessionId.slice(0, 8)} ` +
+        `fileHistorySnapshots=${log.fileHistorySnapshots?.length ?? 'undefined'}`,
+    )
     return log
   }
+  logForDebugging(
+    `SessionStorage: [LoadFullLog] loading sessionId=${log.sessionId.slice(0, 8)}`,
+  )
 
   // Use the fullPath from the index entry directly
   const sessionFile = log.fullPath
@@ -2657,7 +2664,7 @@ export async function loadFullLog(log: LogOption): Promise<LogOption> {
     // Leaf's sessionId — forked sessions copy chain[0] from the source, but
     // metadata entries (custom-title etc.) are keyed by the current session.
     const sessionId = mostRecentLeaf.sessionId as UUID | undefined
-    return {
+    const result: LogOption = {
       ...log,
       messages: removeExtraFields(transcript),
       firstPrompt: extractFirstPrompt(transcript),
@@ -2706,7 +2713,17 @@ export async function loadFullLog(log: LogOption): Promise<LogOption> {
           ? contextCollapseSnapshot
           : undefined,
     }
-  } catch {
+    logForDebugging(
+      `SessionStorage: [LoadFullLog] loaded sessionId=${log.sessionId.slice(0, 8)} ` +
+        `fileHistorySnapshots-in-map=${fileHistorySnapshots.size} ` +
+        `transcript=${transcript.length} ` +
+        `output.fileHistorySnapshots=${result.fileHistorySnapshots?.length ?? 0}`,
+    )
+    return result
+  } catch (err) {
+    logForDebugging(
+      `SessionStorage: [LoadFullLog] FAILED sessionId=${log.sessionId.slice(0, 8)} err=${(err as Error).message}`,
+    )
     // If loading fails, return the original log
     return log
   }

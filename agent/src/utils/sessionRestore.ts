@@ -100,11 +100,32 @@ export function restoreSessionStateFromLog(
   result: ResumeResult,
   setAppState: (f: (prev: AppState) => AppState) => void,
 ): void {
+  // Diagnostic: every entry into the resume state-restore path. Pre-fix
+  // we couldn't tell whether /resume's path even reached this function
+  // (no log line otherwise). Logs the inputs that decide whether
+  // fileHistory restore actually fires.
+  logForDebugging(
+    `SessionRestore: [Restore] entry fileHistorySnapshots=${
+      result.fileHistorySnapshots?.length ?? 'undefined'
+    } messages=${result.messages?.length ?? 'undefined'}`,
+  )
   // Restore file history state
   if (result.fileHistorySnapshots && result.fileHistorySnapshots.length > 0) {
+    logForDebugging(
+      `SessionRestore: [Restore] calling fileHistoryRestoreStateFromLog with ${result.fileHistorySnapshots.length} snapshots`,
+    )
     fileHistoryRestoreStateFromLog(result.fileHistorySnapshots, newState => {
       setAppState(prev => ({ ...prev, fileHistory: newState }))
     })
+  } else {
+    logForDebugging(
+      `SessionRestore: [Restore] SKIPPED fileHistoryRestoreStateFromLog ` +
+        `(snapshots ${
+          result.fileHistorySnapshots === undefined
+            ? 'undefined'
+            : 'empty'
+        })`,
+    )
   }
 
   if (

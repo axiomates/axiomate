@@ -1400,6 +1400,10 @@ export function REPL({
     fileHistory: fileHistoryState
   })));
   const resume = useCallback(async (sessionId: UUID, log: LogOption, entrypoint: ResumeEntrypoint) => {
+    logForDebugging(
+      `REPL: [Resume] entry sessionId=${sessionId.slice(0, 8)} entrypoint=${entrypoint} ` +
+        `log.fileHistorySnapshots=${log.fileHistorySnapshots?.length ?? 'undefined'}`,
+    )
     const resumeStart = performance.now();
     try {
       // Deserialize messages to properly clean up the conversation
