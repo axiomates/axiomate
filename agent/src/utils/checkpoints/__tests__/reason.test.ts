@@ -1,6 +1,10 @@
 import { describe, expect, test } from 'vitest'
 import {
+  classifyAnchor,
+  formatAnchorReason,
+  formatCommitBody,
   formatCommitSubject,
+  parseCommitBody,
   parseCommitSubject,
   type ParsedReason,
 } from '../reason.js'
@@ -150,5 +154,107 @@ describe('parseCommitSubject', () => {
       kind: 'raw',
       subject: 'axiomate::label',
     })
+  })
+})
+
+describe('formatCommitBody / parseCommitBody', () => {
+  test('round-trips a prompt body', () => {
+    const body = formatCommitBody({ kind: 'prompt', preview: '创建 test.txt' })
+    expect(body).toBe('prompt: 创建 test.txt')
+    const parsed = parseCommitBody(body)
+    expect(parsed.kind).toBe('prompt')
+    if (parsed.kind === 'prompt') expect(parsed.preview).toBe('创建 test.txt')
+  })
+
+  test('round-trips a target body', () => {
+    const body = formatCommitBody({ kind: 'target', preview: 'undo this' })
+    expect(body).toBe('target: undo this')
+    const parsed = parseCommitBody(body)
+    expect(parsed.kind).toBe('target')
+    if (parsed.kind === 'target') expect(parsed.preview).toBe('undo this')
+  })
+
+  test('truncates preview to 80 chars', () => {
+    const long = 'x'.repeat(120)
+    const body = formatCommitBody({ kind: 'prompt', preview: long })
+    expect(body.length).toBeLessThanOrEqual('prompt: '.length + 80)
+  })
+
+  test('strips newlines from preview', () => {
+    const body = formatCommitBody({ kind: 'prompt', preview: 'a\nb\rc' })
+    expect(body).toBe('prompt: a b c')
+  })
+
+  test('empty preview returns empty string', () => {
+    expect(formatCommitBody({ kind: 'prompt', preview: '' })).toBe('')
+    expect(formatCommitBody({ kind: 'prompt', preview: '   ' })).toBe('')
+  })
+
+  test('unknown kind returns empty string', () => {
+    expect(formatCommitBody({ kind: 'unknown' })).toBe('')
+  })
+
+  test('parser falls back to unknown on legacy / no-prefix bodies', () => {
+    const parsed = parseCommitBody('legacy free-form text')
+    expect(parsed.kind).toBe('unknown')
+    if (parsed.kind === 'unknown') expect(parsed.raw).toBe('legacy free-form text')
+  })
+
+  test('parser handles empty body', () => {
+    const parsed = parseCommitBody('')
+    expect(parsed.kind).toBe('unknown')
+    if (parsed.kind === 'unknown') expect(parsed.raw).toBe('')
+  })
+})
+
+describe('classifyAnchor', () => {
+  test('detects pre-rewind label prefix', () => {
+    const subject = formatCommitSubject({
+      messageId: 'abcd',
+      label: 'pre-rewind:01234567',
+    })
+    expect(classifyAnchor(subject)).toBe('pre-rewind')
+  })
+
+  test('plain turn anchors classify as turn', () => {
+    const subject = formatCommitSubject({
+      messageId: 'abcd',
+      label: 'file-history',
+    })
+    expect(classifyAnchor(subject)).toBe('turn')
+  })
+
+  test('non-axiomate subjects classify as foreign', () => {
+    expect(classifyAnchor('manual git commit message')).toBe('foreign')
+    expect(classifyAnchor('')).toBe('foreign')
+  })
+})
+
+describe('formatAnchorReason', () => {
+  test('turn anchor with prompt body', () => {
+    const subj = formatCommitSubject({ messageId: 'abc12345xyz', label: 'file-history' })
+    const body = formatCommitBody({ kind: 'prompt', preview: '创建 test.txt' })
+    expect(formatAnchorReason(subj, body)).toBe('file-history "创建 test.txt" (abc12345)')
+  })
+
+  test('turn anchor without body', () => {
+    const subj = formatCommitSubject({ messageId: 'abc12345xyz', label: 'file-history' })
+    expect(formatAnchorReason(subj, '')).toBe('file-history (abc12345)')
+  })
+
+  test('pre-rewind with target body', () => {
+    const subj = formatCommitSubject({ messageId: 'abc12345xyz', label: 'pre-rewind:01234567' })
+    const body = formatCommitBody({ kind: 'target', preview: '创建 v1' })
+    expect(formatAnchorReason(subj, body)).toBe('Undo rewind to "创建 v1"')
+  })
+
+  test('pre-rewind without target body', () => {
+    const subj = formatCommitSubject({ messageId: 'abc12345xyz', label: 'pre-rewind:01234567' })
+    expect(formatAnchorReason(subj, '')).toBe('Undo last rewind')
+  })
+
+  test('foreign subject returns subject as-is', () => {
+    expect(formatAnchorReason('manual commit', '')).toBe('manual commit')
+    expect(formatAnchorReason('', '')).toBe('(no subject)')
   })
 })

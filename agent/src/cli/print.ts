@@ -3795,6 +3795,16 @@ async function handleRewindFiles(
   }
 
   try {
+    // Best-effort target preview from the in-memory message cache so
+    // the pre-rewind safety anchor's '↶ Undo rewind to "<preview>"'
+    // label can identify which rewind it's undoing. Empty string is
+    // fine — fileHistory falls back to the generic "Undo last rewind"
+    // copy (see reason.ts body codec for the on-disk format).
+    const targetMsg = messages.find(m => m.uuid === userMessageId)
+    const targetPreview =
+      targetMsg && targetMsg.type === 'user' && typeof targetMsg.message?.content === 'string'
+        ? targetMsg.message.content
+        : ''
     await fileHistoryRewind(
       updater =>
         setAppState(prev => ({
@@ -3802,6 +3812,7 @@ async function handleRewindFiles(
           fileHistory: updater(prev.fileHistory),
         })),
       target.gitHash,
+      targetPreview,
     )
   } catch (error) {
     return {

@@ -18,6 +18,7 @@ import type {
   SnapshotEntry,
 } from '../../utils/checkpoints/listSnapshots.js'
 import type { StoreStatusReport } from '../../utils/checkpoints/storeStatus.js'
+import { formatAnchorReason } from '../../utils/checkpoints/reason.js'
 import {
   ellipsisLeft,
   formatAge,
@@ -158,10 +159,10 @@ export function renderList(
   lines.push(`  ${padRight('WHEN', 17)}  ${padRight('HASH', 8)}  REASON`)
   for (const e of shown) {
     const when = formatTimestamp(parseIsoToEpochSeconds(e.timestamp))
-    const reason =
-      e.reason.kind === 'axiomate'
-        ? `${e.reason.label}${e.reason.messageId ? ` (${e.reason.messageId.slice(0, 8)})` : ''}`
-        : e.subject || '(no subject)'
+    // Single-source-of-truth formatter — see reason.ts. Avoid inline
+    // subject/body string matching here; new commit-data fields land
+    // by extending reason.ts, not by tweaking each consumer.
+    const reason = formatAnchorReason(e.subject, e.body)
     lines.push(
       `  ${padRight(when, 17)}  ${padRight(e.shortHash, 8)}  ${reason}`,
     )

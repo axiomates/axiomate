@@ -4081,7 +4081,7 @@ export function REPL({
                 ...prev,
                 fileHistory: updater(prev.fileHistory)
               }));
-            }, target.gitHash);
+            }, target.gitHash, previewMessageText(message));
             // Confirmation: only for 'code-only'. 'both' is handled by
             // handleRestoreMessage (called after this) so the user sees
             // one combined line instead of two stacked.

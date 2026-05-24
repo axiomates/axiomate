@@ -39,6 +39,11 @@ import { createSnapshot } from './checkpoints/createSnapshot.js'
 import { runCheckpointGit } from './checkpoints/git.js'
 import { indexPath, normalizePath, projectHash } from './checkpoints/paths.js'
 import { rollback } from './checkpoints/rollback.js'
+import {
+  formatCommitBody,
+  formatCommitSubject,
+  LABEL_PRE_REWIND,
+} from './checkpoints/reason.js'
 import { ensureStore } from './checkpoints/store.js'
 import { getGlobalConfig } from './config.js'
 import { logForDebugging } from './debug.js'
@@ -136,7 +141,18 @@ export async function fileHistoryMakeSnapshot(
   ) => void,
   messageId: UUID,
   label: string = 'file-history',
-  promptPreview?: string,
+  preview?: string,
+  // Caller declares what `preview` represents for this snapshot:
+  //   'prompt' (default) — first ~80 chars of the user's prompt for
+  //                        a regular turn anchor; picker uses it for
+  //                        '↶ "<prompt>"' off-branch labels
+  //   'target'           — first ~80 chars of the rewind target's
+  //                        message for a pre-rewind safety-net anchor;
+  //                        picker uses it for '↶ Undo rewind to "<target>"'
+  // Storing the kind discriminator on disk (in the commit body via
+  // formatCommitBody) means picker / chooser / list don't need to
+  // re-derive it from the subject's label field.
+  previewKind: 'prompt' | 'target' = 'prompt',
 ): Promise<MakeSnapshotResult> {
   if (!fileHistoryEnabled()) {
     return { ok: false, reason: 'failed' }
@@ -145,10 +161,13 @@ export async function fileHistoryMakeSnapshot(
   logForDebugging(`FileHistory: Making snapshot for message ${messageId}`)
 
   const workdir = getOriginalCwd()
+  const bodyText = preview
+    ? formatCommitBody({ kind: previewKind, preview })
+    : ''
   const result = await createSnapshot(workdir, {
     messageId,
     label,
-    bodyText: promptPreview,
+    bodyText,
   })
   if (result.ok === false) {
     logForDebugging(
@@ -201,8 +220,8 @@ export async function fileHistoryMakeSnapshot(
     gitHash: result.hash,
     addedTrackedFiles,
     timestamp: new Date(),
-    subject: `axiomate:${messageId}:${label}`,
-    ...(promptPreview ? { bodyPreview: promptPreview } : {}),
+    subject: formatCommitSubject({ messageId, label }),
+    ...(preview ? { bodyPreview: preview } : {}),
   }
   void recordFileHistorySnapshot(messageId, draft, false)
     .then(() =>
@@ -293,6 +312,7 @@ export async function fileHistoryRewind(
     updater: (prev: FileHistoryState) => FileHistoryState,
   ) => void,
   gitHash: string,
+  targetPreview?: string,
 ): Promise<void> {
   if (!fileHistoryEnabled()) return
 
@@ -319,7 +339,15 @@ export async function fileHistoryRewind(
   const preRewind = await fileHistoryMakeSnapshot(
     updateFileHistoryState,
     preRewindMessageId,
-    `pre-rewind:${gitHash.slice(0, 8)}`,
+    `${LABEL_PRE_REWIND}:${gitHash.slice(0, 8)}`,
+    // Caller passes the rewind target's message preview ("创建 test.txt"
+    // etc); we stash it in the commit body (kind: 'target', see
+    // reason.ts for the body codec) so the picker's ↶ row can surface
+    // "↶ Undo rewind to '<target>'" instead of an opaque "Undo last
+    // rewind" — users couldn't tell which rewind it was undoing when
+    // chained or after multiple sessions.
+    targetPreview,
+    'target',
   )
   if (preRewind.ok === false && preRewind.reason === 'failed') {
     logForDebugging(

@@ -20,6 +20,10 @@ import {
   listCodeAnchors,
 } from '../utils/checkpoints/listCodeAnchors.js'
 import {
+  classifyAnchor,
+  parseCommitBody,
+} from '../utils/checkpoints/reason.js'
+import {
   decrementPickerOpenCount,
   getOriginalCwd,
   incrementPickerOpenCount,
@@ -303,21 +307,31 @@ export function MessageSelector({
     return sortedOrphans
       .map(a => {
         const time = formatSnapshotTime(a.timestamp)
-        // Three-template label selection from the cached commit
-        // metadata. Source of truth: git commit subject + body
-        // (loaded with withBodies: true). The cached commit message
-        // distinguishes pre-rewind safety anchors from off-branch
-        // turn anchors, and recovers the prompt-preview text for the
-        // latter so users can recognize "the prompt I walked away
-        // from" vs the catch-all generic label.
-        const isPreRewind = a.subject.includes(':pre-rewind:')
-        const trimmedBody = a.body.trim()
-        const promptPreview = trimmedBody.length > 0 ? trimmedBody : undefined
-        const content = isPreRewind
-          ? `↶ Undo last rewind (${time})`
-          : promptPreview
-            ? `↶ "${promptPreview}" (${time})`
-            : `↶ Off-branch anchor (${time})`
+        // Three-template label selection. Subject's label field marks
+        // pre-rewind safety nets via the LABEL_PRE_REWIND prefix
+        // (see reason.ts module docstring for the on-disk format).
+        // Body codec parses to a discriminated union — `target` for
+        // pre-rewind, `prompt` for orphan turn anchors, `unknown` for
+        // legacy / no-body cases. Both readers and writers go through
+        // reason.ts; do NOT inline subject/body string matching here.
+        const isPreRewind = classifyAnchor(a.subject) === 'pre-rewind'
+        const parsedBody = parseCommitBody(a.body)
+        let content: string
+        if (isPreRewind) {
+          content =
+            parsedBody.kind === 'target' && parsedBody.preview.length > 0
+              ? `↶ Undo rewind to "${parsedBody.preview}" (${time})`
+              : `↶ Undo last rewind (${time})`
+        } else if (parsedBody.kind === 'prompt' && parsedBody.preview.length > 0) {
+          content = `↶ "${parsedBody.preview}" (${time})`
+        } else if (parsedBody.kind === 'unknown' && parsedBody.raw.length > 0) {
+          // Legacy bodies (pre-Phase-7-codec) stored a free-form prompt
+          // preview without a key. Treat them as prompt for rendering;
+          // a future migration could rewrite them but they're harmless.
+          content = `↶ "${parsedBody.raw}" (${time})`
+        } else {
+          content = `↶ Off-branch anchor (${time})`
+        }
         return {
           ...createUserMessage({ content }),
           uuid: a.messageId!,
