@@ -3036,12 +3036,20 @@ export function REPL({
   // Wraps a one-line confirmation as <local-command-stdout> so it renders
   // alongside other slash-command output (no special UI). Single source of
   // truth for the post-rewind feedback message — both handlers funnel here.
-  const pushRewindFeedback = useCallback((text: string) => {
-    setMessages(prev => [
-      ...prev,
-      createCommandInputMessage(`<${LOCAL_COMMAND_STDOUT_TAG}>${escapeXml(text)}</${LOCAL_COMMAND_STDOUT_TAG}>`),
-    ]);
-  }, [setMessages]);
+  // Rewind feedback uses createSystemMessage instead of the
+  // local-command-stdout envelope. The ⎿ glyph in stdout output is a
+  // visual "continuation of the previous line" marker — appropriate
+  // when slash output sits below its trigger input, but misleading
+  // when /rewind feedback appears AFTER the picker closes (no input
+  // line above it; it'd appear to continue an unrelated AI response).
+  // System messages render as their own line with the level icon.
+  // Memory: durable inline narrative → system message.
+  const pushRewindFeedback = useCallback(
+    (text: string, level: 'info' | 'warning' = 'info') => {
+      setMessages(prev => [...prev, createSystemMessage(text, level)]);
+    },
+    [setMessages],
+  );
 
   // MessageSelector path: defer via setImmediate so the "Interrupted" message
   // renders to static output before rewind — otherwise it remains vestigial
@@ -4071,7 +4079,10 @@ export function REPL({
             const anchors = await listCodeAnchors(getOriginalCwd(), { withStats: false });
             const target = anchors.find(a => a.messageId === message.uuid);
             if (!target) {
-              pushRewindFeedback(`✗ Snapshot for "${previewMessageText(message)}" no longer exists. The store may have been pruned.`);
+              pushRewindFeedback(
+                `Snapshot for "${previewMessageText(message)}" no longer exists. The store may have been pruned.`,
+                'warning',
+              );
               return;
             }
             await fileHistoryRewind((updater: (prev: FileHistoryState) => FileHistoryState) => {
@@ -4086,7 +4097,7 @@ export function REPL({
             if (mode === 'code-only') {
               const preview = previewMessageText(message);
               pushRewindFeedback(
-                `✓ Code rewound to before "${preview}". Conversation unchanged. A safety snapshot of the prior state was saved — pick the "↶ Undo last rewind" row from /rewind to undo.`,
+                `Code rewound to "${preview}". Use /rewind → "↶ Undo last rewind" to undo.`,
               );
             }
           }} onSummarize={async (message: UserMessage, feedback?: string, direction: PartialCompactDirection = 'from') => {
