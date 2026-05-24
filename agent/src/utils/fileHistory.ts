@@ -284,7 +284,7 @@ async function diffPathsAgainstParent(
  * process or a user-invoked `/checkpoints prune` / `clear` could have
  * removed it. Surface a refresh-pointing error before we even touch
  * the safety-snapshot path. Distinct from the Phase 5 mid-rewind
- * failure case (which points at "↶ Undo last rewind") because here
+ * failure case (which points at "↶ Rewind") because here
  * disk hasn't been modified at all — there is nothing to undo.
  *
  * Phase 5 transaction model (after the existence check passes):
@@ -296,7 +296,7 @@ async function diffPathsAgainstParent(
  *      previous anchor, which IS the safety net. Proceed.
  *   3. Restore disk. If restore fails partway, throw a recovery-
  *      pointing error: pre-rewind anchor exists in the ref, the user
- *      can pick "↶ Undo last rewind" to roll disk back.
+ *      can pick "↶ Rewind" to roll disk back.
  *   4. Verify disk matches target tree. If diff is non-empty after a
  *     "successful" restore, we have silent data corruption — surface
  *      the same recovery hint.
@@ -369,12 +369,12 @@ export async function fileHistoryRewind(
     logError(
       new Error(
         `FileHistory: [Rewind] disk restore failed mid-way: ${error}. ` +
-          `Recover via /rewind picker → "↶ Undo last rewind" row.`,
+          `Recover via /rewind picker → "↶ Rewind" row.`,
       ),
     )
     throw new Error(
       `Rewind failed mid-way. Disk may be partially modified. ` +
-        `Open /rewind, switch to File tab, select "↶ Undo last rewind" to recover.`,
+        `Open /rewind, switch to File tab, select "↶ Rewind" to recover.`,
     )
   }
 
@@ -393,7 +393,7 @@ export async function fileHistoryRewind(
     throw new Error(
       `Rewind completed but disk does not match the target. Some files ` +
         `may be locked by another process. Open /rewind, select ` +
-        `"↶ Undo last rewind" to recover, then retry.`,
+        `"↶ Rewind" to recover, then retry.`,
     )
   }
 
