@@ -156,18 +156,29 @@ export function renderList(
   const lines: string[] = []
   lines.push(`Checkpoints for ${workdir}:`)
   lines.push('')
-  // No header row: with adaptive timestamps and inline reason text the
-  // visual rhythm is "WHEN  REASON", which doesn't need a label band.
-  // Column 1 width = 16 to fit the absolute timestamp shape
-  // "2026-05-24 09:42"; relative timestamps left-pad inside the same
-  // box for vertical alignment.
+  // Header row labels each column. Column widths kept stable so
+  // header and data align: WHEN=16 (fits "2026-05-24 09:42"),
+  // TURN=50 (per-turn label or prompt preview), CHANGES (free-form
+  // "+N -M" or empty for no-op anchors).
+  lines.push(`  ${padRight('WHEN', 16)}  ${padRight('TURN', 50)}  CHANGES`)
   for (const e of shown) {
     const when = formatAgeOrAbsolute(parseIsoToEpochSeconds(e.timestamp))
     // Single-source-of-truth formatter — see reason.ts. Avoid inline
     // subject/body string matching here; new commit-data fields land
     // by extending reason.ts, not by tweaking each consumer.
     const reason = formatAnchorReason(e.subject, e.body)
-    lines.push(`  ${padRight(when, 16)}  ${reason}`)
+    // Stats column: anchor diff vs its parent commit (what THIS turn
+    // produced). Comes pre-populated on SnapshotEntry from the batched
+    // `git log --shortstat` in listSnapshots — no extra git call here.
+    // Picker uses anchor-vs-disk for "what would restore change?";
+    // /checkpoints list answers a different question ("what did this
+    // turn touch?"), so commit-vs-parent is the right semantic for
+    // a historical browse view.
+    const stats =
+      e.filesChanged > 0 || e.insertions > 0 || e.deletions > 0
+        ? `+${e.insertions} -${e.deletions}`
+        : ''
+    lines.push(`  ${padRight(when, 16)}  ${padRight(reason, 50)}  ${stats}`)
     // Per-anchor commit hash + message UUID are debug data only —
     // users can't act on them and they crowded the prior layout.
     // Logged here so --debug mode still surfaces them for issue
