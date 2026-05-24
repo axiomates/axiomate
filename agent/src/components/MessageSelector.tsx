@@ -737,12 +737,28 @@ export function MessageSelector({
       'messageSelector:top': jumpToTop,
       'messageSelector:bottom': jumpToBottom,
       'messageSelector:select': handleSelectCurrent,
-      'messageSelector:toggleAllTurns': toggleActiveTab,
     },
     {
       context: 'MessageSelector',
       isActive:
         !isRestoring && !error && !messageToRestore && hasMessagesToSelect,
+    },
+  )
+
+  // Tab tab-switch is independent of hasMessagesToSelect — it's a
+  // navigation key between two views, not an action on a row. When
+  // the code tab is empty (post-/checkpoints clear, fresh project)
+  // the user still needs to be able to Tab over to the conversation
+  // tab to do conversation-only rewind. Earlier the toggle lived in
+  // the same useKeybindings block as up/down/select, so an empty
+  // visible row set disabled Tab too.
+  useKeybindings(
+    {
+      'messageSelector:toggleAllTurns': toggleActiveTab,
+    },
+    {
+      context: 'MessageSelectorTab',
+      isActive: !isRestoring && !error && !messageToRestore,
     },
   )
 
