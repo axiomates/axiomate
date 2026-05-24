@@ -3054,16 +3054,14 @@ export function REPL({
     mode: 'conversation-only' | 'both' = 'conversation-only',
   ) => {
     setImmediate((restore, message) => restore(message), restoreMessageSync, message);
-    const preview = previewMessageText(message);
-    if (mode === 'both') {
-      pushRewindFeedback(
-        `✓ Code and conversation rewound to before "${preview}". A safety snapshot of the prior state was saved — pick the "↶ Undo last rewind" row from /rewind to undo.`,
-      );
-    } else {
-      pushRewindFeedback(
-        `✓ Conversation rewound to before "${preview}". Code on disk is unchanged.`,
-      );
-    }
+    // No feedback message for conversation-only / both: the truncated
+    // chain already speaks for itself (the "rewound past" turns are
+    // gone from the transcript, the restored prompt lands back in the
+    // input box). A "✓ Conversation rewound..." line on top of that
+    // would be redundant noise. Code-only rewinds DO emit feedback
+    // since the conversation looks unchanged and the user otherwise
+    // has no signal that disk got rolled back.
+    void message;
   }, [restoreMessageSync, pushRewindFeedback]);
 
   // Not memoized — hook stores caps via ref, reads latest closure at dispatch.
