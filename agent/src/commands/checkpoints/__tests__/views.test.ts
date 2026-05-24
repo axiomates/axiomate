@@ -304,14 +304,20 @@ describe('renderStatus', () => {
 })
 
 describe('renderList', () => {
+  // Empty diskDiffs map is the most common test case — covers the
+  // "anchor exists, but no anchor-vs-disk diff was computed" path.
+  // Callers that want to exercise the CHANGES column pass a Map
+  // with hash → DiffStats.
+  const noDiffs = new Map()
+
   test('no entries: shows "no checkpoints" message', () => {
-    const out = renderList('/work/a', [])
+    const out = renderList('/work/a', [], noDiffs)
     expect(out).toContain('No checkpoints recorded yet')
     expect(out).toContain('/work/a')
   })
 
   test('axiomate-style reason: shows label + short messageId; hash hidden from output', () => {
-    const out = renderList('/work/a', [snapshot()])
+    const out = renderList('/work/a', [snapshot()], noDiffs)
     // Reason text comes from formatAnchorReason (single-source codec).
     expect(out).toContain('edit')
     expect(out).toContain('m_42')
@@ -321,18 +327,55 @@ describe('renderList', () => {
   })
 
   test('raw reason: falls back to subject text', () => {
-    const out = renderList('/work/a', [
-      snapshot({
-        reason: { kind: 'raw', subject: 'manual git commit' },
-        subject: 'manual git commit',
-      }),
-    ])
+    const out = renderList(
+      '/work/a',
+      [
+        snapshot({
+          reason: { kind: 'raw', subject: 'manual git commit' },
+          subject: 'manual git commit',
+        }),
+      ],
+      noDiffs,
+    )
     expect(out).toContain('manual git commit')
   })
 
   test('always points users at /rewind for interactive rollback', () => {
-    const out = renderList('/work/a', [snapshot()])
+    const out = renderList('/work/a', [snapshot()], noDiffs)
     expect(out).toContain('/rewind')
+  })
+
+  test('CHANGES column shows file basename when 1 file changed', () => {
+    const e = snapshot()
+    const diffs = new Map([
+      [e.hash, { filesChanged: ['src/foo.ts'], insertions: 5, deletions: 2 }],
+    ])
+    const out = renderList('/work/a', [e], diffs)
+    expect(out).toContain('foo.ts +5 -2')
+    expect(out).not.toContain('src/') // basename only
+  })
+
+  test('CHANGES column collapses to "N files" when 2+ files changed', () => {
+    const e = snapshot()
+    const diffs = new Map([
+      [e.hash, { filesChanged: ['a.ts', 'b.ts', 'c.ts'], insertions: 8, deletions: 3 }],
+    ])
+    const out = renderList('/work/a', [e], diffs)
+    expect(out).toContain('3 files +8 -3')
+  })
+
+  test('CHANGES column shows "(no diff)" when anchor matches disk', () => {
+    const e = snapshot()
+    const diffs = new Map([[e.hash, { filesChanged: [], insertions: 0, deletions: 0 }]])
+    const out = renderList('/work/a', [e], diffs)
+    expect(out).toContain('(no diff)')
+  })
+
+  test('CHANGES column shows "(no diff)" when anchor missing from diffs map', () => {
+    // Defensive case: bulk diff fetch may skip an anchor on transient
+    // git failure; the row still renders, just without a diff.
+    const out = renderList('/work/a', [snapshot()], noDiffs)
+    expect(out).toContain('(no diff)')
   })
 })
 

@@ -18,6 +18,7 @@
 import React from 'react'
 import { getOriginalCwd } from '../../bootstrap/state.js'
 import { listSnapshots } from '../../utils/checkpoints/listSnapshots.js'
+import { fileHistoryBulkDiffVsDisk } from '../../utils/fileHistory.js'
 import { pruneCheckpoints } from '../../utils/checkpoints/prune.js'
 import { storeStatus } from '../../utils/checkpoints/storeStatus.js'
 import { startClearFlow } from './ClearView.js'
@@ -139,7 +140,18 @@ export async function call(
       // formatAnchorReason routes through reason.ts to pick the
       // right column copy.
       const entries = await listSnapshots(cwd, { withBodies: true })
-      onDone(renderList(cwd, entries, resolveStatusRows(rowsParsed.rows)))
+      // CHANGES column shows anchor-vs-disk diff (what restoring this
+      // anchor would change against current disk) — same query the
+      // picker / chooser use, so list and picker tell the same story.
+      // commit-vs-parent (the prior approach) was off-by-one for
+      // users: each row's stats described what the PRIOR turn did,
+      // and root commits showed empty since they have no parent.
+      const stats = await fileHistoryBulkDiffVsDisk(
+        entries.map(e => e.hash),
+      )
+      onDone(
+        renderList(cwd, entries, stats, resolveStatusRows(rowsParsed.rows)),
+      )
       return null
     }
     case 'prune': {

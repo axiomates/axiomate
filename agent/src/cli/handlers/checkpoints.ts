@@ -17,6 +17,7 @@
 
 import { clearAll } from '../../utils/checkpoints/clearAll.js'
 import { listSnapshots } from '../../utils/checkpoints/listSnapshots.js'
+import { fileHistoryBulkDiffVsDisk } from '../../utils/fileHistory.js'
 import { pruneCheckpoints } from '../../utils/checkpoints/prune.js'
 import { storeStatus } from '../../utils/checkpoints/storeStatus.js'
 import { getCwd } from '../../utils/cwd.js'
@@ -57,8 +58,11 @@ export async function checkpointsListHandler(
 ): Promise<void> {
   const rowsFlag = parseRowsFlag(opts)
   const cwd = getCwd()
-  const entries = await listSnapshots(cwd)
-  console.log(renderList(cwd, entries, resolveStatusRows(rowsFlag)))
+  const entries = await listSnapshots(cwd, { withBodies: true })
+  // CHANGES column: anchor-vs-disk diff (matches picker semantics).
+  // Single git invocation regardless of N anchors.
+  const diffs = await fileHistoryBulkDiffVsDisk(entries.map(e => e.hash))
+  console.log(renderList(cwd, entries, diffs, resolveStatusRows(rowsFlag)))
 }
 
 export interface CheckpointsPruneOptions {

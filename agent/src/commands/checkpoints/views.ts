@@ -143,6 +143,17 @@ function appendMetricsSection(
 export function renderList(
   workdir: string,
   entries: SnapshotEntry[],
+  // Map<gitHash, DiffStats> from fileHistoryBulkDiffVsDisk. Same query
+  // the picker uses on its row badges — list and picker tell the user
+  // the same story: "if I restored this anchor, X changes on disk."
+  // Earlier we used the per-anchor commit-vs-parent stats from
+  // SnapshotEntry directly, which was off-by-one (each row described
+  // what the PRIOR turn did) and showed empty for root commits.
+  diskDiffs: Map<
+    string,
+    | { filesChanged?: string[]; insertions: number; deletions: number }
+    | undefined
+  >,
   limit = 30,
 ): string {
   if (entries.length === 0) {
@@ -156,48 +167,39 @@ export function renderList(
   const lines: string[] = []
   lines.push(`Checkpoints for ${workdir}:`)
   lines.push('')
-  // Header row labels each column. Column widths kept stable so
-  // header and data align: WHEN=16 (fits "2026-05-24 09:42"),
-  // TURN=50 (per-turn label or prompt preview), CHANGES (free-form
-  // "+N -M" or empty for no-op anchors).
-  lines.push(`  ${padRight('WHEN', 16)}  ${padRight('TURN', 50)}  CHANGES`)
+  // Column order: WHEN  CHANGES  TURN. TURN sits last because it
+  // contains free-form text (CJK, quotes, long previews) — putting
+  // it at the line end means we never have to compute terminal-
+  // display-width for padding. JS .length and CJK char width
+  // disagree by 2x, which broke alignment in the prior layout.
+  // CHANGES is fixed-width ASCII (≤24 chars handles all common
+  // shapes: "test.txt +999 -999" / "9 files +999 -999" / "(no diff)").
+  lines.push(`  ${padRight('WHEN', 16)}  ${padRight('CHANGES', 24)}  TURN`)
   for (const e of shown) {
     const when = formatAgeOrAbsolute(parseIsoToEpochSeconds(e.timestamp))
     // Single-source-of-truth formatter — see reason.ts. Avoid inline
     // subject/body string matching here; new commit-data fields land
     // by extending reason.ts, not by tweaking each consumer.
     const reason = formatAnchorReason(e.subject, e.body)
-    // Stats column: anchor diff vs its parent commit (what THIS turn
-    // produced). Comes pre-populated on SnapshotEntry from the batched
-    // `git log --shortstat` in listSnapshots — no extra git call here.
-    // Picker uses anchor-vs-disk for "what would restore change?";
-    // /checkpoints list answers a different question ("what did this
-    // turn touch?"), so commit-vs-parent is the right semantic for
-    // a historical browse view.
-    // CHANGES column: anchor-vs-parent diff with file context.
-    //   - 0 changes → empty (root commit or no-op anchor; user can
-    //     tell from absence that this row is "the starting point" or
-    //     "nothing happened on this turn")
-    //   - 1 file → "<basename> +N -M" so the user knows WHAT changed
+    // CHANGES column: anchor-vs-disk diff (matches picker semantics).
+    //   - 1 file → "<basename> +N -M"
     //   - 2+ files → "<count> files +N -M"
-    // Same shape the picker uses on its row badge — single mental
-    // model for "what does this row represent".
-    let stats = ''
-    if (e.filePaths.length === 1) {
-      // basename to keep the column compact; full paths would
-      // overflow the 30-char budget on src/foo/bar.ts
-      const fp = e.filePaths[0] ?? ''
-      const slash = Math.max(fp.lastIndexOf('/'), fp.lastIndexOf('\\'))
-      const base = slash >= 0 ? fp.slice(slash + 1) : fp
-      stats = `${base} +${e.insertions} -${e.deletions}`
-    } else if (e.filePaths.length > 1) {
-      stats = `${e.filePaths.length} files +${e.insertions} -${e.deletions}`
-    } else if (e.insertions > 0 || e.deletions > 0) {
-      // Stats present without paths — defensive (shouldn't happen
-      // with the new --name-only batched fetch, but keep a fallback)
-      stats = `+${e.insertions} -${e.deletions}`
+    //   - 0 changes → "(no diff)" so users can tell the row is
+    //     intentionally empty rather than a rendering glitch
+    let stats = '(no diff)'
+    const diff = diskDiffs.get(e.hash)
+    if (diff && diff.filesChanged && diff.filesChanged.length > 0) {
+      const paths = diff.filesChanged
+      if (paths.length === 1) {
+        const fp = paths[0] ?? ''
+        const slash = Math.max(fp.lastIndexOf('/'), fp.lastIndexOf('\\'))
+        const base = slash >= 0 ? fp.slice(slash + 1) : fp
+        stats = `${base} +${diff.insertions} -${diff.deletions}`
+      } else {
+        stats = `${paths.length} files +${diff.insertions} -${diff.deletions}`
+      }
     }
-    lines.push(`  ${padRight(when, 16)}  ${padRight(reason, 50)}  ${stats}`)
+    lines.push(`  ${padRight(when, 16)}  ${padRight(stats, 24)}  ${reason}`)
     // Per-anchor commit hash + message UUID are debug data only —
     // users can't act on them and they crowded the prior layout.
     // Logged here so --debug mode still surfaces them for issue
