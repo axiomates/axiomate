@@ -681,36 +681,47 @@ export async function bulkDiffEventStats(
   const out = new Map<string, DiffStats>()
   if (anchors.length === 0) return out
 
-  // Older anchors (index >= 1): commit-vs-parent stats from listSnapshots.
-  // Each anchor[i]'s commit was authored when disk was at anchor[i].tree;
-  // the commit BEFORE it (older) is anchor[i+1]. So anchor[i].tree vs
-  // anchor[i+1].tree = anchor[i].numstat (already populated).
+  // Each row in the picker / list is labeled with a turn's prompt and
+  // should display "what THIS turn did on disk".
   //
-  // Wait — listSnapshots gives commit[i] vs commit[i].parent, and the
-  // parent IS anchor[i+1] (newer-first means parent=older, which is the
-  // next-older anchor). So anchor[i].{insertions,deletions,filePaths}
-  // already describes anchor[i].tree vs anchor[i+1].tree. The commit
-  // graph and the timestamp ordering align here because each rewind
-  // appends a new pre-rewind commit on top of the prior tip — there
-  // are no merges in this store.
+  // Anchors are PRE-tool snapshots (taken before the turn runs), so
+  // the diff for "turn N's effect" lives between turn N's anchor and
+  // the next turn's anchor (taken after turn N completed). In
+  // newest-first ordering, anchor[i+1] is older than anchor[i], so
+  // the next-newer anchor for row i is anchor[i-1]. Its
+  // commit-vs-parent numstat (already populated by listSnapshots)
+  // captures exactly turn[i]'s diff.
+  //
+  // The newest row (i=0) has no newer anchor; "what came after" is
+  // current disk. fileHistoryBulkDiffVsDisk gives anchor-vs-disk for
+  // that one row.
+  //
+  // The oldest row's turn diff is unrepresentable in this model — its
+  // pre-snapshot exists but no later anchor was taken before the turn
+  // shipped. The map leaves it absent and the renderer falls back to
+  // "(no diff)". Earlier code displayed the oldest commit's
+  // commit-vs-empty-tree numstat there, which surfaced the entire
+  // repo state ("1985 files +489k -0") as if it were turn[oldest]'s
+  // effect. That was visibly wrong.
   for (let i = 1; i < anchors.length; i++) {
-    const a = anchors[i]
-    if (!a) continue
-    if (a.filesChanged === 0 && a.insertions === 0 && a.deletions === 0) {
-      out.set(a.gitHash, { filesChanged: [], insertions: 0, deletions: 0 })
+    const row = anchors[i]
+    const source = anchors[i - 1]
+    if (!row || !source) continue
+    if (
+      source.filesChanged === 0 &&
+      source.insertions === 0 &&
+      source.deletions === 0
+    ) {
+      out.set(row.gitHash, { filesChanged: [], insertions: 0, deletions: 0 })
       continue
     }
-    out.set(a.gitHash, {
-      filesChanged: a.filePaths.slice(),
-      insertions: a.insertions,
-      deletions: a.deletions,
+    out.set(row.gitHash, {
+      filesChanged: source.filePaths.slice(),
+      insertions: source.insertions,
+      deletions: source.deletions,
     })
   }
 
-  // Newest anchor (index 0): anchor-vs-disk. Reuse the existing
-  // bulkDiffVsDisk helper for a single hash so we get the same
-  // `git diff-tree --numstat` machinery (handles binary files, paths
-  // with spaces, etc).
   const newest = anchors[0]
   if (newest) {
     const newestStats = await fileHistoryBulkDiffVsDisk([newest.gitHash])
