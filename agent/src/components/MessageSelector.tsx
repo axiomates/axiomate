@@ -190,8 +190,15 @@ export function MessageSelector({
       return
     }
     let cancelled = false
+    // withStats: true is required so each CodeAnchor carries its
+    // commit-vs-parent numstat (insertions/deletions/filePaths).
+    // bulkDiffEventStats reads those fields directly — without them
+    // every row falls back to "(no diff)" / "No code changes" even
+    // though /checkpoints list (which already passes withStats:true)
+    // shows real numbers. Setting it false here was a leftover from
+    // when the picker computed anchor-vs-disk per row.
     void listCodeAnchors(getOriginalCwd(), {
-      withStats: false,
+      withStats: true,
       withBodies: true,
     })
       .then(rows => {
