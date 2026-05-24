@@ -18,19 +18,19 @@ import type {
   SnapshotEntry,
 } from '../../utils/checkpoints/listSnapshots.js'
 import type { StoreStatusReport } from '../../utils/checkpoints/storeStatus.js'
+import { logForDebugging } from '../../utils/debug.js'
 import { formatAnchorReason } from '../../utils/checkpoints/reason.js'
 import {
   ellipsisLeft,
-  formatAge,
+  formatAgeOrAbsolute,
   formatBytes,
-  formatTimestamp,
   padLeft,
   padRight,
 } from './format.js'
 
 const WORKDIR_COL = 60
 const COMMITS_COL = 7
-const LAST_COL = 12
+const LAST_COL = 16 // fits adaptive timestamp shape "2026-05-24 09:42"
 
 /**
  * Multi-line `/checkpoints` (no arg) and `/checkpoints status` view.
@@ -62,7 +62,7 @@ export function renderStatus(report: StoreStatusReport, limit = 30): string {
     const wd = p.workdir ? ellipsisLeft(p.workdir, WORKDIR_COL) : '(unknown)'
     const state = p.exists ? 'live' : 'orphan'
     lines.push(
-      `  ${padRight(wd, WORKDIR_COL)}  ${padLeft(String(p.commits), COMMITS_COL)}  ${padLeft(formatAge(p.last_touch), LAST_COL)}  ${state}`,
+      `  ${padRight(wd, WORKDIR_COL)}  ${padLeft(String(p.commits), COMMITS_COL)}  ${padLeft(formatAgeOrAbsolute(p.last_touch), LAST_COL)}  ${state}`,
     )
   }
   if (sorted.length > limit) {
@@ -156,15 +156,26 @@ export function renderList(
   const lines: string[] = []
   lines.push(`Checkpoints for ${workdir}:`)
   lines.push('')
-  lines.push(`  ${padRight('WHEN', 17)}  ${padRight('HASH', 8)}  REASON`)
+  // No header row: with adaptive timestamps and inline reason text the
+  // visual rhythm is "WHEN  REASON", which doesn't need a label band.
+  // Column 1 width = 16 to fit the absolute timestamp shape
+  // "2026-05-24 09:42"; relative timestamps left-pad inside the same
+  // box for vertical alignment.
   for (const e of shown) {
-    const when = formatTimestamp(parseIsoToEpochSeconds(e.timestamp))
+    const when = formatAgeOrAbsolute(parseIsoToEpochSeconds(e.timestamp))
     // Single-source-of-truth formatter — see reason.ts. Avoid inline
     // subject/body string matching here; new commit-data fields land
     // by extending reason.ts, not by tweaking each consumer.
     const reason = formatAnchorReason(e.subject, e.body)
-    lines.push(
-      `  ${padRight(when, 17)}  ${padRight(e.shortHash, 8)}  ${reason}`,
+    lines.push(`  ${padRight(when, 16)}  ${reason}`)
+    // Per-anchor commit hash + message UUID are debug data only —
+    // users can't act on them and they crowded the prior layout.
+    // Logged here so --debug mode still surfaces them for issue
+    // diagnosis. Full hash so external git CLI commands work.
+    logForDebugging(
+      `checkpoints/list: row hash=${e.hash} shortHash=${e.shortHash} ` +
+        `messageId=${e.reason.kind === 'axiomate' ? e.reason.messageId : '(raw)'} ` +
+        `subject=${e.subject}`,
     )
   }
   if (entries.length > limit) {

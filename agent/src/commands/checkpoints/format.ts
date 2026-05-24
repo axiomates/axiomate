@@ -27,6 +27,29 @@ export function formatAge(epochSeconds: number): string {
   return `${Math.floor(ageSec / 86400)}d ago`
 }
 
+/**
+ * Adaptive: relative (`5m ago`) inside a day, absolute timestamp
+ * (`2026-05-24 09:42`) beyond. Used by surfaces where a row days or
+ * weeks old is meaningfully present — `/checkpoints list` (anchor
+ * history), `/checkpoints status` (per-project last-touch). Relative
+ * "10000m ago" is mathematically correct but useless to users.
+ *
+ * Threshold at 24h is deliberate: minute / hour granularity matters
+ * inside a session, but once a checkpoint is yesterday or older the
+ * user wants a wall-clock anchor, not "1d ago" / "2d ago".
+ *
+ * Returns "—" on bad input so callers can use it as a column value.
+ */
+export function formatAgeOrAbsolute(epochSeconds: number): string {
+  if (!Number.isFinite(epochSeconds)) return '—'
+  const ageSec = Date.now() / 1000 - epochSeconds
+  if (ageSec < 0) return 'now'
+  if (ageSec < 60) return 'just now'
+  if (ageSec < 3600) return `${Math.floor(ageSec / 60)}m ago`
+  if (ageSec < 86400) return `${Math.floor(ageSec / 3600)}h ago`
+  return formatTimestamp(epochSeconds)
+}
+
 /** "2026-05-21 14:30" / "—" on bad input. */
 export function formatTimestamp(epochSeconds: number): string {
   if (!Number.isFinite(epochSeconds)) return '—'

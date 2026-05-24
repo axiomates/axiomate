@@ -309,11 +309,14 @@ describe('renderList', () => {
     expect(out).toContain('/work/a')
   })
 
-  test('axiomate-style reason: shows label + short messageId', () => {
+  test('axiomate-style reason: shows label + short messageId; hash hidden from output', () => {
     const out = renderList('/work/a', [snapshot()])
-    expect(out).toContain('a1b2c3d')
+    // Reason text comes from formatAnchorReason (single-source codec).
     expect(out).toContain('edit')
     expect(out).toContain('m_42')
+    // Per-anchor commit hash is debug-only data now — surfaced via
+    // logForDebugging instead of crowding the user-visible columns.
+    expect(out).not.toContain('a1b2c3d')
   })
 
   test('raw reason: falls back to subject text', () => {
@@ -392,5 +395,42 @@ describe('renderPruneReport', () => {
     expect(out).toMatch(/Orphan refs removed:    0/)
     expect(out).toMatch(/Orphan refs skipped:    4/)
     expect(out).toMatch(/Stale refs removed:     1/)
+  })
+})
+
+describe('formatAgeOrAbsolute', () => {
+  test('< 1 min → "just now"', async () => {
+    const { formatAgeOrAbsolute } = await import('../format.js')
+    const now = Date.now() / 1000
+    expect(formatAgeOrAbsolute(now - 30)).toBe('just now')
+  })
+
+  test('< 1 h → "Nm ago"', async () => {
+    const { formatAgeOrAbsolute } = await import('../format.js')
+    const now = Date.now() / 1000
+    expect(formatAgeOrAbsolute(now - 5 * 60)).toBe('5m ago')
+    expect(formatAgeOrAbsolute(now - 59 * 60)).toBe('59m ago')
+  })
+
+  test('< 24 h → "Nh ago"', async () => {
+    const { formatAgeOrAbsolute } = await import('../format.js')
+    const now = Date.now() / 1000
+    expect(formatAgeOrAbsolute(now - 3 * 3600)).toBe('3h ago')
+    expect(formatAgeOrAbsolute(now - 23 * 3600)).toBe('23h ago')
+  })
+
+  test('≥ 24 h → absolute timestamp', async () => {
+    const { formatAgeOrAbsolute } = await import('../format.js')
+    const now = Date.now() / 1000
+    // Old enough to switch to absolute. Match the timestamp shape
+    // rather than an exact value (Date formatting is timezone-aware).
+    const out = formatAgeOrAbsolute(now - 30 * 86400)
+    expect(out).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/)
+  })
+
+  test('non-finite input → em dash', async () => {
+    const { formatAgeOrAbsolute } = await import('../format.js')
+    expect(formatAgeOrAbsolute(NaN)).toBe('—')
+    expect(formatAgeOrAbsolute(Infinity)).toBe('—')
   })
 })
