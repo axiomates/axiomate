@@ -58,6 +58,40 @@ export type SummaryMessage = {
   summary: string
 }
 
+/**
+ * Explicit conversation head marker. Written by `restoreMessageSync`
+ * when the user runs Restore conversation in /rewind, so subsequent
+ * `/resume` / `--continue` reloads pick the rewound branch instead of
+ * the latest-leaf heuristic (which silently undid the rewind whenever
+ * the user reloaded without first typing a new message).
+ *
+ * The record is NOT a chain participant — it doesn't carry parentUuid,
+ * doesn't appear in the messages Map, and doesn't enter the model
+ * prompt. It's a pointer-style metadata record consumed only by
+ * loadTranscriptFile when picking which leaf to walk back from.
+ *
+ * Multiple entries are allowed (every rewind appends a new one);
+ * loadTranscriptFile picks the latest by timestamp. Falls back to the
+ * latest-leaf heuristic when:
+ *   - No head record exists (old session before this format).
+ *   - The head's `headUuid` doesn't resolve (message pruned, or fork
+ *     dropped chain participants this points at).
+ *
+ * Forks (`/branch`, `--fork-session`) deliberately drop head records
+ * from the cloned transcript — the new session starts fresh, and the
+ * forked-into branch's "latest leaf at fork time" is the right entry
+ * point, not a head marker carried over from the source.
+ */
+export type ConversationHeadEntry = {
+  type: 'head'
+  uuid: UUID
+  /** UUID of the user/assistant/attachment/system message this head points at. */
+  headUuid: UUID
+  /** ISO 8601 timestamp; latest wins when multiple head records are present. */
+  timestamp: string
+  sessionId: UUID
+}
+
 export type CustomTitleMessage = {
   type: 'custom-title'
   sessionId: UUID
@@ -315,6 +349,7 @@ export type Entry =
   | ContentReplacementEntry
   | ContextCollapseCommitEntry
   | ContextCollapseSnapshotEntry
+  | ConversationHeadEntry
 
 export function sortLogs(logs: LogOption[]): LogOption[] {
   return logs.sort((a, b) => {

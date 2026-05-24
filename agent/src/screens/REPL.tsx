@@ -154,7 +154,7 @@ import { listCodeAnchors } from '../utils/checkpoints/listCodeAnchors.js';
 import { parseCommitBody } from '../utils/checkpoints/reason.js';
 import { computeResumeRewindHint } from '../utils/checkpoints/resumeRewindHint.js';
 import { type AttributionState, incrementPromptCount } from '../utils/commitAttribution.js';
-import { recordAttributionSnapshot } from '../utils/sessionStorage.js';
+import { recordAttributionSnapshot, recordConversationHead } from '../utils/sessionStorage.js';
 import { computeStandaloneAgentContext, restoreAgentFromSession, restoreSessionStateFromLog, restoreWorktreeForResume, exitRestoredWorktree } from '../utils/sessionRestore.js';
 import { updateSessionName } from '../utils/concurrentSessions.js';
 import { isInProcessTeammateTask, type InProcessTeammateTaskState } from '../tasks/InProcessTeammateTask/types.js';
@@ -2966,6 +2966,27 @@ export function REPL({
     // Reset cached microcompact state so stale pinned cache edits
     // don't reference tool_use_ids from truncated messages
     resetMicrocompactState();
+
+    // Persist the conversation head so /resume / --continue / restart
+    // honor this rewind even before the user types anything new. The
+    // head points at the LAST message in the truncated chain (the one
+    // before the rewind target) — that's the leaf the loader should
+    // walk back from. If we rewound to the very first message
+    // (messageIndex === 0) there is no truncated-chain leaf to point
+    // at; skip the write and let the loader's latest-leaf fallback do
+    // its thing for that edge case.
+    if (messageIndex > 0) {
+      const newLeaf = prev[messageIndex - 1];
+      if (newLeaf) {
+        try {
+          recordConversationHead(getSessionId(), newLeaf.uuid);
+        } catch (e) {
+          // Best-effort — failing to write the head marker degrades
+          // back to the latest-leaf heuristic. Log but don't crash.
+          logError(e as Error);
+        }
+      }
+    }
 
     // Restore state from the message we're rewinding to
     setAppState(prev => ({

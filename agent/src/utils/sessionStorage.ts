@@ -1,5 +1,5 @@
 import { feature } from 'bun:bundle'
-import type { UUID } from 'crypto'
+import { randomUUID, type UUID } from 'crypto'
 import type { Dirent } from 'fs'
 // Sync fs primitives for readFileTailSync — separate from fs/promises
 // imports above. Named (not wildcard) per AXIOMATE.md style; no collisions
@@ -43,6 +43,7 @@ import {
   type ContentReplacementEntry,
   type ContextCollapseCommitEntry,
   type ContextCollapseSnapshotEntry,
+  type ConversationHeadEntry,
   type Entry,
   type FileHistorySnapshotMessage,
   type LogOption,
@@ -1068,6 +1069,11 @@ class Project {
     } else if (entry.type === 'marble-origami-snapshot') {
       // Always append. Last-wins on restore — later entries supersede.
       void this.enqueueWrite(sessionFile, entry)
+    } else if (entry.type === 'head') {
+      // Conversation head marker — written by Restore conversation in
+      // /rewind. Append-only; loadTranscriptFile picks the latest by
+      // timestamp on read. Never deduped (every rewind re-appends).
+      void this.enqueueWrite(sessionFile, entry)
     } else {
       const messageSet = await getSessionMessages(sessionId)
       if (entry.type === 'queue-operation') {
@@ -1902,6 +1908,49 @@ function buildAttributionSnapshotChain(
  * @returns LogOption containing the transcript messages
  * @throws Error if file doesn't exist or contains invalid data
  */
+/**
+ * Pick the message UUID that should serve as the conversation chain
+ * leaf for resume/load purposes. Honors an explicit `head` record when
+ * one is present and resolves to a known message; otherwise falls
+ * back to the latest-leaf heuristic that pre-dates the head record.
+ *
+ * Resolution rule:
+ *   1. If `head` is undefined → fallback (old session, fork, no rewinds yet).
+ *   2. If `head.headUuid` isn't in `messages` → fallback + warn (head
+ *      points at a pruned / detached message; honoring it would crash
+ *      `buildConversationChain`).
+ *   3. Otherwise return `head.headUuid`.
+ *
+ * Predicate gate (`leafPredicate`) lets callers narrow the fallback
+ * candidate set — e.g. recoverFromSessionFile restricts to user/assistant
+ * messages, while loadTranscriptFromFile accepts any transcript message.
+ * The head record itself is NOT subject to that predicate: an explicit
+ * head wins regardless. If the user pointed here, we go here.
+ */
+export function pickConversationHead(args: {
+  messages: Map<UUID, TranscriptMessage>
+  leafUuids: Set<UUID>
+  conversationHead: ConversationHeadEntry | undefined
+  /** Predicate the latest-leaf fallback applies; head record bypasses it. */
+  leafPredicate?: (msg: TranscriptMessage) => boolean
+}): TranscriptMessage | undefined {
+  const { messages, leafUuids, conversationHead, leafPredicate } = args
+  if (conversationHead) {
+    const target = messages.get(conversationHead.headUuid)
+    if (target) return target
+    // Head record points at a UUID we don't have. Could be due to a
+    // prune, a fork that dropped chain participants, or manual JSONL
+    // surgery. Don't crash — fall through to latest-leaf and warn.
+    logForDebugging(
+      `pickConversationHead: head record points at unknown messageId ` +
+        `${conversationHead.headUuid.slice(0, 8)} — falling back to latest leaf.`,
+    )
+  }
+  return findLatestMessage(messages.values(), msg =>
+    leafUuids.has(msg.uuid) && (leafPredicate ? leafPredicate(msg) : true),
+  )
+}
+
 export async function loadTranscriptFromFile(
   filePath: string,
 ): Promise<LogOption> {
@@ -1918,16 +1967,20 @@ export async function loadTranscriptFromFile(
       leafUuids,
       contentReplacements,
       worktreeStates,
+      conversationHead,
     } = await loadTranscriptFile(filePath)
 
     if (messages.size === 0) {
       throw new Error('No messages found in JSONL file')
     }
 
-    // Find the most recent leaf message using pre-computed leaf UUIDs
-    const leafMessage = findLatestMessage(messages.values(), msg =>
-      leafUuids.has(msg.uuid),
-    )
+    // Honor explicit head record when present, fall back to latest-leaf.
+    // Single source of truth for the rule: pickConversationHead.
+    const leafMessage = pickConversationHead({
+      messages,
+      leafUuids,
+      conversationHead,
+    })
 
     if (!leafMessage) {
       throw new Error('No valid conversation chain found in JSONL file')
@@ -2287,6 +2340,32 @@ export function saveTaskSummary(sessionId: UUID, summary: string): void {
   })
 }
 
+/**
+ * Append a conversation head marker for the given session.
+ *
+ * Called by `restoreMessageSync` when the user runs Restore conversation
+ * in /rewind. The record points the loader at `headMessageId` (the
+ * message the user wants the chain to end at) so subsequent /resume,
+ * --continue, or other reload paths honor the rewind even if the user
+ * doesn't type anything afterward.
+ *
+ * Latest-timestamp wins on read — repeated rewinds simply append more
+ * head records and the loader picks the most recent. No locking
+ * needed; JSONL is append-only.
+ */
+export function recordConversationHead(
+  sessionId: SessionId | UUID,
+  headMessageId: UUID,
+): void {
+  appendEntryToFile(getTranscriptPathForSession(sessionId as UUID), {
+    type: 'head',
+    uuid: randomUUID(),
+    headUuid: headMessageId,
+    timestamp: new Date().toISOString(),
+    sessionId: sessionId as unknown as UUID,
+  })
+}
+
 export async function saveTag(sessionId: UUID, tag: string, fullPath?: string) {
   // Fall back to computed path if fullPath is not provided
   const resolvedPath = fullPath ?? getTranscriptPathForSession(sessionId)
@@ -2578,19 +2657,24 @@ export async function loadFullLog(log: LogOption): Promise<LogOption> {
       contextCollapseCommits,
       contextCollapseSnapshot,
       leafUuids,
+      conversationHead,
     } = await loadTranscriptFile(sessionFile)
 
     if (messages.size === 0) {
       return log
     }
 
-    // Find the most recent user/assistant leaf message from the transcript
-    const mostRecentLeaf = findLatestMessage(
-      messages.values(),
-      msg =>
-        leafUuids.has(msg.uuid) &&
-        (msg.type === 'user' || msg.type === 'assistant'),
-    )
+    // Honor explicit head when present (set by Restore conversation in
+    // /rewind), fall back to latest user/assistant leaf otherwise. The
+    // predicate gate on the fallback path keeps system/attachment leaves
+    // from being chosen here — they're chain participants but not what
+    // we want as the resumable head when no explicit marker exists.
+    const mostRecentLeaf = pickConversationHead({
+      messages,
+      leafUuids,
+      conversationHead,
+      leafPredicate: msg => msg.type === 'user' || msg.type === 'assistant',
+    })
     if (!mostRecentLeaf) {
       return log
     }
@@ -3099,6 +3183,18 @@ export async function loadTranscriptFile(
   contextCollapseCommits: ContextCollapseCommitEntry[]
   contextCollapseSnapshot: ContextCollapseSnapshotEntry | undefined
   leafUuids: Set<UUID>
+  /**
+   * Latest conversation head marker, if any. Set by `restoreMessageSync`
+   * when the user does Restore conversation in /rewind. Loaders prefer
+   * this over latest-leaf when its `headUuid` resolves to a known
+   * message; falls back to latest-leaf when absent or unresolvable
+   * (old session, pruned head target, fork that dropped the marker).
+   *
+   * See `pickConversationHead` in this module for the full resolution
+   * rule — both consumers (`loadTranscriptFromFile` and
+   * `recoverFromSessionFile`-style paths) route through it.
+   */
+  conversationHead: ConversationHeadEntry | undefined
 }> {
   const messages = new Map<UUID, TranscriptMessage>()
   const summaries = new Map<UUID, string>()
@@ -3110,6 +3206,10 @@ export async function loadTranscriptFile(
   const prNumbers = new Map<UUID, number>()
   const prUrls = new Map<UUID, string>()
   const prRepositories = new Map<UUID, string>()
+  // Latest-timestamp wins. Append-only JSONL means later writes
+  // semantically supersede earlier ones; we don't need to track
+  // every head record, only the most recent.
+  let conversationHead: ConversationHeadEntry | undefined
   const modes = new Map<UUID, string>()
   const worktreeStates = new Map<UUID, PersistedWorktreeSession | null>()
   const fileHistorySnapshots = new Map<UUID, FileHistorySnapshotMessage>()
@@ -3196,6 +3296,15 @@ export async function loadTranscriptFile(
       for (const entry of metaEntries) {
         if (entry.type === 'summary' && entry.leafUuid) {
           summaries.set(entry.leafUuid, entry.summary)
+        } else if (entry.type === 'head' && entry.headUuid) {
+          // Latest-timestamp wins. Append-only JSONL means later writes
+          // semantically supersede earlier ones.
+          if (
+            !conversationHead ||
+            entry.timestamp > conversationHead.timestamp
+          ) {
+            conversationHead = entry
+          }
         } else if (entry.type === 'custom-title' && entry.sessionId) {
           customTitles.set(entry.sessionId, entry.customTitle)
         } else if (entry.type === 'tag' && entry.sessionId) {
@@ -3264,6 +3373,13 @@ export async function loadTranscriptFile(
         }
       } else if (entry.type === 'summary' && entry.leafUuid) {
         summaries.set(entry.leafUuid, entry.summary)
+      } else if (entry.type === 'head' && entry.headUuid) {
+        if (
+          !conversationHead ||
+          entry.timestamp > conversationHead.timestamp
+        ) {
+          conversationHead = entry
+        }
       } else if (entry.type === 'custom-title' && entry.sessionId) {
         customTitles.set(entry.sessionId, entry.customTitle)
       } else if (entry.type === 'tag' && entry.sessionId) {
@@ -3415,6 +3531,7 @@ export async function loadTranscriptFile(
     contextCollapseCommits,
     contextCollapseSnapshot,
     leafUuids,
+    conversationHead,
   }
 }
 
