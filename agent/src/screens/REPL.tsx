@@ -3044,9 +3044,22 @@ export function REPL({
   // line above it; it'd appear to continue an unrelated AI response).
   // System messages render as their own line with the level icon.
   // Memory: durable inline narrative → system message.
+  //
+  // Default level is 'suggestion' (NOT 'info'): info-level system
+  // messages render as dim grey text with no leading marker — way
+  // too easy to miss for a confirmation that load-bearing state
+  // changed. 'suggestion' gives a normal-color line with a leading
+  // bullet, which reads as "axiomate is telling me something" the
+  // user can't overlook.
   const pushRewindFeedback = useCallback(
-    (text: string, level: 'info' | 'warning' = 'info') => {
-      setMessages(prev => [...prev, createSystemMessage(text, level)]);
+    (text: string, level: 'suggestion' | 'warning' = 'suggestion') => {
+      logForDebugging(`pushRewindFeedback: appending level=${level} text="${text.slice(0, 80)}"`)
+      const msg = createSystemMessage(text, level)
+      logForDebugging(`pushRewindFeedback: created uuid=${msg.uuid.slice(0, 8)} subtype=${msg.subtype}`)
+      setMessages(prev => {
+        logForDebugging(`pushRewindFeedback: setMessages prev.length=${prev.length}`)
+        return [...prev, msg]
+      });
     },
     [setMessages],
   );
