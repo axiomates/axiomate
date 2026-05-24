@@ -167,29 +167,26 @@ export function renderList(
   const lines: string[] = []
   lines.push(`Checkpoints for ${workdir}:`)
   lines.push('')
-  // Column order: WHEN  CHANGES  TURN. TURN sits last because it
-  // contains free-form text (CJK, quotes, long previews) — putting
-  // it at the line end means we never have to compute terminal-
-  // display-width for padding. JS .length and CJK char width
-  // disagree by 2x, which broke alignment in the prior layout.
+
   // Column order: WHEN  ID  CHANGES  TURN. TURN sits last because it
   // contains free-form text (CJK, quotes, long previews) — putting it
   // at the line end means we never have to compute terminal-display-
   // width for padding. JS .length and CJK char width disagree by 2x,
   // which broke alignment in the prior layout.
-  // ID column is the git short hash (7 chars) — the anchor's primary
-  // key in the shadow store. Users can plug it into external git
-  // commands (`git --git-dir=~/.axiomate/checkpoints/store show <id>`).
-  // CHANGES is fixed-width ASCII (≤24 chars handles all common
-  // shapes: "test.txt +999 -999" / "9 files +999 -999" / "(no diff)").
-  lines.push(
-    `  ${padRight('WHEN', 16)}  ${padRight('ID', 8)}  ${padRight('CHANGES', 24)}  TURN`,
-  )
+  //
+  // Two-pass render: pre-compute each cell, then size each column to
+  // its widest cell (capped at COL_MAX so a single long path can't
+  // explode the layout). Earlier this was hard-coded at fixed-width
+  // worst-case sizes (16 / 8 / 24), which left huge gaps when actual
+  // content was short — "5m ago" took up "16 chars + 2 padding"
+  // regardless. Dynamic widths give a uniform 2-space gutter between
+  // every column.
+  const COL_MAX = 32
+  const COL_GAP = '  '
+  type Row = { when: string; id: string; stats: string; turn: string }
+  const rows: Row[] = []
   for (const e of shown) {
     const when = formatAgeOrAbsolute(parseIsoToEpochSeconds(e.timestamp))
-    // Single-source-of-truth formatter — see reason.ts. Avoid inline
-    // subject/body string matching here; new commit-data fields land
-    // by extending reason.ts, not by tweaking each consumer.
     const reason = formatAnchorReason(e.subject, e.body)
     // CHANGES column: anchor-vs-disk diff (matches picker semantics).
     //   - 1 file → "<basename> +N -M"
@@ -209,9 +206,7 @@ export function renderList(
         stats = `${paths.length} files +${diff.insertions} -${diff.deletions}`
       }
     }
-    lines.push(
-      `  ${padRight(when, 16)}  ${padRight(e.shortHash, 8)}  ${padRight(stats, 24)}  ${reason}`,
-    )
+    rows.push({ when, id: e.shortHash, stats, turn: reason })
     // Full commit hash + message UUID still go to the debug log for
     // diagnosis (--debug mode). The user-visible ID column shows
     // shortHash only since git CLI accepts it; full hash is rarely
@@ -220,6 +215,31 @@ export function renderList(
       `checkpoints/list: row hash=${e.hash} shortHash=${e.shortHash} ` +
         `messageId=${e.reason.kind === 'axiomate' ? e.reason.messageId : '(raw)'} ` +
         `subject=${e.subject}`,
+    )
+  }
+
+  const headers = { when: 'WHEN', id: 'ID', stats: 'CHANGES', turn: 'TURN' }
+  const widths = {
+    when: Math.min(
+      COL_MAX,
+      Math.max(headers.when.length, ...rows.map(r => r.when.length)),
+    ),
+    id: Math.min(
+      COL_MAX,
+      Math.max(headers.id.length, ...rows.map(r => r.id.length)),
+    ),
+    stats: Math.min(
+      COL_MAX,
+      Math.max(headers.stats.length, ...rows.map(r => r.stats.length)),
+    ),
+  }
+
+  lines.push(
+    `  ${padRight(headers.when, widths.when)}${COL_GAP}${padRight(headers.id, widths.id)}${COL_GAP}${padRight(headers.stats, widths.stats)}${COL_GAP}${headers.turn}`,
+  )
+  for (const r of rows) {
+    lines.push(
+      `  ${padRight(r.when, widths.when)}${COL_GAP}${padRight(r.id, widths.id)}${COL_GAP}${padRight(r.stats, widths.stats)}${COL_GAP}${r.turn}`,
     )
   }
   if (entries.length > limit) {
