@@ -341,11 +341,17 @@ export function MessageSelector({
         if (preview) {
           if (role === 'pre-rewind') {
             // Detect the `[<7-hex>]` hash-reference shape written by
-            // chained rewinds. If it matches, render bare (no quotes,
-            // no "before") so the chain row reads as a hash reference.
+            // chained rewinds. If it matches, strip the surrounding
+            // brackets so the target hash renders as a bare 7-hex —
+            // the trailing `${hashTag}` carries the only `[brackets]`
+            // on the row, identifying THIS anchor's own short hash.
+            // Rendering both with brackets caused visual collision:
+            // `Rewind to [041da07] [71c90d4]` made it ambiguous which
+            // hash was the target vs the row's own id.
             const isHashRef = /^\[[0-9a-f]{7,8}\]$/i.test(preview)
+            const targetHash = isHashRef ? preview.slice(1, -1) : preview
             content = isHashRef
-              ? `↶ Rewind to ${preview}${hashTag}`
+              ? `↶ Rewind to ${targetHash}${hashTag}`
               : `↶ Rewind to before "${preview}"${hashTag}`
           } else {
             content = `↶ Before "${preview}"${hashTag}`
