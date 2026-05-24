@@ -526,7 +526,7 @@ export function MessageSelector({
       // case the disk changed between picker open and chooser open.
       const opts: OptionWithDescription<RestoreOption>[] = []
       if (canRestoreCode) {
-        opts.push({ value: 'code', label: 'Restore code' })
+        opts.push({ value: 'code', label: 'Restore file' })
       }
       opts.push({ value: 'nevermind', label: 'Never mind' })
       return opts
@@ -536,8 +536,8 @@ export function MessageSelector({
     if (activeTab === 'code') {
       baseOptions = canRestoreCode
         ? [
-            { value: 'both', label: 'Restore code and conversation' },
-            { value: 'code', label: 'Restore code' },
+            { value: 'both', label: 'Restore file and conversation' },
+            { value: 'code', label: 'Restore file' },
             { value: 'conversation', label: 'Restore conversation' },
           ]
         : [{ value: 'conversation', label: 'Restore conversation' }]
@@ -873,7 +873,7 @@ export function MessageSelector({
               // project. Direct the user to the conversation tab if
               // they need conversation-only rewind.
               <Text>
-                No code checkpoints in this session. Press Tab for
+                No file checkpoints in this session. Press Tab for
                 conversation rewind.
               </Text>
             ) : (
@@ -959,7 +959,7 @@ export function MessageSelector({
             {isFileHistoryEnabled ? (
               <Text>
                 {activeTab === 'code'
-                  ? 'Restore the code to the point before…'
+                  ? 'Restore the file to the point before…'
                   : 'Restore the conversation to the point before…'}
               </Text>
             ) : (
@@ -1099,7 +1099,12 @@ export function MessageSelector({
                   // tells the user what tab they'd switch to, not how
                   // many rows would change. Mode is the load-bearing
                   // concept; row count is incidental.
-                  const target = activeTab === 'code' ? 'conversation' : 'code'
+                  // Internal tab type is still 'code' for backward
+                  // compatibility; the user-visible label is "file"
+                  // since the anchors track file changes (not "code"
+                  // semantics like AST or syntax). Vocabulary chosen
+                  // to match the underlying behavior.
+                  const target = activeTab === 'code' ? 'conversation' : 'file'
                   return (
                     <>
                       Tab to switch to {target} rewind
@@ -1160,7 +1165,7 @@ function RestoreOptionDescription({
         (showCodeRestore ? (
           <RestoreCodeConfirmation diffStatsForRestore={diffStatsForRestore} />
         ) : (
-          <Text dimColor>The code will be unchanged.</Text>
+          <Text dimColor>The file will be unchanged.</Text>
         ))}
     </Box>
   )

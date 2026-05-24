@@ -374,7 +374,7 @@ export async function fileHistoryRewind(
     )
     throw new Error(
       `Rewind failed mid-way. Disk may be partially modified. ` +
-        `Open /rewind, switch to Code tab, select "↶ Undo last rewind" to recover.`,
+        `Open /rewind, switch to File tab, select "↶ Undo last rewind" to recover.`,
     )
   }
 

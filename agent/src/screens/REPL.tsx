@@ -4125,8 +4125,8 @@ export function REPL({
             if (mode === 'code-only') {
               pushRewindFeedback(
                 anchorPreview
-                  ? `Code rewound to "${anchorPreview}". Use /rewind → "↶ Undo last rewind" to undo.`
-                  : `Code rewound. Use /rewind → "↶ Undo last rewind" to undo.`,
+                  ? `File rewound to "${anchorPreview}". Use /rewind → "↶ Undo last rewind" to undo.`
+                  : `File rewound. Use /rewind → "↶ Undo last rewind" to undo.`,
               );
             }
           }} onSummarize={async (message: UserMessage, feedback?: string, direction: PartialCompactDirection = 'from') => {
