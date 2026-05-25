@@ -525,7 +525,7 @@ export function Config({
             id: 'checkpointsStatusRows',
             label: 'Checkpoints rows shown (status / list)',
             value: String(globalConfig.checkpointsStatusRows),
-            options: ['10', '20', '30', '50', '100', '200', '500'],
+            options: ['30', '50', '100', '200', '500', '1000', '2000', '5000'],
             type: 'enum' as const,
             onChange(value: string) {
               const n = Number(value)

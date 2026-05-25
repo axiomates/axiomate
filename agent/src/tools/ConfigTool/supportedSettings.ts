@@ -77,9 +77,9 @@ export const SUPPORTED_SETTINGS: Record<string, SettingConfig> = {
     source: 'global',
     type: 'number',
     description:
-      'Default row count for `/checkpoints status` and `/checkpoints list` (CLI --rows overrides per call). Range 1..500.',
+      'Default row count for `/checkpoints status` and `/checkpoints list` (CLI --rows overrides per call). Range 1..5000.',
     min: 1,
-    max: 500,
+    max: 5000,
   },
   showTurnDuration: {
     source: 'global',

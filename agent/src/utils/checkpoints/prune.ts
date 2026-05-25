@@ -73,19 +73,19 @@ const REF_MISSING = new Set([128])
 const REFS_PREFIX = 'refs/axiomate'
 
 /**
- * Default retention for stale-pass (days). 14d is a deliberate divergence
- * from Hermes' 7d — Axiomate sessions tend to span longer dogfood arcs and
- * losing rewindability after a week is a sharp UX regression. Re-evaluate
- * after dogfood data lands.
+ * Default retention for stale-pass (days). 60d targets longer dogfood
+ * arcs — a typical project may go untouched for several weeks (vacation,
+ * context switches, scheduled sprints) and losing rewindability after
+ * two weeks turned out to be a sharp UX regression.
  */
-export const DEFAULT_RETENTION_DAYS = 14
+export const DEFAULT_RETENTION_DAYS = 60
 
 /**
- * Default cross-project size cap (MB). Mirrors Hermes' typical operator
- * default; bounded by the per-project ring buffer (MAX_SNAPSHOTS=100) so
- * the cap rarely triggers in normal use.
+ * Default cross-project size cap (MB). 5 GB on a modern dev machine
+ * (~0.5% of a 1 TB SSD) buys plenty of headroom for the per-project
+ * ring buffer (MAX_SNAPSHOTS=500) without crowding the disk.
  */
-export const DEFAULT_MAX_TOTAL_SIZE_MB = 500
+export const DEFAULT_MAX_TOTAL_SIZE_MB = 5000
 
 /**
  * Minimum interval between auto-prune runs. 24h matches Hermes
@@ -95,9 +95,9 @@ export const DEFAULT_MAX_TOTAL_SIZE_MB = 500
 export const MIN_INTERVAL_HOURS = 24
 
 export interface PruneOptions {
-  /** Override default 14-day retention. Use `0` to disable stale pass. */
+  /** Override default 60-day retention. Use `0` to disable stale pass. */
   retentionDays?: number
-  /** Override default 500 MB cap. Use `0` to disable size pass. */
+  /** Override default 5000 MB (5 GB) cap. Use `0` to disable size pass. */
   maxTotalSizeMb?: number
   /** Bypass the `.last_prune` 24h marker. */
   forceNow?: boolean

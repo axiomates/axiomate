@@ -64,9 +64,9 @@ import { touchProject } from './touchProject.js'
 // Module-level constants. These are intentionally not configurable from
 // callers — they're tuned for "checkpoints subsystem must never block
 // the agent" and changing them requires deliberation, not arguments.
-export const MAX_FILES = 50_000
-export const MAX_FILE_SIZE_MB = 10
-export const MAX_SNAPSHOTS = 100
+export const MAX_FILES = 200_000
+export const MAX_FILE_SIZE_MB = 50
+export const MAX_SNAPSHOTS = 500
 const REF_NOT_EXIST = new Set([128])
 const DIFF_HAS_CHANGES = new Set([1])
 
