@@ -154,7 +154,7 @@ import { listCodeAnchors } from '../utils/checkpoints/listCodeAnchors.js';
 import { parseCommitBody } from '../utils/checkpoints/reason.js';
 import { computeResumeRewindHint } from '../utils/checkpoints/resumeRewindHint.js';
 import { type AttributionState, incrementPromptCount } from '../utils/commitAttribution.js';
-import { recordAttributionSnapshot, recordConversationHead, recordRewindMarker } from '../utils/sessionStorage.js';
+import { recordAttributionSnapshot, recordConversationHead, recordRewindMarker, loadTranscriptFile, getTranscriptPathForSession, buildConversationChain, removeExtraFields } from '../utils/sessionStorage.js';
 import { computeStandaloneAgentContext, restoreAgentFromSession, restoreSessionStateFromLog, restoreWorktreeForResume, exitRestoredWorktree } from '../utils/sessionRestore.js';
 import { updateSessionName } from '../utils/concurrentSessions.js';
 import { isInProcessTeammateTask, type InProcessTeammateTaskState } from '../tasks/InProcessTeammateTask/types.js';
@@ -2968,16 +2968,118 @@ export function REPL({
   // Does NOT touch the prompt input. Index is computed from messagesRef (always
   // fresh via the setMessages wrapper) so callers don't need to worry about
   // stale closures.
+  //
+  // Two paths:
+  //   1. In-chain rewind (messageIndex >= 0): truncate the prefix.
+  //   2. Abandoned-branch switch (messageIndex === -1): the picker
+  //      surfaced a leaf from a chain the active messages array
+  //      doesn't include. Reload the JSONL transcript, reconstruct
+  //      that branch's chain via buildConversationChain, replace
+  //      messages, persist a new head record. Same end-state semantic
+  //      as in-chain (user lands on the message preceding the picked
+  //      one); the bridge from disk into React state is the only
+  //      addition.
   const rewindConversationTo = useCallback((message: UserMessage) => {
     const prev = messagesRef.current;
     const messageIndex = prev.lastIndexOf(message);
-    if (messageIndex === -1) return;
-    setMessages(prev.slice(0, messageIndex));
-    // Careful, this has to happen after setMessages
-    setConversationId(randomUUID());
-    // Reset cached microcompact state so stale pinned cache edits
-    // don't reference tool_use_ids from truncated messages
+
+    if (messageIndex === -1) {
+      // Abandoned-branch switch path. Run async since loadTranscriptFile
+      // is IO-bound; React state updates inside still batch correctly
+      // because the await yields after setMessages returns.
+      void (async () => {
+        try {
+          const sessionFile = getTranscriptPathForSession(getSessionId());
+          const loaded = await loadTranscriptFile(sessionFile);
+          const targetTm = loaded.messages.get(message.uuid);
+          if (!targetTm) {
+            // JSONL state shifted between picker mount and select.
+            logError(new Error(
+              `rewindConversationTo: abandoned message ${message.uuid.slice(0, 8)} ` +
+              `not in transcript`,
+            ));
+            return;
+          }
+          const fullChain = buildConversationChain(loaded.messages, targetTm);
+          // The rewind target is "just before this message" — drop the
+          // chosen message itself so the user's input box is the next
+          // place that prompt will appear (mirrors the in-chain slice
+          // semantic of prev.slice(0, messageIndex)).
+          const beforeTarget = fullChain.slice(0, -1);
+          if (beforeTarget.length === 0) {
+            // Defensive — abandoned chain that has no preceding messages
+            // would leave the user on an empty chat with nothing to
+            // resume from. Bail and surface the unusable state.
+            logError(new Error(
+              `rewindConversationTo: abandoned chain for ${message.uuid.slice(0, 8)} ` +
+              `has no preceding messages — refusing switch`,
+            ));
+            return;
+          }
+          const serialized = removeExtraFields(beforeTarget) as unknown as MessageType[];
+
+          // M1: reset microcompact state BEFORE setMessages so stale
+          // pinned-cache index won't be read with the new chain length.
+          resetMicrocompactState();
+          // M3: clear file-history snapshot dedup set — those uuids
+          // belong to the abandoned-from chain; the new chain's future
+          // edits must produce fresh anchors.
+          setAppState(p => ({
+            ...p,
+            fileHistory: {
+              ...p.fileHistory,
+              snapshotMessageIds: new Set(),
+            },
+          }));
+
+          setMessages(() => serialized);
+          setConversationId(randomUUID());
+
+          // M2: persist head + rewind marker for the new branch tip.
+          const newLeafUuid = beforeTarget[beforeTarget.length - 1]!.uuid;
+          try {
+            recordConversationHead(getSessionId(), newLeafUuid as UUID);
+            const fromLeafUuid = (prev[prev.length - 1] as { uuid?: UUID } | undefined)?.uuid;
+            if (fromLeafUuid && fromLeafUuid !== newLeafUuid) {
+              recordRewindMarker(getSessionId(), {
+                fromLeafUuid,
+                toLeafUuid: newLeafUuid as UUID,
+                abandonedCount: prev.filter(m => m.type === 'user').length,
+              });
+            }
+          } catch (e) {
+            logError(e as Error);
+          }
+
+          setAppState(p => ({
+            ...p,
+            toolPermissionContext: message.permissionMode &&
+              p.toolPermissionContext.mode !== message.permissionMode ? {
+              ...p.toolPermissionContext,
+              mode: message.permissionMode,
+            } : p.toolPermissionContext,
+            promptSuggestion: {
+              text: null,
+              promptId: null,
+              shownAt: 0,
+              acceptedAt: 0,
+              generationRequestId: null,
+            },
+          }));
+        } catch (e) {
+          logError(e as Error);
+        }
+      })();
+      return;
+    }
+
+    // M1: also move the reset above setMessages on the in-chain path
+    // for consistency. In-chain truncation keeps the prefix so pinned
+    // indices < messageIndex are still valid, but a clean reset is
+    // cheap and removes one source of subtle bugs.
     resetMicrocompactState();
+    setMessages(prev.slice(0, messageIndex));
+    setConversationId(randomUUID());
 
     // Persist the conversation head so /resume / --continue / restart
     // honor this rewind even before the user types anything new. The
