@@ -271,11 +271,19 @@ export function MessageSelector({
           messages: loaded.messages,
           headLeafUuid: head?.uuid,
         })
+        // pickConversationHead may return an assistant message (the AI's
+        // reply that closes the latest turn). Picker rows are user
+        // messages only, so the head's row indicator wants the most
+        // recent user message on the chain — that's chain[chain.length-1]
+        // (chain is oldest → newest). When chain is empty (fresh
+        // session) leave headForUi undefined; nothing to mark.
+        const headForUi = chain.length > 0 ? chain[chain.length - 1]!.uuid : undefined
         setChainUserMessages(chain)
-        setHeadLeafUuid(head?.uuid)
+        setHeadLeafUuid(headForUi)
         logForDebugging(
           `MessageSelector: [Chain] loaded ${chain.length} user message(s) ` +
-            `head=${head?.uuid.slice(0, 8) ?? 'none'}`,
+            `head=${head?.uuid.slice(0, 8) ?? 'none'} ` +
+            `headForUi=${headForUi?.slice(0, 8) ?? 'none'}`,
         )
       } catch (e) {
         if (!cancelled) logError(e as Error)
@@ -721,7 +729,13 @@ export function MessageSelector({
     if (message.uuid === currentUUID) {
       return
     }
-    const isSynthetic = !messages.includes(message)
+    // File-tab synthetic rows = file-rewind ↶ anchor rows whose uuid
+    // isn't in the in-memory `messages` array. Conversation-tab rows
+    // are all real user messages (loaded from JSONL chain), so the
+    // "uuid not in `messages`" predicate would mis-classify every
+    // post-rewind chain row as synthetic. Gate on activeTab.
+    const isSynthetic =
+      activeTab === 'code' && !messages.includes(message)
 
     if (isSynthetic) {
       // Synthetic anchor (pre-rewind safety snapshot or similar). No
@@ -1061,10 +1075,10 @@ export function MessageSelector({
                 isDisabled={isRestoring}
                 options={getRestoreOptions(
                   !!canRestoreCode,
-                  !messages.includes(messageToRestore),
+                  activeTab === 'code' && !messages.includes(messageToRestore),
                 )}
                 defaultFocusValue={
-                  !messages.includes(messageToRestore)
+                  activeTab === 'code' && !messages.includes(messageToRestore)
                     ? 'code'
                     : canRestoreCode
                       ? 'both'
@@ -1087,7 +1101,7 @@ export function MessageSelector({
               <Box marginBottom={1}>
                 <Text dimColor>
                   {figures.warning} Rewinding does not affect files edited
-                  manually or via bash.
+                  manually.
                 </Text>
               </Box>
             )}
