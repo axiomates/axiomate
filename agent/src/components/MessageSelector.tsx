@@ -362,6 +362,21 @@ export function MessageSelector({
     () => new Set(messages.map(m => m.uuid)),
     [messages],
   )
+  // Uuids of every message we surfaced from an abandoned branch.
+  // Used by the row-render path to distinguish "abandoned user message
+  // displayed via the conversation tab" (regular UserMessage render +
+  // 'Before' prefix) from "file-tab synthetic ↶ anchor" (custom
+  // content already baked, no prefix).
+  const abandonedUuids = useMemo(
+    () => {
+      const s = new Set<UUID>()
+      for (const c of abandonedChains) {
+        for (const m of c.chain) s.add(m.uuid)
+      }
+      return s
+    },
+    [abandonedChains],
+  )
   const syntheticAnchors = useMemo<UserMessage[]>(() => {
     if (!isFileHistoryEnabled) return []
     // ↶ rows belong to the code tab only. Conversation rewind on a
@@ -1133,9 +1148,16 @@ export function MessageSelector({
                   // before" prefix into their message content in
                   // syntheticAnchors above. Detect them by uuid — any
                   // anchor's messageId that isn't in the active
-                  // conversation chain is a synthetic.
+                  // conversation chain is a synthetic UNLESS it is an
+                  // abandoned-branch row, which IS a regular user
+                  // message just from a leaf the head doesn't reach.
+                  // Conversation-tab abandoned rows must follow the
+                  // normal user-message render path (with the "Before"
+                  // prefix), not the file-tab ↶ path.
                   const isSyntheticAnchorRow =
-                    !isCurrent && !conversationUuids.has(msg.uuid)
+                    !isCurrent &&
+                    !conversationUuids.has(msg.uuid) &&
+                    !abandonedUuids.has(msg.uuid)
 
                   // metadataLoaded is true once the bulk-diff effect
                   // has written this row's key; loading state below
