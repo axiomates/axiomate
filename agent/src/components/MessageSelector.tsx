@@ -27,8 +27,20 @@ import {
 import {
   decrementPickerOpenCount,
   getOriginalCwd,
+  getSessionId,
   incrementPickerOpenCount,
 } from '../bootstrap/state.js'
+import {
+  type AbandonedChain,
+  buildAbandonedRow,
+  buildHeadChainUuids,
+  findAbandonedLeafChains,
+} from '../utils/conversationBranches.js'
+import {
+  getTranscriptPathForSession,
+  loadTranscriptFile,
+  pickConversationHead,
+} from '../utils/sessionStorage.js'
 import { logError } from '../utils/log.js'
 import { logForDebugging } from '../utils/debug.js'
 import { useExitOnCtrlCDWithKeybindings } from '../hooks/useExitOnCtrlCDWithKeybindings.js'
@@ -226,6 +238,50 @@ export function MessageSelector({
     }
   }, [isFileHistoryEnabled])
 
+  // Abandoned-branch loader (conversation-axis only). Reads the JSONL
+  // transcript on mount and computes the leaves not on the active
+  // chain — these are the rewound-away branches the picker exposes via
+  // the conversation tab so users can switch to / inspect them.
+  // Loader fires regardless of activeTab so toggling Tab is instant
+  // (no IO wait); the conversationSyntheticAnchors useMemo then gates
+  // rendering on activeTab. File tab never sees this data.
+  const [abandonedChains, setAbandonedChains] = useState<readonly AbandonedChain[]>([])
+  useEffect(() => {
+    let cancelled = false
+    void (async () => {
+      try {
+        const sessionFile = getTranscriptPathForSession(getSessionId())
+        const loaded = await loadTranscriptFile(sessionFile)
+        if (cancelled) return
+        // Match the head-resolution rule loadFullLog uses on resume so
+        // "current chain" agrees between picker and /resume + --continue.
+        const head = pickConversationHead({
+          messages: loaded.messages,
+          leafUuids: loaded.leafUuids,
+          conversationHead: loaded.conversationHead,
+          leafPredicate: msg => msg.type === 'user' || msg.type === 'assistant',
+        })
+        const headChainUuids = buildHeadChainUuids(loaded.messages, head?.uuid)
+        const chains = findAbandonedLeafChains({
+          messages: loaded.messages,
+          leafUuids: loaded.leafUuids,
+          headChainUuids,
+          headLeafUuid: head?.uuid,
+        })
+        setAbandonedChains(chains)
+        logForDebugging(
+          `MessageSelector: [Abandoned] loaded ${chains.length} chain(s) ` +
+            `head=${head?.uuid.slice(0, 8) ?? 'none'}`,
+        )
+      } catch (e) {
+        if (!cancelled) logError(e as Error)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
   const anchorByMsgId = useMemo(() => {
     const m = new Map<UUID, CodeAnchor>()
     for (const a of anchors) {
@@ -366,6 +422,25 @@ export function MessageSelector({
       })
   }, [anchors, conversationUuids, isFileHistoryEnabled, activeTab])
 
+  // Conversation-tab abandoned rows. Symmetric to syntheticAnchors
+  // above (file-tab orphan anchors): both produce ↶-shaped synthetic
+  // rows with baked label content, both gate on activeTab so the other
+  // tab never sees them, both keep the underlying record's uuid as the
+  // row uuid so chooser handlers can route back. The shared rendering
+  // path (isSyntheticAnchorRow predicate) reads "uuid not in current
+  // chain" and naturally treats both kinds the same way — no extra
+  // exclusion logic needed.
+  const conversationSyntheticAnchors = useMemo<UserMessage[]>(() => {
+    if (activeTab !== 'conversation') return []
+    if (abandonedChains.length === 0) return []
+    // Per chain we surface the leaf only — the leaf is the "what the
+    // user typed last on that branch" identifier; mid-chain prompts
+    // are reachable after switch via the picker re-mount on the
+    // restored chain. Mirrors how file tab surfaces one ↶ row per
+    // orphan anchor (not one row per intermediate snapshot).
+    return abandonedChains.map(c => buildAbandonedRow(c.leafTranscriptMessage))
+  }, [activeTab, abandonedChains])
+
   // Diagnostic: tracks state.snapshots / messages / syntheticAnchors
   // across re-renders so resume-path and filter-mismatch bugs leave a
   // paper trail. If snapshots load asynchronously (JSONL on resume),
@@ -408,6 +483,13 @@ export function MessageSelector({
     for (const a of anchors) {
       if (a.messageId) tsByUuid.set(a.messageId, snapshotTimeMs(a.timestamp))
     }
+    // Abandoned-row uuids aren't in `anchors` (no git hash backing them),
+    // but they have their leaf timestamp in abandonedChains. Feed both
+    // sources into tsByUuid so the chronological merge below sorts
+    // abandoned ↶ rows next to in-chain rows correctly.
+    for (const c of abandonedChains) {
+      tsByUuid.set(c.leafUuid, snapshotTimeMs(c.leafTimestamp))
+    }
     let lastTs = 0
     const realRowsWithTs = visibleSelectable.map(m => {
       const ts = tsByUuid.get(m.uuid)
@@ -418,23 +500,33 @@ export function MessageSelector({
       const ts = tsByUuid.get(m.uuid) ?? 0
       return { row: m, ts }
     })
+    const conversationSynthRowsWithTs = conversationSyntheticAnchors.map(m => {
+      const ts = tsByUuid.get(m.uuid) ?? 0
+      return { row: m, ts }
+    })
     // Stable merge — when timestamps tie, real rows come first so
     // a pre-rewind anchor produced *during* a turn renders right
-    // after that turn's row, not before it.
+    // after that turn's row, not before it. The two synthetic streams
+    // (file + conversation) never coexist (one is empty per activeTab)
+    // so a single-stream merge against the union covers both cases.
+    const allSynthRowsWithTs = [
+      ...synthRowsWithTs,
+      ...conversationSynthRowsWithTs,
+    ].sort((a, b) => a.ts - b.ts)
     let i = 0
     let j = 0
     const merged: UserMessage[] = []
-    while (i < realRowsWithTs.length && j < synthRowsWithTs.length) {
-      if (realRowsWithTs[i]!.ts <= synthRowsWithTs[j]!.ts) {
+    while (i < realRowsWithTs.length && j < allSynthRowsWithTs.length) {
+      if (realRowsWithTs[i]!.ts <= allSynthRowsWithTs[j]!.ts) {
         merged.push(realRowsWithTs[i]!.row)
         i++
       } else {
-        merged.push(synthRowsWithTs[j]!.row)
+        merged.push(allSynthRowsWithTs[j]!.row)
         j++
       }
     }
     while (i < realRowsWithTs.length) merged.push(realRowsWithTs[i++]!.row)
-    while (j < synthRowsWithTs.length) merged.push(synthRowsWithTs[j++]!.row)
+    while (j < allSynthRowsWithTs.length) merged.push(allSynthRowsWithTs[j++]!.row)
 
     // Newest-first display: (current) at the top, then synthetic and
     // real rows in reverse chronological order. Matches
@@ -446,7 +538,14 @@ export function MessageSelector({
       uuid: currentUUID,
     } as UserMessage
     return [currentRow, ...merged.reverse()]
-  }, [visibleSelectable, syntheticAnchors, anchors, currentUUID])
+  }, [
+    visibleSelectable,
+    syntheticAnchors,
+    conversationSyntheticAnchors,
+    abandonedChains,
+    anchors,
+    currentUUID,
+  ])
   // Default cursor on the newest selectable row (index 1 — index 0
   // is the (current) row, which is non-selectable). Falls back to 0
   // when there is no other row, so the picker still mounts cleanly.
@@ -542,10 +641,31 @@ export function MessageSelector({
   // the same anchor-vs-disk diff fileHistoryRewind will run, so a
   // disk-matching anchor never reaches the chooser with Restore
   // code as a real option.
+  // Abandoned-row uuids — used by chooser to route synthetic rows
+  // along the conversation axis (Restore conversation) instead of the
+  // file axis (Restore file). Abandoned and file-tab synthetic both
+  // satisfy "uuid not in active chain"; the abandonedUuids set is
+  // what disambiguates them.
+  const abandonedUuids = useMemo(() => {
+    const s = new Set<UUID>()
+    for (const c of abandonedChains) s.add(c.leafUuid)
+    return s
+  }, [abandonedChains])
+
   function getRestoreOptions(
     canRestoreCode: boolean,
     isSynthetic: boolean = false,
+    isAbandoned: boolean = false,
   ): OptionWithDescription<RestoreOption>[] {
+    if (isAbandoned) {
+      // Abandoned-branch row: switching here means truncating the
+      // active chain to just before this leaf and switching the head
+      // record to the abandoned chain's tip. Conversation-axis only.
+      return [
+        { value: 'conversation', label: 'Restore conversation' },
+        { value: 'nevermind', label: 'Never mind' },
+      ]
+    }
     if (isSynthetic) {
       // Synthetic ↶ rows have no conversation chain to truncate to;
       // only Restore code makes sense — and only when the anchor
@@ -636,7 +756,17 @@ export function MessageSelector({
     if (message.uuid === currentUUID) {
       return
     }
+    const isAbandoned = abandonedUuids.has(message.uuid)
     const isSynthetic = !messages.includes(message)
+
+    if (isAbandoned) {
+      // Abandoned-branch row: no anchor lookup needed. Drop into the
+      // chooser so the user confirms; rewindConversationTo will load
+      // the chain from JSONL when they pick Restore conversation.
+      setMessageToRestore(message)
+      setDiffStatsForRestore(undefined)
+      return
+    }
 
     if (isSynthetic) {
       // Synthetic anchor (pre-rewind safety snapshot or similar). No
@@ -977,13 +1107,16 @@ export function MessageSelector({
                 options={getRestoreOptions(
                   !!canRestoreCode,
                   !messages.includes(messageToRestore),
+                  abandonedUuids.has(messageToRestore.uuid),
                 )}
                 defaultFocusValue={
-                  !messages.includes(messageToRestore)
-                    ? 'code'
-                    : canRestoreCode
-                      ? 'both'
-                      : 'conversation'
+                  abandonedUuids.has(messageToRestore.uuid)
+                    ? 'conversation'
+                    : !messages.includes(messageToRestore)
+                      ? 'code'
+                      : canRestoreCode
+                        ? 'both'
+                        : 'conversation'
                 }
                 onFocus={value =>
                   setSelectedRestoreOption(value as RestoreOption)

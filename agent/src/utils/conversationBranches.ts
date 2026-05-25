@@ -110,6 +110,11 @@ export type AbandonedChain = {
   leafUuid: UUID
   /** Timestamp of the abandoned leaf — used for chronological merge. */
   leafTimestamp: string
+  /** Original TranscriptMessage for the leaf — picker uses this when
+   *  baking the abandoned-row label, since UserMessage's content has
+   *  already been canonicalized (empty → NO_CONTENT_MESSAGE) and the
+   *  raw user-typed text would be lost. */
+  leafTranscriptMessage: TranscriptMessage
   /** User messages in the abandoned branch, oldest → newest. */
   chain: UserMessage[]
 }
@@ -159,6 +164,7 @@ export function findAbandonedLeafChains(args: {
     out.push({
       leafUuid,
       leafTimestamp: leaf.timestamp,
+      leafTranscriptMessage: leaf,
       chain,
     })
   }
