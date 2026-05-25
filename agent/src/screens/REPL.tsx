@@ -136,7 +136,7 @@ import { resolveAgentTools } from '../tools/AgentTool/agentToolUtils.js';
 import { resumeAgentBackground } from '../tools/AgentTool/resumeAgent.js';
 import { useMainLoopModel } from '../hooks/useMainLoopModel.js';
 import { useAppState, useSetAppState, useAppStateStore } from '../state/AppState.js';
-import type { ContentBlockParam } from '../services/api/streamTypes.js';
+import type { ContentBlockParam, ImageBlockParam } from '../services/api/streamTypes.js';
 import type { ProcessUserInputContext } from '../utils/processUserInput/processUserInput.js';
 import type { PastedContent } from '../utils/config.js';
 import { copyPlanForFork, copyPlanForResume, getPlanSlug, setPlanSlug } from '../utils/plans.js';
@@ -144,7 +144,6 @@ import { clearSessionMetadata, resetSessionFilePointer, adoptResumedSessionFile,
 import { deserializeMessages } from '../utils/conversationRecovery.js';
 import { extractReadFilesFromMessages, extractBashToolsFromMessages } from '../utils/queryHelpers.js';
 import { resetMicrocompactState } from '../services/compact/microCompact.js';
-import { useConversationRewind } from '../hooks/useConversationRewind.js';
 import { runPostCompactCleanup } from '../services/compact/postCompactCleanup.js';
 import { provisionContentReplacementState, reconstructContentReplacementState, type ContentReplacementRecord } from '../utils/toolResultStorage.js';
 import { partialCompactConversation } from '../services/compact/compact.js';
@@ -2965,25 +2964,107 @@ export function REPL({
   }, []);
 
   // Rewind conversation state to just before `message`: slice messages,
-  // reset conversation ID, microcompact state, permission mode, prompt
-  // suggestion, persist head record + audit marker. See
-  // `useConversationRewind` for details — moved out of REPL so the
-  // file-rewind picker (MessageSelector / /rewind) and the
-  // conversation-rewind picker (ConversationRewindPicker / /rewind-chat)
-  // don't share rewind logic through this component.
-  const {
-    rewindConversationTo,
-    restoreMessageSync,
-    handleRestoreMessage,
-  } = useConversationRewind({
-    messagesRef,
-    setMessages,
-    setConversationId,
-    setAppState,
-    setInputValue,
-    setInputMode,
-    setPastedContents,
-  });
+  // reset conversation ID, microcompact state, permission mode, prompt suggestion.
+  // Does NOT touch the prompt input. Index is computed from messagesRef (always
+  // fresh via the setMessages wrapper) so callers don't need to worry about
+  // stale closures.
+  const rewindConversationTo = useCallback((message: UserMessage) => {
+    const prev = messagesRef.current;
+    const messageIndex = prev.lastIndexOf(message);
+    if (messageIndex === -1) return;
+    setMessages(prev.slice(0, messageIndex));
+    // Careful, this has to happen after setMessages
+    setConversationId(randomUUID());
+    // Reset cached microcompact state so stale pinned cache edits
+    // don't reference tool_use_ids from truncated messages
+    resetMicrocompactState();
+
+    // Persist the conversation head so /resume / --continue / restart
+    // honor this rewind even before the user types anything new. The
+    // head points at the LAST message in the truncated chain (the one
+    // before the rewind target) — that's the leaf the loader should
+    // walk back from. If we rewound to the very first message
+    // (messageIndex === 0) there is no truncated-chain leaf to point
+    // at; skip the write and let the loader's latest-leaf fallback do
+    // its thing for that edge case.
+    if (messageIndex > 0) {
+      const newLeaf = prev[messageIndex - 1];
+      if (newLeaf) {
+        try {
+          recordConversationHead(getSessionId(), newLeaf.uuid);
+          // Audit-trail marker so the REPL can show a "↶ rewound from..."
+          // hint after restart. fromLeaf is the abandoned tip — the last
+          // message in the chain BEFORE this rewind. abandonedCount counts
+          // user messages that are about to be sliced off, mirroring what
+          // the picker considered "rewindable".
+          const fromLeafUuid = (prev[prev.length - 1] as { uuid?: UUID } | undefined)?.uuid;
+          if (fromLeafUuid && fromLeafUuid !== newLeaf.uuid) {
+            const abandonedCount = prev.slice(messageIndex)
+              .filter(m => m.type === 'user').length;
+            recordRewindMarker(getSessionId(), {
+              fromLeafUuid,
+              toLeafUuid: newLeaf.uuid,
+              abandonedCount,
+            });
+          }
+        } catch (e) {
+          // Best-effort — failing to write the head marker degrades
+          // back to the latest-leaf heuristic. Log but don't crash.
+          logError(e as Error);
+        }
+      }
+    }
+
+    // Restore state from the message we're rewinding to
+    setAppState(prev => ({
+      ...prev,
+      // Restore permission mode from the message
+      toolPermissionContext: message.permissionMode && prev.toolPermissionContext.mode !== message.permissionMode ? {
+        ...prev.toolPermissionContext,
+        mode: message.permissionMode
+      } : prev.toolPermissionContext,
+      // Clear stale prompt suggestion from previous conversation state
+      promptSuggestion: {
+        text: null,
+        promptId: null,
+        shownAt: 0,
+        acceptedAt: 0,
+        generationRequestId: null
+      }
+    }));
+  }, [setMessages, setAppState]);
+
+  // Synchronous rewind + input population. Used directly by auto-restore on
+  // interrupt (so React batches with the abort's setMessages → single render,
+  // no flicker). MessageSelector wraps this in setImmediate via handleRestoreMessage.
+  const restoreMessageSync = useCallback((message: UserMessage) => {
+    rewindConversationTo(message);
+    const r = textForResubmit(message);
+    if (r) {
+      setInputValue(r.text);
+      setInputMode(r.mode);
+    }
+
+    // Restore pasted images
+    if (Array.isArray(message.message.content) && message.message.content.some(block => block.type === 'image')) {
+      const imageBlocks: Array<ImageBlockParam> = message.message.content.filter(block => block.type === 'image');
+      if (imageBlocks.length > 0) {
+        const newPastedContents: Record<number, PastedContent> = {};
+        imageBlocks.forEach((block, index) => {
+          if (block.source.type === 'base64') {
+            const id = message.imagePasteIds?.[index] ?? index + 1;
+            newPastedContents[id] = {
+              id,
+              type: 'image',
+              content: block.source.data,
+              mediaType: block.source.media_type
+            };
+          }
+        });
+        setPastedContents(newPastedContents);
+      }
+    }
+  }, [rewindConversationTo, setInputValue]);
   restoreMessageSyncRef.current = restoreMessageSync;
 
   // First ~40 chars of the rewind target's user-visible text — used in the
@@ -3026,7 +3107,27 @@ export function REPL({
     [setMessages],
   );
 
-  // (handleRestoreMessage moved to useConversationRewind hook above.)
+  // MessageSelector path: defer via setImmediate so the "Interrupted" message
+  // renders to static output before rewind — otherwise it remains vestigial
+  // at the top of the screen.
+  // The 'both' mode (Restore file and conversation) was removed in #215
+  // because it created an asymmetric undo state — only the file half was
+  // recoverable. The conversation-only mode is the only one MessageSelector
+  // forwards now; the literal stays for type clarity.
+  const handleRestoreMessage = useCallback(async (
+    message: UserMessage,
+    _mode: 'conversation-only' = 'conversation-only',
+  ) => {
+    setImmediate((restore, message) => restore(message), restoreMessageSync, message);
+    // Conversation rewind emits no feedback line. The truncated chain
+    // already speaks for itself: rewound-past turns are gone from the
+    // transcript, the restored prompt lands back in the input box.
+    // A "✓ Conversation rewound..." line on top of that was redundant
+    // noise. File rewind DOES emit feedback since the conversation
+    // looks unchanged; the user otherwise has no signal that disk got
+    // rolled back.
+    void message;
+  }, [restoreMessageSync]);
 
   // Not memoized — hook stores caps via ref, reads latest closure at dispatch.
   // 24-char prefix: deriveUUID preserves first 24, renderable uuid prefix-matches raw source.
