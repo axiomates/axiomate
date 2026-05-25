@@ -499,11 +499,15 @@ export function MessageSelector({
     while (i < realRowsWithTs.length) merged.push(realRowsWithTs[i++]!.row)
     while (j < synthRowsWithTs.length) merged.push(synthRowsWithTs[j++]!.row)
 
-    // Newest-first display: (current) at the top, then synthetic and
-    // real rows in reverse chronological order. Matches
-    // /checkpoints list ordering and puts the user's most-likely
-    // rewind targets (latest turn, latest ↶ row) right next to the
-    // default cursor position.
+    // Newest-first display order. File tab keeps the virtual
+    // (current) row on top — that's "next prompt slot" for the
+    // file-rewind axis, baseline behavior. Conversation tab does
+    // NOT add it; the head pointer is shown in-line via the
+    // (current) tag on the head row inside the row renderer, so a
+    // top virtual row would just duplicate that signal.
+    if (activeTab === 'conversation') {
+      return merged.reverse()
+    }
     const currentRow: UserMessage = {
       ...createUserMessage({ content: '' }),
       uuid: currentUUID,
@@ -514,6 +518,7 @@ export function MessageSelector({
     syntheticAnchors,
     anchors,
     currentUUID,
+    activeTab,
   ])
   // Default cursor on the newest selectable row (index 1 — index 0
   // is the (current) row, which is non-selectable). Falls back to 0
@@ -521,6 +526,17 @@ export function MessageSelector({
   const [selectedIndex, setSelectedIndex] = useState(
     messageOptions.length > 1 ? 1 : 0,
   )
+
+  // When the conversation tab finishes loading the chain (or the user
+  // switches into it), point selection at the head row so the (current)
+  // tag is on screen by default. File tab keeps baseline behavior
+  // (selection at the first non-(current) row).
+  useEffect(() => {
+    if (activeTab !== 'conversation') return
+    if (!headLeafUuid) return
+    const idx = messageOptions.findIndex(m => m.uuid === headLeafUuid)
+    if (idx >= 0) setSelectedIndex(idx)
+  }, [activeTab, headLeafUuid, messageOptions])
 
   // When toggling the slash filter, anchor focus by UUID so the user
   // stays on the same semantic message across the transition. If the

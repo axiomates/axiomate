@@ -2971,20 +2971,21 @@ export function REPL({
   //
   // Two paths:
   //   1. In-chain rewind (messageIndex >= 0): truncate the prefix.
-  //   2. Abandoned-branch switch (messageIndex === -1): the picker
-  //      surfaced a leaf from a chain the active messages array
-  //      doesn't include. Reload the JSONL transcript, reconstruct
-  //      that branch's chain via buildConversationChain, replace
-  //      messages, persist a new head record. Same end-state semantic
-  //      as in-chain (user lands on the message preceding the picked
-  //      one); the bridge from disk into React state is the only
-  //      addition.
+  //   2. JSONL-rebuild rewind (messageIndex === -1): the picker
+  //      surfaced a chain message that's not in the in-memory messages
+  //      array — most commonly because a previous rewind dropped it
+  //      and the user is now selecting it back as a "future" target.
+  //      Reload the transcript, reconstruct the chain via
+  //      buildConversationChain, replace messages, persist a new head
+  //      record. Same end-state semantic as in-chain (user lands just
+  //      before the picked message); the disk → React state bridge is
+  //      the only addition.
   const rewindConversationTo = useCallback((message: UserMessage) => {
     const prev = messagesRef.current;
     const messageIndex = prev.lastIndexOf(message);
 
     if (messageIndex === -1) {
-      // Abandoned-branch switch path. Run async since loadTranscriptFile
+      // JSONL-rebuild rewind path. Run async since loadTranscriptFile
       // is IO-bound; React state updates inside still batch correctly
       // because the await yields after setMessages returns.
       void (async () => {
@@ -3018,8 +3019,10 @@ export function REPL({
           }
           const serialized = removeExtraFields(beforeTarget) as unknown as MessageType[];
 
-          // M1: reset microcompact state BEFORE setMessages so stale
-          // pinned-cache index won't be read with the new chain length.
+          // Reset microcompact state BEFORE setMessages — chain
+          // replacement invalidates every pinned-cache index, and
+          // reading them post-state-update would feed stale entries
+          // to the next API call.
           resetMicrocompactState();
 
           setMessages(() => serialized);
@@ -3056,10 +3059,11 @@ export function REPL({
       return;
     }
 
-    // M1: also move the reset above setMessages on the in-chain path
-    // for consistency. In-chain truncation keeps the prefix so pinned
-    // indices < messageIndex are still valid, but a clean reset is
-    // cheap and removes one source of subtle bugs.
+    // Reset microcompact state before setMessages so the pinned-cache
+    // index can't be read against the wrong chain length. In-chain
+    // truncation keeps the prefix so the indices < messageIndex remain
+    // valid even without the reset; doing it anyway is cheap and keeps
+    // the in-chain and JSONL-rebuild paths symmetric.
     resetMicrocompactState();
     setMessages(prev.slice(0, messageIndex));
     setConversationId(randomUUID());
