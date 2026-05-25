@@ -57,6 +57,50 @@ export function transcriptToUserMessage(tm: TranscriptMessage): UserMessage {
 }
 
 /**
+ * Build a picker row for an abandoned-branch user message. The row
+ * mirrors the file-tab synthetic ↶ anchor format
+ * (`↶ Before "<preview>" [<short>]`) so the user reads the row the
+ * same way regardless of which axis they're rewinding on. Crucially
+ * the row's uuid is the **real** message uuid — that's what handlers
+ * downstream (rewindConversationTo, chooser branching) key off, and
+ * what loadTranscriptFile can resolve back to a TranscriptMessage on
+ * abandoned-branch switch.
+ *
+ * `preview` is up to 60 chars of the message's user-visible text,
+ * single-line, with ellipsis on overflow. Empty content falls back to
+ * a placeholder so the row still reads cleanly.
+ */
+export function buildAbandonedRow(tm: TranscriptMessage): UserMessage {
+  const rawContent = (tm as { message?: { content?: unknown } }).message?.content
+  let rawText = ''
+  if (typeof rawContent === 'string') {
+    rawText = rawContent
+  } else if (Array.isArray(rawContent)) {
+    // Mirror UserMessageOption's "last text block" rule.
+    const lastText = [...rawContent]
+      .reverse()
+      .find(b => b && (b as { type?: string }).type === 'text') as
+      | { text: string }
+      | undefined
+    rawText = lastText?.text ?? ''
+  }
+  const oneLine = rawText.replace(/\s+/g, ' ').trim()
+  const preview =
+    oneLine.length === 0
+      ? '(empty prompt)'
+      : oneLine.length > 60
+        ? oneLine.slice(0, 60) + '…'
+        : oneLine
+  const shortUuid = tm.uuid.slice(0, 7)
+  const content = `↶ Before "${preview}" [${shortUuid}]`
+  return {
+    ...createUserMessage({ content }),
+    uuid: tm.uuid,
+    timestamp: tm.timestamp,
+  } as UserMessage
+}
+
+/**
  * Result type — one entry per abandoned leaf. `chain` is ordered oldest → newest
  * (root-side first, leaf last) and only contains user-typed messages, since
  * those are the picker's selectable units.

@@ -5,6 +5,7 @@ import { describe, expect, test } from 'vitest'
 import type { TranscriptMessage } from '../../types/logs.js'
 
 import {
+  buildAbandonedRow,
   buildHeadChainUuids,
   findAbandonedLeafChains,
   transcriptToUserMessage,
@@ -71,6 +72,56 @@ describe('transcriptToUserMessage', () => {
     expect(um.type).toBe('user')
     // createUserMessage falls back to NO_CONTENT_MESSAGE when content is empty.
     expect(typeof um.message.content === 'string' || Array.isArray(um.message.content)).toBe(true)
+  })
+})
+
+describe('buildAbandonedRow', () => {
+  test('formats short string content with ↶ Before "X" [hash]', () => {
+    const tm = makeUserTm({ content: 'hello there' })
+    const row = buildAbandonedRow(tm)
+    const content = row.message.content as string
+    expect(content).toBe(`↶ Before "hello there" [${tm.uuid.slice(0, 7)}]`)
+    // Row keeps the real message uuid so handlers can route back to JSONL.
+    expect(row.uuid).toBe(tm.uuid)
+    // Same timestamp so chronological merge with current-chain rows works.
+    expect(row.timestamp).toBe(tm.timestamp)
+  })
+
+  test('truncates >60 chars with ellipsis', () => {
+    const long = 'a'.repeat(80)
+    const tm = makeUserTm({ content: long })
+    const row = buildAbandonedRow(tm)
+    const content = row.message.content as string
+    // Preview part should be 60 chars + ellipsis
+    expect(content).toContain('a'.repeat(60) + '…')
+    expect(content).not.toContain('a'.repeat(61))
+  })
+
+  test('collapses whitespace into single spaces (one-line label)', () => {
+    const tm = makeUserTm({ content: 'multi\n\nline\twith   space' })
+    const row = buildAbandonedRow(tm)
+    const content = row.message.content as string
+    expect(content).toContain('"multi line with space"')
+  })
+
+  test('falls back to placeholder for empty content', () => {
+    const tm = makeUserTm({ content: '' })
+    const row = buildAbandonedRow(tm)
+    const content = row.message.content as string
+    expect(content).toContain('"(empty prompt)"')
+  })
+
+  test('extracts last text block from content-block-array content', () => {
+    const tm = makeUserTm({
+      content: [
+        { type: 'text', text: 'first' },
+        { type: 'text', text: 'second' },
+      ],
+    })
+    const row = buildAbandonedRow(tm)
+    const content = row.message.content as string
+    // Mirror UserMessageOption's "last text block" rule
+    expect(content).toContain('"second"')
   })
 })
 
