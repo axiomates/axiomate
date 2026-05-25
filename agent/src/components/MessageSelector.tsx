@@ -267,6 +267,15 @@ export function MessageSelector({
           leafUuids: loaded.leafUuids,
           headChainUuids,
           headLeafUuid: head?.uuid,
+          // Each rewind operation logs a "fromLeafUuid" — the tip the
+          // user rewound away from. Treat those as abandoned-branch
+          // anchors even if a later rewind covered them with new
+          // children (so they're no longer in the physical leafUuids
+          // set). Mirrors how file rewind keeps every pre-rewind
+          // anchor in the picker, including ones that were themselves
+          // later rewound past — the operation is the anchor, not
+          // whether the JSONL chain still ends there.
+          extraLeafUuids: loaded.rewindMarkerFromLeaves,
         })
         setAbandonedChains(chains)
         logForDebugging(

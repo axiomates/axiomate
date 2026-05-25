@@ -137,11 +137,33 @@ export function findAbandonedLeafChains(args: {
   headChainUuids: Set<UUID>
   /** UUID the current head record / heuristic resolved to; excluded from results. */
   headLeafUuid: UUID | undefined
+  /**
+   * Extra UUIDs to consider as abandoned-leaf candidates beyond the
+   * physical leafUuids set. Each rewind-marker's `fromLeafUuid`
+   * belongs here — when the user rewinds away from a tip, that tip
+   * becomes part of an abandoned branch even if a later turn made
+   * something downstream of it the new physical leaf (so it no longer
+   * appears in the no-children-anywhere `leafUuids` set).
+   */
+  extraLeafUuids?: Set<UUID>
 }): AbandonedChain[] {
-  const { messages, leafUuids, headChainUuids, headLeafUuid } = args
+  const { messages, leafUuids, headChainUuids, headLeafUuid, extraLeafUuids } = args
   const out: AbandonedChain[] = []
 
-  for (const leafUuid of leafUuids) {
+  // Union of physical leaves and rewind-marker abandonment markers.
+  // Dedup via Set keeps the iteration order deterministic enough.
+  const candidates = new Set<UUID>(leafUuids)
+  if (extraLeafUuids) {
+    for (const uuid of extraLeafUuids) candidates.add(uuid)
+  }
+
+  // Also dedup by previewUserMessage uuid — multiple candidates whose
+  // chain walk lands on the same user prompt should produce only one
+  // row (e.g., a leaf and the rewind-marker fromLeafUuid pointing at
+  // the same abandoned branch shouldn't double-render).
+  const seenPreviewUuids = new Set<UUID>()
+
+  for (const leafUuid of candidates) {
     if (leafUuid === headLeafUuid) continue
     if (headChainUuids.has(leafUuid)) continue
     const leaf = messages.get(leafUuid)
@@ -184,6 +206,8 @@ export function findAbandonedLeafChains(args: {
       return undefined
     })()
     if (!previewUserMessage) continue
+    if (seenPreviewUuids.has(previewUserMessage.uuid)) continue
+    seenPreviewUuids.add(previewUserMessage.uuid)
     out.push({
       leafUuid,
       leafTimestamp: leaf.timestamp,

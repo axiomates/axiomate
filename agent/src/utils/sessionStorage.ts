@@ -3238,6 +3238,17 @@ export async function loadTranscriptFile(
    * entries are discarded.
    */
   latestRewindMarker: ConversationRewindMarker | undefined
+  /**
+   * Union of all rewind-marker fromLeafUuid values seen in the JSONL.
+   * Used by the picker to surface abandoned branches whose physical
+   * leaves got "covered up" by later turns — once a uuid was
+   * rewound away from, it becomes part of an abandoned branch even
+   * if subsequent activity made some other uuid downstream of it
+   * the new physical tip. Each fromLeafUuid is a "this was rewound
+   * away from" anchor; abandoned-chain detection should treat them
+   * as additional leaf candidates.
+   */
+  rewindMarkerFromLeaves: Set<UUID>
 }> {
   const messages = new Map<UUID, TranscriptMessage>()
   const summaries = new Map<UUID, string>()
@@ -3256,6 +3267,13 @@ export async function loadTranscriptFile(
   // Latest rewind marker, latest-timestamp wins. Used to drive the
   // ephemeral "↶ rewound from..." hint in the REPL on resume.
   let latestRewindMarker: ConversationRewindMarker | undefined
+  // All rewind marker fromLeafUuid values — accumulated as we walk
+  // through every entry in the JSONL. The picker uses this Set to
+  // surface abandoned branches that have been "covered" by later
+  // activity (a leaf gets a new child in some downstream rewind, so
+  // it's no longer a physical leaf, but its conversation branch is
+  // still semantically abandoned and should appear in the picker).
+  const rewindMarkerFromLeaves = new Set<UUID>()
   const modes = new Map<UUID, string>()
   const worktreeStates = new Map<UUID, PersistedWorktreeSession | null>()
   const fileHistorySnapshots = new Map<UUID, FileHistorySnapshotMessage>()
@@ -3358,6 +3376,7 @@ export async function loadTranscriptFile(
           ) {
             latestRewindMarker = entry
           }
+          if (entry.fromLeafUuid) rewindMarkerFromLeaves.add(entry.fromLeafUuid)
         } else if (entry.type === 'custom-title' && entry.sessionId) {
           customTitles.set(entry.sessionId, entry.customTitle)
         } else if (entry.type === 'tag' && entry.sessionId) {
@@ -3440,6 +3459,7 @@ export async function loadTranscriptFile(
         ) {
           latestRewindMarker = entry
         }
+        if (entry.fromLeafUuid) rewindMarkerFromLeaves.add(entry.fromLeafUuid)
       } else if (entry.type === 'custom-title' && entry.sessionId) {
         customTitles.set(entry.sessionId, entry.customTitle)
       } else if (entry.type === 'tag' && entry.sessionId) {
@@ -3593,6 +3613,7 @@ export async function loadTranscriptFile(
     leafUuids,
     conversationHead,
     latestRewindMarker,
+    rewindMarkerFromLeaves,
   }
 }
 
