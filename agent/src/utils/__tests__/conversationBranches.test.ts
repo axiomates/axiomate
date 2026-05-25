@@ -216,6 +216,45 @@ describe('findAbandonedLeafChains', () => {
     expect(result[0]!.chain[0]!.uuid).toBe(abUser.uuid)
   })
 
+  test('previewUserMessage is the user prompt, not the AI reply, when leaf is assistant', () => {
+    // The natural shape of an abandoned chain after a rewind: the user
+    // sent a prompt, AI replied, and the user rewound — leaf is the AI
+    // reply (assistant), but the row should preview the user's prompt.
+    const m1 = makeUserTm({ timestamp: '2026-05-25T10:00:00Z', content: 'shared' })
+    const cur = makeUserTm({ parentUuid: m1.uuid, timestamp: '2026-05-25T11:00:00Z', content: 'current' })
+    const abPrompt = makeUserTm({
+      parentUuid: m1.uuid,
+      timestamp: '2026-05-25T10:30:00Z',
+      content: 'tell me a joke',
+    })
+    const abReply = {
+      ...makeUserTm({
+        parentUuid: abPrompt.uuid,
+        timestamp: '2026-05-25T10:31:00Z',
+      }),
+      type: 'assistant',
+    } as unknown as TranscriptMessage
+    const messages = new Map<UUID, TranscriptMessage>([
+      [m1.uuid, m1],
+      [cur.uuid, cur],
+      [abPrompt.uuid, abPrompt],
+      [abReply.uuid, abReply],
+    ])
+    const leafUuids = new Set<UUID>([cur.uuid, abReply.uuid])
+    const headChainUuids = buildHeadChainUuids(messages, cur.uuid)
+    const result = findAbandonedLeafChains({
+      messages,
+      leafUuids,
+      headChainUuids,
+      headLeafUuid: cur.uuid,
+    })
+    expect(result.length).toBe(1)
+    // Leaf was the AI reply, preview should be the user's prompt.
+    expect(result[0]!.leafUuid).toBe(abReply.uuid)
+    expect(result[0]!.previewUserMessage.uuid).toBe(abPrompt.uuid)
+    expect(result[0]!.previewUserMessage.type).toBe('user')
+  })
+
   test('handles missing parent gracefully (orphan leaf)', () => {
     // Abandoned leaf whose parent is unknown — walk should stop, not crash.
     const m1 = makeUserTm({ timestamp: '2026-05-25T10:00:00Z' })

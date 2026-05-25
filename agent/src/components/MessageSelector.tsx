@@ -438,7 +438,7 @@ export function MessageSelector({
     // are reachable after switch via the picker re-mount on the
     // restored chain. Mirrors how file tab surfaces one ↶ row per
     // orphan anchor (not one row per intermediate snapshot).
-    return abandonedChains.map(c => buildAbandonedRow(c.leafTranscriptMessage))
+    return abandonedChains.map(c => buildAbandonedRow(c.previewUserMessage))
   }, [activeTab, abandonedChains])
 
   // Diagnostic: tracks state.snapshots / messages / syntheticAnchors
@@ -486,9 +486,12 @@ export function MessageSelector({
     // Abandoned-row uuids aren't in `anchors` (no git hash backing them),
     // but they have their leaf timestamp in abandonedChains. Feed both
     // sources into tsByUuid so the chronological merge below sorts
-    // abandoned ↶ rows next to in-chain rows correctly.
+    // abandoned ↶ rows next to in-chain rows correctly. Note: the row
+    // uuid is the previewUserMessage uuid (so the rewind handler can
+    // resolve back to the user's prompt), not the leaf uuid — match the
+    // tsByUuid key to that.
     for (const c of abandonedChains) {
-      tsByUuid.set(c.leafUuid, snapshotTimeMs(c.leafTimestamp))
+      tsByUuid.set(c.previewUserMessage.uuid, snapshotTimeMs(c.leafTimestamp))
     }
     let lastTs = 0
     const realRowsWithTs = visibleSelectable.map(m => {
@@ -648,8 +651,28 @@ export function MessageSelector({
   // what disambiguates them.
   const abandonedUuids = useMemo(() => {
     const s = new Set<UUID>()
-    for (const c of abandonedChains) s.add(c.leafUuid)
+    for (const c of abandonedChains) s.add(c.previewUserMessage.uuid)
     return s
+  }, [abandonedChains])
+
+  // Map abandoned-row uuid → the real UserMessage (built from the
+  // previewUserMessage TranscriptMessage). The synthetic row's content
+  // is a baked ↶ label, not the user's actual prompt; passing that to
+  // onRestoreMessage would feed the label into textForResubmit and
+  // populate the input box with `↶ Before "..."` text. We need to
+  // hand handlers the REAL message for downstream input-restoration
+  // and chain-walk routing.
+  const abandonedRealMessageByUuid = useMemo(() => {
+    const m = new Map<UUID, UserMessage>()
+    for (const c of abandonedChains) {
+      // previewUserMessage is a TranscriptMessage; transcriptToUserMessage
+      // (re-exported via conversationBranches) would produce a UserMessage
+      // shaped with the raw user content. But chain[] already has the
+      // adapted forms — find the matching one by uuid.
+      const real = c.chain.find(m => m.uuid === c.previewUserMessage.uuid)
+      if (real) m.set(c.previewUserMessage.uuid, real)
+    }
+    return m
   }, [abandonedChains])
 
   function getRestoreOptions(
@@ -863,7 +886,14 @@ export function MessageSelector({
 
     if (option === 'conversation') {
       try {
-        await onRestoreMessage(messageToRestore, 'conversation-only')
+        // For abandoned rows, dereference the synthetic ↶ pointer to the
+        // real user UserMessage (whose .message.content is the user's
+        // original prompt, not the baked label). textForResubmit downstream
+        // reads .message.content for input restoration — must be the real
+        // prompt or the input box gets `↶ Before "..."` text.
+        const target = abandonedRealMessageByUuid.get(messageToRestore.uuid)
+          ?? messageToRestore
+        await onRestoreMessage(target, 'conversation-only')
       } catch (error) {
         conversationError = error as Error
         logError(conversationError)

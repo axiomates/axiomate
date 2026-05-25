@@ -106,15 +106,18 @@ export function buildAbandonedRow(tm: TranscriptMessage): UserMessage {
  * those are the picker's selectable units.
  */
 export type AbandonedChain = {
-  /** UUID of the abandoned leaf message (newest in the chain). */
+  /** UUID of the abandoned leaf message (newest in the chain — could be
+   *  assistant or user). */
   leafUuid: UUID
   /** Timestamp of the abandoned leaf — used for chronological merge. */
   leafTimestamp: string
-  /** Original TranscriptMessage for the leaf — picker uses this when
-   *  baking the abandoned-row label, since UserMessage's content has
-   *  already been canonicalized (empty → NO_CONTENT_MESSAGE) and the
-   *  raw user-typed text would be lost. */
-  leafTranscriptMessage: TranscriptMessage
+  /** The newest USER TranscriptMessage in the abandoned branch. This is
+   *  what the picker row should preview AND what should be the rewind
+   *  target — "redo this prompt". The leaf itself may be an assistant
+   *  reply that came after this user message, but conversation rewind
+   *  is anchored on user prompts (the user wants to redo what they
+   *  typed, not what the AI said). */
+  previewUserMessage: TranscriptMessage
   /** User messages in the abandoned branch, oldest → newest. */
   chain: UserMessage[]
 }
@@ -161,10 +164,30 @@ export function findAbandonedLeafChains(args: {
     }
 
     if (chain.length === 0) continue
+    // The newest user message in the abandoned chain — that's what
+    // the picker should preview ("redo this prompt") AND what the
+    // rewind handler should target. Leaf can be an assistant reply
+    // that came after the user's last prompt; using it for preview
+    // would show the AI's text instead of the user's.
+    const previewUserMessage = (() => {
+      // Walk the chain back from the leaf to find the most recent
+      // user TranscriptMessage. chain[] is oldest→newest UserMessages
+      // but we want the original TranscriptMessage (raw content,
+      // unique uuid for handler routing). Walk parentUuid from leaf
+      // until we find a user-typed message.
+      let walker: TranscriptMessage | undefined = leaf
+      while (walker) {
+        if (walker.type === 'user') return walker
+        walker = walker.parentUuid ? messages.get(walker.parentUuid) : undefined
+        if (walker && headChainUuids.has(walker.uuid)) break
+      }
+      return undefined
+    })()
+    if (!previewUserMessage) continue
     out.push({
       leafUuid,
       leafTimestamp: leaf.timestamp,
-      leafTranscriptMessage: leaf,
+      previewUserMessage,
       chain,
     })
   }
