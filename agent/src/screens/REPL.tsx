@@ -2482,6 +2482,37 @@ export function REPL({
         // controller makes ctrl+c fire onCancel() (aborting nothing) instead of
         // propagating to the double-press exit flow.
         setAbortController(null);
+
+        // Advance the persisted conversation head to the chain tail
+        // (last message in messagesRef) when the turn completed
+        // normally — i.e. wasn't user-cancelled, since auto-restore
+        // below will undo the turn in that case and we must not pin
+        // the head to a turn that's about to be undone.
+        //
+        // Without this advance, the head record stays pinned to the
+        // last rewind / compact target and two regressions surface:
+        //   - Picker (current) tag drifts: it stays on the rewind row
+        //     even after several new turns. Users hit this any time
+        //     they rewind, then keep chatting.
+        //   - /resume + --continue land on the rewind target instead
+        //     of the latest turn, forcing manual replay.
+        //
+        // Same uuid semantics as the rewind path (chain TAIL, not the
+        // user msg uuid): pickConversationHead can resolve from any
+        // node, but resume's buildConversationChain walks parentUuid
+        // backward — pointing at the user msg would lose the ai reply
+        // for that turn. Chain tail is the assistant frame at the end
+        // of the turn, so the walk includes everything we want.
+        if (!abortController.signal.aborted && messagesRef.current.length > 0) {
+          const tail = messagesRef.current[messagesRef.current.length - 1];
+          if (tail?.uuid) {
+            try {
+              recordConversationHead(getSessionId(), tail.uuid as UUID);
+            } catch (e) {
+              logError(e as Error);
+            }
+          }
+        }
       }
 
       // Auto-restore: if the user interrupted before any meaningful response
