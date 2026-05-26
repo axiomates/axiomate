@@ -620,6 +620,14 @@ export type GlobalConfig = {
    */
   goalsParseFailureLimit?: number
   /**
+   * When true (default), the continuation prompt fed back into the
+   * conversation includes the judge's reason from the last verdict —
+   * gives the AI a chance to fix specific gaps instead of guessing
+   * "what was missing?". Set to false for hermes-parity behavior
+   * (continuation contains only the original goal text).
+   */
+  goalsContinuationIncludeReason?: boolean
+  /**
    * One-shot flag — set after `/goal` set surfaces the "judge will use
    * main model" warning the first time. Subsequent `/goal` calls stay
    * silent so the warning isn't a daily annoyance.

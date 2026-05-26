@@ -31,6 +31,31 @@ describe('renderContinuationPrompt', () => {
     })
     expect(out).not.toContain('Additional criteria')
   })
+
+  it('includes judge reason when lastReason is provided', () => {
+    const out = renderContinuationPrompt({
+      goal: 'g',
+      lastReason: 'response missing fib.js contents',
+    })
+    expect(out).toContain(
+      "Judge's note on your last turn: response missing fib.js contents",
+    )
+  })
+
+  it('omits judge note when lastReason is undefined (hermes-parity)', () => {
+    const out = renderContinuationPrompt({ goal: 'g' })
+    expect(out).not.toContain("Judge's note")
+  })
+
+  it('includes judge note alongside subgoals', () => {
+    const out = renderContinuationPrompt({
+      goal: 'g',
+      subgoalsBlock: '- 1. alpha',
+      lastReason: 'subgoal 1 still pending',
+    })
+    expect(out).toContain('Additional criteria')
+    expect(out).toContain("Judge's note on your last turn: subgoal 1 still pending")
+  })
 })
 
 describe('isContinuationPrompt', () => {

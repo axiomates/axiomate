@@ -395,9 +395,16 @@ export class GoalManager {
   nextContinuationPrompt(): string | null {
     if (!this._state || this._state.status !== 'active') return null
     const subgoalsBlock = renderSubgoalsBlock(this._state)
+    // Default true — pass judge's last reason to the agent so it can
+    // break out of "I already did that / judge didn't see it" loops.
+    // Users who want strict hermes parity (continuation = goal only)
+    // set goalsContinuationIncludeReason=false in ~/.axiomate.json.
+    const includeReason =
+      getGlobalConfig().goalsContinuationIncludeReason !== false
     return renderContinuationPrompt({
       goal: this._state.goal,
       subgoalsBlock: subgoalsBlock.length > 0 ? subgoalsBlock : undefined,
+      lastReason: includeReason ? this._state.lastReason : undefined,
     })
   }
 }

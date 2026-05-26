@@ -600,6 +600,26 @@ export function Config({
       },
     },
     {
+      id: 'goalsContinuationIncludeReason',
+      label: 'Goal: tell AI why judge said continue',
+      value: globalConfig.goalsContinuationIncludeReason !== false,
+      type: 'boolean' as const,
+      onChange(value: boolean) {
+        saveGlobalConfig(current => ({
+          ...current,
+          goalsContinuationIncludeReason: value,
+        }))
+        setGlobalConfig({
+          ...getGlobalConfig(),
+          goalsContinuationIncludeReason: value,
+        })
+        setChanges(prev => ({
+          ...prev,
+          goalsContinuationIncludeReason: String(value),
+        }))
+      },
+    },
+    {
       id: 'verbose',
       label: 'Verbose output',
       value: verbose,
