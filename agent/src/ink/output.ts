@@ -475,6 +475,16 @@ export default class Output {
 
           const swBits = screen.softWrap
           let offsetY = 0
+          // Track the bounding rect of cells we actually wrote so we
+          // can mark damage. Without this, a Text node that shrinks
+          // between frames (e.g. footer pill drops " (working)" when
+          // a goal pauses) writes fewer cells than before; the
+          // diff loop in screen.ts:diffEach uses screen.damage to
+          // decide which cells to inspect, and cells the prev frame
+          // wrote but this frame didn't get skipped — leaving stale
+          // glyphs visible (the "ghost pill" symptom).
+          let writeMaxX = x
+          let writeMaxY = y
 
           for (const line of lines) {
             const lineY = y + offsetY
@@ -492,6 +502,8 @@ export default class Output {
               this.charCache,
             )
             writeCells += contentEnd - x
+            if (contentEnd > writeMaxX) writeMaxX = contentEnd
+            writeMaxY = lineY + 1
             // See Screen.softWrap docstring for the encoding. contentEnd
             // from writeLineToScreen is tab-expansion-aware, unlike
             // x+stringWidth(line) which treats tabs as width 0.
@@ -501,6 +513,24 @@ export default class Output {
               prevContentEnd = contentEnd
             }
             offsetY++
+          }
+
+          // Union the write region into screen.damage so diffEach
+          // checks every cell we touched plus any cell the previous
+          // frame may have written further to the right. Bumping the
+          // damage rect's width to span [x, screenWidth) on each row
+          // is the safest choice: it costs a few extra cell compares
+          // in diffEach but guarantees no shrink-ghost is missed.
+          if (writeMaxY > y) {
+            const rect: Rectangle = {
+              x,
+              y,
+              width: screenWidth - x,
+              height: writeMaxY - y,
+            }
+            screen.damage = screen.damage
+              ? unionRect(screen.damage, rect)
+              : rect
           }
           continue
         }
