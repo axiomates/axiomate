@@ -1,0 +1,925 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Checkpoints — Axiomate File Snapshot System</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #eef2f3;
+      --panel: #ffffff;
+      --panel-soft: #f7fafb;
+      --border: #d5dde0;
+      --text: #162126;
+      --muted: #5b6b73;
+      --accent: #0f766e;
+      --accent-soft: #dff5f2;
+      --warn: #92400e;
+      --warn-soft: #fef3c7;
+      --danger: #991b1b;
+      --danger-soft: #fee2e2;
+      --good: #166534;
+      --good-soft: #dcfce7;
+      --code: #f3f6f7;
+      --shadow: 0 10px 30px rgba(18, 31, 38, 0.08);
+      --radius: 18px;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font: 15px/1.65 "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at top left, #d8f0ea 0, rgba(216, 240, 234, 0) 28%),
+        radial-gradient(circle at top right, #f6e9c9 0, rgba(246, 233, 201, 0) 24%),
+        linear-gradient(180deg, #edf3f3 0%, #f6f8f8 100%);
+      min-height: 100vh;
+    }
+    .wrap {
+      width: min(1100px, calc(100vw - 32px));
+      margin: 24px auto 48px;
+      display: grid;
+      gap: 20px;
+    }
+    .hero {
+      background: linear-gradient(135deg, #12343b 0%, #204e56 56%, #2c6567 100%);
+      color: #f6fbfb;
+      border-radius: 28px;
+      padding: 30px 34px;
+      box-shadow: var(--shadow);
+      position: relative;
+      overflow: hidden;
+    }
+    .hero::after {
+      content: "";
+      position: absolute;
+      inset: auto -80px -80px auto;
+      width: 260px;
+      height: 260px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.06);
+      filter: blur(2px);
+    }
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(255, 255, 255, 0.12);
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      border-radius: 999px;
+      padding: 6px 11px;
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    h1, h2, h3, h4 { margin: 0; line-height: 1.25; }
+    h1 { margin-top: 14px; font-size: clamp(28px, 4vw, 38px); max-width: 880px; }
+    .lede { margin-top: 12px; font-size: 16px; max-width: 820px; opacity: 0.92; }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 22px 26px;
+      box-shadow: 0 1px 0 rgba(255,255,255,0.5) inset, 0 6px 18px rgba(18, 31, 38, 0.04);
+    }
+    .panel h2 {
+      font-size: 22px;
+      color: var(--accent);
+      letter-spacing: -0.01em;
+    }
+    .panel h2 .num {
+      display: inline-block;
+      width: 28px; height: 28px;
+      line-height: 28px;
+      border-radius: 999px;
+      background: var(--accent-soft);
+      color: var(--accent);
+      text-align: center;
+      font-size: 14px;
+      margin-right: 10px;
+      vertical-align: 2px;
+    }
+    .panel h3 { margin-top: 18px; font-size: 16px; }
+    .panel h3.tab-section {
+      margin-top: 28px;
+      margin-bottom: 16px;
+      font-size: 22px;
+      color: var(--accent);
+      letter-spacing: -0.01em;
+    }
+    p { margin: 10px 0; }
+    code, kbd, pre {
+      font-family: "JetBrains Mono", "Fira Code", "Consolas", monospace;
+      font-size: 13px;
+    }
+    code {
+      background: var(--code);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 1px 6px;
+    }
+    .hero code {
+      color: #0f1c20;
+      background: rgba(255, 255, 255, 0.94);
+      border-color: rgba(255, 255, 255, 0.72);
+      font-weight: 600;
+    }
+    pre {
+      background: #0f1c20;
+      color: #d8e9e9;
+      border-radius: 12px;
+      padding: 14px 16px;
+      overflow-x: auto;
+      margin: 10px 0;
+      line-height: 1.55;
+    }
+    pre code {
+      background: transparent;
+      border: 0;
+      padding: 0;
+      color: inherit;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 12px 0;
+      font-size: 14px;
+    }
+    th, td {
+      text-align: left;
+      padding: 9px 10px;
+      border-bottom: 1px solid var(--border);
+      vertical-align: top;
+    }
+    th {
+      background: var(--panel-soft);
+      font-weight: 600;
+      color: var(--muted);
+      font-size: 12px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+    .tag {
+      display: inline-block;
+      padding: 2px 9px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .tag.auto { background: var(--accent-soft); color: var(--accent); }
+    .tag.user { background: var(--warn-soft); color: var(--warn); }
+    .tag.ok { background: var(--good-soft); color: var(--good); }
+    .tag.warn { background: var(--warn-soft); color: var(--warn); }
+    .tag.bad { background: var(--danger-soft); color: var(--danger); }
+    .toc {
+      display: flex; flex-wrap: wrap; gap: 8px;
+      margin-top: 16px;
+    }
+    .toc a {
+      color: var(--accent);
+      text-decoration: none;
+      background: var(--accent-soft);
+      padding: 6px 12px;
+      border-radius: 999px;
+      font-size: 13px;
+      border: 1px solid rgba(15, 118, 110, 0.18);
+    }
+    .toc a:hover { background: #c4ede6; }
+    .callout {
+      border-left: 4px solid var(--accent);
+      background: var(--accent-soft);
+      border-radius: 10px;
+      padding: 12px 14px;
+      margin: 14px 0;
+    }
+    .callout.warn { border-left-color: #d97706; background: var(--warn-soft); }
+    .callout.warn strong { color: var(--warn); }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 14px;
+      margin-top: 12px;
+    }
+    .card {
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 14px 16px;
+      background: var(--panel-soft);
+    }
+    .card h4 { font-size: 14px; color: var(--accent); margin-bottom: 6px; }
+    .card p { margin: 4px 0 0; font-size: 13px; color: var(--muted); }
+    footer {
+      text-align: center;
+      color: var(--muted);
+      font-size: 12px;
+      padding: 16px 0;
+    }
+  </style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="hero">
+    <span class="eyebrow">Axiomate · User Docs</span>
+    <h1>Checkpoints — File Snapshots &amp; Conversation Replay</h1>
+    <p class="lede">
+      Axiomate's <code>/rewind</code> operates on two independent axes. <strong>File axis</strong>:
+      before each file-modifying action, a snapshot of the working directory is taken in the background
+      and stored in a separate git shadow repo; you can restore the disk to any historical turn.
+      <strong>Conversation axis</strong>: built on top of JSONL session logs, lets you jump back
+      to any Q/A pair, with the input box pre-filled so you can "redo" that turn. The two axes are
+      100% decoupled -- files don't touch conversations, conversations don't touch files. The entire
+      system is nearly transparent to you -- you barely notice it day to day, but it has your back
+      when it matters.
+    </p>
+    <div class="toc">
+      <a href="#how">How It Works</a>
+      <a href="#auto">Automatic Behavior</a>
+      <a href="#commands">User Commands</a>
+      <a href="#config">Settings &amp; Configuration</a>
+      <a href="#failure">Failure Modes</a>
+      <a href="#faq">FAQ</a>
+    </div>
+  </header>
+
+  <section id="how" class="panel">
+    <h2><span class="num">1</span>How It Works</h2>
+
+    <p>
+      Checkpoints is an independent git repo living at
+      <code>~/.axiomate/checkpoints/store/</code>, <strong>completely separate from your
+      project's own git repository</strong>. Before Axiomate modifies any files, it writes a
+      commit in this shadow repo to record the current state.
+    </p>
+
+    <h3>Key Design</h3>
+    <div class="grid">
+      <div class="card">
+        <h4>Shadow Repo</h4>
+        <p>Doesn't pollute your project's own <code>.git/</code>. Your git log and git status will never see these snapshots.</p>
+      </div>
+      <div class="card">
+        <h4>One Ref Per Project</h4>
+        <p>Different working directories write to different <code>refs/axiomate/&lt;hash&gt;</code>, mutually isolated.</p>
+      </div>
+      <div class="card">
+        <h4>Structured Commit Subject</h4>
+        <p>Format <code>axiomate:&lt;messageId&gt;:&lt;label&gt;</code>, traceable back to the conversation turn.</p>
+      </div>
+      <div class="card">
+        <h4>Respects .gitignore</h4>
+        <p>When traversing the working directory, ignored directories like <code>node_modules/</code> are not included in snapshots.</p>
+      </div>
+    </div>
+
+    <h3>Advantages Over Similar Systems</h3>
+    <p>
+      Axiomate's file checkpointing draws from hermes-agent's pre-tool workdir snapshot model --
+      a battle-tested foundation. On top of that, axiomate does several things hermes doesn't:
+    </p>
+    <div class="grid">
+      <div class="card">
+        <h4>Dual-Axis Rewind: File + Conversation</h4>
+        <p>
+          Hermes only does file rollback. Axiomate adds an independent <strong>conversation replay
+          axis</strong> -- press <kbd>Tab</kbd> in the picker to switch to the Conversation tab, jump
+          back to any Q/A pair, and the input box is automatically pre-filled with the next prompt
+          so you can redo it. File and Conversation are fully decoupled and never interfere with
+          each other.
+        </p>
+      </div>
+      <div class="card">
+        <h4>Persistent Conversation Rewind</h4>
+        <p>
+          Conversation rewind head state is written into the JSONL (a <code>type:"head"</code>
+          entry). <code>/exit</code> and then resume the same session via the UI -- your position
+          matches where you rewound to, unlike traditional in-memory truncation that's lost on exit.
+        </p>
+      </div>
+      <div class="card">
+        <h4>Future Nodes Remain Visible</h4>
+        <p>
+          After rewinding, turns newer than head still appear in the picker rendered in dim
+          gray (the data is still in the JSONL, not deleted), ready to be selected again at any time.
+          "Rewind, then redo" is axiomate's core mental model.
+        </p>
+      </div>
+      <div class="card">
+        <h4>Dual-Cursor Design</h4>
+        <p>
+          Selection cursor (<code>▶</code>) and head cursor
+          (<code>(current)</code> tag) are conceptually separate -- your visual cursor is not the
+          same as session state. More explicit than merged "cursor = state" models.
+        </p>
+      </div>
+      <div class="card">
+        <h4>Longer Default Retention</h4>
+        <p>
+          60-day default retention (hermes uses 7 days), tuned for axiomate users' longer
+          project cycles: come back after a vacation or cross-sprint switch and still rewind
+          to weeks ago.
+        </p>
+      </div>
+      <div class="card">
+        <h4>Full <code>/checkpoints</code> CLI</h4>
+        <p>
+          Beyond <code>list</code>, axiomate provides
+          <code>status</code> / <code>prune</code> / <code>clear</code>
+          subcommands plus a command-line version. The <code>--keep-orphans</code> safety
+          valve prevents snapshot loss when an external drive is disconnected.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <section id="auto" class="panel">
+    <h2><span class="num">2</span>Automatic Behavior <span class="tag auto">No Setup Needed</span></h2>
+
+    <h3>When Snapshots Are Taken Automatically</h3>
+    <p>
+      Before every model call to a file-modifying tool (<code>Write</code> / <code>Edit</code> /
+      <code>NotebookEdit</code>), Axiomate writes a commit in the shadow repo. All of this is
+      enabled by default with no configuration required.
+    </p>
+
+    <h3>When Snapshots Are Skipped Automatically</h3>
+    <table>
+      <tr><th>Condition</th><th>Behavior</th></tr>
+      <tr><td>Current directory has more than 200,000 files</td><td>Skip this snapshot (too expensive)</td></tr>
+      <tr><td>A single file exceeds 50 MB</td><td>That file is excluded from the index; other files are snapshotted normally</td></tr>
+      <tr><td>Current directory is <code>/</code> / <code>~</code> / drive root</td><td>Entire snapshot is refused (safety guard)</td></tr>
+      <tr><td>No changes since last snapshot</td><td>No empty commit is written</td></tr>
+      <tr><td>git is not installed on the system</td><td>The entire checkpoint subsystem becomes a no-op, no error thrown</td></tr>
+    </table>
+
+    <h3>When Automatic Cleanup Runs</h3>
+    <p>
+      Axiomate runs a background prune when you've been <strong>idle for >= 1 minute and the
+      process has been running for at least 10 minutes</strong>. The cleanup covers:
+    </p>
+    <ul>
+      <li><strong>Orphans</strong>: project refs whose working directories have been manually
+        deleted from disk are removed.</li>
+      <li><strong>Stale</strong>: project refs untouched for more than 60 days.</li>
+      <li><strong>Size-cap</strong>: when all snapshots exceed 5 GB total, oldest ones are
+        trimmed first.</li>
+      <li><strong>Session anchor (keep-ref)</strong>: if a ref about to be deleted still
+        has commits referenced by sessions within the last 28 days, it's anchored into
+        <code>refs/axiomate/_keep/</code> and preserved until the corresponding session also expires.</li>
+    </ul>
+    <p>
+      Cleanup runs at most once every 24 hours (throttled by a <code>.last_prune</code>
+      marker) and won't repeat. All prune operations are fail-soft -- errors are logged
+      but never surfaced.
+    </p>
+  </section>
+
+  <section id="commands" class="panel">
+    <h2><span class="num">3</span>User Commands <span class="tag user">Manual Invocation</span></h2>
+
+    <h3><code>/rewind</code> — Go Back to Before a Turn</h3>
+    <p>
+      Type <code>/rewind</code> in the REPL to open an interactive picker listing turns
+      from this session along with historical snapshots. Each row's label reads
+      <code>Before "&lt;prompt&gt;"</code> -- selecting a row means<strong> restoring state
+      to right before that turn ran</strong>.
+    </p>
+
+    <h4>Two Tabs: File vs Conversation</h4>
+    <p>
+      The picker opens on the <strong>File</strong> tab by default. Press <kbd>Tab</kbd> to switch to
+      the <strong>Conversation</strong> tab. The two tabs are <strong>independent subsystems</strong>:
+      different list sources, different row semantics, different chooser actions, different
+      persistence. Each tab gets its own section below.
+    </p>
+
+    <hr>
+    <h3 class="tab-section">File Tab — File Rollback</h3>
+
+    <h4>Mental Model: Each Anchor Is a Pre-Tool Snapshot</h4>
+    <p>
+      Axiomate takes snapshots <strong>before</strong> each tool call (same as hermes-agent).
+      So an anchor's tree describes "what the disk looked like before that turn ran."
+      Picker rows explicitly say <code>Before "&lt;prompt&gt;"</code> to avoid
+      mistaking an anchor for a "git log commit." Stats on the right side of each row
+      (<code>file +X -Y</code>) describe <em>what changed on disk between the previous anchor
+      and this anchor</em>, matching git log's commit-vs-parent mental model. Data comes
+      from the shadow repo (<code>~/.axiomate/checkpoints/store/</code>), independent
+      of JSONL session logs.
+    </p>
+
+    <p>
+      Only <strong>turns that affected disk files</strong> are shown (turns where the AI called
+      Edit / Write / NotebookEdit / modified files via Bash). Pure chat or read-only Q&amp;A
+      turns do not appear.
+    </p>
+
+    <h4>Sorting: Newest-First</h4>
+    <p>
+      The picker, like <code>/checkpoints list</code>, shows <strong>newest at the top</strong>:
+    </p>
+    <pre><code>(current)
+↶ Rewind to 041da07 [71c90d4]    test.txt +1 -1   just now
+↶ Rewind to before "v2 to v3" [041da07]   test.txt +1 -1   just now
+Before v2 to v3                test.txt +1 -1   2m ago
+Before v1 to v2                test.txt +1 -1   3m ago
+Before create test.txt with v1    test.txt +1 -0   4m ago</code></pre>
+    <p>
+      The default cursor lands on the second row (the nearest rewindable target).
+      <code>(current)</code> is not selectable -- it's a layout anchor indicating "now."
+      <kbd>g</kbd> jumps to the first selectable row (skipping <code>(current)</code>),
+      <kbd>G</kbd> jumps to the end. <kbd>j</kbd> / <kbd>k</kbd> move up and down.
+    </p>
+
+    <h4>Chooser: What You Can Do After Selecting a Row</h4>
+    <ul>
+      <li><strong>Has diff</strong>: <code>Restore file</code> /
+        <code>Never mind</code>. Restores the disk to before this anchor's state.
+        Chat is unaffected.</li>
+      <li><strong>No diff</strong>: only <code>Never mind</code>
+        (anchor.tree matches current disk, so restore would be a no-op).</li>
+    </ul>
+    <h4>Pre-Rewind Safety Net</h4>
+    <p>
+      Before every <em>Restore file</em> action, Axiomate automatically takes a pre-rewind
+      safety-net snapshot (subject format:
+      <code>axiomate:&lt;synth-uuid&gt;:pre-rewind:&lt;hash&gt;</code>).
+      Its tree captures the disk state just before the rewind operation executes. If a rewind
+      overwrites important changes you made, just open <code>/rewind</code> again, pick that
+      <code>↶ Rewind to before "&lt;X&gt;"</code> row &rarr; Restore file, and your original
+      state comes back. Infinitely nestable: undoing a rewind itself also creates another
+      safety-net snapshot.
+    </p>
+
+    <h4>Picker Row Variants</h4>
+    <p>
+      Every ↶ row ends with a <code>[7-char short hash]</code> -- this is that anchor's
+      own git short id. Regular conversation turn rows have no hash (the user's prompt
+      itself serves as the row's identifier). All anchor-bearing rows display stats + time
+      on the right.
+    </p>
+    <ul>
+      <li><code>Before "create test.txt with v1"</code> -- anchor of a regular conversation
+        turn. In the File tab, the <code>Before</code> prefix reminds you this is a snapshot
+        from "before &lt;X&gt; ran."</li>
+      <li><code>↶ Before "&lt;prompt&gt;" [&lt;hash&gt;]</code> -- anchor of a conversation
+        turn not on the current chain. E.g., after conversation has been rewound away, the
+        file state left behind by that turn is still restorable.</li>
+      <li><code>↶ Rewind to before "&lt;target&gt;" [&lt;hash&gt;]</code> -- the
+        pre-rewind safety net from a rewind operation. Selecting it undoes that rewind.
+        The quoted text is the prompt of the turn that rewind was targeting.</li>
+      <li><code>↶ Rewind to &lt;target-hash&gt; [&lt;own-hash&gt;]</code> -- safety net
+        from a nested rewind (undoing a prior rewind operation itself).
+        The <strong>bare 7-char hash</strong> is the short id of the target it was restoring to;
+        the <strong>bracketed hash</strong> is this row's own short id. Visually,
+        bare = "who I reference," bracketed = "who I am," letting you follow hashes upward
+        to trace the entire rewind chain.</li>
+      <li><code>↶ Off-branch anchor [&lt;hash&gt;]</code> -- an anchor with no conversation
+        context (from a legacy session or an externally committed snapshot in the store).</li>
+      <li><code>(current)</code> -- current disk state placeholder, not selectable.</li>
+    </ul>
+
+    <h4>Timestamps on Each Row</h4>
+    <p>
+      The time column to the right of stats follows the same rules as
+      <code>/checkpoints list</code>:
+      <code>just now</code> (&lt;1 min) / <code>5m ago</code> (&lt;1 hour)
+      / <code>3h ago</code> (&lt;24 hours) / <code>2026-05-24 09:42</code>
+      (&ge;24 hours).</p>
+
+    <h4>What the CHANGES Column Means</h4>
+    <p>
+      Each row's stats describe <strong>what that row's turn itself wrote</strong> (not
+      the previous row). Algorithm:
+    </p>
+    <ul>
+      <li><strong>The newest row</strong>: anchor.tree vs current disk ("what the disk
+        currently looks like after the latest turn ran"). If you manually changed files
+        outside axiomate, this row's stats will reflect that -- it shows the full diff
+        from anchor.tree to current disk.</li>
+      <li><strong>All other rows</strong>: anchor.tree vs the previous (newer) anchor's
+        tree. Equivalent to "the state produced after this row's turn ran, feeding into the
+        next anchor," frozen and immutable.</li>
+      <li><code>file +X -Y</code> / <code>N files +X -Y</code> for single/multi-file
+        changes. <code>(no diff)</code> means this turn didn't change files
+        (e.g., pure chat / read-only Q&amp;A).</li>
+    </ul>
+
+    <h4>Feedback Messages</h4>
+    <p>
+      After <em>Restore file</em> completes, the transcript includes a line:
+    </p>
+    <pre><code>● File rewound to "v2 to v3". Use /rewind → "↶ Rewind" row to undo.</code></pre>
+    <p>
+      <em>Restore conversation</em> produces no feedback -- the truncated conversation
+      chain is self-evident (trimmed turns disappear from the screen, the cut point's
+      prompt returns to the input box).
+    </p>
+
+    <h4>Empty Directory Behavior</h4>
+    <p>
+      When you start Axiomate in a brand-new empty directory and let it create the first
+      file, that turn's anchor is a synthetic root snapshot (empty tree). Restoring to this
+      anchor will delete all files Axiomate created afterward.
+    </p>
+
+    <h4>Slash Commands Don't Appear in the Picker</h4>
+    <p>
+      <code>/checkpoints status</code>, <code>/help</code>, <code>/clear</code>, and
+      similar are not conversation turns -- they are tool invocations you ran in the REPL,
+      and the picker automatically filters them out. "Rewind to before
+      <code>/checkpoints status</code>" is the same state as rewinding to the real turn
+      before it.
+    </p>
+
+    <hr>
+    <h3 class="tab-section">Conversation Tab — Conversation Replay</h3>
+
+    <h4>Mental Model: Each Row = One Q/A Pair</h4>
+    <p>
+      Shows all <strong>real user prompts</strong> on the current chain. Each row = one
+      complete Q&amp;A pair (user prompt + AI response). The <code>(current)</code> tag marks
+      <strong>which pair you're standing on</strong> -- i.e., the turn that "head" points to.
+      Data comes from the JSONL session log
+      (<code>~/.axiomate/projects/.../*.jsonl</code>), independent of disk files.
+    </p>
+
+    <p>
+      Example rendering (sent hi &rarr; ok &rarr; good, no rewind yet):
+    </p>
+    <pre><code>good (current)
+ok
+hi</code></pre>
+    <p>
+      Reverse-chrono order, newest Q/A at the top. Cursor auto-lands on the
+      <code>(current)</code> row; <kbd>↑</kbd>/<kbd>↓</kbd> move up and down. <strong>No</strong>
+      <code>Before "&lt;prompt&gt;"</code> prefix like the File tab -- here the row text
+      is the prompt itself.
+    </p>
+
+    <h4>Past / Future: Future Rows Are Dimmed</h4>
+    <p>
+      Rewind moves head to an earlier turn. Turns newer than head remain
+      <strong>visible</strong> in the picker (they still exist in the JSONL), but are
+      rendered in dim gray -- a reminder that they are "future" nodes, disappeared from the
+      chat area but still selectable to redo.
+    </p>
+    <pre><code>good          ← dim gray (future)
+ok (current)  ← default color (current)
+hi            ← default color (history)</code></pre>
+    <p>
+      As long as you haven't run <code>/clear</code> or <code>/branch</code> within the
+      same session, future nodes are never lost no matter how many times you rewind.
+    </p>
+
+    <h4>Two Cursors: Selection and Head</h4>
+    <p>
+      The Conversation tab has <strong>two cursors</strong> simultaneously -- don't confuse them:
+    </p>
+    <ul>
+      <li><strong>Selection cursor</strong> (left-side <code>▶</code>) -- the visual
+        cursor you move with <kbd>↑</kbd>/<kbd>↓</kbd>, determining which row gets
+        selected when you press Enter. Auto-lands on the head row when the picker opens.</li>
+      <li><strong>Head cursor</strong> (row-end <code>(current)</code> tag) -- the
+        session's current state pointer, "which Q/A pair am I standing on." Head does not
+        move with <kbd>↑</kbd>/<kbd>↓</kbd>; it only changes position after you perform
+        <em>Restore conversation</em>.
+      </li>
+    </ul>
+    <p>
+      The two cursors can overlap: when the picker first opens, selection also sits on the
+      head row, so that row shows both <code>▶</code> and <code>(current)</code>. Move
+      with <kbd>↑</kbd>/<kbd>↓</kbd> and selection goes elsewhere while head stays on the
+      <code>(current)</code> row -- the two pieces of information are independent.
+    </p>
+
+    <h4>Rewind Semantics: Truncate to This Pair + Pre-fill the Next Prompt</h4>
+    <p>
+      Select a row <code>X</code> in the picker and press Enter; the chooser offers
+      <code>Restore conversation</code>. On execution:
+    </p>
+    <ul>
+      <li><strong>Chat area</strong>: truncated to <strong>the end of</strong> pair X
+        (including X's user prompt and AI response); turns after X disappear from the screen
+        (data remains in JSONL).</li>
+      <li><strong>Input box</strong>: automatically pre-filled with the <strong>next</strong>
+        user prompt after X -- so you can "revise this Q&amp;A" and resubmit. If X is already
+        the chain tail (no next prompt), the input box is cleared.</li>
+      <li><strong>Head record</strong>: a line is written to JSONL marking that you're now
+        standing on pair X.</li>
+    </ul>
+    <p>
+      Selecting the <code>(current)</code> row itself: no-op (you're already there, redoing
+      is meaningless). Enter does nothing; the picker stays open.
+    </p>
+
+    <h4>Persistence: <code>/exit</code> Then Resume -- Still in Place</h4>
+    <p>
+      Conversation rewind head is written to JSONL as a <code>type: "head"</code>
+      entry. <code>/exit</code> + restart + UI resume the session, and you land exactly
+      where you rewound. Open <code>/rewind</code> again and the <code>(current)</code>
+      tag is still on row X -- state is not lost.
+    </p>
+
+    <h4>What the Picker Does Not Show</h4>
+    <p>
+      The following are automatically filtered out to reduce noise:
+    </p>
+    <ul>
+      <li>tool_use / tool_result (in JSONL <code>type=user</code> but content is
+        tool execution output, not a real prompt)</li>
+      <li><code>Continue from where you left off.</code> continuation line
+        injected during resume (<code>isMeta=true</code>)</li>
+      <li>Input/output wrappers for slash commands like <code>/clear</code> /
+        <code>/help</code></li>
+      <li>Compact summary placeholders, transcript-only metadata</li>
+      <li>Pure attachment / read-only "non-prompt" messages</li>
+    </ul>
+
+
+    <hr>
+    <h3 class="tab-section">TUI Slash Commands (<code>/checkpoints</code>)</h3>
+    <p>
+      Type directly in the axiomate REPL. Subcommand list:
+    </p>
+    <table>
+      <tr><th>Command</th><th>Effect</th></tr>
+      <tr>
+        <td><code>/checkpoints</code><br><code>/checkpoints status</code><br><code>/checkpoints status N</code></td>
+        <td>Shows total shadow repo size, snapshot count and last activity time per project. Optional positional argument <code>N</code> controls max rows displayed (default 100, range 1..5000).</td>
+      </tr>
+      <tr>
+        <td><code>/checkpoints list</code><br><code>/checkpoints list N</code></td>
+        <td>Lists the current project's snapshots in reverse chronological order. Optional positional argument <code>N</code> controls max rows displayed (default 100, range 1..5000).</td>
+      </tr>
+      <tr>
+        <td><code>/checkpoints prune</code><br><code>/checkpoints prune force</code><br><code>/checkpoints prune keep-orphans</code></td>
+        <td>Runs a cleanup immediately. Default has 24h throttle; add <code>force</code> to bypass. Add <code>keep-orphans</code> to skip the orphan pass (workdirs that vanished) while stale and size-cap still run. Slash-command arguments are positional sub-words (no <code>--</code>); misspelled words (e.g., <code>frce</code>) are rejected with a usage error. CLI side retains POSIX-style flags &mdash; see below.</td>
+      </tr>
+      <tr>
+        <td><code>/checkpoints clear</code></td>
+        <td>Wipes the entire shadow repo (all snapshots for all projects). <strong>Irreversible.</strong></td>
+      </tr>
+    </table>
+
+    <hr>
+    <h3 class="tab-section">Command Line (CLI)</h3>
+    <p>
+      The same subcommands can be invoked from axiomate's command line without entering
+      the TUI -- useful for scripting, CI integration, or a quick status/cleanup without
+      launching the full REPL.
+    </p>
+    <pre><code>axiomate checkpoints status
+axiomate checkpoints status --rows 50
+axiomate checkpoints list
+axiomate checkpoints list --rows 50
+axiomate checkpoints prune --force
+axiomate checkpoints prune --retention-days 90 --max-size-mb 10000
+axiomate checkpoints prune --keep-orphans --force
+axiomate checkpoints clear --force</code></pre>
+    <p>
+      Each subcommand rejects excess positional arguments (emitting <code>too many arguments</code>),
+      never silently ignoring them. <code>clear</code> on the CLI requires an explicit
+      <code>--force</code>, since it bypasses the interactive confirmation in the slash-command
+      version.
+    </p>
+
+    <h4>Controlling <code>status</code> / <code>list</code> Row Count</h4>
+    <p>
+      <code>status</code> and <code>list</code> tables default to <strong>100</strong>
+      rows max. To see more (or fewer) rows, pass an integer in the
+      <strong>1..5000</strong> range. Slash commands use positional arguments
+      (<code>/checkpoints status 50</code>, <code>/checkpoints list 50</code>);
+      CLI uses <code>--rows N</code>, consistent with other CLI flags
+      (<code>axiomate checkpoints status --rows 50</code>).
+      Non-integers or out-of-range values are rejected.
+    </p>
+    <p>
+      To make the override stick long-term, write <code>checkpointsStatusRows</code> in
+      Settings (labeled <strong>Checkpoints rows shown</strong>, cycles through
+      30/50/100/200/500/1000/2000/5000), or use
+      <code>/config checkpointsStatusRows N</code>, or directly edit
+      <code>~/.axiomate.json</code>. Per-invocation positional arguments (slash command)
+      or <code>--rows N</code> (CLI) always take precedence over the config value.
+    </p>
+
+    <h4><code>--keep-orphans</code> — Preserve Temporarily Missing Workdir Refs</h4>
+    <p>
+      By default, prune deletes project refs whose working directories have vanished from disk.
+      But if you've temporarily disconnected an external drive, renamed a path intending to
+      rename it back, or plan to re-clone to the original path later, add
+      <code>--keep-orphans</code> (CLI) or <code>keep-orphans</code> (slash command):
+      this prune skips the orphan pass while still running stale and size-cap as usual.
+      <code>/checkpoints prune keep-orphans</code> is also supported in the REPL. The number
+      of refs protected by this safety valve appears in the output as
+      <code>Orphan refs skipped: N</code>.
+    </p>
+
+    <h4>Typical Output</h4>
+    <h4><code>/checkpoints status</code></h4>
+    <pre><code>Checkpoint base: C:\Users\you\.axiomate\checkpoints
+Total size:      284.3 MB
+  store/         284.3 MB
+Projects:        7
+
+  WORKDIR                                                        COMMITS    LAST TOUCH  STATE
+  C:\public\workspace\axiomate                                       142          5m ago  live
+  C:\public\workspace\hermes-agent                                    87          2h ago  live
+  C:\Users\you\Desktop\old-prototype                                   3         18d ago  orphan
+
+Note: 3 snapshots from 1 orphan workdir will be discarded on next prune.
+
+Snapshot metrics (last 100):
+  ok 96, no-changes 3, skipped 0, failed 1
+  duration p50 142ms, p95 380ms</code></pre>
+    <p>
+      <code>WORKDIR</code> / <code>COMMITS</code> / <code>LAST TOUCH</code> /
+      <code>STATE</code> columns: project working directory, number of anchors for this
+      project in the shadow store, time of the most recent anchor (adaptive: &lt;24h shows
+      <em>5m ago</em> / <em>3h ago</em>, &gt;24h shows absolute date), state
+      (<code>live</code> / <code>orphan</code>, where orphan means the workdir no longer
+      exists on disk).
+    </p>
+    <p>
+      The <code>Snapshot metrics</code> block is a rolling window of the last up to 100
+      snapshot attempts (<em>last N</em> grows to 100 as snapshots accumulate). Window
+      data is written to <code>~/.axiomate/checkpoints/metrics.jsonl</code> and survives
+      restarts. Before the first snapshot, this entire section is hidden;
+      <code>p50</code> / <code>p95</code> require at least 2 <code>ok</code> samples
+      to show values, otherwise display <code>&mdash;</code>.
+    </p>
+
+    <h4><code>/checkpoints list</code></h4>
+    <pre><code>Checkpoints for C:\public\test:
+
+  WHEN      ID       CHANGES         TURN
+  just now  bd10d75  test.txt +1 -1  Before "v1 to v2"
+  just now  49f18dc  test.txt +1 -0  Before "create test.txt with v1"
+
+Roll back to a turn with /rewind (interactive selector).</code></pre>
+    <p>
+      Column meanings:
+    </p>
+    <ul>
+      <li><code>WHEN</code> -- anchor timestamp, adaptive format (&lt;1m =
+        <em>just now</em>, &lt;1h = <em>Nm ago</em>, &lt;24h =
+        <em>Nh ago</em>, &ge;24h = <em>2026-05-24 09:42</em>).</li>
+      <li><code>ID</code> -- git short hash (7 characters). Can be fed directly to external
+        git commands, e.g.,
+        <code>git --git-dir=~/.axiomate/checkpoints/store show 8da1461</code>.
+        Full hash + message UUID available in <code>--debug</code> logs.</li>
+      <li><code>CHANGES</code> -- same source as the picker: "what this row's turn
+        wrote." The newest row uses anchor-vs-disk; all other rows use the diff between
+        adjacent anchors. <code>file +X -Y</code> / <code>N files +X -Y</code> for
+        single/multi-file changes, <code>(no diff)</code> if this turn didn't modify
+        files.</li>
+      <li><code>TURN</code> -- the row's label, indicating which turn's pre-tool
+        snapshot this is. Format: <code>Before "&lt;prompt&gt;"</code> or
+        <code>Undo rewind to before "&lt;target&gt;"</code> (pre-rewind safety net).</li>
+    </ul>
+    <p>
+      All anchors are shown. To restore, select the corresponding row in
+      <code>/rewind</code> &rarr; <em>Restore file</em>.
+    </p>
+  </section>
+
+  <section id="config" class="panel">
+    <h2><span class="num">4</span>Settings &amp; Configuration</h2>
+
+    <h3>User Configuration</h3>
+    <table>
+      <tr><th>Location</th><th>Setting</th><th>Effect</th></tr>
+      <tr>
+        <td>Settings &rarr; Config UI <br>or <code>~/.axiomate.json</code></td>
+        <td><code>fileCheckpointingEnabled</code></td>
+        <td>Master switch for the entire checkpoint subsystem. Default <strong>true</strong>.</td>
+      </tr>
+      <tr>
+        <td>Settings &rarr; Config UI<br>or <code>/config checkpointsStatusRows N</code><br>or <code>~/.axiomate.json</code></td>
+        <td><code>checkpointsStatusRows</code></td>
+        <td>Default row count for <code>/checkpoints status</code> and <code>/checkpoints list</code>. Range <strong>1..5000</strong>, default <strong>100</strong>. Per-invocation positional args (slash) or <code>--rows N</code> (CLI) override this value.</td>
+      </tr>
+    </table>
+
+    <h3>Environment Variables</h3>
+    <table>
+      <tr><th>Variable</th><th>Effect</th></tr>
+      <tr>
+        <td><code>AXIOMATE_CODE_DISABLE_FILE_CHECKPOINTING</code></td>
+        <td>Set to any truthy value (<code>1</code>, <code>true</code>) to completely disable checkpoints. Takes precedence over the config above.</td>
+      </tr>
+      <tr>
+        <td><code>AXIOMATE_CHECKPOINT_TIMEOUT</code></td>
+        <td>Timeout in seconds for a single git command. Default <strong>30s</strong>, clamped to <strong>3-300</strong>.</td>
+      </tr>
+      <tr>
+        <td><code>AXIOMATE_CHECKPOINT_BASE</code></td>
+        <td>Shadow repo root directory, default <code>~/.axiomate/checkpoints</code>. Primarily for test isolation.</td>
+      </tr>
+    </table>
+
+    <h3>Prune Thresholds</h3>
+    <table>
+      <tr><th>Parameter</th><th>Default</th><th>Override</th></tr>
+      <tr><td>Retention days (stale threshold)</td><td>60 days</td><td><code>--retention-days N</code> &mdash; <strong>set to 0 to disable the stale pass</strong></td></tr>
+      <tr><td>Total size cap</td><td>5 GB (5000 MB)</td><td><code>--max-size-mb N</code> &mdash; <strong>set to 0 to disable the size-cap pass</strong></td></tr>
+      <tr><td>Max snapshots per project</td><td>500</td><td>Not configurable, hard cap</td></tr>
+      <tr><td>Session anchor window</td><td>28 days, or 2x retention</td><td>Not configurable, hard cap</td></tr>
+    </table>
+  </section>
+
+  <section id="failure" class="panel">
+    <h2><span class="num">5</span>Failure Modes <span class="tag warn">Safety Net</span></h2>
+
+    <p>
+      The checkpoint subsystem's core contract is <strong>fail-open</strong> -- any
+      individual snapshot failure must never block the main workflow. This means:
+    </p>
+    <ul>
+      <li>git not installed on the system &rarr; entire subsystem is a no-op, no error raised.</li>
+      <li>Transient git command failure (EBUSY, timeout) &rarr; skipped this time, retried automatically next turn.</li>
+      <li>Working directory with more than 200,000 files &rarr; skipped to avoid git add hanging.</li>
+      <li>Disk full / permission denied &rarr; error goes to <code>logForDebugging</code>, conversation continues.</li>
+    </ul>
+
+    <h3>Cross-Workdir Edge Cases</h3>
+    <p>
+      If you <code>/resume</code> an old session but the current working directory differs
+      from the original, before <code>/rewind</code> Axiomate will show a system message
+      indicating one of:
+    </p>
+    <ul>
+      <li><strong>reachable</strong>: snapshot is in the current ref, rewinding works normally.</li>
+      <li><strong>reachable-other-worktree</strong>: snapshot exists but belongs to a different
+        working directory. You'll be prompted to <code>cd</code> there.</li>
+      <li><strong>unreachable</strong>: snapshot has been pruned, rewind will fail.</li>
+    </ul>
+
+    <h3>Orphan Notice During Cleanup</h3>
+    <p>
+      The tail of <code>/checkpoints status</code> output may include a line like:
+    </p>
+    <pre><code>Note: 3 snapshots from 1 orphan workdir will be discarded on next prune.</code></pre>
+    <p>
+      If you see this line and that workdir's commits are still useful (e.g., you just
+      unplugged an external drive), restore the workdir to its original path and the next
+      prune will recognize it as live again.
+    </p>
+  </section>
+
+  <section id="faq" class="panel">
+    <h2><span class="num">6</span>FAQ</h2>
+
+    <h3>Will it pollute my git repo?</h3>
+    <p>
+      No. All commits are written to <code>~/.axiomate/checkpoints/store/</code>,
+      completely independent of your project's own <code>.git/</code>. <code>git status</code>,
+      <code>git log</code>, <code>git push</code> -- none of them see these commits.
+    </p>
+
+    <h3>How much disk space does it use?</h3>
+    <p>
+      Hard cap of 5 GB (configurable). git itself performs object deduplication and zlib
+      compression, so editing the same file 100 times only stores a few deltas on top.
+      Typical daily usage is in the hundreds of MB to 1-2 GB range.
+    </p>
+
+    <h3>Can I sync across machines?</h3>
+    <p>
+      No. Checkpoints are local machine snapshots, not designed for cross-machine sync,
+      encryption, or signing. Switching machines means starting fresh with no history.
+    </p>
+
+    <h3>Can I export / import?</h3>
+    <p>
+      There is no <code>checkpoints export</code> / <code>import</code> yet.
+      The shadow repo itself is a standard bare git repo; git-savvy users can inspect it
+      directly with
+      <code>git --git-dir=~/.axiomate/checkpoints/store ...</code>.
+    </p>
+
+    <h3>How do I turn it off completely?</h3>
+    <p>
+      Set <code>fileCheckpointingEnabled</code> to false in Settings, or use the
+      environment variable <code>AXIOMATE_CODE_DISABLE_FILE_CHECKPOINTING=1</code>.
+      Previously accumulated snapshots are not auto-cleaned; run
+      <code>/checkpoints clear</code> manually if desired.
+    </p>
+
+    <h3><code>/rewind</code> says commit not found -- what do I do?</h3>
+    <p>
+      Most likely that turn's commit has already been pruned (older than 60 days and not
+      referenced by the current session). This is expected behavior. For critical
+      milestones, keep a separate copy of the relevant workdir output; don't rely solely
+      on checkpoints.
+    </p>
+  </section>
+
+  <footer>
+    Axiomate · Checkpoints v2 · Docs evolve with implementation, last updated 2026-05-26
+  </footer>
+
+</div>
+</body>
+</html>
