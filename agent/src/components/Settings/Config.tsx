@@ -1011,6 +1011,22 @@ export function Config({
       )
     }
     if (
+      globalConfig.checkpointsStatusRows !==
+      initialConfig.current.checkpointsStatusRows
+    ) {
+      formattedChanges.push(
+        `Set checkpoints rows to ${chalk.bold(globalConfig.checkpointsStatusRows)}`,
+      )
+    }
+    if (
+      globalConfig.checkpointsMaxSnapshotsPerProject !==
+      initialConfig.current.checkpointsMaxSnapshotsPerProject
+    ) {
+      formattedChanges.push(
+        `Set checkpoints per-project snapshot cap to ${chalk.bold(globalConfig.checkpointsMaxSnapshotsPerProject)}`,
+      )
+    }
+    if (
       (settingsData?.rtk?.enabled ?? false) !==
       (initialSettingsData.current?.rtk?.enabled ?? false)
     ) {
