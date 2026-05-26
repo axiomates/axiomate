@@ -36,7 +36,14 @@ function truncateByColumns(s: string, maxCols: number): string {
   return acc + '…'
 }
 
-export function GoalIndicator(): React.ReactNode {
+type Props = {
+  /** True when a query is in-flight — adds a "(working)" marker so the
+   * user can tell the turn count hasn't ticked because the AI is still
+   * cranking, not because nothing is happening. */
+  isLoading?: boolean
+}
+
+export function GoalIndicator({ isLoading }: Props): React.ReactNode {
   const goal = useGoalState()
   if (!goal) return null
   if (goal.status !== 'active' && goal.status !== 'paused') return null
@@ -54,10 +61,16 @@ export function GoalIndicator(): React.ReactNode {
       ? `${glyph} Goal ${budget}`
       : `${glyph} Goal paused`
 
+  // The turn count only ticks at evaluateAfterTurn (turn end). While a
+  // long turn is running it sits at e.g. 0/20 for minutes; the marker
+  // tells the user the wait is real work, not a hung loop.
+  const working = isLoading && goal.status === 'active'
+
   return (
     <Box gap={1}>
       <Text color={color}>{label}:</Text>
       <Text dimColor>{truncateByColumns(goal.goal, MAX_GOAL_COLUMNS)}</Text>
+      {working && <Text dimColor>(working)</Text>}
     </Box>
   )
 }

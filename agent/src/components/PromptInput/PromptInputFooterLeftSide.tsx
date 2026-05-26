@@ -129,7 +129,7 @@ export function PromptInputFooterLeftSide({
         teammateFooterIndex={teammateFooterIndex}
         onOpenTasksDialog={onOpenTasksDialog}
       />
-      <GoalIndicator />
+      <GoalIndicator isLoading={isLoading} />
     </Box>
   )
 }
