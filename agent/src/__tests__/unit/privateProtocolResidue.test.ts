@@ -9,6 +9,7 @@ const repoRoot = resolve(
   '..',
   '..',
   '..',
+  '..',
 )
 
 function parts(...chunks: string[]): string {
@@ -84,7 +85,7 @@ describe('private protocol residue audit', () => {
 
   test('API provider test fixtures use neutral model names', () => {
     const apiTestFiles = trackedFiles().filter(file =>
-      file.startsWith('agent/src/services/api/__tests__/'),
+      file.startsWith('agent/src/__tests__/unit/services/api/'),
     )
     const familyPattern = new RegExp(
       `\\b(${parts('op', 'us')}|${parts('son', 'net')}|${parts('hai', 'ku')}|${parts('son', 'nect')})\\b`,

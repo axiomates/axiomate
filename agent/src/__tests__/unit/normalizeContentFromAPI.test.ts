@@ -1,33 +1,33 @@
 import { describe, it, expect, vi } from 'vitest'
 
 // Mock heavy dependencies of contentNormalization.ts
-vi.mock('../services/analytics/index.js', () => ({
+vi.mock('../../services/analytics/index.js', () => ({
   logEvent: vi.fn(),
 }))
-vi.mock('../services/analytics/metadata.js', () => ({
+vi.mock('../../services/analytics/metadata.js', () => ({
   sanitizeToolNameForAnalytics: vi.fn((name: string) => name),
 }))
-vi.mock('../utils/debug.js', () => ({
+vi.mock('../../utils/debug.js', () => ({
   logForDebugging: vi.fn(),
   logDevError: vi.fn(),
 }))
-vi.mock('../utils/log.js', () => ({
+vi.mock('../../utils/log.js', () => ({
   logError: vi.fn(),
   logMCPDebug: vi.fn(),
 }))
 // Mock normalizeToolInput (from api.ts which has heavy imports)
-vi.mock('../utils/api.js', () => ({
+vi.mock('../../utils/api.js', () => ({
   normalizeToolInput: vi.fn(
     (_tool: unknown, input: Record<string, unknown>) => input,
   ),
 }))
 // Mock Tool.ts - findToolByName returns undefined (no tool match) by default
-vi.mock('../Tool.js', () => ({
+vi.mock('../../Tool.js', () => ({
   findToolByName: vi.fn(() => undefined),
 }))
 
-import { normalizeContentFromAPI } from '../utils/contentNormalization.js'
-import type { ContentBlock as BetaContentBlock } from '../services/api/streamTypes.js'
+import { normalizeContentFromAPI } from '../../utils/contentNormalization.js'
+import type { ContentBlock as BetaContentBlock } from '../../services/api/streamTypes.js'
 
 // ---- test data helpers ----
 

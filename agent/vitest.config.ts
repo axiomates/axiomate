@@ -4,13 +4,17 @@ import path from 'path'
 import { relativeRequireJsToTs } from './vitest.plugins.js'
 
 /**
- * Default (unit) vitest config. Excludes the integration and e2e test
- * folders so `bun test` runs fast and deterministic.
+ * Default (unit) vitest config. Includes only `src/__tests__/unit/**`
+ * so `pnpm test` and `pnpm test:unit` run the fast, deterministic
+ * mock-based unit suite.
  *
  * Separate configs:
- *   - `vitest.integration.config.ts` — overrides to include integration tests
- *   - `vitest.e2e.config.ts` — overrides to include e2e tests
- *   - `vitest.all.config.ts` — includes everything
+ *   - `vitest.integration.config.ts` — `src/__tests__/integration/` only (real LLM)
+ *   - `vitest.e2e.config.ts`         — `src/__tests__/e2e/` only (full CLI process)
+ *   - `vitest.all.config.ts`         — every `*.test.ts(x)` everywhere
+ *
+ * See `agent/src/__tests__/README.md` for the three-tier convention and
+ * where new tests should live.
  */
 export default defineConfig({
   plugins: [relativeRequireJsToTs],
@@ -20,11 +24,10 @@ export default defineConfig({
     },
   },
   test: {
+    include: ['src/__tests__/unit/**/*.test.{ts,tsx}'],
     exclude: [
       '**/node_modules/**',
       '**/dist/**',
-      'src/__tests__/integration/**',
-      'src/__tests__/e2e/**',
     ],
     coverage: {
       provider: 'v8',
@@ -32,7 +35,7 @@ export default defineConfig({
       reportsDirectory: './coverage',
       include: ['src/**/*.ts', 'src/**/*.tsx'],
       exclude: [
-        '**/__tests__/**',
+        'src/__tests__/**',
         '**/__mocks__/**',
         'src/**/*.d.ts',
         'src/**/*.test.ts',

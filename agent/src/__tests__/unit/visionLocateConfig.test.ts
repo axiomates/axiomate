@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { DEFAULT_GLOBAL_CONFIG, getGlobalConfig, saveGlobalConfig } from '../utils/config.js'
+import { DEFAULT_GLOBAL_CONFIG, getGlobalConfig, saveGlobalConfig } from '../../utils/config.js'
 
 describe('visionLocateEnabled global config', () => {
   it('defaults to disabled', () => {
