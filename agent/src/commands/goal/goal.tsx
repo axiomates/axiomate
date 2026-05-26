@@ -18,8 +18,9 @@ import React from 'react'
 import chalk from 'chalk'
 import { getSessionId } from '../../bootstrap/state.js'
 import type { UUID } from 'crypto'
-import { enqueue } from '../../utils/messageQueueManager.js'
+import { enqueue, removeByFilter } from '../../utils/messageQueueManager.js'
 import { getGlobalConfig, saveGlobalConfig } from '../../utils/config.js'
+import { isContinuationPrompt } from '../../utils/goal/continuation.js'
 import { GoalManager } from '../../utils/goal/goalManager.js'
 import { getAuxiliaryModel } from '../../utils/model/model.js'
 
@@ -35,11 +36,20 @@ function parseSub(arg: string): Sub | null {
 }
 
 /**
- * Return a one-line yellow warning when the judge would fall back to the
- * main model AND the user hasn't seen the warning yet. After the first
- * show we flip `goalJudgeCostWarned` so we never annoy the same user
- * twice for the same configuration omission.
+ * Strip any continuation prompts that a recent stopHook already queued.
+ * Called by pause/clear so the user's "stop the loop" gesture takes
+ * effect immediately even if the dispatcher hasn't drained the queue
+ * yet. The hook-side path in `query/goalHook.ts` does the same after
+ * `done`/budget — this is the parallel user-initiated path.
  */
+function purgeQueuedContinuations(): void {
+  removeByFilter(
+    cmd =>
+      cmd.mode === 'prompt' &&
+      typeof cmd.value === 'string' &&
+      isContinuationPrompt(cmd.value),
+  )
+}
 function judgeRoutingWarning(): string {
   const aux = getAuxiliaryModel('goalJudge')
   if (aux.tier !== 'main') return ''
@@ -77,6 +87,7 @@ export async function call(
 
   if (sub === 'pause') {
     const state = await mgr.pause('user-paused')
+    purgeQueuedContinuations()
     onDone(state ? `⏸ Goal paused: ${state.goal}` : 'No goal set.')
     return null
   }
@@ -97,6 +108,7 @@ export async function call(
   if (sub === 'clear') {
     const had = mgr.hasGoal()
     await mgr.clear()
+    purgeQueuedContinuations()
     onDone(had ? '✓ Goal cleared.' : 'No active goal.')
     return null
   }

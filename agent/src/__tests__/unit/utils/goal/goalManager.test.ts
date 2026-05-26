@@ -103,7 +103,7 @@ describe('GoalManager.load + lifecycle', () => {
     await expect(mgr.set('   ')).rejects.toThrow('empty')
   })
 
-  test('pause then resume preserves goal text, resets budget by default', async () => {
+  test('pause then resume preserves goal text, keeps budget by default', async () => {
     const mgr = await GoalManager.load(sid())
     await mgr.set('walk', { maxTurns: 10 })
     mgr.state!.turnsUsed = 7
@@ -112,16 +112,19 @@ describe('GoalManager.load + lifecycle', () => {
     expect(mgr.state?.pausedReason).toBe('manual')
     await mgr.resume()
     expect(mgr.state?.status).toBe('active')
-    expect(mgr.state?.turnsUsed).toBe(0)
+    // Axiomate diverges from hermes here: default preserves the count
+    // so "/goal pause then resume" feels like "stop and keep going",
+    // not "stop and restart".
+    expect(mgr.state?.turnsUsed).toBe(7)
   })
 
-  test('resume({resetBudget:false}) keeps turns used', async () => {
+  test('resume({resetBudget:true}) zeroes the count — hermes-style', async () => {
     const mgr = await GoalManager.load(sid())
     await mgr.set('walk')
     mgr.state!.turnsUsed = 4
     await mgr.pause()
-    await mgr.resume({ resetBudget: false })
-    expect(mgr.state?.turnsUsed).toBe(4)
+    await mgr.resume({ resetBudget: true })
+    expect(mgr.state?.turnsUsed).toBe(0)
   })
 
   test('clear yields no-goal state', async () => {

@@ -151,13 +151,20 @@ export class GoalManager {
     return this._state
   }
 
+  /**
+   * Resume from `paused` back to `active`. Unlike hermes (which resets
+   * the turn budget by default), axiomate keeps `turnsUsed` so users
+   * who pause briefly and resume see a continuous count — pause is a
+   * "stop, then keep going" not a "stop, then restart". Pass
+   * `resetBudget: true` for the hermes-style fresh-budget reset.
+   */
   async resume(opts?: {
     resetBudget?: boolean
   }): Promise<GoalState | null> {
     if (!this._state) return null
     this._state.status = 'active'
     this._state.pausedReason = undefined
-    if (opts?.resetBudget !== false) {
+    if (opts?.resetBudget === true) {
       this._state.turnsUsed = 0
     }
     await saveGoalState(this.sessionId, this._state)
