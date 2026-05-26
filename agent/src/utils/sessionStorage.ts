@@ -46,6 +46,7 @@ import {
   type ConversationHeadEntry,
   type Entry,
   type FileHistorySnapshotMessage,
+  type GoalStateEntry,
   type LogOption,
   type PersistedWorktreeSession,
   type SerializedMessage,
@@ -1073,6 +1074,10 @@ class Project {
       // Conversation head marker — written by Restore conversation in
       // /rewind. Append-only; loadTranscriptFile picks the latest by
       // timestamp on read. Never deduped (every rewind re-appends).
+      void this.enqueueWrite(sessionFile, entry)
+    } else if (entry.type === 'goal-state') {
+      // Goal state snapshot — written by GoalManager mutations. Append-only;
+      // loadTranscriptFile picks the latest by timestamp per sessionId.
       void this.enqueueWrite(sessionFile, entry)
     } else {
       const messageSet = await getSessionMessages(sessionId)
@@ -2366,6 +2371,25 @@ export function recordConversationHead(
   })
 }
 
+/**
+ * Append a {@link GoalStateEntry} snapshot to the session jsonl. Same
+ * append-only / latest-wins idiom as {@link recordConversationHead}; the
+ * loader (`loadGoalState` in `utils/goal/goalStore.ts`) picks the most
+ * recent timestamp per sessionId.
+ */
+export function recordGoalState(
+  sessionId: SessionId | UUID,
+  state: Omit<GoalStateEntry, 'type' | 'uuid' | 'sessionId' | 'timestamp'>,
+): void {
+  appendEntryToFile(getTranscriptPathForSession(sessionId as UUID), {
+    type: 'goal-state',
+    uuid: randomUUID(),
+    sessionId: sessionId as unknown as UUID,
+    timestamp: new Date().toISOString(),
+    ...state,
+  })
+}
+
 export async function saveTag(sessionId: UUID, tag: string, fullPath?: string) {
   // Fall back to computed path if fullPath is not provided
   const resolvedPath = fullPath ?? getTranscriptPathForSession(sessionId)
@@ -3195,6 +3219,13 @@ export async function loadTranscriptFile(
    * `recoverFromSessionFile`-style paths) route through it.
    */
   conversationHead: ConversationHeadEntry | undefined
+  /**
+   * Latest GoalStateEntry per sessionId. Append-only with last-wins
+   * semantics — the entry with the largest `timestamp` for a given
+   * sessionId supersedes earlier ones. Consumed by
+   * `loadGoalState` in `utils/goal/goalStore.ts`.
+   */
+  goalStates: Map<UUID, GoalStateEntry>
 }> {
   const messages = new Map<UUID, TranscriptMessage>()
   const summaries = new Map<UUID, string>()
@@ -3223,6 +3254,9 @@ export async function loadTranscriptFile(
   const contextCollapseCommits: ContextCollapseCommitEntry[] = []
   // Last-wins — later entries supersede.
   let contextCollapseSnapshot: ContextCollapseSnapshotEntry | undefined
+  // Latest-timestamp wins per sessionId. Append-only JSONL means later
+  // mutations from GoalManager supersede earlier snapshots.
+  const goalStates = new Map<UUID, GoalStateEntry>()
 
   try {
     // For large transcripts, avoid materializing megabytes of stale content.
@@ -3323,6 +3357,11 @@ export async function loadTranscriptFile(
           prNumbers.set(entry.sessionId, entry.prNumber)
           prUrls.set(entry.sessionId, entry.prUrl)
           prRepositories.set(entry.sessionId, entry.prRepository)
+        } else if (entry.type === 'goal-state' && entry.sessionId) {
+          const existing = goalStates.get(entry.sessionId)
+          if (!existing || entry.timestamp > existing.timestamp) {
+            goalStates.set(entry.sessionId, entry)
+          }
         }
       }
     }
@@ -3418,6 +3457,11 @@ export async function loadTranscriptFile(
         contextCollapseCommits.push(entry)
       } else if (entry.type === 'marble-origami-snapshot') {
         contextCollapseSnapshot = entry
+      } else if (entry.type === 'goal-state' && entry.sessionId) {
+        const existing = goalStates.get(entry.sessionId)
+        if (!existing || entry.timestamp > existing.timestamp) {
+          goalStates.set(entry.sessionId, entry)
+        }
       }
     }
   } catch {
@@ -3532,6 +3576,7 @@ export async function loadTranscriptFile(
     contextCollapseSnapshot,
     leafUuids,
     conversationHead,
+    goalStates,
   }
 }
 

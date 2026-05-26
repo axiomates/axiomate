@@ -611,6 +611,18 @@ export type GlobalConfig = {
   fastModel?: string
   /** Mid-tier model for tasks needing reasoning (memory selection, classification). Falls back to currentModel. */
   midModel?: string
+  /**
+   * Per-role auxiliary model overrides. Each key picks a model from
+   * `models`; unset roles fall back to `fastModel` (then `currentModel`).
+   * Use cheap models here — the goal judge runs once per turn during a
+   * Ralph loop and costs add up fast on Opus-class models.
+   */
+  auxiliaryModels?: {
+    /** Model used by the /goal judge call (`utils/goal/goalJudge.ts`). */
+    goalJudge?: string
+  }
+  /** Default turn budget for /goal. */
+  goalsMaxTurns?: number
 }
 
 /**

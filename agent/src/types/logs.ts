@@ -92,6 +92,48 @@ export type ConversationHeadEntry = {
   sessionId: UUID
 }
 
+/**
+ * Persistent goal state for the Ralph-style /goal loop.
+ *
+ * Like {@link ConversationHeadEntry}, this is a non-chain pointer-style
+ * record: not a transcript message, not part of {@link buildConversationChain},
+ * not visible to the model. It's just a serialized {@link GoalState}
+ * snapshot keyed by sessionId.
+ *
+ * Append-only with last-wins semantics: every mutation
+ * ({@link GoalManager} `set` / `pause` / `resume` / `clear` / `evaluateAfterTurn`)
+ * writes a new entry; readers pick the latest by timestamp (see
+ * `loadGoalState` in `utils/goal/goalStore.ts`).
+ *
+ * `status: 'cleared'` is the tombstone — `loadGoalState` returns null.
+ * Forks ({@link branch}, --fork-session) drop these along with other
+ * non-transcript metadata, giving the new session a fresh goal slate.
+ */
+export type GoalStateEntry = {
+  type: 'goal-state'
+  uuid: UUID
+  sessionId: UUID
+  /** ISO 8601; latest entry per sessionId wins. */
+  timestamp: string
+  /** Empty string when status==='cleared'. */
+  goal: string
+  status: 'active' | 'paused' | 'done' | 'cleared'
+  turnsUsed: number
+  maxTurns: number
+  /** Epoch ms when /goal was originally set. */
+  createdAt: number
+  /** Epoch ms of the most recent evaluateAfterTurn call. */
+  lastTurnAt: number
+  lastVerdict?: 'done' | 'continue' | 'skipped'
+  lastReason?: string
+  /** Human-readable why for status==='paused' (budget, judge, Ctrl+C, user). */
+  pausedReason?: string
+  /** Counts consecutive unparseable judge replies. Reset on any usable reply. */
+  consecutiveParseFailures: number
+  /** Mid-loop user-added criteria; checked by judge and surfaced to agent. */
+  subgoals: string[]
+}
+
 export type CustomTitleMessage = {
   type: 'custom-title'
   sessionId: UUID
@@ -350,6 +392,7 @@ export type Entry =
   | ContextCollapseCommitEntry
   | ContextCollapseSnapshotEntry
   | ConversationHeadEntry
+  | GoalStateEntry
 
 export function sortLogs(logs: LogOption[]): LogOption[] {
   return logs.sort((a, b) => {

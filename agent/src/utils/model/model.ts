@@ -90,6 +90,37 @@ export function getMidModel(): ModelName {
   return getCurrentModel()
 }
 
+/**
+ * Resolve the model for a non-main-loop "auxiliary" role (e.g. goal judge).
+ *
+ * Priority:
+ *   1. `globalConfig.auxiliaryModels[role]` override, if defined and present
+ *      in `config.models`.
+ *   2. `fastModel`, if configured.
+ *   3. `currentModel` (the main loop model) — fallback only; the caller is
+ *      expected to surface a warning when this happens because auxiliary
+ *      tasks like the goal judge run once per turn and cost adds up fast
+ *      on Opus-class models.
+ *
+ * `isFastModel` and `isOverride` let the caller render an appropriate
+ * UX hint without re-reading config.
+ */
+export function getAuxiliaryModel(role: 'goalJudge'): {
+  model: ModelName
+  isOverride: boolean
+  isFastModel: boolean
+} {
+  const config = getGlobalConfig()
+  const override = config.auxiliaryModels?.[role]
+  if (override && config.models?.[override]) {
+    return { model: override, isOverride: true, isFastModel: false }
+  }
+  if (config.fastModel && config.models?.[config.fastModel]) {
+    return { model: config.fastModel, isOverride: false, isFastModel: true }
+  }
+  return { model: getCurrentModel(), isOverride: false, isFastModel: false }
+}
+
 export function getRuntimeMainLoopModel(params: {
   permissionMode: PermissionMode
   mainLoopModel: string
