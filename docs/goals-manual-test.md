@@ -59,7 +59,7 @@ pnpm run start
 ## Phase 3 — 多轮 Continuation（核心 Ralph loop）
 
 **3.1 设需要 2-3 轮的 goal**
-- 操作：`/goal 在 /tmp/fib.js 写一个 fibonacci 函数，跑一次 node /tmp/fib.js 验证 fib(10) == 55`
+- 操作：`/goal 在 当前目录创建fib.js，然后 写一个 fibonacci 函数，跑一次 node fib.js 验证 fib(10) == 55`
 - 预期：`⊙ Goal set` + 自动 kick
 
 **3.2 第一轮末**

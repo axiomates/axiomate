@@ -31,9 +31,11 @@ import {
   enqueue,
   getCommandQueueSnapshot,
   isSlashCommand,
+  removeByFilter,
 } from '../utils/messageQueueManager.js'
 import { logForDebugging } from '../utils/debug.js'
 import { errorMessage } from '../utils/errors.js'
+import { isContinuationPrompt } from '../utils/goal/continuation.js'
 import type {
   AssistantMessage,
   Message,
@@ -153,6 +155,27 @@ export async function* handleGoalHook(args: {
       logForDebugging(`goal hook: enqueue failed: ${errorMessage(err)}`, {
         level: 'warn',
       })
+    }
+  } else {
+    // Goal just stopped (done / paused / parse-failure / budget). Strip
+    // any stale continuation prompts an earlier turn might have already
+    // queued — without this, the queue processor would still dispatch
+    // them and you'd see "↻ Continuing toward your standing goal" fire
+    // AFTER the ✓ Goal achieved verdict. Detection key: the goalHook
+    // is the only producer of strings starting with
+    // CONTINUATION_PROMPT_PREFIX, so an exact prefix match is safe.
+    try {
+      removeByFilter(
+        cmd =>
+          cmd.mode === 'prompt' &&
+          typeof cmd.value === 'string' &&
+          isContinuationPrompt(cmd.value),
+      )
+    } catch (err) {
+      logForDebugging(
+        `goal hook: stale-continuation cleanup failed: ${errorMessage(err)}`,
+        { level: 'warn' },
+      )
     }
   }
 }

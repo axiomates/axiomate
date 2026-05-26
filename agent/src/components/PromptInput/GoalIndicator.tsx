@@ -14,7 +14,10 @@ import * as React from 'react'
 import { Box, Text } from '../../ink.js'
 import { useGoalState } from '../../hooks/useGoalState.js'
 
-const MAX_GOAL_TEXT = 60
+// Footer pill shares a row with mode indicators / shortcut hints; long
+// goal text squeezes them off-screen on narrow terminals. 24 chars +
+// ellipsis is enough to recognize "which goal am I on" without crowding.
+const MAX_GOAL_TEXT = 24
 
 function truncate(s: string, max: number): string {
   return s.length <= max ? s : s.slice(0, max - 1) + '…'
