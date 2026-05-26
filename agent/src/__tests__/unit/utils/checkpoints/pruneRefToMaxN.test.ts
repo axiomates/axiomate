@@ -140,7 +140,7 @@ describe('pruneRefToMaxN — actual prune', () => {
     const after = await commitSubjects()
     // Subjects should be the LAST 4 of the original 10, in chronological order.
     expect(after).toEqual(before.slice(-4))
-  })
+  }, 60_000)
 
   test('preserves subject content (so messageId parsing still works)', async () => {
     // The whole point of structured subjects (Decision #14) — prune

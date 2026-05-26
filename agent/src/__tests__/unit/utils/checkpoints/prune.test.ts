@@ -510,7 +510,7 @@ describe('pruneCheckpoints — snapshot cap pass', () => {
     expect(r.snapshotCapCommitsDropped).toBe(6)
     expect(await commitCountOnRef(e.store, projA.ref)).toBe(2)
     expect(await commitCountOnRef(e.store, projB.ref)).toBe(2)
-  })
+  }, 60_000)
 })
 
 describe('pruneCheckpoints — size cap pass', () => {
@@ -657,7 +657,7 @@ describe('pruneCheckpoints — size cap pass', () => {
     const r = await pruneCheckpoints({ forceNow: true, maxTotalSizeMb: 0.0001 })
     // Cap at 0 — Hermes `prune_checkpoints`::1457 max(0, before-after) — covers fs noise.
     expect(r.bytesFreed).toBeGreaterThanOrEqual(0)
-  })
+  }, 60_000)
 
   /**
    * T1 (completion-plan 6D) — prove `bytesFreed` actually tracks reclaimed
@@ -683,9 +683,12 @@ describe('pruneCheckpoints — size cap pass', () => {
       commits: 1,
     })
 
-    // 2 MiB of random bytes — enough to survive cluster rounding noise
-    // and clearly above the safety floor we'll assert.
-    const N = 2 * 1024 * 1024
+    // 256 KiB of random bytes — large enough to survive NTFS cluster
+    // rounding (4 KiB clusters; 256 KiB / 50% floor = 128 KiB still ≫
+    // one cluster) but small enough to keep git pack/gc work fast on
+    // Windows CI. The original 2 MiB version timed out the test on
+    // slower machines without exercising any extra branch.
+    const N = 256 * 1024
     const blob = randomBytes(N)
     writeFileSync(join(proj.workdir, 'big.bin'), blob)
     // Empty files: the `git add -A` inside buildFixtureCommit picks up
@@ -718,11 +721,11 @@ describe('pruneCheckpoints — size cap pass', () => {
     // gc reclaims its pack data.
     const r = await pruneCheckpoints({ forceNow: true, maxTotalSizeMb: 0.0001 })
     expect(r.sizeCapCommitsDropped).toBeGreaterThan(0)
-    // Assert at least 50% of N came back. Random-data zlib compresses
-    // poorly (<1%); cluster rounding is the only meaningful noise, and
-    // 50% leaves >1 MiB of headroom against that.
+    // Assert at least 50% of N (128 KiB on a 256 KiB blob) came back.
+    // Random-data zlib compresses poorly (<1%); NTFS 4 KiB cluster
+    // rounding is the only meaningful noise, dwarfed by the 50% floor.
     expect(r.bytesFreed).toBeGreaterThanOrEqual(N / 2)
-  })
+  }, 60_000)
 
   /**
    * T2 (completion-plan 6D) — two prunes racing on the marker.
@@ -784,5 +787,5 @@ describe('pruneCheckpoints — size cap pass', () => {
       workTree: e.store,
     })
     expect(fsck.ok).toBe(true)
-  }, 30_000)
+  }, 60_000)
 })
