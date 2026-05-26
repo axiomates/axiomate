@@ -562,6 +562,25 @@ export function Config({
         ]
       : []),
     {
+      id: 'goalsMaxTurns',
+      label: 'Goal turn budget (per /goal)',
+      value: String(globalConfig.goalsMaxTurns ?? 20),
+      options: ['5', '10', '20', '50', '100', '200', '500', '0'],
+      type: 'enum' as const,
+      onChange(value: string) {
+        const n = Number(value)
+        if (!Number.isFinite(n) || n < 0) return
+        saveGlobalConfig(current => ({
+          ...current,
+          goalsMaxTurns: n,
+        }))
+        setGlobalConfig({
+          ...getGlobalConfig(),
+          goalsMaxTurns: n,
+        })
+      },
+    },
+    {
       id: 'goalsParseFailureLimit',
       label: 'Goal parse-failure auto-pause threshold',
       value: String(globalConfig.goalsParseFailureLimit ?? 10),
@@ -1051,6 +1070,17 @@ export function Config({
     ) {
       formattedChanges.push(
         `Set goal parse-failure threshold to ${chalk.bold(globalConfig.goalsParseFailureLimit ?? 10)}`,
+      )
+    }
+    if (
+      globalConfig.goalsMaxTurns !== initialConfig.current.goalsMaxTurns
+    ) {
+      const label =
+        (globalConfig.goalsMaxTurns ?? 20) === 0
+          ? 'unlimited (0)'
+          : String(globalConfig.goalsMaxTurns ?? 20)
+      formattedChanges.push(
+        `Set goal turn budget to ${chalk.bold(label)}`,
       )
     }
     if (

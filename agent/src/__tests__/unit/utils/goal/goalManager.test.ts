@@ -264,6 +264,28 @@ describe('evaluateAfterTurn — branch ordering', () => {
     expect(r2.message).toContain('2/2 turns used')
   })
 
+  test('maxTurns=0 → unlimited budget; never pauses on turn count', async () => {
+    mockedJudge.mockResolvedValue({
+      verdict: 'continue',
+      reason: 'never done',
+      parseFailed: false,
+    })
+    const mgr = await GoalManager.load(sid())
+    await mgr.set('endless', { maxTurns: 0 })
+    // Drive 7 turns — way past the default 20 budget would normally cap.
+    for (let i = 0; i < 7; i++) {
+      const r = await mgr.evaluateAfterTurn({
+        lastResponse: `t${i}`,
+        signal: fakeSignal(),
+      })
+      expect(r.status).toBe('active')
+      expect(r.shouldContinue).toBe(true)
+    }
+    expect(mgr.state?.turnsUsed).toBe(7)
+    // statusLine should render N/∞
+    expect(mgr.statusLine()).toContain('/∞ turns')
+  })
+
   test('3 consecutive parse failures — judge-broken pause', async () => {
     mockedJudge.mockResolvedValue({
       verdict: 'continue',

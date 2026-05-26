@@ -550,9 +550,10 @@ in the agent's response that the criterion is satisfied. ...</code></pre>
 }</code></pre>
 
     <p>
-      <code>goalsParseFailureLimit</code> 可以在 <code>/config</code> 里选（预设
-      <code>3 / 5 / 10 / 20 / 50 / 0</code>，0 = 完全禁用 parse-failure auto-pause，
-      loop 只靠 turn budget 兜底）。其他几项 <code>~/.axiomate.json</code> 手编。
+      <code>goalsMaxTurns</code> 和 <code>goalsParseFailureLimit</code> 都可以在
+      <code>/config</code> 里选预设值（前者 <code>5/10/20/50/100/200/500/0</code>，
+      后者 <code>3/5/10/20/50/0</code>，0 都表示 disable）。其他几项
+      <code>~/.axiomate.json</code> 手编。
     </p>
 
     <p>
@@ -733,10 +734,22 @@ Reply ONLY with a single JSON object on one line:
 
     <h3>20 轮预算太少 / 太多怎么改？</h3>
     <p>
-      编辑 <code>~/.axiomate.json</code> 设 <code>goalsMaxTurns</code>。这是全局默认，
-      也可以未来 per-goal override（hermes 那边支持，axiomate 暂未暴露 CLI 形式）。
-      数字调大要谨慎，配合 <code>midModel</code> 或 <code>fastModel</code> 一起设，
-      不然 Opus × 50 轮就是真烧钱。
+      在 <code>/config</code> 里选 "Goal turn budget (per /goal)" — 预设
+      <code>5 / 10 / 20 / 50 / 100 / 200 / 500 / 0</code>。<strong>0 = 无限预算</strong>，
+      只靠评审 done 判定、parse-failure 阈值、用户手动 pause 兜底；<code>statusLine</code>
+      和 footer pill 会显示 <code>N/∞</code>。也可以直接编辑 <code>~/.axiomate.json</code>
+      的 <code>goalsMaxTurns</code> 字段填任意整数。
+    </p>
+    <p>
+      数字调大要谨慎，配合 <code>midModel</code> 或 <code>fastModel</code> 一起设 —
+      Opus × 100 轮就是真烧钱（粗算 ~$20+）。设到 500 或 0 时建议主对话也用便宜模型。
+    </p>
+    <h3>什么算一个 turn？</h3>
+    <p>
+      <strong>Turn 不等于工具调用</strong>。一个 turn = AI 完整说完一段话（中间可能调
+      0-N 个工具）+ 最后 stop。判定时机就是 stop hook，跟你打字发消息触发的工作单元
+      一致。Goal 评审在每个 turn 末跑一次。所以 500 turn 不是 500 次工具，是 AI
+      完成 500 段独立工作 — 量级差很大。
     </p>
 
     <h3>能让 goal 自动跑而不显示在 transcript 里吗？</h3>

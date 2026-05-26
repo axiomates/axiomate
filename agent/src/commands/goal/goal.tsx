@@ -105,8 +105,10 @@ export async function call(
   try {
     const state = await mgr.set(arg)
     const warning = judgeRoutingWarning()
+    const budgetLabel =
+      state.maxTurns > 0 ? `${state.maxTurns}-turn budget` : 'unlimited budget'
     onDone(
-      `⊙ Goal set (${state.maxTurns}-turn budget): ${state.goal}\n` +
+      `⊙ Goal set (${budgetLabel}): ${state.goal}\n` +
         'After each turn a judge model checks if the goal is done. ' +
         'Use /goal status, /goal pause, /goal resume, /goal clear.' +
         warning,

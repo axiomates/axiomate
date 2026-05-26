@@ -346,8 +346,9 @@ export class GoalManager {
       }
     }
 
-    // Branch 9: budget exhausted.
-    if (state.turnsUsed >= state.maxTurns) {
+    // Branch 9: budget exhausted. maxTurns=0 means "unlimited" (the
+    // only stops are parse-failure cap, user pause, or done).
+    if (state.maxTurns > 0 && state.turnsUsed >= state.maxTurns) {
       state.status = 'paused'
       state.pausedReason = `turn budget exhausted (${state.turnsUsed}/${state.maxTurns})`
       await saveGoalState(this.sessionId, state)
@@ -365,13 +366,17 @@ export class GoalManager {
 
     // Branch 10: continue.
     await saveGoalState(this.sessionId, state)
+    const budget =
+      state.maxTurns > 0
+        ? `${state.turnsUsed}/${state.maxTurns}`
+        : `${state.turnsUsed}/∞`
     return {
       status: 'active',
       shouldContinue: true,
       continuationPrompt: this.nextContinuationPrompt(),
       verdict: 'continue',
       reason: judgeResult.reason,
-      message: `↻ Continuing toward goal (${state.turnsUsed}/${state.maxTurns}): ${judgeResult.reason}`,
+      message: `↻ Continuing toward goal (${budget}): ${judgeResult.reason}`,
     }
   }
 

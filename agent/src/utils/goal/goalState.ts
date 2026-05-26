@@ -120,7 +120,12 @@ export function statusLine(state: GoalState | null): string {
   if (state === null || state.status === 'cleared') {
     return 'No active goal. Set one with /goal <text>.'
   }
-  const turns = `${state.turnsUsed}/${state.maxTurns} turns`
+  // maxTurns === 0 → unlimited budget. Show "N/∞" so the user
+  // sees the loop is genuinely unbounded.
+  const turns =
+    state.maxTurns > 0
+      ? `${state.turnsUsed}/${state.maxTurns} turns`
+      : `${state.turnsUsed}/∞ turns`
   const subCount = state.subgoals.length
   const sub = subCount > 0 ? `, ${subCount} subgoal${subCount === 1 ? '' : 's'}` : ''
   if (state.status === 'active') {

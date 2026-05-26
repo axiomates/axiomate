@@ -27,9 +27,15 @@ export function GoalIndicator(): React.ReactNode {
 
   const glyph = goal.status === 'active' ? '⊙' : '⏸'
   const color = goal.status === 'active' ? 'success' : 'warning'
+  // maxTurns === 0 means "no budget" — show /∞ so the user knows
+  // the loop won't auto-stop on turn count alone.
+  const budget =
+    goal.maxTurns > 0
+      ? `${goal.turnsUsed}/${goal.maxTurns}`
+      : `${goal.turnsUsed}/∞`
   const label =
     goal.status === 'active'
-      ? `${glyph} Goal ${goal.turnsUsed}/${goal.maxTurns}`
+      ? `${glyph} Goal ${budget}`
       : `${glyph} Goal paused`
 
   return (
