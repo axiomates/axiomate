@@ -418,6 +418,101 @@ async function commitCountOnRef(store: string, ref: string): Promise<number> {
   return Number.parseInt(r.stdout.trim(), 10) || 0
 }
 
+describe('pruneCheckpoints — snapshot cap pass', () => {
+  test('truncates ref to maxN when count exceeds cap', async () => {
+    const e = await ensureStore()
+    if (!e.ok) return
+
+    const wtParent = mkdtempSync(join(tmpRoot, 'wts-'))
+    const proj = await buildProjectWithNCommits({
+      store: e.store,
+      parent: wtParent,
+      commits: 5,
+    })
+
+    const r = await pruneCheckpoints({
+      forceNow: true,
+      maxSnapshotsPerRef: 2,
+      // Disable size cap so it can't muddy the dropped-commit count.
+      maxTotalSizeMb: 0,
+    })
+    expect(r.snapshotCapRefsTouched).toBe(1)
+    expect(r.snapshotCapCommitsDropped).toBe(3)
+    expect(await commitCountOnRef(e.store, proj.ref)).toBe(2)
+  })
+
+  test('no-ops when count is at or below cap', async () => {
+    const e = await ensureStore()
+    if (!e.ok) return
+
+    const wtParent = mkdtempSync(join(tmpRoot, 'wts-'))
+    const proj = await buildProjectWithNCommits({
+      store: e.store,
+      parent: wtParent,
+      commits: 5,
+    })
+
+    const r = await pruneCheckpoints({
+      forceNow: true,
+      maxSnapshotsPerRef: 10,
+      maxTotalSizeMb: 0,
+    })
+    expect(r.snapshotCapRefsTouched).toBe(0)
+    expect(r.snapshotCapCommitsDropped).toBe(0)
+    expect(await commitCountOnRef(e.store, proj.ref)).toBe(5)
+  })
+
+  test('disabled when maxSnapshotsPerRef=0', async () => {
+    const e = await ensureStore()
+    if (!e.ok) return
+
+    const wtParent = mkdtempSync(join(tmpRoot, 'wts-'))
+    const proj = await buildProjectWithNCommits({
+      store: e.store,
+      parent: wtParent,
+      commits: 5,
+    })
+
+    const r = await pruneCheckpoints({
+      forceNow: true,
+      maxSnapshotsPerRef: 0,
+      maxTotalSizeMb: 0,
+    })
+    expect(r.snapshotCapRefsTouched).toBe(0)
+    expect(r.snapshotCapCommitsDropped).toBe(0)
+    // 5 intact — explicit 0 must NOT be coerced to default.
+    expect(await commitCountOnRef(e.store, proj.ref)).toBe(5)
+  })
+
+  test('aggregates across multiple refs', async () => {
+    const e = await ensureStore()
+    if (!e.ok) return
+
+    const wtParent = mkdtempSync(join(tmpRoot, 'wts-'))
+    const projA = await buildProjectWithNCommits({
+      store: e.store,
+      parent: wtParent,
+      commits: 4,
+    })
+    const projB = await buildProjectWithNCommits({
+      store: e.store,
+      parent: wtParent,
+      commits: 6,
+    })
+
+    const r = await pruneCheckpoints({
+      forceNow: true,
+      maxSnapshotsPerRef: 2,
+      maxTotalSizeMb: 0,
+    })
+    expect(r.snapshotCapRefsTouched).toBe(2)
+    // 4→2 drops 2; 6→2 drops 4; total 6.
+    expect(r.snapshotCapCommitsDropped).toBe(6)
+    expect(await commitCountOnRef(e.store, projA.ref)).toBe(2)
+    expect(await commitCountOnRef(e.store, projB.ref)).toBe(2)
+  })
+})
+
 describe('pruneCheckpoints — size cap pass', () => {
   test('does not run when maxTotalSizeMb=0 (Hermes `_enforce_size_cap`::1090 disabled-branch)', async () => {
     const e = await ensureStore()

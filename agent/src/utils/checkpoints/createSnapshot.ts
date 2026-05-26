@@ -38,6 +38,7 @@
 import { homedir } from 'os'
 import { unlink } from 'fs/promises'
 import { existsSync } from 'fs'
+import { getGlobalConfig } from '../config.js'
 import { logForDebugging } from '../debug.js'
 import { countFilesUnder } from './countFiles.js'
 import { dropOversizeFromIndex } from './dropOversizeFromIndex.js'
@@ -66,7 +67,14 @@ import { touchProject } from './touchProject.js'
 // the agent" and changing them requires deliberation, not arguments.
 export const MAX_FILES = 200_000
 export const MAX_FILE_SIZE_MB = 50
-export const MAX_SNAPSHOTS = 500
+/**
+ * Fallback per-project snapshot ring-buffer ceiling. Used only when the
+ * user has not set `checkpointsMaxSnapshotsPerProject` in globalConfig.
+ * 5000 turns ≈ several weeks of intensive dogfood; combined with
+ * `DEFAULT_MAX_TOTAL_SIZE_MB` (5GB), the two caps reach equilibrium
+ * without either dominating.
+ */
+export const MAX_SNAPSHOTS = 5000
 const REF_NOT_EXIST = new Set([128])
 const DIFF_HAS_CHANGES = new Set([1])
 
@@ -320,13 +328,25 @@ async function _runCreateSnapshot(
   if (commitResult.ok === false) return commitResult
   const newSha = commitResult.hash
 
-  // 12. Per-project ring-buffer prune.
-  await pruneRefToMaxN({
-    store,
-    workTree: canonical,
-    ref,
-    maxN: MAX_SNAPSHOTS,
-  })
+  // 12. Per-project ring-buffer prune. Reads `checkpointsMaxSnapshotsPerProject`
+  //     from globalConfig if set; otherwise falls back to MAX_SNAPSHOTS.
+  //     `0` (or any non-finite value) disables the write-time ring buffer
+  //     entirely — the prune-time snapshot-cap pass still uses the same
+  //     config value, so a user who explicitly disables it gets it
+  //     disabled both ways.
+  const userMaxN = getGlobalConfig().checkpointsMaxSnapshotsPerProject
+  const effectiveMaxN =
+    typeof userMaxN === 'number' && Number.isFinite(userMaxN) && userMaxN >= 0
+      ? userMaxN
+      : MAX_SNAPSHOTS
+  if (effectiveMaxN > 0) {
+    await pruneRefToMaxN({
+      store,
+      workTree: canonical,
+      ref,
+      maxN: effectiveMaxN,
+    })
+  }
 
   // 13. Cross-project size cap deferred to Phase 4.
   return { ok: true, hash: newSha, ref }

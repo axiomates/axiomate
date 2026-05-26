@@ -284,52 +284,82 @@
     </p>
     <div class="grid">
       <div class="card">
-        <h4>Kéttengelyes rewind: File + Conversation</h4>
+        <h4>Kéttengelyes rewind + dupla kurzor</h4>
         <p>
           A Hermes csak fájl-visszaállítást csinál. Az axiomate hozzáadott egy
           független <strong>beszélgetés-visszajátszási tengelyt</strong> —
           a picker-ben <kbd>Tab</kbd>-bal átválthatsz a Conversation fülre,
           visszatérhetsz bármelyik Q/A párhoz, és az input mező automatikusan
           visszatölti a következő prompt-ot, hogy újra tudd futtatni.
-          A File és a Conversation teljesen szét van választva, nem befolyásolják
-          egymást.
+          A File és a Conversation teljesen szét van választva. A selection kurzor
+          (<code>▶</code>) és a head kurzor (<code>(current)</code>) fogalmilag el
+          vannak választva — a vizuális kurzorod nem egyenlő a session állapotával.
+          Áttekinthetőbb, mint a hermes "kurzor = állapot" egyesített modellje.
         </p>
       </div>
       <div class="card">
-        <h4>Beszélgetés rewind perzisztencia</h4>
+        <h4>Beszélgetés rewind perzisztencia + jövőbeli node-ok láthatók</h4>
         <p>
           A Conversation rewind head állapota beíródik a JSONL-be (egy
           <code>type:"head"</code> bejegyzés). <code>/exit</code> után a UI-ban
           resume-olva ugyanoda kerülsz vissza, ahol a rewind után voltál —
           ellentétben a hagyományos memóriában tartott csonkolással, ami
-          kilépéskor elvész.
+          kilépéskor elvész. Rewind után a head-nél újabb turn-ök a picker-ben
+          továbbra is láthatók halvány szürkével (az adat a JSONL-ben megmaradt),
+          és bármikor visszaválaszthatók. A "rewind után vissza lehet lépni előre"
+          az axiomate gondolkodásmódjának egyik alapköve.
         </p>
       </div>
       <div class="card">
-        <h4>A jövőbeli node-ok továbbra is láthatók</h4>
+        <h4>Pre-rewind biztonsági háló minden rewind-nál</h4>
         <p>
-          Rewind után a head-nél újabb turn-ök a picker-ben továbbra is
-          <strong>láthatók</strong> halvány szürkével (az adat a JSONL-ben
-          megmaradt), és bármikor visszaválaszthatók. A "rewind után vissza
-          lehet lépni előre" az axiomate gondolkodásmódjának egyik alapköve.
+          A Hermes rewind-ja egyirányú művelet — ha visszaléptél, a későbbi
+          állapotok elvesznek. Az Axiomate minden rewind <em>előtt</em> készít
+          egy biztonsági pillanatképet az aktuális munkakönyvtárról; ha
+          meggondoltad magad, válaszd ki a picker-ben a ↶ sort a rewind
+          visszavonásához. <strong>Korlátlanul egymásba ágyazható</strong> —
+          a rewind a rewindon belül sem veszít el adatot.
         </p>
       </div>
       <div class="card">
-        <h4>Dupla kurzor</h4>
+        <h4>Egymásba ágyazott rewind hash láncként jelenik meg</h4>
         <p>
-          A selection kurzor (<code>▶</code>) és a head kurzor
-          (<code>(current)</code> címke) fogalmilag el vannak választva — a
-          vizuális kurzorod nem egyenlő a session állapotával. Áttekinthetőbb,
-          mint a "kurzor = állapot" egyesített modell.
+          Több egymás utáni rewind után a picker ezeket a ↶ sorokat
+          <code>↶ Rewind to &lt;target-hash&gt; [own-hash]</code>
+          formában jeleníti meg — egy pillantással láthatod, "melyik rewind-ból
+          indult ki ez a másik." A hierarchia szövegesen explicit, nem fejben kell
+          tartani.
         </p>
       </div>
       <div class="card">
-        <h4>Hosszabb alapértelmezett megőrzési idő</h4>
+        <h4>Event-aligned CHANGES oszlop (a git log szemléletével)</h4>
         <p>
-          Alapértelmezetten 60 nap retention (a hermes 7 napos), ami jobban
-          illeszkedik az axiomate-felhasználók hosszabb projektciklusaihoz:
-          szabadságról visszatérve, sprintváltáskor is vissza tudsz lépni
-          hetekkel korábbi állapotokra.
+          A picker, list és status CHANGES oszlopa azt írja le, hogy
+          <strong>az adott turn mit írt</strong> (anchor[i] vs anchor[i-1]),
+          ugyanúgy, ahogy a git log-ot olvasod. A Hermes eredeti commit-vs-parent
+          modellje off-by-one hibás: egy sor CHANGES oszlopa valójában a
+          <strong>következő sor</strong> turn-jéhez tartozik, ami elsőre
+          zavaró.
+        </p>
+      </div>
+      <div class="card">
+        <h4>Magasabb alapértelmezett limitek (modern fejlesztői gépekhez)</h4>
+        <p>
+          Alapértelmezett korlátok: 5000 pillanatkép (a <code>/config</code> alatt állítható) / 60 nap megőrzés / 5 GB
+          tároló / 50 MB fájlonként / 200 000 fájl munkakönyvtáranként /
+          5 000 sor maximum. A Hermes alapértelmezetten 7 nap megőrzést használ,
+          ami sprint-határokon könnyen adatvesztéshez vezet; az axiomate 60 napos
+          megőrzése + 5 GB tárolója illeszkedik a modern fejlesztési ciklusokhoz,
+          beleértve a szabadságokat és a sprint-váltásokat is.
+        </p>
+      </div>
+      <div class="card">
+        <h4>UX előny: newest-first + adaptív időbélyegek</h4>
+        <p>
+          A picker alapértelmezetten <strong>a legújabbat mutatja felül</strong>
+          (a hermes-ben nincs ilyen), így a legutóbbi művelet azonnal látható
+          megnyitáskor. Az időbélyegek adaptívak: épp most &rarr; <code>just now</code>,
+          percek &rarr; <code>5m ago</code>, napok &rarr; abszolút dátum.
         </p>
       </div>
       <div class="card">
@@ -897,7 +927,7 @@ Roll back to a turn with /rewind (interactive selector).</code></pre>
       <tr><th>Paraméter</th><th>Alapértelmezett</th><th>Felülírás módja</th></tr>
       <tr><td>Megőrzési napok (stale küszöb)</td><td>60 nap</td><td><code>--retention-days N</code> &mdash; <strong>0 beírásával kikapcsolható a stale kör</strong></td></tr>
       <tr><td>Teljes méretkorlát</td><td>5 GB (5000 MB)</td><td><code>--max-size-mb N</code> &mdash; <strong>0 beírásával kikapcsolható a size-cap kör</strong></td></tr>
-      <tr><td>Projektenkénti maximális pillanatképszám</td><td>500</td><td>Nem konfigurálható, hard limit</td></tr>
+      <tr><td>Projektenkénti maximális pillanatképszám</td><td>5000</td><td>A <code>checkpointsMaxSnapshotsPerProject</code> beállítás a <code>/config</code> alatt (tartomány 0..1000000; 0 kikapcsolja a ring-buffer korlátot). Íráskor és prune-kor egyaránt érvényesül.</td></tr>
       <tr><td>Session-anchoring ablak</td><td>28 nap, vagy a megőrzési idő kétszerese</td><td>Nem konfigurálható, hard limit</td></tr>
     </table>
   </section>

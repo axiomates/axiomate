@@ -385,6 +385,8 @@ describe('renderPruneReport', () => {
       orphanRefsRemoved: 0,
       orphanRefsSkipped: 0,
       staleRefsRemoved: 0,
+      snapshotCapRefsTouched: 0,
+      snapshotCapCommitsDropped: 0,
       sizeCapRefsTouched: 0,
       sizeCapCommitsDropped: 0,
       keepRefsAnchored: 0,

@@ -81,6 +81,14 @@ export const SUPPORTED_SETTINGS: Record<string, SettingConfig> = {
     min: 1,
     max: 5000,
   },
+  checkpointsMaxSnapshotsPerProject: {
+    source: 'global',
+    type: 'number',
+    description:
+      'Per-project snapshot cap. Both write-time ring buffer (createSnapshot) and prune-time snapshot-cap pass enforce this. 0 disables the cap entirely (size-cap still bounds total). Range 0..1000000.',
+    min: 0,
+    max: 1_000_000,
+  },
   showTurnDuration: {
     source: 'global',
     type: 'boolean',

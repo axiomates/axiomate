@@ -1,12 +1,18 @@
 /**
  * `pruneCheckpoints` — auto-maintenance for the shadow-git store.
  *
- * Runs three passes against `~/.axiomate/checkpoints/store/`:
- *   1. Orphan — drop refs whose project workdir no longer exists on disk.
- *   2. Stale  — drop refs whose `last_touch` is older than `retentionDays`.
- *   3. Size   — while total store size exceeds `maxTotalSizeMb`, drop the
- *               oldest commit per ref (round-robin) until under cap or no
- *               progress made in a full round.
+ * Runs four passes against `~/.axiomate/checkpoints/store/`:
+ *   1. Orphan       — drop refs whose project workdir no longer exists on disk.
+ *   2. Stale        — drop refs whose `last_touch` is older than `retentionDays`.
+ *   3. Snapshot cap — for each surviving ref, rebuild to keep only the most
+ *                     recent N commits (N from globalConfig
+ *                     `checkpointsMaxSnapshotsPerProject`). Mirrors
+ *                     createSnapshot's write-time ring buffer so lowering the
+ *                     cap re-tightens existing refs without waiting for the
+ *                     next snapshot.
+ *   4. Size         — while total store size exceeds `maxTotalSizeMb`, drop
+ *                     the oldest commit per ref (round-robin) until under cap
+ *                     or no progress made in a full round.
  *
  * Followed (or interleaved) by `git reflog expire --expire=now --all` +
  * `git gc --prune=now --quiet` (3× timeout). gc runs unconditionally
@@ -29,6 +35,7 @@
 import { existsSync, readdirSync, statSync, type Dirent } from 'fs'
 import { stat, unlink, writeFile } from 'fs/promises'
 import { join } from 'path'
+import { getGlobalConfig } from '../config.js'
 import { logForDebugging } from '../debug.js'
 import {
   DEFAULT_CHECKPOINT_GIT_TIMEOUT_MS,
@@ -48,6 +55,7 @@ import {
 } from './paths.js'
 import { loadProjectMetas as loadProjectMetasShared } from './projectMetas.js'
 import type { ProjectMeta } from './projectMetas.js'
+import { pruneRefToMaxN } from './pruneRefToMaxN.js'
 import {
   extractGitHashes,
   listRecentSessionsForWorkdir,
@@ -83,9 +91,17 @@ export const DEFAULT_RETENTION_DAYS = 60
 /**
  * Default cross-project size cap (MB). 5 GB on a modern dev machine
  * (~0.5% of a 1 TB SSD) buys plenty of headroom for the per-project
- * ring buffer (MAX_SNAPSHOTS=500) without crowding the disk.
+ * ring buffer (MAX_SNAPSHOTS=5000) without crowding the disk.
  */
 export const DEFAULT_MAX_TOTAL_SIZE_MB = 5000
+
+/**
+ * Default per-project snapshot cap, used when globalConfig
+ * `checkpointsMaxSnapshotsPerProject` is unset or invalid. Mirrors
+ * `MAX_SNAPSHOTS` in createSnapshot.ts so write-time and prune-time
+ * caps agree by default; users overriding via /config override both.
+ */
+export const DEFAULT_MAX_SNAPSHOTS_PER_REF = 5000
 
 /**
  * Minimum interval between auto-prune runs. 24h matches Hermes
@@ -99,6 +115,13 @@ export interface PruneOptions {
   retentionDays?: number
   /** Override default 5000 MB (5 GB) cap. Use `0` to disable size pass. */
   maxTotalSizeMb?: number
+  /**
+   * Override per-project snapshot cap. Defaults to globalConfig
+   * `checkpointsMaxSnapshotsPerProject` (or `DEFAULT_MAX_SNAPSHOTS_PER_REF`
+   * if unset). Use `0` to disable the snapshot-cap pass entirely.
+   * Tests use this to assert cap behavior without touching globalConfig.
+   */
+  maxSnapshotsPerRef?: number
   /** Bypass the `.last_prune` 24h marker. */
   forceNow?: boolean
   /**
@@ -129,6 +152,13 @@ export interface PruneReport {
   orphanRefsSkipped: number
   /** Refs deleted because last_touch was outside the retention window. */
   staleRefsRemoved: number
+  /**
+   * Refs whose commit count was truncated by the snapshot-count pass.
+   * Each ref is counted at most once even if many commits were dropped.
+   */
+  snapshotCapRefsTouched: number
+  /** Total commits dropped across all refs during the snapshot-count pass. */
+  snapshotCapCommitsDropped: number
   /** Refs whose oldest commit was dropped at least once during size cap. */
   sizeCapRefsTouched: number
   /** Total commits dropped across all refs during size cap. */
@@ -161,6 +191,8 @@ const EMPTY_REPORT: Omit<PruneReport, 'skipped' | 'gitMissing'> = {
   orphanRefsRemoved: 0,
   orphanRefsSkipped: 0,
   staleRefsRemoved: 0,
+  snapshotCapRefsTouched: 0,
+  snapshotCapCommitsDropped: 0,
   sizeCapRefsTouched: 0,
   sizeCapCommitsDropped: 0,
   keepRefsAnchored: 0,
@@ -195,6 +227,17 @@ export async function pruneCheckpoints(
 
   const retentionDays = opts.retentionDays ?? DEFAULT_RETENTION_DAYS
   const maxTotalSizeMb = opts.maxTotalSizeMb ?? DEFAULT_MAX_TOTAL_SIZE_MB
+  // Snapshot cap: explicit opts (tests) win, then globalConfig, then default.
+  // Validate the config value so a corrupt/missing/non-numeric entry falls
+  // back gracefully instead of disabling the pass or throwing on multiply.
+  const maxSnapshotsPerRef = (() => {
+    if (typeof opts.maxSnapshotsPerRef === 'number') return opts.maxSnapshotsPerRef
+    const configured = getGlobalConfig().checkpointsMaxSnapshotsPerProject
+    if (typeof configured === 'number' && Number.isFinite(configured) && configured >= 0) {
+      return configured
+    }
+    return DEFAULT_MAX_SNAPSHOTS_PER_REF
+  })()
   const report: PruneReport = {
     skipped: false,
     gitMissing: false,
@@ -252,6 +295,16 @@ export async function pruneCheckpoints(
       const dropped = await dropProjectRef(store, meta, report)
       if (dropped) report.staleRefsRemoved++
     }
+  }
+
+  // 4b. Pass 3 — per-project snapshot-count cap. For each surviving ref,
+  //     rebuild to keep only the most recent N commits via pruneRefToMaxN.
+  //     Mirrors the write-time ring buffer in createSnapshot.ts so users
+  //     who lower their config N see existing refs shrink immediately.
+  //     Runs before intermediate gc so reclaimed objects fold into the
+  //     same gc that orphan/stale already trigger.
+  if (maxSnapshotsPerRef > 0) {
+    await runSnapshotCapPass(store, maxSnapshotsPerRef, report)
   }
 
   // 5. Intermediate gc — reflog expire + gc --prune=now. Runs unconditionally
@@ -658,6 +711,69 @@ async function runSizeCapPass(
 
   // Final gc — Hermes `prune_checkpoints`::1446-1453. Unconditional within this branch.
   if (await runReflogExpireAndGc(store, report)) report.gcInvocations++
+}
+
+/**
+ * Per-project snapshot-count cap. For each surviving project ref,
+ * rebuild to its last `maxN` commits via `pruneRefToMaxN`. Mirrors
+ * the write-time ring buffer in `createSnapshot.ts` so lowering the
+ * cap via `/config` (or `PruneOptions.maxSnapshotsPerRef`) shrinks
+ * existing refs on the next prune — without this pass the new cap
+ * only takes effect on the NEXT snapshot per project.
+ *
+ * Skips refs already removed by orphan/stale passes — uses
+ * `listProjectRefs` (`for-each-ref`) so deleted refs are naturally
+ * absent from the iteration set.
+ *
+ * Counts dropped commits by comparing rev-list count before/after
+ * `pruneRefToMaxN`. `touchedRefs` is a Set so a ref counts at most
+ * once per pass.
+ *
+ * Caller guards `maxN > 0` — `runSnapshotCapPass` does not run when
+ * the cap is disabled.
+ */
+async function runSnapshotCapPass(
+  store: string,
+  maxN: number,
+  report: PruneReport,
+): Promise<void> {
+  // Fresh-install guard: same as `runReflogExpireAndGc` — `for-each-ref`
+  // against a non-existent store dir would push a cosmetic error into
+  // `report.errors` and surface as exit 1 on what is a no-op.
+  if (!existsSync(store)) return
+  const refs = await listProjectRefs(store, report)
+  if (refs.length === 0) return
+  const base = getCheckpointBase()
+  const touchedRefs = new Set<string>()
+  for (const ref of refs) {
+    const beforeResult = await runCheckpointGit(
+      ['rev-list', '--count', ref],
+      { store, workTree: base, allowedExitCodes: REF_MISSING },
+    )
+    if (beforeResult.ok === false) {
+      report.errors.push(`snapshot-cap rev-list (before): ${ref}`)
+      continue
+    }
+    const beforeCount = Number.parseInt(beforeResult.stdout.trim(), 10)
+    if (!Number.isFinite(beforeCount) || beforeCount <= maxN) continue
+
+    const newCount = await pruneRefToMaxN({
+      store,
+      workTree: base,
+      ref,
+      maxN,
+    })
+    if (newCount === null) {
+      report.errors.push(`snapshot-cap pruneRefToMaxN: ${ref}`)
+      continue
+    }
+    const dropped = beforeCount - newCount
+    if (dropped > 0) {
+      report.snapshotCapCommitsDropped += dropped
+      touchedRefs.add(ref)
+    }
+  }
+  report.snapshotCapRefsTouched = touchedRefs.size
 }
 
 /**

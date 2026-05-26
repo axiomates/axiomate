@@ -331,7 +331,7 @@
       <div class="card">
         <h4>更激进的默认值（适配现代开发机）</h4>
         <p>
-          默认快照上限 500 / 保留 60 天 / 5GB 池 / 单文件 50MB / 工作目
+          默认快照上限 5000（可通过 <code>/config</code> 调整） / 保留 60 天 / 5GB 池 / 单文件 50MB / 工作目
           录最多 200,000 个文件 / 列表最多 5000 行。Hermes 默认 7 天
           保留，跨 sprint 项目易丢；axiomate 60 天保留 + 5GB 池契合
           休假回来、跨 sprint 切换的现代开发周期。
@@ -831,7 +831,7 @@ Roll back to a turn with /rewind (interactive selector).</code></pre>
       <tr><th>参数</th><th>默认</th><th>覆盖方式</th></tr>
       <tr><td>保留天数（stale 阈值）</td><td>60 天</td><td><code>--retention-days N</code> &mdash; <strong>填 0 关掉 stale 这一遍</strong></td></tr>
       <tr><td>总大小上限</td><td>5 GB（5000 MB）</td><td><code>--max-size-mb N</code> &mdash; <strong>填 0 关掉 size-cap 这一遍</strong></td></tr>
-      <tr><td>每个项目最多快照数</td><td>500</td><td>不可配，硬上限</td></tr>
+      <tr><td>每个项目最多快照数</td><td>5000</td><td>通过 <code>/config</code> 设置 <code>checkpointsMaxSnapshotsPerProject</code>（范围 0..1000000，0 = 关闭 ring buffer 上限）。写时和 prune 时都生效。</td></tr>
       <tr><td>会话锚定窗口</td><td>28 天，或保留期的 2 倍</td><td>不可配，硬上限</td></tr>
     </table>
   </section>

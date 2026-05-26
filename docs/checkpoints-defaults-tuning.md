@@ -77,13 +77,35 @@ Settings 选项循环里还有旧值、user doc 还说"默认 30"等。
 
 ### 5. `MAX_SNAPSHOTS` — 每项目快照 ring buffer 上限
 
-**主源**：`agent/src/utils/checkpoints/createSnapshot.ts:69`
+**主源**：`agent/src/utils/checkpoints/createSnapshot.ts:69` ——
+write-time 兜底默认值（globalConfig 未设时使用）。
+
+**用户可配置入口**：globalConfig `checkpointsMaxSnapshotsPerProject`，
+通过 `/config` TUI 调整。createSnapshot 写时和 prune 时都会读这个 config。
+设置 `0` 禁用整个 cap（write-time + prune-time 同时禁用）。
 
 **跟随**：
 
-- `agent/src/utils/checkpoints/prune.ts` JSDoc 里 "MAX_SNAPSHOTS=N" 的注释
+- `agent/src/utils/checkpoints/createSnapshot.ts` 的 step 12 注释
+  （提及读 config 与 fallback）
+- `agent/src/utils/checkpoints/prune.ts`
+  - `DEFAULT_MAX_SNAPSHOTS_PER_REF` 常量（必须跟 createSnapshot 的
+    MAX_SNAPSHOTS 同值，文档化"两者同源"）
+  - `runSnapshotCapPass` 实现
+  - PruneOptions.maxSnapshotsPerRef 字段（仅测试用）
+- `agent/src/utils/config.ts`：
+  - `GlobalConfig.checkpointsMaxSnapshotsPerProject` 类型字段
+  - `getDefaults()` 默认值（必须 = MAX_SNAPSHOTS）
+  - `EDITABLE_CONFIG_KEYS` 列表
+- `agent/src/components/Settings/Config.tsx` 的 `checkpointsMaxSnapshotsPerProject`
+  enum option 列表 —— 跟 `checkpointsStatusRows` 同形循环菜单
+- `agent/src/tools/ConfigTool/supportedSettings.ts` 的
+  `checkpointsMaxSnapshotsPerProject` schema (min/max/description)
+- `agent/src/commands/checkpoints/views.ts` `renderPruneReport` 显示
+  `Snap-cap refs touched / commits drop`（仅 N>0 才显示）
 - `docs/user/checkpoints_zhcn.html` Prune 阈值表格"每个项目最多快照数"项
-- 这个常量没暴露给 CLI 或 Settings —— 只有源码 + doc
+- 单测 `agent/src/utils/checkpoints/__tests__/prune.test.ts` 的
+  "snapshot cap pass" describe（小轮数 N=2/N=10/N=0/multi-ref）
 
 ### 6. `MAX_FILES` — 单次快照文件数上限
 
@@ -115,7 +137,8 @@ checkpoint 的工作目录文件数上限。**别动它**。
 
 1. **先确定新值**：跟用户对齐每个常量的目标值。注意常量之间的关联——
    - `MAX_SNAPSHOTS` × `DEFAULT_MAX_TOTAL_SIZE_MB`：snap 数 × 每 snap 大小
-     不该长期超 size cap，否则 size pass 一直在删
+     不该长期超 size cap，否则 size pass 一直在删。5000 snap × 1MB ≈ 5GB
+     是当前默认的平衡点
    - `ROWS_FALLBACK` ≤ `MAX_SNAPSHOTS`：list 默认显示的行数不超过实际能
      存的 snap 数，否则 fallback 是噪音
    - `DEFAULT_RETENTION_DAYS` × turn 频率 × `MAX_SNAPSHOTS`：retention
@@ -127,10 +150,10 @@ checkpoint 的工作目录文件数上限。**别动它**。
 3. **改 CLI option description**：`agent/src/main.tsx` 三处子命令
 
 4. **改 Settings UI**：`agent/src/components/Settings/Config.tsx` 的
-   enum option 列表（如果改的是 ROWS）
+   enum option 列表（适用于 ROWS 和 MAX_SNAPSHOTS）
 
 5. **改 ConfigTool schema**：`agent/src/tools/ConfigTool/supportedSettings.ts`
-   的 `min` / `max` / `description`（如果改的是 ROWS）
+   的 `min` / `max` / `description`（适用于 ROWS 和 MAX_SNAPSHOTS）
 
 6. **改 user doc**：`docs/user/checkpoints_zhcn.html` —— 搜旧数字
    `grep -n '<old-number>' docs/user/checkpoints_zhcn.html`，全部位置

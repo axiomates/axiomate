@@ -280,45 +280,72 @@
     </p>
     <div class="grid">
       <div class="card">
-        <h4>Dual-Axis Rewind: File + Conversation</h4>
+        <h4>Dual-Axis Rewind + Dual Cursors</h4>
         <p>
           Hermes only does file rollback. Axiomate adds an independent <strong>conversation replay
           axis</strong> -- press <kbd>Tab</kbd> in the picker to switch to the Conversation tab, jump
           back to any Q/A pair, and the input box is automatically pre-filled with the next prompt
-          so you can redo it. File and Conversation are fully decoupled and never interfere with
-          each other.
+          so you can redo it. File and Conversation are fully decoupled. The Selection cursor
+          (<code>▶</code>) and Head cursor (<code>(current)</code>) are conceptually separate --
+          your visual cursor is not session state. More explicit than hermes's merged
+          "cursor = state" model.
         </p>
       </div>
       <div class="card">
-        <h4>Persistent Conversation Rewind</h4>
+        <h4>Persistent Conversation Rewind + Future Nodes Visible</h4>
         <p>
           Conversation rewind head state is written into the JSONL (a <code>type:"head"</code>
           entry). <code>/exit</code> and then resume the same session via the UI -- your position
           matches where you rewound to, unlike traditional in-memory truncation that's lost on exit.
-        </p>
-      </div>
-      <div class="card">
-        <h4>Future Nodes Remain Visible</h4>
-        <p>
           After rewinding, turns newer than head still appear in the picker rendered in dim
           gray (the data is still in the JSONL, not deleted), ready to be selected again at any time.
           "Rewind, then redo" is axiomate's core mental model.
         </p>
       </div>
       <div class="card">
-        <h4>Dual-Cursor Design</h4>
+        <h4>Pre-Rewind Safety Net on Every Rewind</h4>
         <p>
-          Selection cursor (<code>▶</code>) and head cursor
-          (<code>(current)</code> tag) are conceptually separate -- your visual cursor is not the
-          same as session state. More explicit than merged "cursor = state" models.
+          Hermes's rewind is a one-way operation -- once you go back, later state is lost.
+          Axiomate takes a safety-net snapshot of the current workdir <em>before</em> every
+          rewind; if you regret it, pick the ↶ row in the picker to undo the rewind itself.
+          <strong>Infinitely nestable</strong> -- rewind on rewind never loses data.
         </p>
       </div>
       <div class="card">
-        <h4>Longer Default Retention</h4>
+        <h4>Nested Rewind Shown as Hash Chain</h4>
         <p>
-          60-day default retention (hermes uses 7 days), tuned for axiomate users' longer
-          project cycles: come back after a vacation or cross-sprint switch and still rewind
-          to weeks ago.
+          After several consecutive rewinds, the picker renders these ↶ rows as
+          <code>↶ Rewind to &lt;target-hash&gt; [own-hash]</code>
+          -- you can see at a glance "which rewind this one branched off of."
+          The hierarchy is explicit in text, not held in memory.
+        </p>
+      </div>
+      <div class="card">
+        <h4>Event-Aligned CHANGES Column (Git Log Mental Model)</h4>
+        <p>
+          The CHANGES column in the picker, list, and status describes <strong>what this
+          row's turn wrote</strong> (anchor[i] vs anchor[i-1]), matching how you read
+          git log. Hermes's original commit-vs-parent model has an off-by-one: a row's
+          CHANGES actually belongs to the <strong>next row's</strong> turn, which is
+          initially confusing.
+        </p>
+      </div>
+      <div class="card">
+        <h4>Aggressive Defaults (Tuned for Modern Dev Machines)</h4>
+        <p>
+          Default caps: 5000 snapshots (configurable via <code>/config</code>) / 60-day retention / 5 GB pool / 50 MB per file /
+          200,000 files per workdir / 5,000 rows max. Hermes defaults to 7-day retention,
+          which easily loses data across sprint boundaries; axiomate's 60 days + 5 GB pool
+          fits modern development cycles including vacations and cross-sprint context switches.
+        </p>
+      </div>
+      <div class="card">
+        <h4>UX Edge: Newest-First + Adaptive Timestamps</h4>
+        <p>
+          The picker defaults to <strong>newest at the top</strong> (hermes has no equivalent),
+          so your most recent operation is immediately visible when you open it. Timestamps are
+          adaptive: just now &rarr; <code>just now</code>, minutes ago &rarr; <code>5m ago</code>,
+          crossing a day &rarr; absolute date.
         </p>
       </div>
       <div class="card">
@@ -824,7 +851,7 @@ Roll back to a turn with /rewind (interactive selector).</code></pre>
       <tr><th>Parameter</th><th>Default</th><th>Override</th></tr>
       <tr><td>Retention days (stale threshold)</td><td>60 days</td><td><code>--retention-days N</code> &mdash; <strong>set to 0 to disable the stale pass</strong></td></tr>
       <tr><td>Total size cap</td><td>5 GB (5000 MB)</td><td><code>--max-size-mb N</code> &mdash; <strong>set to 0 to disable the size-cap pass</strong></td></tr>
-      <tr><td>Max snapshots per project</td><td>500</td><td>Not configurable, hard cap</td></tr>
+      <tr><td>Max snapshots per project</td><td>5000</td><td>Set <code>checkpointsMaxSnapshotsPerProject</code> via <code>/config</code> (range 0..1000000; 0 disables the ring-buffer cap). Applied at write time AND at prune time.</td></tr>
       <tr><td>Session anchor window</td><td>28 days, or 2x retention</td><td>Not configurable, hard cap</td></tr>
     </table>
   </section>

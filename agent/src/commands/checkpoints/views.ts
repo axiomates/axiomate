@@ -261,8 +261,10 @@ function parseIsoToEpochSeconds(iso: string): number {
  *
  * Hermes prints six fixed labels (`hermes_cli/checkpoints.py::cmd_prune`).
  * We surface the equivalent fields from PruneReport, plus axiomate-only
+ * `snapshotCapRefsTouched` / `snapshotCapCommitsDropped` (only printed
+ * when the snapshot-count pass actually fired) /
  * `sizeCapRefsTouched` / `sizeCapCommitsDropped` and `gcInvocations` so
- * users can see what the size-cap pass actually did.
+ * users can see what the snapshot- and size-cap passes actually did.
  */
 export function renderPruneReport(report: PruneReport): string {
   if (report.gitMissing) {
@@ -281,6 +283,10 @@ export function renderPruneReport(report: PruneReport): string {
     lines.push(`Orphan refs skipped:    ${report.orphanRefsSkipped}`)
   }
   lines.push(`Stale refs removed:     ${report.staleRefsRemoved}`)
+  if (report.snapshotCapRefsTouched > 0 || report.snapshotCapCommitsDropped > 0) {
+    lines.push(`Snap-cap refs touched:  ${report.snapshotCapRefsTouched}`)
+    lines.push(`Snap-cap commits drop:  ${report.snapshotCapCommitsDropped}`)
+  }
   lines.push(`Size-cap refs touched:  ${report.sizeCapRefsTouched}`)
   lines.push(`Size-cap commits drop:  ${report.sizeCapCommitsDropped}`)
   if (report.keepRefsAnchored > 0 || report.keepRefsExpired > 0) {

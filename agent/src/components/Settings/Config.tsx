@@ -540,6 +540,25 @@ export function Config({
               })
             },
           },
+          {
+            id: 'checkpointsMaxSnapshotsPerProject',
+            label: 'Checkpoints per-project snapshot cap',
+            value: String(globalConfig.checkpointsMaxSnapshotsPerProject),
+            options: ['500', '1000', '2000', '5000', '10000', '20000', '50000', '0'],
+            type: 'enum' as const,
+            onChange(value: string) {
+              const n = Number(value)
+              if (!Number.isFinite(n) || n < 0) return
+              saveGlobalConfig(current => ({
+                ...current,
+                checkpointsMaxSnapshotsPerProject: n,
+              }))
+              setGlobalConfig({
+                ...getGlobalConfig(),
+                checkpointsMaxSnapshotsPerProject: n,
+              })
+            },
+          },
         ]
       : []),
     {
