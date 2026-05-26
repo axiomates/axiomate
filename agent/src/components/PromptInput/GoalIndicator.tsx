@@ -64,14 +64,19 @@ export function GoalIndicator({ isLoading }: Props): React.ReactNode {
   // line. Now that GoalIndicator owns its row (not sharing with mode
   // hint), the cap can be generous — full terminal width minus the
   // fixed prefix/suffix is the bound.
-  const fixedCols = stringWidth(label) + 1 /*colon*/ + 1 /*gap*/ + (working ? 10 /*(working)*/ : 0) + 4 /*safety*/
+  const fixedCols = stringWidth(label) + 2 /*": "*/ + (working ? 11 /*" (working)"*/ : 0) + 4 /*safety*/
   const textCols = Math.max(20, columns - fixedCols)
+  const text = truncateByColumns(goal.goal, textCols)
 
+  // Render as ONE Box with explicit space separators inside <Text>
+  // rather than relying on Box gap — Ink's gap propagation across
+  // wrap boundaries can drop the space, producing 'paused1.' for
+  // long goal text (reported by user 2026-05-26).
   return (
-    <Box gap={1}>
-      <Text color={color}>{label}:</Text>
-      <Text dimColor>{truncateByColumns(goal.goal, textCols)}</Text>
-      {working && <Text dimColor>(working)</Text>}
+    <Box>
+      <Text color={color}>{label}: </Text>
+      <Text dimColor>{text}</Text>
+      {working && <Text dimColor> (working)</Text>}
     </Box>
   )
 }
