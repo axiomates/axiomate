@@ -60,23 +60,32 @@ export function GoalIndicator({ isLoading }: Props): React.ReactNode {
   // user the wait is real work, not a hung loop.
   const working = isLoading && goal.status === 'active'
 
-  // Cap goal-text width to leave room for label/(working) on a single
-  // line. Now that GoalIndicator owns its row (not sharing with mode
-  // hint), the cap can be generous — full terminal width minus the
-  // fixed prefix/suffix is the bound.
-  const fixedCols = stringWidth(label) + 2 /*": "*/ + (working ? 11 /*" (working)"*/ : 0) + 4 /*safety*/
-  const textCols = Math.max(20, columns - fixedCols)
+  // Compose the full line as one string, then bound it to terminal
+  // width and let Ink truncate (not wrap). The pill is contractually
+  // single-line — wrapping breaks alignment with the mode indicator
+  // row below and steals an extra row from the chat area.
+  const suffix = working ? ' (working)' : ''
+  const head = `${label}: `
+  const headWidth = stringWidth(head)
+  const suffixWidth = stringWidth(suffix)
+  // Reserve 1 col safety against off-by-one in stringWidth for ZWJ
+  // sequences / emoji modifiers.
+  const textCols = Math.max(8, columns - headWidth - suffixWidth - 1)
   const text = truncateByColumns(goal.goal, textCols)
 
-  // Render as ONE Box with explicit space separators inside <Text>
-  // rather than relying on Box gap — Ink's gap propagation across
-  // wrap boundaries can drop the space, producing 'paused1.' for
-  // long goal text (reported by user 2026-05-26).
   return (
     <Box>
-      <Text color={color}>{label}: </Text>
-      <Text dimColor>{text}</Text>
-      {working && <Text dimColor> (working)</Text>}
+      <Text color={color} wrap="truncate">
+        {head}
+      </Text>
+      <Text dimColor wrap="truncate">
+        {text}
+      </Text>
+      {working && (
+        <Text dimColor wrap="truncate">
+          {suffix}
+        </Text>
+      )}
     </Box>
   )
 }
