@@ -391,12 +391,22 @@ export async function* handleStopHooks(
     // succeeded. Lives at the end of the success path so user stop hook
     // failures (preventContinuation:true above) skip goal evaluation.
     //
-    // `stopHookActive=true` means we're being re-entered after a
-    // blocking-stop-hook retry (query.ts:1016). The user-configured
-    // hooks SHOULD run again (the model produced a new response, they
-    // need to reassess), but the goal judge MUST NOT — that would
-    // double-enqueue the continuation prompt for one logical turn.
-    if (!stopHookActive) {
+    // Two guards before invoking:
+    //
+    // 1. `!toolUseContext.agentId` — only the main thread evaluates the
+    //    goal. Subagents (Task tool, agent fork) also call
+    //    handleStopHooks at the end of their own turns; without this
+    //    guard each subagent stop would call into the same session's
+    //    GoalManager and double-enqueue the continuation prompt. The
+    //    other side-task hooks above (extractMemories, autoDream) use
+    //    the same guard for the same reason.
+    //
+    // 2. `!stopHookActive` — guards the blocking-stop-hook-retry path
+    //    (query.ts:1016). The user-configured hooks SHOULD run again
+    //    (the model produced a new response, they need to reassess),
+    //    but the goal judge MUST NOT — that would double-enqueue the
+    //    continuation prompt for one logical turn.
+    if (!toolUseContext.agentId && !stopHookActive) {
       yield* handleGoalHook({
         assistantMessages,
         toolUseContext,
@@ -423,7 +433,13 @@ export async function* handleStopHooks(
     // user input. Direct mgr.pause() (instead of a yield* through
     // handleGoalHook) because finally can't yield, but the footer pill
     // still rerenders via useGoalState's signal subscription.
-    if (toolUseContext.abortController.signal.aborted) {
+    //
+    // Subagent guard: same as the main goalHook above — subagents
+    // (Task tool) must not touch the main session's goal state.
+    if (
+      !toolUseContext.agentId &&
+      toolUseContext.abortController.signal.aborted
+    ) {
       try {
         const sessionId = getSessionId() as unknown as UUID
         if (sessionId) {
