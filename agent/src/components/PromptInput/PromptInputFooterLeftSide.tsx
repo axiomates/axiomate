@@ -21,6 +21,7 @@ import {
   getModeColor,
 } from '../../utils/permissions/PermissionMode.js'
 import { BackgroundTaskStatus } from '../tasks/BackgroundTaskStatus.js'
+import { GoalIndicator } from './GoalIndicator.js'
 import { isBackgroundTask } from '../../tasks/types.js'
 import { isPanelAgentTask } from '../../tasks/LocalAgentTask/LocalAgentTask.js'
 import { getVisibleAgentTasks } from '../CoordinatorAgentStatus.js'
@@ -128,6 +129,7 @@ export function PromptInputFooterLeftSide({
         teammateFooterIndex={teammateFooterIndex}
         onOpenTasksDialog={onOpenTasksDialog}
       />
+      <GoalIndicator />
     </Box>
   )
 }

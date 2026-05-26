@@ -18,7 +18,25 @@ import {
   recordGoalState,
 } from '../sessionStorage.js'
 import type { GoalStateEntry } from '../../types/logs.js'
+import { createSignal } from '../signal.js'
 import { entryToState, type GoalState } from './goalState.js'
+
+/**
+ * In-process cache + change signal for active goal state. The JSONL store
+ * is the source of truth, but UI components (statusline, footer)
+ * subscribe here for responsive re-renders without re-reading the
+ * transcript on every keystroke.
+ *
+ * - `recordedGoalStates` mirrors what's persisted, keyed by sessionId.
+ * - `goalChanged.emit(sessionId)` fires after every save / clear so
+ *   `useSyncExternalStore` consumers can rerun their snapshot getter.
+ *
+ * Misses (no entry in the cache) fall through to a real
+ * `loadTranscriptFile` scan. The cache is populated lazily on first
+ * load, so /resume sessions pick up their persisted goal automatically.
+ */
+const recordedGoalStates = new Map<UUID, GoalState | null>()
+export const goalChanged = createSignal<[UUID]>()
 
 /**
  * Persist a fresh snapshot of `state` for `sessionId`. Append-only; never
@@ -41,6 +59,10 @@ export async function saveGoalState(
     consecutiveParseFailures: state.consecutiveParseFailures,
     subgoals: state.subgoals,
   })
+  // Refresh cache with the in-memory snapshot — no need to re-read jsonl.
+  // We clone to keep the cache immune to caller mutations.
+  recordedGoalStates.set(sessionId, { ...state, subgoals: [...state.subgoals] })
+  goalChanged.emit(sessionId)
 }
 
 /**
@@ -52,12 +74,16 @@ export async function saveGoalState(
  * needed — JSONL is append-only and the picker only reads.
  */
 export async function loadGoalState(sessionId: UUID): Promise<GoalState | null> {
+  if (recordedGoalStates.has(sessionId)) {
+    return recordedGoalStates.get(sessionId) ?? null
+  }
   const filePath = getTranscriptPathForSession(sessionId)
   const { goalStates } = await loadTranscriptFile(filePath)
   const entry = goalStates.get(sessionId)
-  if (!entry) return null
-  if (entry.status === 'cleared') return null
-  return entryToState(entry)
+  const state =
+    !entry || entry.status === 'cleared' ? null : entryToState(entry)
+  recordedGoalStates.set(sessionId, state)
+  return state
 }
 
 /**
@@ -84,6 +110,18 @@ export async function clearGoalState(sessionId: UUID): Promise<void> {
     consecutiveParseFailures: existing.consecutiveParseFailures,
     subgoals: existing.subgoals,
   })
+  recordedGoalStates.set(sessionId, null)
+  goalChanged.emit(sessionId)
+}
+
+/**
+ * Synchronous snapshot getter for {@link useSyncExternalStore} consumers.
+ * Returns the cached state, or `null` when no goal has ever been loaded
+ * for `sessionId` in this process (the async {@link loadGoalState} will
+ * populate the cache on first call).
+ */
+export function getGoalStateSnapshot(sessionId: UUID): GoalState | null {
+  return recordedGoalStates.get(sessionId) ?? null
 }
 
 /**

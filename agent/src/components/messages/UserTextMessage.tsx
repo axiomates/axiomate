@@ -9,6 +9,7 @@ import {
   TICK_TAG,
 } from '../../constants/xml.js'
 import { isAgentSwarmsEnabled } from '../../utils/agentSwarmsEnabled.js'
+import { isContinuationPrompt } from '../../utils/goal/continuation.js'
 import {
   extractTag,
   INTERRUPT_MESSAGE,
@@ -20,6 +21,7 @@ import { UserAgentNotificationMessage } from './UserAgentNotificationMessage.js'
 import { UserBashInputMessage } from './UserBashInputMessage.js'
 import { UserBashOutputMessage } from './UserBashOutputMessage.js'
 import { UserCommandMessage } from './UserCommandMessage.js'
+import { UserGoalContinuationMessage } from './UserGoalContinuationMessage.js'
 import { UserLocalCommandOutputMessage } from './UserLocalCommandOutputMessage.js'
 import { UserMemoryInputMessage } from './UserMemoryInputMessage.js'
 import { UserPlanMessage } from './UserPlanMessage.js'
@@ -137,7 +139,11 @@ export function UserTextMessage({
     return <UserResourceUpdateMessage addMargin={addMargin} param={param} />
   }
 
-  // User prompts
+  // User prompts — goal continuations get a ↻ marker so the user can
+  // distinguish auto-fed Ralph-loop turns from their own typing.
+  if (isContinuationPrompt(param.text)) {
+    return <UserGoalContinuationMessage addMargin={addMargin} param={param} />
+  }
   return (
     <UserPromptMessage
       addMargin={addMargin}
