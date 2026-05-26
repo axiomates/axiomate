@@ -1,0 +1,779 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Goals — Axiomate 持久化目标系统</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #eef2f3;
+      --panel: #ffffff;
+      --panel-soft: #f7fafb;
+      --border: #d5dde0;
+      --text: #162126;
+      --muted: #5b6b73;
+      --accent: #0f766e;
+      --accent-soft: #dff5f2;
+      --warn: #92400e;
+      --warn-soft: #fef3c7;
+      --danger: #991b1b;
+      --danger-soft: #fee2e2;
+      --good: #166534;
+      --good-soft: #dcfce7;
+      --code: #f3f6f7;
+      --shadow: 0 10px 30px rgba(18, 31, 38, 0.08);
+      --radius: 18px;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font: 15px/1.65 "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at top left, #d8f0ea 0, rgba(216, 240, 234, 0) 28%),
+        radial-gradient(circle at top right, #f6e9c9 0, rgba(246, 233, 201, 0) 24%),
+        linear-gradient(180deg, #edf3f3 0%, #f6f8f8 100%);
+      min-height: 100vh;
+    }
+    .wrap {
+      width: min(1100px, calc(100vw - 32px));
+      margin: 24px auto 48px;
+      display: grid;
+      gap: 20px;
+    }
+    .hero {
+      background: linear-gradient(135deg, #12343b 0%, #204e56 56%, #2c6567 100%);
+      color: #f6fbfb;
+      border-radius: 28px;
+      padding: 30px 34px;
+      box-shadow: var(--shadow);
+      position: relative;
+      overflow: hidden;
+    }
+    .hero::after {
+      content: "";
+      position: absolute;
+      inset: auto -80px -80px auto;
+      width: 260px;
+      height: 260px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.06);
+      filter: blur(2px);
+    }
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(255, 255, 255, 0.12);
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      border-radius: 999px;
+      padding: 6px 11px;
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    h1, h2, h3, h4 { margin: 0; line-height: 1.25; }
+    h1 { margin-top: 14px; font-size: clamp(28px, 4vw, 38px); max-width: 880px; }
+    .lede { margin-top: 12px; font-size: 16px; max-width: 820px; opacity: 0.92; }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 22px 26px;
+      box-shadow: 0 1px 0 rgba(255,255,255,0.5) inset, 0 6px 18px rgba(18, 31, 38, 0.04);
+    }
+    .panel h2 {
+      font-size: 22px;
+      color: var(--accent);
+      letter-spacing: -0.01em;
+    }
+    .panel h2 .num {
+      display: inline-block;
+      width: 28px; height: 28px;
+      line-height: 28px;
+      border-radius: 999px;
+      background: var(--accent-soft);
+      color: var(--accent);
+      text-align: center;
+      font-size: 14px;
+      margin-right: 10px;
+      vertical-align: 2px;
+    }
+    .panel h3 { margin-top: 18px; font-size: 16px; }
+    p { margin: 10px 0; }
+    code, kbd, pre {
+      font-family: "JetBrains Mono", "Fira Code", "Consolas", monospace;
+      font-size: 13px;
+    }
+    code {
+      background: var(--code);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 1px 6px;
+    }
+    .hero code {
+      color: #0f1c20;
+      background: rgba(255, 255, 255, 0.94);
+      border-color: rgba(255, 255, 255, 0.72);
+      font-weight: 600;
+    }
+    pre {
+      background: #0f1c20;
+      color: #d8e9e9;
+      border-radius: 12px;
+      padding: 14px 16px;
+      overflow-x: auto;
+      margin: 10px 0;
+      line-height: 1.55;
+    }
+    pre code {
+      background: transparent;
+      border: 0;
+      padding: 0;
+      color: inherit;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 12px 0;
+      font-size: 14px;
+    }
+    th, td {
+      text-align: left;
+      padding: 9px 10px;
+      border-bottom: 1px solid var(--border);
+      vertical-align: top;
+    }
+    th {
+      background: var(--panel-soft);
+      font-weight: 600;
+      color: var(--muted);
+      font-size: 12px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+    .tag {
+      display: inline-block;
+      padding: 2px 9px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .tag.auto { background: var(--accent-soft); color: var(--accent); }
+    .tag.user { background: var(--warn-soft); color: var(--warn); }
+    .tag.ok { background: var(--good-soft); color: var(--good); }
+    .tag.warn { background: var(--warn-soft); color: var(--warn); }
+    .tag.bad { background: var(--danger-soft); color: var(--danger); }
+    .toc {
+      display: flex; flex-wrap: wrap; gap: 8px;
+      margin-top: 16px;
+    }
+    .toc a {
+      color: var(--accent);
+      text-decoration: none;
+      background: var(--accent-soft);
+      padding: 6px 12px;
+      border-radius: 999px;
+      font-size: 13px;
+      border: 1px solid rgba(15, 118, 110, 0.18);
+    }
+    .toc a:hover { background: #c4ede6; }
+    .callout {
+      border-left: 4px solid var(--accent);
+      background: var(--accent-soft);
+      border-radius: 10px;
+      padding: 12px 14px;
+      margin: 14px 0;
+    }
+    .callout.warn { border-left-color: #d97706; background: var(--warn-soft); }
+    .callout.warn strong { color: var(--warn); }
+    .callout.danger { border-left-color: #b91c1c; background: var(--danger-soft); }
+    .callout.danger strong { color: var(--danger); }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 14px;
+      margin-top: 12px;
+    }
+    .card {
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 14px 16px;
+      background: var(--panel-soft);
+    }
+    .card h4 { font-size: 14px; color: var(--accent); margin-bottom: 6px; }
+    .card p { margin: 4px 0 0; font-size: 13px; color: var(--muted); }
+    .timeline {
+      display: grid;
+      gap: 10px;
+      margin-top: 14px;
+    }
+    .timeline-row {
+      display: grid;
+      grid-template-columns: 90px 1fr;
+      gap: 14px;
+      align-items: start;
+    }
+    .timeline-row .when {
+      font-size: 12px;
+      color: var(--muted);
+      font-family: "JetBrains Mono", monospace;
+      padding-top: 2px;
+    }
+    .timeline-row .what code {
+      font-size: 13px;
+    }
+    .glyph-table td:first-child {
+      width: 60px;
+      text-align: center;
+      font-size: 18px;
+      padding-top: 12px;
+    }
+    .glyph-table code {
+      font-size: 12px;
+    }
+    footer {
+      text-align: center;
+      color: var(--muted);
+      font-size: 12px;
+      padding: 16px 0;
+    }
+  </style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="hero">
+    <span class="eyebrow">Axiomate · 用户文档</span>
+    <h1>Goals — 跨回合的持久化目标</h1>
+    <p class="lede">
+      普通对话是一问一答 — 你说一句，AI 答一段，结束。<strong>Goal</strong>
+      把你的目标提升成跨回合的"长任务锚点"：你 <code>/goal &lt;描述&gt;</code>
+      设一个目标，AI 开始动手，每个回合做完后由一个轻量的"评审模型"
+      自动判断目标是否达成 — 没达成就喂一句续作 prompt 让它接着做，达成了
+      就停下来通知你。直到完成 / 你叫停 / 预算耗尽。中途你随时可以发消息抢占、
+      可以 <code>/subgoal</code> 加追加条件、可以 <kbd>Ctrl+C</kbd> 暂停，
+      <code>/resume</code> 后目标状态完整保留。<strong>它解决的是 — AI 在长任务
+      里跑着跑着就忘了原目标</strong>。
+    </p>
+    <div class="toc">
+      <a href="#how">它怎么工作</a>
+      <a href="#ui">UI 标识</a>
+      <a href="#commands">用户命令</a>
+      <a href="#subgoal">/subgoal</a>
+      <a href="#judge">评审模型配置</a>
+      <a href="#interaction">和其他系统的配合</a>
+      <a href="#failure">失败模式</a>
+      <a href="#faq">FAQ</a>
+    </div>
+  </header>
+
+  <section id="how" class="panel">
+    <h2><span class="num">1</span>它怎么工作</h2>
+
+    <p>
+      Goal 是经典 "Ralph loop" 范式 — 把一个长目标拆成一组自动续作的小回合，
+      让 AI 在每个回合的成果上接着干。Axiomate 的实现是一个 1:1 端口自
+      <a href="https://github.com/akukulis/hermes-agent" target="_blank" rel="noopener">hermes-agent</a>
+      的 <code>/goal</code> 系统，所有"细节抗碎"的硬化（评审失败自动暂停 /
+      Ctrl+C 暂停 / 空响应跳过 / 用户抢占等）都搬过来了。
+    </p>
+
+    <h3>每个回合发生的事</h3>
+    <div class="timeline">
+      <div class="timeline-row">
+        <span class="when">第 N 轮</span>
+        <span class="what">
+          AI 正常处理上一句 user message（可能是你设的 goal，也可能是上一轮的
+          续作 prompt），调工具、改文件、生成回复。
+        </span>
+      </div>
+      <div class="timeline-row">
+        <span class="when">回合结束</span>
+        <span class="what">
+          Axiomate 抽出 AI 这一轮的最后一段文本，连同你设的目标和所有 subgoal，
+          发给评审模型（默认走你的 fastModel）问：<code>{"done": &lt;bool&gt;, "reason": "..."}</code>。
+        </span>
+      </div>
+      <div class="timeline-row">
+        <span class="when">判 done</span>
+        <span class="what">
+          目标状态翻成 <code>done</code>，屏幕上显示 <code>✓ Goal achieved: &lt;reason&gt;</code>，loop 结束。
+        </span>
+      </div>
+      <div class="timeline-row">
+        <span class="when">判 continue</span>
+        <span class="what">
+          turn 计数 +1。如果还没超预算（默认 20 轮），把一句续作 prompt
+          <code>[Continuing toward your standing goal] Goal: &lt;原文&gt; …</code>
+          推回消息队列；REPL 下一个 idle tick 当它是一条普通的 user message 启动下一轮。
+        </span>
+      </div>
+      <div class="timeline-row">
+        <span class="when">预算耗尽</span>
+        <span class="what">
+          turn 计数 ≥ 上限时自动 pause，提示 <code>⏸ Goal paused — 20/20 turns used. Use /goal resume to keep going, or /goal clear to stop.</code>
+        </span>
+      </div>
+    </div>
+
+    <h3>关键设计</h3>
+    <div class="grid">
+      <div class="card">
+        <h4>普通 user message</h4>
+        <p>续作 prompt 走的是和你手敲完全一样的消息队列。不动 system prompt，
+          不动工具集 — prompt 缓存不破。</p>
+      </div>
+      <div class="card">
+        <h4>评审模型是辅助任务</h4>
+        <p>评审跑在独立的 fastModel（推荐配 Haiku、Gemini Flash 这类便宜模型），
+          不占主对话的 token 配额。</p>
+      </div>
+      <div class="card">
+        <h4>持久化在 JSONL</h4>
+        <p>目标状态以 <code>type:'goal-state'</code> 条目写进会话日志，
+          <code>/resume</code> 后自动恢复。和文件 checkpoints 一样是 append-only
+          + last-wins 范式。</p>
+      </div>
+      <div class="card">
+        <h4>fail-open</h4>
+        <p>评审模型出错（超时、API fail、解析失败）一律返回 <code>continue</code>，
+          不会因为评审挂掉就卡住对话；连续 3 轮解析失败才自动暂停。</p>
+      </div>
+      <div class="card">
+        <h4>用户优先</h4>
+        <p>你中途敲一条新消息，它<strong>抢占</strong>续作 prompt — 这一轮处理你的
+          消息，评审在你的消息处理完之后再跑（恰好用户的消息也可能正好完成目标）。</p>
+      </div>
+      <div class="card">
+        <h4>Ctrl+C 干净退出</h4>
+        <p>中断一个回合时直接 pause（不评审、不重排），状态记成
+          <code>user-interrupted (Ctrl+C)</code>。<code>/goal resume</code> 接着跑。</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="ui" class="panel">
+    <h2><span class="num">2</span>UI 标识</h2>
+
+    <p>
+      Goal 在屏幕上出现的几个地方 — 这套 glyph 是这个系统的"识别码"，
+      值得记一下：
+    </p>
+
+    <table class="glyph-table">
+      <thead>
+        <tr><th>符号</th><th>时机</th><th>含义</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>⊙</td>
+          <td><code>/goal &lt;text&gt;</code> 后 / <code>/goal status</code></td>
+          <td>目标已设 / 正在进行中。Footer 也常驻 <code>⊙ Goal 3/20: write fib</code> pill。</td>
+        </tr>
+        <tr>
+          <td>↻</td>
+          <td>每个 continue 回合开始 / transcript 中的续作 prompt</td>
+          <td>循环继续。屏幕显示 <code>↻ Continuing toward goal (3/20): &lt;reason&gt;</code>；
+            transcript 里自动喂回的 user message 前会有一个 <code>↻</code> 让你认得出
+            "这不是我打的，是 goal loop 自动喂的"。</td>
+        </tr>
+        <tr>
+          <td>✓</td>
+          <td>评审判 done / 你 <code>/goal clear</code></td>
+          <td>目标达成或主动收尾。</td>
+        </tr>
+        <tr>
+          <td>⏸</td>
+          <td>预算耗尽 / 评审挂了 3 轮 / Ctrl+C / 你 <code>/goal pause</code></td>
+          <td>暂停但保留状态。<code>/goal resume</code> 接着跑。Footer pill 变黄色。</td>
+        </tr>
+        <tr>
+          <td>▶</td>
+          <td><code>/goal resume</code></td>
+          <td>从暂停恢复到 active。预算默认会重置（保持 hermes 一致行为）。</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>Footer pill</h3>
+    <p>
+      只要 goal 处于 <code>active</code> 或 <code>paused</code>，输入框下方就常驻一条 pill：
+    </p>
+    <pre><code>⊙ Goal 3/20: write a fibonacci function and verify with fib(10)
+⏸ Goal paused: refactor auth — turn budget exhausted (20/20)</code></pre>
+    <p>
+      这个 pill 是 axiomate 在 hermes 之外多做的 — 让你在长 loop 里
+      不会"跑着跑着忘了自己设过什么"。
+    </p>
+  </section>
+
+  <section id="commands" class="panel">
+    <h2><span class="num">3</span>用户命令</h2>
+
+    <h3><code>/goal</code></h3>
+    <table>
+      <thead>
+        <tr><th>形式</th><th>作用</th><th>等价别名</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>/goal</code> 或 <code>/goal status</code></td>
+          <td>显示当前目标状态（active / paused / 无目标）+ turn 进度 + subgoal 数量。</td>
+          <td>—</td>
+        </tr>
+        <tr>
+          <td><code>/goal &lt;描述&gt;</code></td>
+          <td><strong>设一个新目标</strong>，会替换之前的目标，并立刻把描述本身当作第一句
+            user message 启动第一轮（不需要再发送一次）。</td>
+          <td>—</td>
+        </tr>
+        <tr>
+          <td><code>/goal pause</code></td>
+          <td>显式暂停。保留状态，<code>/goal status</code> 还能看到，下次 turn 不会自动续作。</td>
+          <td>—</td>
+        </tr>
+        <tr>
+          <td><code>/goal resume</code></td>
+          <td>从暂停恢复到 active，默认重置 turn 预算。下一句任何 user input 都会触发评审。</td>
+          <td>—</td>
+        </tr>
+        <tr>
+          <td><code>/goal clear</code></td>
+          <td>清空目标。Footer pill 消失，loop 完全停止。</td>
+          <td><code>/goal stop</code>、<code>/goal done</code></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="callout">
+      <strong>小提示：</strong>
+      <code>/goal &lt;描述&gt;</code> 之后<strong>不需要再敲一句 Enter</strong>。
+      命令本身会把描述当作第一句 user message 自动入队（这是和 hermes
+      一致的便利设计 — cli.py:9261 的 <code>self._pending_input.put(state.goal)</code>）。
+    </div>
+  </section>
+
+  <section id="subgoal" class="panel">
+    <h2><span class="num">4</span><code>/subgoal</code> — 中途追加准则</h2>
+
+    <p>
+      你设了 <code>/goal 实现一个 fib 函数</code>，跑了两轮发现 AI 漏了 unit test。
+      这时不需要 clear 重设 — 用 <code>/subgoal</code> 追加准则：
+    </p>
+
+    <pre><code>/subgoal 跑完后必须有一个 fib.test.ts 覆盖边界 case
+/subgoal 输出 fib(10) 的实际值到 console</code></pre>
+
+    <p>
+      下一轮评审会切换到 with-subgoals 模板：
+    </p>
+
+    <pre><code>Goal:
+&lt;原 goal&gt;
+
+Additional criteria the user added mid-loop (all must also be
+satisfied for the goal to be DONE):
+- 1. 跑完后必须有一个 fib.test.ts 覆盖边界 case
+- 2. 输出 fib(10) 的实际值到 console
+
+Agent's most recent response:
+...
+
+Decision: For each numbered criterion above, find concrete evidence
+in the agent's response that the criterion is satisfied. ...</code></pre>
+
+    <p>
+      评审被强制对每条 subgoal 单独找证据，不会因为 AI 喊一句"全部完成"就放行。
+    </p>
+
+    <table>
+      <thead>
+        <tr><th>形式</th><th>作用</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>/subgoal</code></td><td>列出当前所有 subgoal（带 1-based 编号）。</td></tr>
+        <tr><td><code>/subgoal &lt;文本&gt;</code></td><td>追加一条准则。</td></tr>
+        <tr><td><code>/subgoal remove &lt;n&gt;</code></td><td>按 1-based 编号删一条。</td></tr>
+        <tr><td><code>/subgoal clear</code></td><td>清空所有 subgoal（不影响主 goal）。</td></tr>
+      </tbody>
+    </table>
+
+    <p>
+      <strong>Subgoal 不会单独 kick 一轮</strong> — 当前 turn 跑完后下次评审才生效。
+      没有"立刻让 AI 知道新准则"的语义，因为 Axiomate 不打断进行中的回合。
+      所以 subgoal 适合"补漏"，不适合"急停"。要急停用 <code>/goal pause</code>。
+    </p>
+  </section>
+
+  <section id="judge" class="panel">
+    <h2><span class="num">5</span>评审模型配置</h2>
+
+    <p>
+      评审模型是 Goal 系统的"成本敏感点" — 它每轮都跑一次，你不会希望
+      它走 Opus 4.7 这种贵模型。Axiomate 的解析顺序是：
+    </p>
+
+    <table>
+      <thead>
+        <tr><th>优先级</th><th>来源</th><th>说明</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>1</td>
+          <td><code>auxiliaryModels.goalJudge</code></td>
+          <td>专门为 goal-judge 角色指定的模型，跟主对话彻底解耦。</td>
+        </tr>
+        <tr>
+          <td>2</td>
+          <td><code>fastModel</code></td>
+          <td>你 axiomate 全局的 fast 模型（同样被 session search、token 估算等复用）。</td>
+        </tr>
+        <tr>
+          <td>3</td>
+          <td><code>currentModel</code></td>
+          <td><strong>fallback</strong> — 用主对话模型。<code>/goal set</code> 时会
+            打一行 warning 提醒你这种情况下成本会高。</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>推荐配置（编辑 <code>~/.axiomate.json</code>）</h3>
+    <pre><code>{
+  "currentModel": "claude-opus-4-7",
+  "fastModel": "claude-haiku-4-5-20251001",
+  "auxiliaryModels": {
+    "goalJudge": "google/gemini-3-flash-preview"
+  },
+  "goalsMaxTurns": 20
+}</code></pre>
+
+    <p>
+      <code>fastModel</code> 已经配了便宜模型的话，可以不显式设
+      <code>auxiliaryModels.goalJudge</code> — fastModel 就够用。专门的
+      override 是给你想"goal 判定特别严格 / 特别宽松"时用的。
+    </p>
+
+    <div class="callout warn">
+      <strong>⚠ Reasoning 模型注意：</strong>
+      QwQ、DeepSeek-R1、Qwen3-thinking 这类会在 JSON 前输出
+      <code>&lt;think&gt;…&lt;/think&gt;</code> 推理段的模型可以用，
+      Axiomate 的解析器会自动剥掉 think 块再 parse。但它们 token 消耗大、慢，
+      没必要用它们做 goal-judge — 评审任务只需要"是/否 + 一句理由"，不需要推理。
+    </div>
+
+    <h3>评审 prompt 长什么样</h3>
+    <p>
+      给评审模型的固定 system prompt（端口自 hermes）：
+    </p>
+    <pre><code>You are a strict judge evaluating whether an autonomous agent has
+achieved a user's stated goal. ...
+
+A goal is DONE only when:
+- The response explicitly confirms the goal was completed, OR
+- The response clearly shows the final deliverable was produced, OR
+- The response explains the goal is unachievable / blocked / needs
+  user input (treat this as DONE with reason describing the block).
+
+Otherwise the goal is NOT done — CONTINUE.
+
+Reply ONLY with a single JSON object on one line:
+{"done": &lt;true|false&gt;, "reason": "&lt;one-sentence rationale&gt;"}</code></pre>
+
+    <p>
+      "blocked / needs user input" 也算 DONE — 这是一条保护：评审不会让 loop
+      在"AI 卡着等你回答"的状态下继续浪费 token。
+    </p>
+  </section>
+
+  <section id="interaction" class="panel">
+    <h2><span class="num">6</span>和其他系统的配合</h2>
+
+    <h3><code>/resume</code> — 自动恢复</h3>
+    <p>
+      目标状态写在 JSONL 会话日志里。<code>axiomate --continue</code> 或
+      <code>/resume &lt;sessionId&gt;</code> 加载之前的会话时，目标会自动浮出来 — 进
+      session 就能看到 Footer pill 显示 <code>⊙ Goal 3/20: …</code>。状态是
+      <code>active</code> 还是 <code>paused</code> 完全按你离开时的样子。
+    </p>
+
+    <h3><code>/rewind</code> — 回退后 goal 还在</h3>
+    <p>
+      <code>/rewind</code> 是回退<strong>对话链或文件状态</strong>，goal 状态不参与
+      rewind chain（它是 pointer-style 元数据，不进 <code>buildConversationChain</code>）。
+      也就是说：回退到几轮前的对话位置，goal 还是当前的 goal — 它跟着
+      sessionId 走，不跟着 conversation chain 走。
+    </p>
+
+    <h3><code>/branch</code> / <code>--fork-session</code> — fork 后 goal 不继承</h3>
+    <p>
+      fork 一个新 session 时，旧 session 的 <code>goal-state</code> 条目<strong>不会</strong>
+      被复制到新会话 — fork 过滤器只带 transcript message，新会话从"无目标"开始。
+      这是有意的：fork 通常是为了开一条平行实验线，背着旧 goal 跑不合理。
+    </p>
+
+    <h3>抢占 — 你的消息 vs 续作 prompt</h3>
+    <p>
+      Goal loop 跑到一半你打字发了一条新消息怎么办？两种情况：
+    </p>
+    <ul>
+      <li><strong>消息是 slash command（<code>/subgoal add …</code> 之类）</strong>：
+        不算"真实消息"，不抢占 goal — slash command 处理完后 goal 继续。</li>
+      <li><strong>消息是普通文本</strong>：抢占。Axiomate 的 stopHook 在评审前检查
+        消息队列，发现有非 slash 的真实消息就 defer — 你的消息先走，等它处理完
+        下一次 turn 末再重新评审。</li>
+    </ul>
+
+    <h3>评审 verdict 不污染对话上下文</h3>
+    <p>
+      <code>↻ Continuing toward goal (3/20): reason</code> 这类提示用
+      <code>isMeta: true</code> 标记，你看得见但<strong>不进下一轮的模型
+      prompt</strong>。这避免了"评审的 prose 把 prompt cache 打乱"的问题。
+      但<strong>续作 prompt 本身</strong>是真实 user message，会进对话历史
+      （否则 AI 根本不知道要继续）。
+    </p>
+  </section>
+
+  <section id="failure" class="panel">
+    <h2><span class="num">7</span>失败模式</h2>
+
+    <p>
+      Ralph loop 的危险在于"评审模型烂掉了你完全感觉不到，token 一直烧"。
+      Axiomate 内置了几道刹车：
+    </p>
+
+    <table>
+      <thead>
+        <tr><th>故障</th><th>行为</th><th>恢复</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>评审 API 超时 / 网络出错</td>
+          <td>当作 <code>continue</code>，<strong>不</strong>计入 parse failure。Loop 继续。</td>
+          <td>自动恢复，无需操作。</td>
+        </tr>
+        <tr>
+          <td>评审返回非 JSON / 空 reply</td>
+          <td>当作 <code>continue</code>，<code>consecutiveParseFailures</code> +1。</td>
+          <td>累计 3 次自动 pause（见下条），过程透明。</td>
+        </tr>
+        <tr>
+          <td>评审连续 3 轮都返回乱码</td>
+          <td>状态翻 <code>paused</code>，提示
+            <code>⏸ Goal paused — the judge model (3 turns) isn't returning the required JSON verdict. Set <code>auxiliaryModels.goalJudge</code> to a stricter model in <code>~/.axiomate.json</code>. Then /goal resume to continue.</code></td>
+          <td>编辑 <code>~/.axiomate.json</code> 换成 instruct 模型，<code>/goal resume</code>。</td>
+        </tr>
+        <tr>
+          <td>turn 预算耗尽（默认 20）</td>
+          <td>状态翻 <code>paused</code>，提示
+            <code>⏸ Goal paused — 20/20 turns used.</code></td>
+          <td><code>/goal resume</code> 重置预算继续，或 <code>/goal clear</code> 收尾。</td>
+        </tr>
+        <tr>
+          <td>用户 Ctrl+C 中断回合</td>
+          <td>立刻 pause（<strong>不</strong>评审、<strong>不</strong>续作），
+            状态记 <code>user-interrupted (Ctrl+C)</code>。</td>
+          <td><code>/goal resume</code> 接着跑。</td>
+        </tr>
+        <tr>
+          <td>AI 空响应（最后一轮一段 text 都没产生）</td>
+          <td>跳过评审、<strong>不</strong>计入 turn 预算（避免被 API 抖动消耗）。</td>
+          <td>自动恢复，无需操作。</td>
+        </tr>
+        <tr>
+          <td>评审模型自己也用主模型（fastModel/aux 都没配）</td>
+          <td><code>/goal set</code> 时会打 warning 提醒，loop 还是会跑，
+            只是花钱。</td>
+          <td>编辑 <code>~/.axiomate.json</code> 加 <code>fastModel</code>。</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="callout danger">
+      <strong>真正的硬故障 — goal 跑飞</strong>。如果你设了一个语义模糊的目标
+      （比如 <code>/goal 让这个项目变得更好</code>），评审会永远说 continue，AI 会
+      一直改东西。turn 预算是兜底，但 20 轮 Opus 调用也不便宜。
+      <strong>建议 — goal 描述里写明"完成的判断标准"</strong>，比如
+      <code>/goal 实现 fib 函数并跑通 fib.test.ts 的所有用例</code>，而不是
+      <code>/goal 写个 fib 函数</code>。
+    </div>
+  </section>
+
+  <section id="faq" class="panel">
+    <h2><span class="num">8</span>FAQ</h2>
+
+    <h3>Goal 默认开启吗？</h3>
+    <p>
+      Goal 不主动占用任何资源 — 你不敲 <code>/goal</code>，整个系统就静默。
+      不需要配置开关。
+    </p>
+
+    <h3>不设 fastModel 也能用吗？</h3>
+    <p>
+      能用，但每轮评审都会走主模型，<code>/goal set</code> 时 axiomate 会
+      打 warning 提醒你成本问题。强烈建议至少配一个 fastModel — 那是
+      session search、title 生成等多个功能共用的辅助通道，配了一次受益多处。
+    </p>
+
+    <h3>Goal 跑的时候我能干别的吗？</h3>
+    <p>
+      能。Axiomate 的消息队列设计就是"用户优先" — 你随时打字发消息，
+      下一轮处理你的消息，goal 评审在你的回合之后再跑。你可以一边让 goal
+      跑一边用 <code>/checkpoints status</code>、<code>/rewind</code>、<code>/goal status</code>
+      这类只读 slash command 检查状态。
+    </p>
+
+    <h3>20 轮预算太少 / 太多怎么改？</h3>
+    <p>
+      编辑 <code>~/.axiomate.json</code> 设 <code>goalsMaxTurns</code>。这是全局默认，
+      也可以未来 per-goal override（hermes 那边支持，axiomate 暂未暴露 CLI 形式）。
+      数字调大要谨慎，配合 <code>auxiliaryModels.goalJudge</code> 一起设，
+      不然 Opus × 50 轮就是真烧钱。
+    </p>
+
+    <h3>能让 goal 自动跑而不显示在 transcript 里吗？</h3>
+    <p>
+      暂时不能。续作 prompt 是真实 user message，进 transcript、占 token、
+      <code>/resume</code> 会带回来 — 这是有意的：让你能完整审计 Ralph loop 跑了什么。
+      只有评审 verdict（<code>↻ / ✓ / ⏸</code> 那些）是 <code>isMeta: true</code>，
+      不进 transcript chain。
+    </p>
+
+    <h3>能让 <code>/goal</code> 走自定义 prompt 模板吗？</h3>
+    <p>
+      目前不能。续作 prompt 和评审 prompt 都是 hermes 原版模板。如果你需要
+      domain-specific 评审（比如"代码必须通过 typecheck 才算 done"），更好的
+      做法是把这个判定<strong>写进 goal 描述</strong>，让评审模型按你的话评。
+    </p>
+
+    <h3>和 axiomate 的 <code>/skills loop</code> 是一回事吗？</h3>
+    <p>
+      不是。<code>/loop</code> 是<strong>定时</strong>跑一个 prompt（cron 风格），不评审；
+      Goal 是<strong>事件驱动</strong>地跑直到某个语义条件满足。<code>/loop</code>
+      适合"每 5 分钟 babysit 一次 PR"，Goal 适合"做完一个完整的事再停"。
+    </p>
+
+    <h3>Goal 持久化怎么实现？跨 axiomate 进程重启还在吗？</h3>
+    <p>
+      在。Goal state 以 <code>type:'goal-state'</code> 条目 append-only 写进
+      会话 JSONL（<code>~/.axiomate/projects/&lt;hash&gt;/&lt;sessionId&gt;.jsonl</code>），
+      跟你的对话历史在同一个文件里。重启 axiomate、<code>--continue</code> 会自动
+      把最新一条 goal-state 读出来恢复。
+    </p>
+
+    <h3>有没有"全局 goal 列表"能查看所有项目所有目标？</h3>
+    <p>
+      暂时没有。Goal 是 per-session 的，没有跨 session 索引。要查所有项目的
+      goal 状态需要自己 grep <code>~/.axiomate/projects/</code> 下所有 jsonl 的
+      <code>goal-state</code> 条目。这是个明确的"待加增强"。
+    </p>
+  </section>
+
+  <footer>
+    Axiomate · Goals · 文档随实现迭代，最后更新 2026-05-26
+  </footer>
+
+</div>
+</body>
+</html>
