@@ -161,20 +161,32 @@ pnpm run start
 
 ---
 
-## Phase 7 — Cost Warning
+## Phase 7 — Cost Warning（一次性 + 黄色）
 
-**7.1 临时把 fastModel 移走**
-- 编辑 `~/.axiomate.json`，删 `fastModel` 字段；**不**设 `auxiliaryModels.goalJudge`
+**7.1 临时把 midModel / fastModel 都移走**
+- 编辑 `~/.axiomate.json`，删 `midModel` 和 `fastModel` 两个字段（如果有）
+- 删 `goalJudgeCostWarned` 字段（如果有 — 这是 axiomate 用来记"warning 已经显示过"的 flag）
 - 退出 axiomate，重新 `pnpm run start`
 
-**7.2 设 goal 看 warning**
+**7.2 第一次 /goal — 应看到黄色 warning**
 - 操作：`/goal 输出 hi`
-- 预期：`⊙ Goal set (...)` 后面一行 `⚠ Warning: goal judge will use the main model (claude-opus-4-7). Set fastModel or auxiliaryModels.goalJudge in ~/.axiomate.json to a cheap fast model to keep judge cost low.`
-- 失败信号：没 warning → cost detection 逻辑挂了
+- 预期：`⊙ Goal set (...)` 下方一行**黄色**文字：
+  `⚠ Goal judge will use the main model (claude-opus-4-7). Set fastModel or midModel in ~/.axiomate.json to a cheaper model to lower per-turn cost. (This warning is shown once.)`
+- 失败信号：没 warning → cost detection 逻辑挂了；warning 是红色 → chalk 颜色错了
 
-**7.3 恢复**
-- 把 fastModel 加回 `~/.axiomate.json`，退出重启
-- 重测 `/goal 输出 hi`，warning 应消失
+**7.3 第二次 /goal — warning 应该消失**
+- 操作：`/goal clear`（先收尾上一个）
+- 操作：`/goal 再输出 hi`
+- 预期：`⊙ Goal set (...)` **没有** warning 行（一次性提示已写进 `goalJudgeCostWarned: true`）
+- 失败信号：又出 warning → 一次性 flag 没生效
+
+**7.4 验证 flag**
+- 退出 axiomate，cat `~/.axiomate.json` 应该有 `"goalJudgeCostWarned": true`
+
+**7.5 恢复**
+- 把 fastModel 加回 `~/.axiomate.json`
+- 把 `goalJudgeCostWarned` 删掉（或保留 — 反正没配 fastModel 才会触发）
+- 重启
 
 ---
 
@@ -252,8 +264,9 @@ pnpm run start
 **11.2 配一个会返回乱码的 judge**
 - 在 `~/.axiomate.json` 加：
   ```json
-  "auxiliaryModels": { "goalJudge": "<某个 base completion model，例如 gpt-3.5-turbo-instruct>" }
+  "midModel": "<某个 base completion model，例如 gpt-3.5-turbo-instruct>"
   ```
+  （没有专门的"goal judge model"字段 — judge 直接走 axiomate 的 midModel → fastModel → currentModel 链）
 - 退出重启 axiomate
 
 **11.3 触发**
@@ -261,13 +274,13 @@ pnpm run start
 - 等前 3 轮跑完
 
 **11.4 预期**
-- 第 3 轮末出现 `⏸ Goal paused — the judge model (3 turns) isn't returning the required JSON verdict. Set auxiliaryModels.goalJudge to a stricter model in ~/.axiomate.json. Then /goal resume to continue.`
+- 第 3 轮末出现 `⏸ Goal paused — the judge model (3 turns) isn't returning the required JSON verdict. Set midModel or fastModel in ~/.axiomate.json to a stricter model (one that follows JSON output instructions). Then /goal resume to continue.`
 - Footer pill 变黄
 - 失败信号：到第 10 / 20 轮才停 → 阈值没读到 config override；从不停 → 计数器没在 increment
 
 **11.5 恢复**
 - `/config` 把阈值改回 `10`
-- 把 `auxiliaryModels.goalJudge` 改回正常 instruct 模型或删掉
+- 把 `midModel` 改回正常 instruct 模型或删掉
 - 重启
 
 ---

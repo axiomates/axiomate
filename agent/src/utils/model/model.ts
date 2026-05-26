@@ -93,32 +93,33 @@ export function getMidModel(): ModelName {
 /**
  * Resolve the model for a non-main-loop "auxiliary" role (e.g. goal judge).
  *
- * Priority:
- *   1. `globalConfig.auxiliaryModels[role]` override, if defined and present
- *      in `config.models`.
- *   2. `fastModel`, if configured.
- *   3. `currentModel` (the main loop model) — fallback only; the caller is
- *      expected to surface a warning when this happens because auxiliary
- *      tasks like the goal judge run once per turn and cost adds up fast
- *      on Opus-class models.
+ * Priority chain reuses axiomate's existing three-tier model concept —
+ * no new config field. Goal judges are mid-tier "side tasks" by nature
+ * (need decent instruction following + JSON discipline, but cheaper
+ * than the main loop), so midModel comes first:
  *
- * `isFastModel` and `isOverride` let the caller render an appropriate
- * UX hint without re-reading config.
+ *   1. `midModel` — best fit, semantically what midModel was built for.
+ *   2. `fastModel` — also fine, slightly weaker on JSON discipline.
+ *   3. `currentModel` — fallback only; caller surfaces a one-shot warning
+ *      so users notice their judge is burning main-model tokens.
+ *
+ * `tier` lets the caller decide whether to nudge the user about cost.
+ * 'main' = expensive fallback, anything else = OK.
  */
-export function getAuxiliaryModel(role: 'goalJudge'): {
+export type AuxiliaryModelTier = 'mid' | 'fast' | 'main'
+
+export function getAuxiliaryModel(_role: 'goalJudge'): {
   model: ModelName
-  isOverride: boolean
-  isFastModel: boolean
+  tier: AuxiliaryModelTier
 } {
   const config = getGlobalConfig()
-  const override = config.auxiliaryModels?.[role]
-  if (override && config.models?.[override]) {
-    return { model: override, isOverride: true, isFastModel: false }
+  if (config.midModel && config.models?.[config.midModel]) {
+    return { model: config.midModel, tier: 'mid' }
   }
   if (config.fastModel && config.models?.[config.fastModel]) {
-    return { model: config.fastModel, isOverride: false, isFastModel: true }
+    return { model: config.fastModel, tier: 'fast' }
   }
-  return { model: getCurrentModel(), isOverride: false, isFastModel: false }
+  return { model: getCurrentModel(), tier: 'main' }
 }
 
 export function getRuntimeMainLoopModel(params: {

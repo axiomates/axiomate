@@ -30,7 +30,7 @@ export const JUDGE_RESPONSE_SNIPPET_CHARS = 4000
 /**
  * Default cap on consecutive judge replies that came back unparseable
  * (empty / non-JSON / malformed). Hit the cap → GoalManager auto-pauses
- * with a hint to point `auxiliaryModels.goalJudge` at a stricter model.
+ * with a hint to point `midModel` (or `fastModel`) at a stricter model.
  *
  * `0` disables the cap entirely (loop never auto-pauses on parse failures
  * — only the turn budget stops it).

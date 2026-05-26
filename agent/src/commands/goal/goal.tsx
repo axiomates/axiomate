@@ -15,10 +15,11 @@
  */
 
 import React from 'react'
+import chalk from 'chalk'
 import { getSessionId } from '../../bootstrap/state.js'
 import type { UUID } from 'crypto'
 import { enqueue } from '../../utils/messageQueueManager.js'
-import { getGlobalConfig } from '../../utils/config.js'
+import { getGlobalConfig, saveGlobalConfig } from '../../utils/config.js'
 import { GoalManager } from '../../utils/goal/goalManager.js'
 import { getAuxiliaryModel } from '../../utils/model/model.js'
 
@@ -33,16 +34,24 @@ function parseSub(arg: string): Sub | null {
   return null
 }
 
+/**
+ * Return a one-line yellow warning when the judge would fall back to the
+ * main model AND the user hasn't seen the warning yet. After the first
+ * show we flip `goalJudgeCostWarned` so we never annoy the same user
+ * twice for the same configuration omission.
+ */
 function judgeRoutingWarning(): string {
-  const cfg = getGlobalConfig()
   const aux = getAuxiliaryModel('goalJudge')
-  if (aux.isOverride) return ''
-  if (aux.isFastModel) return ''
+  if (aux.tier !== 'main') return ''
+  if (getGlobalConfig().goalJudgeCostWarned) return ''
+  saveGlobalConfig(current => ({ ...current, goalJudgeCostWarned: true }))
   return (
-    `\n⚠ Warning: goal judge will use the main model (${aux.model}). ` +
-    'Set `fastModel` or `auxiliaryModels.goalJudge` in ~/.axiomate.json ' +
-    `to a cheap fast model to keep judge cost low. ` +
-    `(currentModel=${cfg.currentModel ?? 'unset'})`
+    '\n' +
+    chalk.yellow(
+      `⚠ Goal judge will use the main model (${aux.model}). Set fastModel ` +
+        'or midModel in ~/.axiomate.json to a cheaper model to lower per-turn cost. ' +
+        '(This warning is shown once.)',
+    )
   )
 }
 

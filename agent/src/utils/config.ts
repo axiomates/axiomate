@@ -611,25 +611,20 @@ export type GlobalConfig = {
   fastModel?: string
   /** Mid-tier model for tasks needing reasoning (memory selection, classification). Falls back to currentModel. */
   midModel?: string
-  /**
-   * Per-role auxiliary model overrides. Each key picks a model from
-   * `models`; unset roles fall back to `fastModel` (then `currentModel`).
-   * Use cheap models here — the goal judge runs once per turn during a
-   * Ralph loop and costs add up fast on Opus-class models.
-   */
-  auxiliaryModels?: {
-    /** Model used by the /goal judge call (`utils/goal/goalJudge.ts`). */
-    goalJudge?: string
-  }
   /** Default turn budget for /goal. */
   goalsMaxTurns?: number
   /**
    * Cap on consecutive unparseable judge replies before /goal auto-pauses
-   * with a hint about routing `auxiliaryModels.goalJudge` to a stricter
-   * model. `0` disables the cap entirely (loop relies on the turn budget
-   * alone). Default: 10.
+   * with a hint about routing the judge to a stricter model. `0` disables
+   * the cap entirely (loop relies on the turn budget alone). Default: 10.
    */
   goalsParseFailureLimit?: number
+  /**
+   * One-shot flag — set after `/goal` set surfaces the "judge will use
+   * main model" warning the first time. Subsequent `/goal` calls stay
+   * silent so the warning isn't a daily annoyance.
+   */
+  goalJudgeCostWarned?: boolean
 }
 
 /**

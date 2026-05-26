@@ -522,19 +522,20 @@ in the agent's response that the criterion is satisfied. ...</code></pre>
       <tbody>
         <tr>
           <td>1</td>
-          <td><code>auxiliaryModels.goalJudge</code></td>
-          <td>专门为 goal-judge 角色指定的模型，跟主对话彻底解耦。</td>
+          <td><code>midModel</code></td>
+          <td>axiomate 全局的"中等任务"模型 — memory selection、session search summary、
+            goal judge 都共用。这是 judge 的最佳归属。</td>
         </tr>
         <tr>
           <td>2</td>
           <td><code>fastModel</code></td>
-          <td>你 axiomate 全局的 fast 模型（同样被 session search、token 估算等复用）。</td>
+          <td>没配 midModel 时退到 fastModel（token 估算、session search 也用它）。</td>
         </tr>
         <tr>
           <td>3</td>
           <td><code>currentModel</code></td>
-          <td><strong>fallback</strong> — 用主对话模型。<code>/goal set</code> 时会
-            打一行 warning 提醒你这种情况下成本会高。</td>
+          <td><strong>fallback</strong> — 用主对话模型。第一次 <code>/goal set</code>
+            会打一行黄色 warning 提醒你成本，<strong>之后不再提示</strong>（一次性）。</td>
         </tr>
       </tbody>
     </table>
@@ -543,23 +544,22 @@ in the agent's response that the criterion is satisfied. ...</code></pre>
     <pre><code>{
   "currentModel": "claude-opus-4-7",
   "fastModel": "claude-haiku-4-5-20251001",
-  "auxiliaryModels": {
-    "goalJudge": "google/gemini-3-flash-preview"
-  },
+  "midModel": "claude-sonnet-4-6",
   "goalsMaxTurns": 20,
   "goalsParseFailureLimit": 10
 }</code></pre>
 
     <p>
-      <code>goalsParseFailureLimit</code> 也可以在 <code>/config</code> 里选（预设
+      <code>goalsParseFailureLimit</code> 可以在 <code>/config</code> 里选（预设
       <code>3 / 5 / 10 / 20 / 50 / 0</code>，0 = 完全禁用 parse-failure auto-pause，
       loop 只靠 turn budget 兜底）。其他几项 <code>~/.axiomate.json</code> 手编。
     </p>
 
     <p>
-      <code>fastModel</code> 已经配了便宜模型的话，可以不显式设
-      <code>auxiliaryModels.goalJudge</code> — fastModel 就够用。专门的
-      override 是给你想"goal 判定特别严格 / 特别宽松"时用的。
+      <strong>没有"goal 专属"的模型字段</strong>。Judge 是 axiomate 的"side task"
+      之一，跟 memory selection、session search summary 共享 midModel/fastModel
+      这条链路 — 配一处受益多处。如果你只想配一个便宜模型，
+      <strong>建议直接配 fastModel</strong> 就够了。
     </p>
 
     <div class="callout warn">
@@ -668,7 +668,7 @@ Reply ONLY with a single JSON object on one line:
         <tr>
           <td>评审连续 N 轮都返回乱码（N 默认 10，<code>/config</code> 可设 3/5/10/20/50/0）</td>
           <td>状态翻 <code>paused</code>，提示
-            <code>⏸ Goal paused — the judge model (N turns) isn't returning the required JSON verdict. Set <code>auxiliaryModels.goalJudge</code> to a stricter model in <code>~/.axiomate.json</code>. Then /goal resume to continue.</code></td>
+            <code>⏸ Goal paused — the judge model (N turns) isn't returning the required JSON verdict. Set <code>midModel</code> or <code>fastModel</code> in <code>~/.axiomate.json</code> to a stricter model. Then /goal resume to continue.</code></td>
           <td>编辑 <code>~/.axiomate.json</code> 换成 instruct 模型，<code>/goal resume</code>。</td>
         </tr>
         <tr>
@@ -735,7 +735,7 @@ Reply ONLY with a single JSON object on one line:
     <p>
       编辑 <code>~/.axiomate.json</code> 设 <code>goalsMaxTurns</code>。这是全局默认，
       也可以未来 per-goal override（hermes 那边支持，axiomate 暂未暴露 CLI 形式）。
-      数字调大要谨慎，配合 <code>auxiliaryModels.goalJudge</code> 一起设，
+      数字调大要谨慎，配合 <code>midModel</code> 或 <code>fastModel</code> 一起设，
       不然 Opus × 50 轮就是真烧钱。
     </p>
 

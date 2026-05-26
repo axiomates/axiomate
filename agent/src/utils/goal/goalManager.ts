@@ -340,7 +340,8 @@ export class GoalManager {
         message:
           `⏸ Goal paused — the judge model (${state.consecutiveParseFailures} turns) ` +
           "isn't returning the required JSON verdict. Set " +
-          '`auxiliaryModels.goalJudge` to a stricter model in ~/.axiomate.json. ' +
+          '`midModel` or `fastModel` in ~/.axiomate.json to a stricter ' +
+          'model (one that follows JSON output instructions). ' +
           'Then /goal resume to continue.',
       }
     }

@@ -281,7 +281,7 @@ describe('evaluateAfterTurn — branch ordering', () => {
     expect(r.status).toBe('paused')
     expect(r.shouldContinue).toBe(false)
     expect(r.message).toContain('judge model')
-    expect(r.message).toContain('auxiliaryModels.goalJudge')
+    expect(r.message).toContain('midModel')
   })
 
   test('parseFailed counter resets after a usable judge reply', async () => {
