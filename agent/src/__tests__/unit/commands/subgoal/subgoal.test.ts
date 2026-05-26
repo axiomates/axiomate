@@ -37,4 +37,14 @@ describe('parseVerb', () => {
     expect(parseVerb('REMOVE 1')).toEqual({ verb: 'remove', rest: '1' })
     expect(parseVerb('Clear')).toEqual({ verb: 'clear', rest: '' })
   })
+
+  it('list / ls alias the bare-no-args show', () => {
+    expect(parseVerb('list')).toEqual({ verb: 'show', rest: '' })
+    expect(parseVerb('ls')).toEqual({ verb: 'show', rest: '' })
+    expect(parseVerb('LIST')).toEqual({ verb: 'show', rest: '' })
+  })
+
+  it('rm alias of remove', () => {
+    expect(parseVerb('rm 2')).toEqual({ verb: 'remove', rest: '2' })
+  })
 })

@@ -5,6 +5,7 @@
  *
  * Subcommands:
  *   `/subgoal`                → show current subgoals + status line
+ *   `/subgoal list`           → alias of `/subgoal` (explicit list verb)
  *   `/subgoal <text>`         → append a new criterion
  *   `/subgoal remove <n>`     → drop subgoal N (1-based)
  *   `/subgoal clear`          → wipe all subgoals
@@ -25,7 +26,11 @@ function parseVerb(arg: string): { verb: Verb; rest: string } {
   if (arg === '') return { verb: 'show', rest: '' }
   const [head, ...rest] = arg.split(/\s+/)
   const lower = (head ?? '').toLowerCase()
-  if (lower === 'remove') return { verb: 'remove', rest: rest.join(' ').trim() }
+  // `list` and `ls` are explicit aliases for the bare-no-args form.
+  // Without these, '/subgoal list' fell through the if-chain into the
+  // 'add' branch and stored "list" as a real subgoal — confusing.
+  if (lower === 'list' || lower === 'ls') return { verb: 'show', rest: '' }
+  if (lower === 'remove' || lower === 'rm') return { verb: 'remove', rest: rest.join(' ').trim() }
   if (lower === 'clear') return { verb: 'clear', rest: rest.join(' ').trim() }
   // Anything else — treat the entire arg as the new subgoal text.
   return { verb: 'add', rest: arg }
