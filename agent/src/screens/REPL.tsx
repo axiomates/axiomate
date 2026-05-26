@@ -30,6 +30,7 @@ import { hasCursorUpViewportYankBug } from '../ink/terminal.js';
 import { createFileStateCacheWithSizeLimit, mergeFileStateCaches, READ_FILE_STATE_CACHE_SIZE } from '../utils/fileStateCache.js';
 import { updateLastInteractionTime, getLastInteractionTime, getOriginalCwd, getProjectRoot, getSessionId, switchSession, setCostStateForRestore, getTurnHookDurationMs, getTurnHookCount, resetTurnHookDuration, getTurnToolDurationMs, getTurnToolCount, resetTurnToolDuration } from '../bootstrap/state.js';
 import { asSessionId, asAgentId } from '../types/ids.js';
+import { GoalManager } from '../utils/goal/goalManager.js';
 import { logForDebugging } from '../utils/debug.js';
 import { QueryGuard } from '../utils/QueryGuard.js';
 import { isEnvTruthy } from '../utils/envUtils.js';
@@ -1798,6 +1799,26 @@ export function REPL({
     // defined but .aborted === true), so isActive becomes false if no other
     // activating conditions hold — leaving the Escape keybinding inactive.
     setAbortController(null);
+
+    // Goal-loop: pause any active goal so the next user input doesn't
+    // re-kick the loop. handleStopHooks's finally also tries this, but
+    // not every Ctrl+C path actually reaches stopHooks (e.g. when the
+    // abort fires mid-tool-use); doing it here at the canonical Esc
+    // entry is the only spot guaranteed to run on every cancel.
+    void (async () => {
+      try {
+        const sid = getSessionId() as unknown as UUID;
+        if (!sid) return;
+        const mgr = await GoalManager.load(sid);
+        if (mgr.isActive()) {
+          await mgr.pause('user-interrupted (Ctrl+C)');
+        }
+      } catch (err) {
+        logForDebugging(`onCancel: goal pause failed: ${errorMessage(err)}`, {
+          level: 'warn',
+        });
+      }
+    })();
   }
 
   // Function to handle queued command when canceling a permission request
