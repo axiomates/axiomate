@@ -25,6 +25,12 @@ import { Text } from '../../ink.js'
 import { useTerminalSize } from '../../hooks/useTerminalSize.js'
 import { stringWidth } from '../../ink/stringWidth.js'
 import { useGoalState } from '../../hooks/useGoalState.js'
+import { logForDebugging } from '../../utils/debug.js'
+
+// Process-wide counter for instance ids. If we ever see two distinct
+// ids logging on the same frame, GoalIndicator is being mounted twice
+// — instant root-cause signal for the "double pill" reports.
+let instanceCounter = 0
 
 function truncateByColumns(s: string, maxCols: number): string {
   if (stringWidth(s) <= maxCols) return s
@@ -47,8 +53,30 @@ type Props = {
 }
 
 export function GoalIndicator({ isLoading }: Props): React.ReactNode {
+  // Per-instance id — survives renders of the same mounted component
+  // but increments when React mounts a fresh instance. Pair with the
+  // render-counter ref below to distinguish "Component A re-rendered"
+  // from "two Components A both rendered once".
+  const instanceIdRef = React.useRef<number | null>(null)
+  if (instanceIdRef.current === null) {
+    instanceIdRef.current = ++instanceCounter
+  }
+  const renderCountRef = React.useRef(0)
+  renderCountRef.current++
+
   const goal = useGoalState()
   const { columns } = useTerminalSize()
+
+  // Log every render so we can grep [GOAL-PILL] in debug log when the
+  // double-pill bug recurs. Two distinct instance#N values in the
+  // same wall-clock millisecond → genuine double mount.
+  logForDebugging(
+    `[GOAL-PILL] instance#${instanceIdRef.current} render#${renderCountRef.current} ` +
+      `status=${goal?.status ?? 'null'} turns=${goal?.turnsUsed ?? '-'}/${goal?.maxTurns ?? '-'} ` +
+      `cols=${columns} loading=${!!isLoading}`,
+    { level: 'info' },
+  )
+
   if (!goal) return null
   if (goal.status !== 'active' && goal.status !== 'paused') return null
 
@@ -76,9 +104,13 @@ export function GoalIndicator({ isLoading }: Props): React.ReactNode {
   const suffix = working ? ' (working)' : ''
   const headWidth = stringWidth(head)
   const suffixWidth = stringWidth(suffix)
-  // Reserve 1 col safety against off-by-one in stringWidth for ZWJ
-  // sequences / emoji modifiers.
-  const textCols = Math.max(8, columns - headWidth - suffixWidth - 1)
+  // Reserve columns for the Notifications panel on the footer's right
+  // side (token counts, IDE status, debug hint, etc.). Without this
+  // the goal pill grabs the whole row and Notifications gets pushed
+  // off-screen. 30 cols handles "16804 tokens · Debug mode" with room.
+  // Tighter cap on narrow terminals so the pill still shows something.
+  const RIGHT_RESERVE = columns >= 100 ? 30 : 16
+  const textCols = Math.max(8, columns - headWidth - suffixWidth - RIGHT_RESERVE)
   const text = truncateByColumns(goal.goal, textCols)
 
   // Build the full visible string in one go so Ink emits exactly one
