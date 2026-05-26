@@ -21,7 +21,7 @@
 
 import * as React from 'react'
 import chalk from 'chalk'
-import { Box, Text } from '../../ink.js'
+import { Text } from '../../ink.js'
 import { useTerminalSize } from '../../hooks/useTerminalSize.js'
 import { stringWidth } from '../../ink/stringWidth.js'
 import { useGoalState } from '../../hooks/useGoalState.js'
@@ -131,24 +131,22 @@ export function GoalIndicator({ isLoading }: Props): React.ReactNode {
   const textCols = Math.max(8, columns - headWidth - suffixWidth - RIGHT_RESERVE)
   const text = truncateByColumns(goal.goal, textCols)
 
+  // Pad the visible string to a fixed character width so every render
+  // emits the same number of cells. Without this, active→paused drops
+  // ' (working)' (~10 cols); the shorter render leaves stale glyphs
+  // from the previous frame in the now-empty cells (Ink frame diff
+  // doesn't know the slot's "natural" width when content shrinks).
+  // Tried Box width + flexShrink:0 first — the parent column has
+  // flexShrink:1 (PromptInputFooter L124) and overrides the width
+  // back. Padding the actual string is the only thing the renderer
+  // can't shrink.
+  const targetWidth = headWidth + textCols + 11 /* worst-case ' (working)' */
+  const rawWidth = stringWidth(head + text + suffix)
+  const padding = ' '.repeat(Math.max(0, targetWidth - rawWidth))
+
   // Build the full visible string in one go so Ink emits exactly one
-  // text node. Colored prefix + dim body + dim suffix all baked in via
-  // chalk; dimColor handled by chalk.dim instead of <Text dimColor>.
-  const line = colorize(head) + chalk.dim(text) + chalk.dim(suffix)
+  // text node. Colored prefix + dim body + dim suffix + blank padding.
+  const line = colorize(head) + chalk.dim(text) + chalk.dim(suffix) + padding
 
-  // Box width = full reservation (terminal cols minus right-side
-  // reserve). Fixing the slot width is what stops the ghost: when
-  // content shrinks (active+working → paused, drops ~8 cols), the
-  // slot stays the same width and Ink repaints the trailing cells
-  // as blanks. Notifications.tsx (the right-side analog) gets away
-  // without an explicit width because alignItems="flex-end" pins
-  // its rendering origin to the right edge — left-aligned content
-  // like ours needs the explicit width or shrinks leave residue.
-  const slotWidth = headWidth + textCols + 11 /* worst-case " (working)" */
-
-  return (
-    <Box width={slotWidth} flexShrink={0} overflowX="hidden">
-      <Text wrap="truncate">{line}</Text>
-    </Box>
-  )
+  return <Text wrap="truncate">{line}</Text>
 }
