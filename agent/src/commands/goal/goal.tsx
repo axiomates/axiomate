@@ -66,7 +66,17 @@ export async function call(
   // arg as goal text, hermes-style; the only way to hit "unknown" here
   // is when sub === null AND arg is multi-word).
   if (sub === 'status') {
-    onDone(mgr.statusLine())
+    // Show status line + subgoals list. statusLine reports "N subgoals"
+    // count but not the items themselves; users naturally hit /goal
+    // expecting full state, then have to /subgoal to see what those
+    // criteria actually are. Merging here matches what /subgoal show
+    // already does (mgr.renderSubgoals output).
+    const hasSubgoals = (mgr.state?.subgoals?.length ?? 0) > 0
+    onDone(
+      hasSubgoals
+        ? `${mgr.statusLine()}\n${mgr.renderSubgoals()}`
+        : mgr.statusLine(),
+    )
     return null
   }
 
