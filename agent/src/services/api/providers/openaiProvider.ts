@@ -34,7 +34,6 @@ import type {
   ErrorClassification,
   ProviderStreamResult,
   NonStreamingResult,
-  RequestHooks,
 } from '../provider.js'
 import type { SystemAPIErrorMessage } from '../../../types/message.js'
 import {
@@ -45,7 +44,7 @@ import {
 } from '../adapters/openaiRequestAdapter.js'
 import { OpenAIStreamState, type OpenAIChatChunk } from '../adapters/openaiStreamAdapter.js'
 import { mapOpenAIUsage } from '../adapters/openaiUsageMapper.js'
-import { withRetry } from '../withRetry.js'
+import { withRetry, type RetryContext, type RetryOptions } from '../withRetry.js'
 import { summarizeUnexpectedResponse } from '../errors.js'
 import {
   wrapError as sharedWrapError,
@@ -63,6 +62,16 @@ export interface OpenAIProviderConfig {
   apiKey: string
   /** Model-level config for thinkingParams / extraParams passthrough */
   modelConfig?: ModelProviderConfig
+}
+
+type OpenAIRequestExt = {
+  retryOptions?: RetryOptions
+  onNonStreamingAttempt?: (
+    attempt: number,
+    start: number,
+    maxOutputTokens: number,
+  ) => void
+  captureRequest?: (params: Record<string, unknown>) => void
 }
 
 // ---------------------------------------------------------------------------
@@ -85,26 +94,22 @@ export class OpenAIProvider implements LLMProvider {
     })
   }
 
-  bind(_ext: unknown): BoundProvider {
+  bind(ext: unknown): BoundProvider {
+    const openaiExt = ext as OpenAIRequestExt | undefined
     return {
-      createStream: (request: StreamRequest) => this.createStream(request),
+      createStream: (request: StreamRequest) =>
+        this.createStream(request, openaiExt),
       createNonStreamingFallback: (request: StreamRequest) =>
-        this.createNonStreamingFallback(request),
+        this.createNonStreamingFallback(request, openaiExt),
     }
   }
 
   async *createStream(
     request: StreamRequest,
-    ): AsyncGenerator<SystemAPIErrorMessage, ProviderStreamResult> {
+    ext?: OpenAIRequestExt,
+  ): AsyncGenerator<SystemAPIErrorMessage, ProviderStreamResult> {
     const { model, signal, intent, hooks } = request
     const provider = this
-
-    const body = this.buildRequestBody(model, intent)
-    body.stream = true
-    body.stream_options = { include_usage: true }
-    if (this.config.modelConfig?.extraParams) {
-      Object.assign(body, this.config.modelConfig.extraParams)
-    }
 
     return yield* withRetry(
       () => Promise.resolve(this.client),
@@ -112,16 +117,12 @@ export class OpenAIProvider implements LLMProvider {
         const startTime = Date.now()
         hooks?.onAttemptStart?.({ attempt, start: startTime })
 
-        // Adaptive fallback: if a prior attempt's max_tokens was rejected
-        // as too large for the model's output cap, retry without the field.
-        // OpenAI lets us omit max_tokens — provider picks a default budget.
-        const requestBody = retryContext.dropMaxTokens
-          ? (() => {
-              const { max_tokens: _dropped, ...rest } = body
-              return rest
-            })()
-          : body
-
+        const requestBody = this.buildRequestBodyForRetry(
+          model,
+          intent,
+          retryContext,
+          { stream: true },
+        )
 
         try {
           const stream = await client.chat.completions.create(
@@ -180,8 +181,9 @@ export class OpenAIProvider implements LLMProvider {
       },
       {
         model: model ?? this.config.modelConfig?.model ?? 'unknown',
-        thinkingConfig: { type: 'disabled' as const },
+        thinkingConfig: intent.thinking ?? { type: 'disabled' as const },
         signal,
+        ...ext?.retryOptions,
       },
     )
   }
@@ -197,52 +199,77 @@ export class OpenAIProvider implements LLMProvider {
 
   async *createNonStreamingFallback(
     request: StreamRequest,
+    ext?: OpenAIRequestExt,
   ): AsyncGenerator<SystemAPIErrorMessage, NonStreamingResult> {
     const { model, signal, intent } = request
-    const body = this.buildRequestBody(model, intent)
-    // Strip streaming-only fields in case a caller merged them into extraParams.
-    delete body.stream
-    delete body.stream_options
 
-    try {
-      const response = (await this.client.chat.completions.create(
-        body as unknown as OpenAI.ChatCompletionCreateParamsNonStreaming,
-        { signal },
-      )) as OpenAI.ChatCompletion
-
-      const choice = response?.choices?.[0]
-      if (!choice) {
-        throw new LLMAPIError(
-          `Provider returned malformed response (no choices): ${summarizeUnexpectedResponse(response)}`,
-          { status: 502 },
+    return yield* withRetry(
+      () => Promise.resolve(this.client),
+      async (client, attempt, retryContext) => {
+        const startTime = Date.now()
+        const requestBody = this.buildRequestBodyForRetry(
+          model,
+          intent,
+          retryContext,
+          { stream: false },
         )
-      }
-      const content = this.mapResponseContent(choice)
-      const usage = mapOpenAIUsage(
-        response,
-        this.config.modelConfig?.usageMapping,
-      )
 
-      const neutralMessage: LLMMessage = {
-        id: response.id,
-        type: 'message',
-        role: 'assistant',
-        content,
-        model: response.model,
-        stop_reason: mapFinishReason(choice?.finish_reason),
-        stop_sequence: null,
-        usage: {
-          input_tokens: usage.inputTokens,
-          output_tokens: usage.outputTokens,
-          cache_creation_input_tokens: null,
-          cache_read_input_tokens: null,
-        },
-      }
+        ext?.captureRequest?.(requestBody)
+        ext?.onNonStreamingAttempt?.(
+          attempt,
+          startTime,
+          typeof requestBody.max_tokens === 'number'
+            ? requestBody.max_tokens
+            : 0,
+        )
 
-      return { message: neutralMessage, requestId: response.id }
-    } catch (error) {
-      throw this.wrapError(error)
-    }
+        try {
+          const response = (await client.chat.completions.create(
+            requestBody as unknown as OpenAI.ChatCompletionCreateParamsNonStreaming,
+            { signal },
+          )) as OpenAI.ChatCompletion
+
+          const choice = response?.choices?.[0]
+          if (!choice) {
+            throw new LLMAPIError(
+              `Provider returned malformed response (no choices): ${summarizeUnexpectedResponse(response)}`,
+              { status: 502 },
+            )
+          }
+          const content = this.mapResponseContent(choice)
+          const usage = mapOpenAIUsage(
+            response,
+            this.config.modelConfig?.usageMapping,
+          )
+
+          const neutralMessage: LLMMessage = {
+            id: response.id,
+            type: 'message',
+            role: 'assistant',
+            content,
+            model: response.model,
+            stop_reason: mapFinishReason(choice?.finish_reason),
+            stop_sequence: null,
+            usage: {
+              input_tokens: usage.inputTokens,
+              output_tokens: usage.outputTokens,
+              cache_creation_input_tokens: null,
+              cache_read_input_tokens: null,
+            },
+          }
+
+          return { message: neutralMessage, requestId: response.id }
+        } catch (error) {
+          throw this.wrapError(error)
+        }
+      },
+      {
+        model: model ?? this.config.modelConfig?.model ?? 'unknown',
+        thinkingConfig: intent.thinking ?? { type: 'disabled' as const },
+        signal,
+        ...ext?.retryOptions,
+      },
+    )
   }
 
   classifyError(error: unknown): ErrorClassification {
@@ -389,6 +416,35 @@ export class OpenAIProvider implements LLMProvider {
       Object.assign(body, this.config.modelConfig.extraParams)
     }
 
+    return body
+  }
+
+  private buildRequestBodyForRetry(
+    model: string,
+    intent: Parameters<OpenAIProvider['buildRequestBody']>[1],
+    retryContext: RetryContext,
+    options: { stream: boolean },
+  ): Record<string, unknown> {
+    const retryIntent = {
+      ...intent,
+      maxOutputTokens:
+        retryContext.maxTokensOverride ?? intent.maxOutputTokens,
+      thinking: retryContext.thinkingConfig,
+    }
+    const body = this.buildRequestBody(model, retryIntent)
+    if (options.stream) {
+      body.stream = true
+      body.stream_options = { include_usage: true }
+    } else {
+      // Strip streaming-only fields in case a caller merged them into extraParams.
+      delete body.stream
+      delete body.stream_options
+    }
+
+    if (retryContext.dropMaxTokens) {
+      const { max_tokens: _dropped, ...rest } = body
+      return rest
+    }
     return body
   }
 

@@ -11,7 +11,7 @@
 
 import { extractConnectionErrorDetails } from './errorUtils.js'
 import { getHeader } from './headerUtils.js'
-import { LLMAbortError, LLMAPIError } from './streamTypes.js'
+import { LLMAbortError, LLMAPIError, LLMTimeoutError } from './streamTypes.js'
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -219,6 +219,12 @@ export function classifyError(
     return result('abort', {
       retryable: false,
       message: 'User aborted the request',
+    })
+  }
+  if (error instanceof LLMTimeoutError) {
+    return result('timeout', {
+      retryable: true,
+      message: error.message,
     })
   }
 

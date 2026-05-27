@@ -13,7 +13,7 @@ import {
   type ClassifiedError,
   type ErrorClassificationContext,
 } from '../../../../services/api/errorClassifier.js'
-import { LLMAbortError, LLMAPIError } from '../../../../services/api/streamTypes.js'
+import { LLMAbortError, LLMAPIError, LLMTimeoutError } from '../../../../services/api/streamTypes.js'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -75,6 +75,12 @@ describe('classifyError: HTTP status → reason', () => {
   it('409 → timeout', () => {
     const result = classifyError(makeAPIError(409, 'Lock Timeout'), defaultContext)
     expect(result.reason).toBe('timeout')
+  })
+
+  it('LLMTimeoutError → timeout', () => {
+    const result = classifyError(new LLMTimeoutError('Stream idle timeout'), defaultContext)
+    expect(result.reason).toBe('timeout')
+    expect(result.retryable).toBe(true)
   })
 
   it('413 → payload_too_large', () => {

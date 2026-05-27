@@ -54,6 +54,7 @@ import { errorMessage } from '../../utils/errors.js'
 import { captureAPIRequest, logError } from '../../utils/log.js'
 import {
   createUserMessage,
+  createSystemAPIErrorMessage,
   ensureToolResultPairing,
   normalizeContentFromAPI,
   normalizeMessagesForAPI,
@@ -145,14 +146,94 @@ const CACHE_TTL_1HOUR_MS = 60 * 60 * 1000
 import {
   CannotRetryError,
   FallbackTriggeredError,
+  getDefaultMaxRetries,
+  getRetryDelay,
   is529Error,
   type RetryContext,
 } from './withRetry.js'
+import { sleep } from '../../utils/sleep.js'
 
 // Define a type that represents valid JSON values
 type JsonValue = string | number | boolean | null | JsonObject | JsonArray
 type JsonObject = { [key: string]: JsonValue }
 type JsonArray = JsonValue[]
+
+function isLocalStreamShapeError(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false
+  }
+
+  const message = error.message.toLowerCase()
+  return (
+    message.includes('stream ended without receiving any events') ||
+    message.includes('missing response_start') ||
+    message.includes('content block not found') ||
+    (message.includes('responses stream:') &&
+      message.includes('without prior'))
+  )
+}
+
+export function shouldUseNonStreamingFallbackForStreamError(
+  provider: import('./provider.js').LLMProvider,
+  error: unknown,
+  model: string,
+): boolean {
+  if (provider.isStreamUnsupportedError?.(error)) {
+    return true
+  }
+
+  const wrappedError = provider.wrapError(error)
+  if (wrappedError.status === 404) {
+    return true
+  }
+
+  const classified = classifyError(wrappedError, {
+    provider: provider.name,
+    model,
+  })
+
+  // Retryable transport/provider failures should stay on the original retry
+  // semantics. Non-streaming fallback is for stream-shape incompatibility,
+  // not a replacement for timeout/rate-limit/server-error retry handling.
+  if (
+    classified.reason === 'timeout' ||
+    classified.reason === 'rate_limit' ||
+    classified.reason === 'overloaded' ||
+    classified.reason === 'server_error' ||
+    classified.reason === 'connection' ||
+    classified.reason === 'context_overflow' ||
+    classified.reason === 'max_tokens_too_large' ||
+    classified.reason === 'thinking_signature' ||
+    classified.reason === 'long_context_tier'
+  ) {
+    return false
+  }
+
+  // Only local stream validation/protocol-shape failures fall back to
+  // non-streaming. Other status-less local errors keep the normal retry path.
+  return (
+    wrappedError.status === undefined &&
+    isLocalStreamShapeError(wrappedError.cause ?? error)
+  )
+}
+
+function shouldRetryStreamingConsumptionError(
+  provider: import('./provider.js').LLMProvider,
+  error: unknown,
+  model: string,
+): boolean {
+  if (shouldUseNonStreamingFallbackForStreamError(provider, error, model)) {
+    return false
+  }
+
+  const wrappedError = provider.wrapError(error)
+  const classified = classifyError(wrappedError, {
+    provider: provider.name,
+    model,
+  })
+
+  return classified.retryable
+}
 
 /**
  * Parse the AXIOMATE_CODE_EXTRA_BODY environment variable into a
@@ -972,21 +1053,27 @@ async function* queryModel(
 
   // --- Provider-specific config (hoisted before try for fallback reuse) ---
   const streamingExt = {
-      buildParams: (context: RetryContext) => {
-        const params = paramsFromContext(context)
-        captureAPIRequest(params, options.querySource)
-        return params
-      },
-      retryOptions: {
-        model: options.model,
-        fallbackModel: options.fallbackModel,
-        thinkingConfig,
-        signal,
-        querySource: options.querySource,
-      },
-    } satisfies import('./provider.js').ProviderRequestExt
+    buildParams: (context: RetryContext) => {
+      const params = paramsFromContext(context)
+      captureAPIRequest(params, options.querySource)
+      return params
+    },
+    retryOptions: {
+      model: options.model,
+      fallbackModel: options.fallbackModel,
+      thinkingConfig,
+      signal,
+      querySource: options.querySource,
+    },
+  } satisfies import('./provider.js').ProviderRequestExt
 
-  try {
+  const maxStreamConsumptionRetries = getDefaultMaxRetries()
+  let streamConsumptionAttempt = 0
+  streamConsumptionRetry: while (true) {
+    streamConsumptionAttempt++
+    didFallBackToNonStreaming = false
+    fallbackMessage = undefined
+    try {
     queryCheckpoint('query_client_creation_start')
 
     const bound = provider.bind(streamingExt)
@@ -1228,7 +1315,7 @@ async function* queryModel(
         // Prevent double-emit: this throw lands in the catch block below,
         // whose exit_path='error' probe guards on streamWatchdogFiredAt.
         streamWatchdogFiredAt = null
-        throw new Error('Stream idle timeout - no chunks received')
+        throw new LLMTimeoutError('Stream idle timeout - no chunks received')
       }
 
       // Detect when the stream completed without producing any assistant messages.
@@ -1310,8 +1397,7 @@ async function* queryModel(
             `Streaming timeout (SDK abort): ${streamingError.message}`,
             { level: 'error' },
           )
-          // Throw a more specific error for timeout
-          throw new LLMTimeoutError('Request timed out')
+          streamingError = new LLMTimeoutError('Request timed out')
         }
       }
 
@@ -1327,6 +1413,48 @@ async function* queryModel(
       if (disableFallback) {
         logForDebugging(
           `Error streaming (non-streaming fallback disabled): ${errorMessage(streamingError)}`,
+          { level: 'error' },
+        )
+        throw streamingError
+      }
+
+      if (
+        !shouldUseNonStreamingFallbackForStreamError(
+          provider,
+          streamingError,
+          options.model,
+        )
+      ) {
+        if (
+          newMessages.length === 0 &&
+          shouldRetryStreamingConsumptionError(
+            provider,
+            streamingError,
+            options.model,
+          ) &&
+          streamConsumptionAttempt <= maxStreamConsumptionRetries
+        ) {
+          const wrappedStreamingError = provider.wrapError(streamingError)
+          const classified = classifyError(wrappedStreamingError, {
+            provider: provider.name,
+            model: options.model,
+          })
+          const delayMs =
+            classified.retryAfterMs ??
+            getRetryDelay(streamConsumptionAttempt)
+          yield createSystemAPIErrorMessage(
+            wrappedStreamingError,
+            delayMs,
+            streamConsumptionAttempt,
+            maxStreamConsumptionRetries,
+            classified.reason,
+          )
+          await sleep(delayMs, signal)
+          continue streamConsumptionRetry
+        }
+
+        logForDebugging(
+          `Error streaming (handled by retry semantics, not non-streaming fallback): ${errorMessage(streamingError)}`,
           { level: 'error' },
         )
         throw streamingError
@@ -1670,7 +1798,7 @@ async function* queryModel(
       releaseStreamResources()
       return
     }
-  } finally {
+    } finally {
     stopSessionActivity('api_call')
     // Must be in the finally block: if the generator is terminated early
     // via .return() (e.g. consumer breaks out of for-await-of, or query.ts
@@ -1694,6 +1822,8 @@ async function* queryModel(
         options.model,
       )
     }
+  }
+    break streamConsumptionRetry
   }
 
   // Track the last requestId for the main conversation chain so shutdown

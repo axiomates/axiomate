@@ -54,7 +54,7 @@ import {
 } from '../adapters/openaiResponsesRequestAdapter.js'
 import { OpenAIResponsesStreamState } from '../adapters/openaiResponsesStreamAdapter.js'
 import { mapOpenAIResponsesUsage } from '../adapters/openaiResponsesUsageMapper.js'
-import { withRetry } from '../withRetry.js'
+import { withRetry, type RetryContext, type RetryOptions } from '../withRetry.js'
 import { summarizeUnexpectedResponse } from '../errors.js'
 import {
   wrapError as sharedWrapError,
@@ -72,6 +72,16 @@ export interface OpenAIResponsesProviderConfig {
   apiKey: string
   /** Model-level config for thinkingParams / extraParams passthrough */
   modelConfig?: ModelProviderConfig
+}
+
+type OpenAIResponsesRequestExt = {
+  retryOptions?: RetryOptions
+  onNonStreamingAttempt?: (
+    attempt: number,
+    start: number,
+    maxOutputTokens: number,
+  ) => void
+  captureRequest?: (params: Record<string, unknown>) => void
 }
 
 // ---------------------------------------------------------------------------
@@ -94,24 +104,22 @@ export class OpenAIResponsesProvider implements LLMProvider {
     })
   }
 
-  bind(_ext: unknown): BoundProvider {
+  bind(ext: unknown): BoundProvider {
+    const openaiExt = ext as OpenAIResponsesRequestExt | undefined
     return {
-      createStream: (request: StreamRequest) => this.createStream(request),
+      createStream: (request: StreamRequest) =>
+        this.createStream(request, openaiExt),
       createNonStreamingFallback: (request: StreamRequest) =>
-        this.createNonStreamingFallback(request),
+        this.createNonStreamingFallback(request, openaiExt),
     }
   }
 
   async *createStream(
     request: StreamRequest,
+    ext?: OpenAIResponsesRequestExt,
   ): AsyncGenerator<SystemAPIErrorMessage, ProviderStreamResult> {
     const { model, signal, intent, hooks } = request
     const provider = this
-
-    const body = this.buildRequestBody(model, intent)
-    body.stream = true
-    // `include` lets the model return reasoning encrypted_content for round-trip.
-    body.include = ['reasoning.encrypted_content']
 
     return yield* withRetry(
       () => Promise.resolve(this.client),
@@ -119,15 +127,12 @@ export class OpenAIResponsesProvider implements LLMProvider {
         const startTime = Date.now()
         hooks?.onAttemptStart?.({ attempt, start: startTime })
 
-        // Adaptive fallback: if a prior attempt's max_output_tokens was
-        // rejected as too large for the model's output cap, retry without
-        // the field. Responses API uses `max_output_tokens` (not max_tokens).
-        const requestBody = retryContext.dropMaxTokens
-          ? (() => {
-              const { max_output_tokens: _dropped, ...rest } = body
-              return rest
-            })()
-          : body
+        const requestBody = this.buildRequestBodyForRetry(
+          model,
+          intent,
+          retryContext,
+          { stream: true },
+        )
 
         try {
           const stream = await client.responses.create(
@@ -185,8 +190,9 @@ export class OpenAIResponsesProvider implements LLMProvider {
       },
       {
         model: model ?? this.config.modelConfig?.model ?? 'unknown',
-        thinkingConfig: { type: 'disabled' as const },
+        thinkingConfig: intent.thinking ?? { type: 'disabled' as const },
         signal,
+        ...ext?.retryOptions,
       },
     )
   }
@@ -197,45 +203,71 @@ export class OpenAIResponsesProvider implements LLMProvider {
 
   async *createNonStreamingFallback(
     request: StreamRequest,
+    ext?: OpenAIResponsesRequestExt,
   ): AsyncGenerator<SystemAPIErrorMessage, NonStreamingResult> {
     const { model, signal, intent } = request
-    const body = this.buildRequestBody(model, intent)
-    delete body.stream
-    body.include = ['reasoning.encrypted_content']
 
-    try {
-      const response = (await this.client.responses.create(
-        body as unknown as ResponseCreateParamsNonStreaming,
-        { signal },
-      )) as Response
+    return yield* withRetry(
+      () => Promise.resolve(this.client),
+      async (client, attempt, retryContext) => {
+        const startTime = Date.now()
+        const requestBody = this.buildRequestBodyForRetry(
+          model,
+          intent,
+          retryContext,
+          { stream: false },
+        )
 
-      const content = this.mapResponseToContent(response)
-      const usage = mapOpenAIResponsesUsage(response.usage)
-      const stopReason =
-        response.status === 'incomplete'
-          ? mapIncompleteReason(response.incomplete_details?.reason)
-          : 'end_turn'
+        ext?.captureRequest?.(requestBody)
+        ext?.onNonStreamingAttempt?.(
+          attempt,
+          startTime,
+          typeof requestBody.max_output_tokens === 'number'
+            ? requestBody.max_output_tokens
+            : 0,
+        )
 
-      const neutralMessage: LLMMessage = {
-        id: response.id,
-        type: 'message',
-        role: 'assistant',
-        content,
-        model: response.model,
-        stop_reason: stopReason,
-        stop_sequence: null,
-        usage: {
-          input_tokens: usage.inputTokens,
-          output_tokens: usage.outputTokens,
-          cache_creation_input_tokens: null,
-          cache_read_input_tokens: usage.cacheReadTokens ?? null,
-        },
-      }
+        try {
+          const response = (await client.responses.create(
+            requestBody as unknown as ResponseCreateParamsNonStreaming,
+            { signal },
+          )) as Response
 
-      return { message: neutralMessage, requestId: response.id }
-    } catch (error) {
-      throw this.wrapError(error)
-    }
+          const content = this.mapResponseToContent(response)
+          const usage = mapOpenAIResponsesUsage(response.usage)
+          const stopReason =
+            response.status === 'incomplete'
+              ? mapIncompleteReason(response.incomplete_details?.reason)
+              : 'end_turn'
+
+          const neutralMessage: LLMMessage = {
+            id: response.id,
+            type: 'message',
+            role: 'assistant',
+            content,
+            model: response.model,
+            stop_reason: stopReason,
+            stop_sequence: null,
+            usage: {
+              input_tokens: usage.inputTokens,
+              output_tokens: usage.outputTokens,
+              cache_creation_input_tokens: null,
+              cache_read_input_tokens: usage.cacheReadTokens ?? null,
+            },
+          }
+
+          return { message: neutralMessage, requestId: response.id }
+        } catch (error) {
+          throw this.wrapError(error)
+        }
+      },
+      {
+        model: model ?? this.config.modelConfig?.model ?? 'unknown',
+        thinkingConfig: intent.thinking ?? { type: 'disabled' as const },
+        signal,
+        ...ext?.retryOptions,
+      },
+    )
   }
 
   classifyError(error: unknown): ErrorClassification {
@@ -384,6 +416,33 @@ export class OpenAIResponsesProvider implements LLMProvider {
       Object.assign(body, this.config.modelConfig.extraParams)
     }
 
+    return body
+  }
+
+  private buildRequestBodyForRetry(
+    model: string,
+    intent: Parameters<OpenAIResponsesProvider['buildRequestBody']>[1],
+    retryContext: RetryContext,
+    options: { stream: boolean },
+  ): Record<string, unknown> {
+    const retryIntent = {
+      ...intent,
+      maxOutputTokens:
+        retryContext.maxTokensOverride ?? intent.maxOutputTokens,
+      thinking: retryContext.thinkingConfig,
+    }
+    const body = this.buildRequestBody(model, retryIntent)
+    if (options.stream) {
+      body.stream = true
+    } else {
+      delete body.stream
+    }
+    body.include = ['reasoning.encrypted_content']
+
+    if (retryContext.dropMaxTokens) {
+      const { max_output_tokens: _dropped, ...rest } = body
+      return rest
+    }
     return body
   }
 
