@@ -19,6 +19,7 @@ import { getSessionId } from '../../bootstrap/state.js'
 import type { UUID } from 'crypto'
 import { getGlobalConfig } from '../../utils/config.js'
 import { GoalManager } from '../../utils/goal/goalManager.js'
+import { logForDebugging } from '../../utils/debug.js'
 
 type Verb = 'show' | 'remove' | 'clear' | 'add'
 
@@ -42,6 +43,14 @@ export async function call(
   args?: string,
 ): Promise<React.ReactNode | null> {
   const sessionId = getSessionId() as UUID
+  // Debug trace — pin down where weird subgoal text comes from. Logs
+  // the raw args, parsed verb/rest, and (for show) the existing
+  // subgoal array verbatim so we can see whether letter prefixes
+  // come from user input vs render-time formatting.
+  logForDebugging(
+    `[SUBGOAL] raw args=${JSON.stringify(args)} (len=${args?.length ?? 0})`,
+    { level: 'info' },
+  )
   const mgr = await GoalManager.load(sessionId, {
     defaultMaxTurns: getGlobalConfig().goalsMaxTurns,
   })
@@ -53,9 +62,18 @@ export async function call(
 
   const arg = (args ?? '').trim()
   const { verb, rest } = parseVerb(arg)
+  logForDebugging(
+    `[SUBGOAL] parsed verb=${verb} rest=${JSON.stringify(rest)} ` +
+      `existing=${JSON.stringify(mgr.state?.subgoals ?? [])}`,
+    { level: 'info' },
+  )
 
   if (verb === 'show') {
-    onDone(`${mgr.statusLine()}\n${mgr.renderSubgoals()}`)
+    const rendered = `${mgr.statusLine()}\n${mgr.renderSubgoals()}`
+    logForDebugging(`[SUBGOAL] show rendered=${JSON.stringify(rendered)}`, {
+      level: 'info',
+    })
+    onDone(rendered)
     return null
   }
 
@@ -96,6 +114,11 @@ export async function call(
   try {
     const text = await mgr.addSubgoal(arg)
     const idx = mgr.state?.subgoals.length ?? 0
+    logForDebugging(
+      `[SUBGOAL] added idx=${idx} text=${JSON.stringify(text)} ` +
+        `array-after=${JSON.stringify(mgr.state?.subgoals ?? [])}`,
+      { level: 'info' },
+    )
     onDone(`✓ Added subgoal ${idx}: ${text}`)
   } catch (e) {
     onDone(`/subgoal: ${(e as Error).message}`)
