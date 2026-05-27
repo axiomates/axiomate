@@ -91,12 +91,21 @@ export function entryToState(entry: GoalStateEntry): GoalState {
 }
 
 /**
- * Render the subgoals as a numbered ``- N. text`` block (matches
- * goals.py:189-194). Empty string when there are no subgoals.
+ * Render the subgoals as a numbered ``[N] text`` block. Empty
+ * when there are no subgoals.
+ *
+ * Format note: we deliberately use square-brackets `[N]` not
+ * markdown's `- N.` because the axiomate transcript renderer parses
+ * `- N.` as an ordered list and re-numbers nested levels with
+ * letters / Roman numerals (utils/markdown.ts:357 getListNumber). A
+ * single subgoal block ends up as 'a. text' on screen, breaking the
+ * symmetry with `/subgoal remove <n>` which expects digits. Square
+ * brackets sidestep markdown's list parser entirely so the visible
+ * number always matches the index passed to remove.
  */
 export function renderSubgoalsBlock(state: Pick<GoalState, 'subgoals'>): string {
   if (state.subgoals.length === 0) return ''
-  return state.subgoals.map((text, i) => `- ${i + 1}. ${text}`).join('\n')
+  return state.subgoals.map((text, i) => `[${i + 1}] ${text}`).join('\n')
 }
 
 /**

@@ -110,7 +110,7 @@ describe('renderSubgoalsBlock', () => {
 
   it('numbers from 1', () => {
     expect(renderSubgoalsBlock({ subgoals: ['first', 'second', 'third'] })).toBe(
-      '- 1. first\n- 2. second\n- 3. third',
+      '[1] first\n[2] second\n[3] third',
     )
   })
 })
@@ -128,7 +128,7 @@ describe('renderSubgoals', () => {
 
   it('returns the numbered block when populated', () => {
     expect(renderSubgoals(entryToState(baseEntry({ subgoals: ['x'] })))).toBe(
-      '- 1. x',
+      '[1] x',
     )
   })
 })
