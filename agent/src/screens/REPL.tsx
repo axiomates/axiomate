@@ -2715,20 +2715,25 @@ export function REPL({
             });
             const newMessages: MessageType[] = [];
             if (result && doneOptions?.display !== 'skip') {
-              addNotification({
-                key: `immediate-${matchingCommand.name}`,
-                text: result,
-                priority: 'immediate'
-              });
-              // In fullscreen the command just showed as a centered modal
-              // pane — the notification above is enough feedback. Adding
-              // "❯ /config" + "⎿ dismissed" to the transcript is clutter
-              // (those messages are type:system subtype:local_command —
-              // user-visible but NOT sent to the model, so skipping them
-              // doesn't change model context). Outside fullscreen the
-              // transcript entry stays so scrollback shows what ran.
-              if (!isFullscreenEnvEnabled()) {
-                newMessages.push(createCommandInputMessage(formatCommandInputTags(getCommandName(matchingCommand), commandArgs)), createCommandInputMessage(`<${LOCAL_COMMAND_STDOUT_TAG}>${escapeXml(result)}</${LOCAL_COMMAND_STDOUT_TAG}>`));
+              const commandMessages = [createCommandInputMessage(formatCommandInputTags(getCommandName(matchingCommand), commandArgs)), createCommandInputMessage(`<${LOCAL_COMMAND_STDOUT_TAG}>${escapeXml(result)}</${LOCAL_COMMAND_STDOUT_TAG}>`)];
+              if (doneOptions?.display === 'system') {
+                newMessages.push(...commandMessages);
+              } else {
+                addNotification({
+                  key: `immediate-${matchingCommand.name}`,
+                  text: result,
+                  priority: 'immediate'
+                });
+                // In fullscreen the command just showed as a centered modal
+                // pane — the notification above is enough feedback. Adding
+                // "❯ /config" + "⎿ dismissed" to the transcript is clutter
+                // (those messages are type:system subtype:local_command —
+                // user-visible but NOT sent to the model, so skipping them
+                // doesn't change model context). Outside fullscreen the
+                // transcript entry stays so scrollback shows what ran.
+                if (!isFullscreenEnvEnabled()) {
+                  newMessages.push(...commandMessages);
+                }
               }
             }
             // Inject meta messages (model-visible, user-hidden) into the transcript

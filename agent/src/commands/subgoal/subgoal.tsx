@@ -19,6 +19,7 @@ import { getSessionId } from '../../bootstrap/state.js'
 import type { UUID } from 'crypto'
 import { getGlobalConfig } from '../../utils/config.js'
 import { GoalManager } from '../../utils/goal/goalManager.js'
+import type { LocalJSXCommandOnDone } from '../../types/command.js'
 
 type Verb = 'show' | 'remove' | 'clear' | 'add'
 
@@ -36,8 +37,12 @@ function parseVerb(arg: string): { verb: Verb; rest: string } {
   return { verb: 'add', rest: arg }
 }
 
+function doneSystem(onDone: LocalJSXCommandOnDone, result: string): void {
+  onDone(result, { display: 'system' })
+}
+
 export async function call(
-  onDone: (result?: string) => void,
+  onDone: LocalJSXCommandOnDone,
   _context: unknown,
   args?: string,
 ): Promise<React.ReactNode | null> {
@@ -47,7 +52,7 @@ export async function call(
   })
 
   if (!mgr.hasGoal()) {
-    onDone('No active goal. Set one with /goal <text>.')
+    doneSystem(onDone, 'No active goal. Set one with /goal <text>.')
     return null
   }
 
@@ -55,25 +60,28 @@ export async function call(
   const { verb, rest } = parseVerb(arg)
 
   if (verb === 'show') {
-    onDone(`${mgr.statusLine()}\n${mgr.renderSubgoals()}`)
+    doneSystem(onDone, `${mgr.statusLine()}\n${mgr.renderSubgoals()}`)
     return null
   }
 
   if (verb === 'remove') {
     if (!rest) {
-      onDone('Usage: /subgoal remove <n>')
+      doneSystem(onDone, 'Usage: /subgoal remove <n>')
       return null
     }
     const n = Number(rest.split(/\s+/)[0])
     if (!Number.isFinite(n) || !Number.isInteger(n)) {
-      onDone('/subgoal remove: <n> must be an integer (1-based index).')
+      doneSystem(
+        onDone,
+        '/subgoal remove: <n> must be an integer (1-based index).',
+      )
       return null
     }
     try {
       const removed = await mgr.removeSubgoal(n)
-      onDone(`✓ Removed subgoal ${n}: ${removed}`)
+      doneSystem(onDone, `✓ Removed subgoal ${n}: ${removed}`)
     } catch (e) {
-      onDone(`/subgoal remove: ${(e as Error).message}`)
+      doneSystem(onDone, `/subgoal remove: ${(e as Error).message}`)
     }
     return null
   }
@@ -81,13 +89,14 @@ export async function call(
   if (verb === 'clear') {
     try {
       const prev = await mgr.clearSubgoals()
-      onDone(
+      doneSystem(
+        onDone,
         prev > 0
           ? `✓ Cleared ${prev} subgoal${prev === 1 ? '' : 's'}.`
           : 'No subgoals to clear.',
       )
     } catch (e) {
-      onDone(`/subgoal clear: ${(e as Error).message}`)
+      doneSystem(onDone, `/subgoal clear: ${(e as Error).message}`)
     }
     return null
   }
@@ -96,9 +105,9 @@ export async function call(
   try {
     const text = await mgr.addSubgoal(arg)
     const idx = mgr.state?.subgoals.length ?? 0
-    onDone(`✓ Added subgoal ${idx}: ${text}`)
+    doneSystem(onDone, `✓ Added subgoal ${idx}: ${text}`)
   } catch (e) {
-    onDone(`/subgoal: ${(e as Error).message}`)
+    doneSystem(onDone, `/subgoal: ${(e as Error).message}`)
   }
   return null
 }

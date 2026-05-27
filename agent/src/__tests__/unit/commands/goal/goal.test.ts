@@ -13,6 +13,8 @@ describe('parseSub', () => {
     expect(parseSub('status')).toBe('status')
     expect(parseSub('STATUS')).toBe('status')
     expect(parseSub('Status')).toBe('status')
+    expect(parseSub('list')).toBe('status')
+    expect(parseSub('ls')).toBe('status')
   })
 
   it('pause / resume', () => {

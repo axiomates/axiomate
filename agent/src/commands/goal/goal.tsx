@@ -28,11 +28,15 @@ type Sub = 'status' | 'pause' | 'resume' | 'clear'
 
 function parseSub(arg: string): Sub | null {
   const lower = arg.toLowerCase()
-  if (lower === '' || lower === 'status') return 'status'
+  if (lower === '' || lower === 'status' || lower === 'list' || lower === 'ls') return 'status'
   if (lower === 'pause') return 'pause'
   if (lower === 'resume') return 'resume'
   if (lower === 'clear' || lower === 'stop' || lower === 'done') return 'clear'
   return null
+}
+
+function doneSystem(onDone: LocalJSXCommandOnDone, result: string): void {
+  onDone(result, { display: 'system' })
 }
 
 function judgeRoutingWarning(): string {
@@ -72,7 +76,8 @@ export async function call(
     // criteria actually are. Merging here matches what /subgoal show
     // already does (mgr.renderSubgoals output).
     const hasSubgoals = (mgr.state?.subgoals?.length ?? 0) > 0
-    onDone(
+    doneSystem(
+      onDone,
       hasSubgoals
         ? `${mgr.statusLine()}\n${mgr.renderSubgoals()}`
         : mgr.statusLine(),
@@ -83,12 +88,9 @@ export async function call(
   if (sub === 'pause') {
     const state = await mgr.pause('user-paused')
     if (state) {
-      // The footer GoalIndicator re-renders from goalChanged immediately.
-      // Emitting the same text as command output also creates a transient
-      // footer notification, which looks like a duplicate goal pill.
-      onDone(undefined, { display: 'skip' })
+      doneSystem(onDone, `⏸ Goal paused: ${state.goal}`)
     } else {
-      onDone('No goal set.')
+      doneSystem(onDone, 'No goal set.')
     }
     return null
   }
@@ -96,7 +98,7 @@ export async function call(
   if (sub === 'resume') {
     const state = await mgr.resume()
     if (!state) {
-      onDone('No goal to resume.')
+      doneSystem(onDone, 'No goal to resume.')
       return null
     }
     // Unlike pause/set, resume needs an explicit notification: hermes
@@ -106,14 +108,17 @@ export async function call(
     // sits silent and confused users wait. The pill carries the
     // status; the notification carries the "you need to send
     // something" call-to-action that the pill alone can't.
-    onDone('Send any message (or type "continue") to resume the goal loop.')
+    doneSystem(
+      onDone,
+      'Send any message (or type "continue") to resume the goal loop.',
+    )
     return null
   }
 
   if (sub === 'clear') {
     const had = mgr.hasGoal()
     await mgr.clear()
-    onDone(had ? '✓ Goal cleared.' : 'No active goal.')
+    doneSystem(onDone, had ? '✓ Goal cleared.' : 'No active goal.')
     return null
   }
 
@@ -121,21 +126,19 @@ export async function call(
   try {
     const state = await mgr.set(arg)
     const warning = judgeRoutingWarning()
-    // Pill flips to ⊙ Goal 0/N immediately on the goalChanged signal,
-    // so the success line ('⊙ Goal set...') would duplicate the pill
-    // through the immediate notification channel. Skip the success
-    // notification unless we have a cost warning to surface — the
-    // one-shot warning must be visible since it teaches the user to
-    // configure a cheap fastModel.
-    if (warning) {
-      onDone(warning.trimStart())
-    } else {
-      onDone(undefined, { display: 'skip' })
-    }
+    const budgetLabel =
+      state.maxTurns > 0 ? `${state.maxTurns}-turn budget` : 'unlimited budget'
+    doneSystem(
+      onDone,
+      `⊙ Goal set (${budgetLabel}): ${state.goal}\n` +
+        'After each turn a judge model checks if the goal is done. ' +
+        'Use /goal status, /goal pause, /goal resume, /goal clear.' +
+        warning,
+    )
     // Kick first turn (hermes cli.py:9261 — self._pending_input.put).
     enqueue({ value: state.goal, mode: 'prompt', priority: 'next' })
   } catch (e) {
-    onDone(`Invalid goal: ${(e as Error).message}`)
+    doneSystem(onDone, `Invalid goal: ${(e as Error).message}`)
   }
   return null
 }

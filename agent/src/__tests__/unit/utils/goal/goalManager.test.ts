@@ -361,7 +361,7 @@ describe('evaluateAfterTurn — branch ordering', () => {
       signal: fakeSignal(),
     })
     expect(r.continuationPrompt).toContain('Additional criteria')
-    expect(r.continuationPrompt).toContain('- 1. alpha')
+    expect(r.continuationPrompt).toContain('[1] alpha')
   })
 })
 
