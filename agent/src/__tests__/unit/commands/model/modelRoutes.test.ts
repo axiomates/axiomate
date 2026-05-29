@@ -69,8 +69,14 @@ describe('model route commands', () => {
   test('lists routes', () => {
     const result = handleModelRouteCommand('route list')
     expect(result).toMatchObject({ handled: true })
-    expect(result.handled && result.message).toContain('* default: main -> backup')
-    expect(result.handled && result.message).toContain('  cheap: fast')
+    expect(result.handled && result.message).toContain(
+      'Model routes (* = default):',
+    )
+    expect(result.handled && result.message).toContain('* default')
+    expect(result.handled && result.message).toContain('    primary: main')
+    expect(result.handled && result.message).toContain('    fallback 1: backup')
+    expect(result.handled && result.message).toContain('  cheap')
+    expect(result.handled && result.message).toContain('    primary: fast')
     expect(mockSaveGlobalConfig).not.toHaveBeenCalled()
   })
 

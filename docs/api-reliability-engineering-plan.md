@@ -603,6 +603,137 @@ Remaining:
   - three-protocol recovery matrix updated
   - product `/doctor` API failure card consumes recovery trace
 
+#### M7A: `/doctor` API Failure Cards Plan
+
+Status: planned product diagnostics work. This is not a new retry system; it is
+the product-facing consumer for the recovery traces already emitted by the API
+harness.
+
+Goal:
+
+- Make API failures explainable without asking users to inspect debug logs.
+- Show what Axiomate observed, what the decision layer chose, what execution did,
+  and why recovery stopped or switched model.
+- Keep sensitive data out of diagnostics: no prompts, request payloads, API keys,
+  authorization headers, file contents, or raw user text.
+
+Data flow:
+
+1. Add a session-local API recovery diagnostics store.
+   - Input: `RecoveryTraceEvent` from `ToolUseContext.onRecoveryTrace`.
+   - Shape: bounded ring buffer, newest first, safe to render in `/doctor`.
+   - Retention: enough recent events for a normal session, without writing
+     prompts or payload data to disk.
+   - Fields to preserve: timestamp, trace id, protocol, operation, route id,
+     auxiliary task, model, from/to model, chain index, attempt, max attempts,
+     reason, intent, action, outcome, final flag, rule id, mutation,
+     status code, request id, timeout kind/ms, stream phase, elapsed/TTFB,
+     bytes received, safe headers, policy gate, previous reason/action.
+2. Add a projection layer from traces to user-facing failure cards.
+   - Group related events by trace id when available; otherwise by operation,
+     route/task, protocol, model, and timestamp window.
+   - Compute final status: recovered, switched model, adapted request,
+     salvaged, stopped, aborted, or exhausted.
+   - Preserve attempt history so a sequence such as `400 unsupported_parameter`
+     followed by `502 server_error` is shown as one recovery session, not as a
+     overwritten error.
+3. Map semantic reasons and intents to next actions.
+   - `auth` / permanent auth: check API key, provider account, env var, or
+     provider preset.
+   - `billing`: top up, change model/provider, or choose a cheaper route.
+   - `rate_limit` / `overloaded`: wait, respect retry-after, use another route,
+     or adjust fallback chain.
+   - `timeout` / `connection` / stale socket: check network, proxy, base URL,
+     gateway, or timeout policy.
+   - `model_not_found` / endpoint mismatch: check model id, protocol, base URL,
+     and provider route.
+   - `unsupported_parameter`, schema, max-token, image, multimodal, thinking, or
+     encrypted-content errors: show the request mutation Axiomate attempted and
+     whether it was exhausted.
+   - `provider_policy_blocked`: change prompt/provider/model or remove blocked
+     capability.
+   - `responses_null_output`, `malformed_response`, stream-shape failures, or
+     stream watchdog stalls: show provider/gateway compatibility guidance and
+     whether non-streaming fallback or stream salvage was used.
+   - OAuth/stale-call/silent-reject patterns use the same mapping once their
+     trace evidence is present; this is product guidance, not a retry branch.
+
+`/doctor` UI:
+
+1. Add an `API Providers` section to `/doctor`.
+   - If no API recovery events exist, show no noisy success card by default.
+   - If events exist, show up to the most recent few failure cards, newest first.
+2. Card header:
+   - severity: warning for recovered/degraded, error for final failed,
+     info for adapted/salvaged.
+   - short title: for example `API request recovered by switching model`,
+     `Provider rejected request shape`, or `API request exhausted retries`.
+   - scope: main route, auxiliary task, or direct helper operation.
+3. Card body:
+   - impact: main response, model validation, token counting, session search,
+     permission explanation, compact, or other operation.
+   - model path: route id plus `primary -> fallback` transition when present.
+   - observed failure: semantic reason, status code, request id, and safe header
+     summary such as retry-after or provider request id.
+   - recovery timeline: compact list of attempts with reason, action, mutation,
+     delay, and outcome.
+   - why it stopped: final trace reason, policy gate rejection, exhausted
+     one-shot mutation, no fallback candidate, parent abort, or non-retryable
+     failure.
+   - next action: one concrete user step plus the relevant command/config
+     target, such as `/model route show`, `/model fallback add`, provider key
+     env var, or Settings config path.
+4. Advanced details:
+   - Keep raw internal fields collapsed or visually dim: trace id, rule id,
+     observation/decision id, timeout kind, elapsed/TTFB, bytes received, safe
+     headers, previous reason/action, policy gate details.
+   - Never render prompts, request body, tool inputs, API keys, bearer tokens, or
+     raw authorization headers.
+5. Cross-product alignment:
+   - Provider setup minimal verify should later write into the same card
+     taxonomy so a failed onboarding verification and a failed runtime request
+     explain errors the same way.
+   - MCP/plugin/settings cards can use the same visual structure, but their
+     data sources stay separate from API recovery trace events.
+
+Implementation sequence:
+
+1. `apiRecoveryDiagnostics` store.
+   - Add a small service with append/list/clear helpers and a fixed-size ring
+     buffer.
+   - Wire the main interactive `ToolUseContext.onRecoveryTrace` sink to append
+     to the store while preserving existing debug logging.
+   - Ensure subagents, compact forks, side questions, and auxiliary calls share
+     the same sink when they already inherit `ToolUseContext`.
+2. Card projection and copy.
+   - Add a pure mapper from `RecoveryTraceEvent[]` to `ApiFailureCard[]`.
+   - Keep title, severity, impact, summary, timeline, and next-action mapping in
+     one tested module.
+   - Prefer semantic `intent` over raw provider text when choosing copy.
+3. Doctor rendering.
+   - Add an `ApiProviderDoctorSection` component and mount it from `Doctor.tsx`.
+   - Render compact cards first; advanced fields only after the user expands
+     details or in debug mode, depending on the existing `/doctor` interaction
+     pattern.
+4. Tests.
+   - Unit tests for reason/intent/action to card mapping.
+   - Unit tests for grouping multi-attempt traces and preserving attempt order.
+   - Redaction tests for headers and sensitive fields.
+   - Doctor rendering test for empty state, recovered warning, and final failure.
+   - API gate should keep passing; no live-provider call is required for the
+     card mapper itself.
+
+Exit criteria:
+
+- A failed API request can be diagnosed from `/doctor` without opening debug log.
+- The card shows observation, decision, execution, and final outcome.
+- Main-loop, non-streaming fallback, stream fallback, and auxiliary traces can
+  all appear in the same card model.
+- The UI distinguishes recovered/degraded from final-failed failures.
+- Every next action points to a concrete command, config field, provider account
+  setting, or wait/retry instruction.
+- Sensitive request data cannot appear in the card output.
+
 ### M8: Model Route and Auxiliary Fallback Policy
 
 Status: main-loop route fallback, route persistence, session override

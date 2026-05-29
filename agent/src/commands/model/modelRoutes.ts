@@ -487,7 +487,7 @@ function renderRoutes(config: GlobalConfig): string {
   const normalized = normalizeModelRoutingConfig(config)
   const defaultRoute = normalized.model?.defaultRoute ?? DEFAULT_ROUTE_ID
   const routes = normalized.model?.routes ?? {}
-  const lines = Object.entries(routes)
+  const routeBlocks = Object.entries(routes)
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([routeId, route]) => {
       const marker = routeId === defaultRoute ? '*' : ' '
@@ -495,11 +495,15 @@ function renderRoutes(config: GlobalConfig): string {
         primary: route.primary,
         fallbackChain: route.fallbackChain,
       })
-      return `${marker} ${routeId}: ${chain.join(' -> ')}`
+      const chainLines = chain.map((model, index) => {
+        const prefix = index === 0 ? 'primary' : `fallback ${index}`
+        return `    ${prefix}: ${model}`
+      })
+      return [`${marker} ${routeId}`, ...chainLines].join('\n')
     })
 
-  return lines.length
-    ? `Model routes:\n${lines.join('\n')}`
+  return routeBlocks.length
+    ? `Model routes (* = default):\n\n${routeBlocks.join('\n\n')}`
     : 'No model routes configured.'
 }
 

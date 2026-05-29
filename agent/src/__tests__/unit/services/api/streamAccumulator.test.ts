@@ -478,5 +478,46 @@ describe('processStream (neutral)', () => {
       expect(result.usage.inputTokens).toBe(100)
       expect(result.usage.outputTokens).toBe(25)
     })
+
+    it('leaves OpenAI-style pending usage at zero until final usage arrives', async () => {
+      const events: StreamEvent[] = [
+        responseStart({ usage: { inputTokens: 0, outputTokens: 0 } }),
+        blockStart(0, { type: 'text' }),
+        textDelta(0, 'ok'),
+        blockStop(0),
+        responseDelta('end_turn', { inputTokens: 0, outputTokens: 0 }),
+        responseStop(),
+      ]
+
+      const { outputs } = await collectOutputs(mockStream(events))
+      const msgs = assistantMessages(outputs)
+
+      expect(msgs).toHaveLength(1)
+      expect(msgs[0].message.message.usage).toMatchObject({
+        input_tokens: 0,
+        output_tokens: 0,
+      })
+    })
+
+    it('updates the yielded message when OpenAI final usage arrives after block_stop', async () => {
+      const events: StreamEvent[] = [
+        responseStart({ usage: { inputTokens: 0, outputTokens: 0 } }),
+        blockStart(0, { type: 'text' }),
+        textDelta(0, 'ok'),
+        blockStop(0),
+        responseDelta('end_turn', { inputTokens: 0, outputTokens: 0 }),
+        responseDelta('end_turn', { inputTokens: 123, outputTokens: 7 }),
+        responseStop(),
+      ]
+
+      const { outputs } = await collectOutputs(mockStream(events))
+      const msgs = assistantMessages(outputs)
+
+      expect(msgs).toHaveLength(1)
+      expect(msgs[0].message.message.usage).toMatchObject({
+        input_tokens: 123,
+        output_tokens: 7,
+      })
+    })
   })
 })

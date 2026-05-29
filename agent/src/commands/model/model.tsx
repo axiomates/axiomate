@@ -228,12 +228,13 @@ export const call: LocalJSXCommandCall = async (onDone, _context, args) => {
     onDone(
       [
         'Model commands:',
-        '  /model                         open model selection',
+        '  /model                         open model picker; persists current default route primary',
         '  /model add                     add a provider/model interactively',
         '  /model edit <model-id>         edit one models[model-id] entry',
-        '  /model use <model-id>          set active route primary',
+        '  /model use <model-id>          persist current default route primary',
         '  /model route list|show [id]    inspect main routes',
-        '  /model route <id>              set active route',
+        '  /model route <id>              persist model.defaultRoute',
+        '  /model default <route-id>      persist model.defaultRoute',
         '  /model route create <id> <model-id>',
         '  /model route delete <id>',
         '  /model route rename <from> <to>',

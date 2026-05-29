@@ -315,6 +315,25 @@ describe('OpenAIResponsesStreamState — error events', () => {
 })
 
 describe('OpenAIResponsesStreamState — usage mapping', () => {
+  it('starts with pending zero usage until response.completed', () => {
+    const state = new OpenAIResponsesStreamState()
+    const out = state.mapEvent({
+      type: 'response.created',
+      response: { id: 'r1', model: 'o4-mini' },
+      sequence_number: 0,
+    } as any)
+
+    expect(out[0]).toMatchObject({
+      type: 'response_start',
+      response: {
+        usage: {
+          inputTokens: 0,
+          outputTokens: 0,
+        },
+      },
+    })
+  })
+
   it('extracts input/output/cache tokens from response.completed', () => {
     const state = new OpenAIResponsesStreamState()
     state.mapEvent({

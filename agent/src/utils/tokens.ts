@@ -21,6 +21,28 @@ export function getTokenUsage(message: Message): Usage | undefined {
   return undefined
 }
 
+function hasKnownTokenUsage(usage: Usage): boolean {
+  return getTokenCountFromUsage(usage) > 0
+}
+
+/**
+ * Returns only provider-reported usage that has real token data.
+ *
+ * OpenAI Chat and OpenAI Responses streams create assistant messages before
+ * the final usage chunk arrives, so they temporarily carry a protocol
+ * placeholder of 0 input / 0 output / 0 cache tokens. Treat that as unknown
+ * rather than a real zero-token API response. Anthropic message_start often
+ * has input tokens with output_tokens still 0; that is known usage and remains
+ * visible because the total is greater than zero.
+ */
+export function getKnownTokenUsage(message: Message): Usage | undefined {
+  const usage = getTokenUsage(message)
+  if (!usage || !hasKnownTokenUsage(usage)) {
+    return undefined
+  }
+  return usage
+}
+
 /**
  * Get the API response id for an assistant message with real (non-synthetic) usage.
  * Used to identify split assistant records that came from the same API response —
@@ -58,7 +80,7 @@ export function tokenCountFromLastAPIResponse(messages: Message[]): number {
   let i = messages.length - 1
   while (i >= 0) {
     const message = messages[i]
-    const usage = message ? getTokenUsage(message) : undefined
+    const usage = message ? getKnownTokenUsage(message) : undefined
     if (usage) {
       return getTokenCountFromUsage(usage)
     }
@@ -84,7 +106,7 @@ export function finalContextTokensFromLastResponse(
   let i = messages.length - 1
   while (i >= 0) {
     const message = messages[i]
-    const usage = message ? getTokenUsage(message) : undefined
+    const usage = message ? getKnownTokenUsage(message) : undefined
     if (usage) {
       // Stainless types don't include iterations yet — cast
       const iterations = (
@@ -128,7 +150,7 @@ export function messageTokenCountFromLastAPIResponse(
   let i = messages.length - 1
   while (i >= 0) {
     const message = messages[i]
-    const usage = message ? getTokenUsage(message) : undefined
+    const usage = message ? getKnownTokenUsage(message) : undefined
     if (usage) {
       return usage.output_tokens
     }
@@ -145,7 +167,7 @@ export function getCurrentUsage(messages: Message[]): {
 } | null {
   for (let i = messages.length - 1; i >= 0; i--) {
     const message = messages[i]
-    const usage = message ? getTokenUsage(message) : undefined
+    const usage = message ? getKnownTokenUsage(message) : undefined
     if (usage) {
       return {
         input_tokens: usage.input_tokens,
@@ -165,7 +187,7 @@ export function doesMostRecentAssistantMessageExceed200k(
 
   const lastAsst = messages.findLast(m => m.type === 'assistant')
   if (!lastAsst) return false
-  const usage = getTokenUsage(lastAsst)
+  const usage = getKnownTokenUsage(lastAsst)
   return usage ? getTokenCountFromUsage(usage) > THRESHOLD : false
 }
 
@@ -229,7 +251,7 @@ export function tokenCountWithEstimation(messages: readonly Message[]): number {
   let i = messages.length - 1
   while (i >= 0) {
     const message = messages[i]
-    const usage = message ? getTokenUsage(message) : undefined
+    const usage = message ? getKnownTokenUsage(message) : undefined
     if (message && usage) {
       // Walk back past any earlier sibling records split from the same API
       // response (same message.id) so interleaved tool_results between them

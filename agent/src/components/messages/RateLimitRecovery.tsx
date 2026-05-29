@@ -1,7 +1,7 @@
 /**
  * RateLimitRecovery — inline picker shown below a rate_limit SystemAPIErrorMessage
- * after retry attempts are exhausted. Lets the user switch the default route to
- * another configured provider without leaving the REPL.
+ * after retry attempts are exhausted. Lets the user persist the current
+ * default route's primary model without leaving the REPL.
  *
  * The switch is permanent (saveGlobalConfig writes ~/.axiomate.json). After
  * picking, a notification hints the user to press ↑ Enter to resubmit; we do
@@ -63,7 +63,8 @@ export function RateLimitRecovery({
   return (
     <Box flexDirection="column" marginTop={1} paddingLeft={1}>
       <Text dimColor>
-        Rate-limited. Switch to another configured model? (Esc to dismiss)
+        Rate-limited. Set current default route primary to another configured
+        model? (Esc to dismiss)
       </Text>
       <Select options={options} onChange={onPick} onCancel={onCancel} />
     </Box>

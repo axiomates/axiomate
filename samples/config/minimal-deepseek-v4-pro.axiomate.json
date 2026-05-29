@@ -1,0 +1,48 @@
+{
+  "models": {
+    "deepseek-v4-pro": {
+      "name": "DeepSeek V4 Pro",
+      "model": "deepseek-v4-pro",
+      "protocol": "openai-chat",
+      "vendor": "openai-chat-deepseek-official",
+      "baseUrl": "https://api.deepseek.com/v1",
+      "apiKey": "sk-YOUR-DEEPSEEK-API-KEY",
+      "contextWindow": 128000,
+      "maxOutputTokens": 8192,
+      "supportsImages": false,
+      "thinking": {
+        "enabled": true,
+        "effort": "high"
+      }
+    }
+  },
+  "model": {
+    "defaultRoute": "deepseek-main",
+    "routes": {
+      "deepseek-main": {
+        "primary": "deepseek-v4-pro",
+        "fallbackChain": [],
+        "recoveryProfile": "main-agent",
+        "allowActions": [
+          "retry_same_model",
+          "adapt_request"
+        ],
+        "switchModelOn": []
+      }
+    }
+  },
+  "auxiliary": {
+    "goalJudge": {
+      "primary": "deepseek-v4-pro",
+      "fallbackChain": [],
+      "failure": "soft_fail",
+      "timeoutMs": 60000,
+      "recoveryProfile": "auxiliary-balanced",
+      "allowActions": [
+        "retry_same_model",
+        "adapt_request"
+      ],
+      "switchModelOn": []
+    }
+  }
+}

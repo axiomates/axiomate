@@ -418,6 +418,7 @@
       <p>命令方式会直接写入 <code>~/.axiomate.json</code>，下次启动仍然生效。手动编辑时，<code>model.defaultRoute</code> 必须引用 <code>model.routes</code> 中已经存在的 route 名；每个 route 里的 <code>primary</code> 和 <code>fallbackChain</code> 必须引用 <code>models</code> 中已经存在的模型 id。</p>
       <div class="warn">
         <p><strong>Settings 里的 Model 不是 route 切换器。</strong>Settings 或 <code>/model</code> 选择器主要用于换当前默认 route 的 <code>primary</code>。要在 <code>deepseek-main</code>、<code>quality-main</code>、<code>fast-main</code> 之间切换，请使用 <code>/model route &lt;route-id&gt;</code>，或手动修改 <code>model.defaultRoute</code>。</p>
+        <p><strong>这类选择不是临时修改。</strong>Settings → Config 的 <strong>Model</strong>、直接打开 <code>/model</code> 选择器、以及 <code>/model use &lt;model-id&gt;</code> 都会持久化写入当前 <code>model.defaultRoute</code> 指向的那条 route，把这条 route 的 <code>primary</code> 改成所选模型。下次启动仍会使用这个新的 <code>primary</code>。</p>
       </div>
 
       <h3>什么时候应该用多条 route</h3>
@@ -1036,7 +1037,7 @@
         <tbody>
           <tr>
             <td><code>/model</code></td>
-            <td>打开模型选择器。选择模型会更新当前默认 route 的 <code>primary</code>。</td>
+            <td>打开模型选择器。选择模型会持久化更新当前默认 route 的 <code>primary</code>。</td>
           </tr>
           <tr>
             <td><code>/model show</code></td>
@@ -1052,7 +1053,7 @@
           </tr>
           <tr>
             <td><code>/model use &lt;model-id&gt;</code></td>
-            <td>把当前默认 route 的 <code>primary</code> 改成指定模型。</td>
+            <td>把当前默认 route 的 <code>primary</code> 持久化改成指定模型。</td>
           </tr>
           <tr>
             <td><code>/model route list</code></td>
@@ -1110,6 +1111,7 @@
     <section>
       <h2>Settings 里的模型 UI</h2>
       <p>Settings → Config 里的 <strong>Model</strong> 项使用同一个模型选择器。它适合快速切换当前主 route 的 <code>primary</code> 和调整 picker 中的 effort 选择。</p>
+      <p>这里的选择会写入 <code>~/.axiomate.json</code>：Axiomate 先读取当前 <code>model.defaultRoute</code>，再把 <code>model.routes[defaultRoute].primary</code> 改成你选择的模型。它和 <code>/model</code> 选择器、<code>/model use &lt;model-id&gt;</code> 是同一种持久化语义，不是只在当前会话生效的临时 override。</p>
       <div class="warn">
         <p><strong>Settings 里的 Model 不是完整 route 编辑器。</strong>它不会创建 route、编辑 fallback chain 或设置 auxiliary policy。完整路由和辅助任务管理请使用 <code>/model route ...</code>、<code>/model fallback ...</code>、<code>/model aux ...</code> 或手动编辑 <code>~/.axiomate.json</code>。</p>
       </div>
@@ -1202,7 +1204,7 @@
     <section>
       <h2>会话级 override</h2>
       <p>有些入口会临时指定主模型，例如启动参数或当前会话里的模型选择。这类 override 是内部 <code>MainModelOverride</code> 语义：可以指向默认 route、命名 route，或单模型 route。</p>
-      <p>会话 override 的目标是“这次会话用什么”，不是“改写全局策略”。它不会隐式重写 <code>model.defaultRoute</code>、route primary 或 auxiliary policy。普通 <code>/model</code> 选择和 <code>/model use</code> 则是持久化修改当前默认 route primary。</p>
+      <p>会话 override 的目标是“这次会话用什么”，不是“改写全局策略”。它不会隐式重写 <code>model.defaultRoute</code>、route primary 或 auxiliary policy。普通 Settings → Config 的 <strong>Model</strong>、<code>/model</code> 选择器和 <code>/model use</code> 则是持久化修改当前默认 route primary。</p>
     </section>
 
     <section>

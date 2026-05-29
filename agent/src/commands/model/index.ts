@@ -5,8 +5,9 @@ export default {
   type: 'local-jsx',
   name: 'model',
   get description() {
-    return `Set the AI model for Axiomate (currently ${renderModelName(getMainLoopModel())})`
+    return `Manage model resources, routes, fallback chains, and auxiliary task policies (currently ${renderModelName(getMainLoopModel())})`
   },
-  argumentHint: '[model | add | edit <id>]',
+  argumentHint:
+    '[show | use <model-id> | add | edit <model-id> | route ... | default <route-id> | fallback ... | aux ...]',
   load: () => import('./model.js'),
 } satisfies Command

@@ -83,6 +83,61 @@ describe('OpenAIStreamState usage mapping', () => {
         cacheReadTokens: 400,
       })
   })
+
+  it('emits no final usage while waiting for the OpenAI usage-only chunk', () => {
+    const state = new OpenAIStreamState()
+    const events = state.mapChunk({
+      id: 'chatcmpl_test',
+      model: 'deepseek-v4-pro',
+      choices: [
+        {
+          index: 0,
+          delta: {},
+          finish_reason: 'stop',
+        },
+      ],
+    } as OpenAIChatChunk)
+
+    const responseDelta = events.find(event => event.type === 'response_delta')
+    expect(responseDelta?.type === 'response_delta' ? responseDelta.usage : null)
+      .toEqual({
+        inputTokens: 0,
+        outputTokens: 0,
+      })
+  })
+
+  it('emits final usage from a later OpenAI usage-only chunk', () => {
+    const state = new OpenAIStreamState()
+    state.mapChunk({
+      id: 'chatcmpl_test',
+      model: 'deepseek-v4-pro',
+      choices: [
+        {
+          index: 0,
+          delta: {},
+          finish_reason: 'stop',
+        },
+      ],
+    } as OpenAIChatChunk)
+
+    const events = state.mapChunk({
+      id: 'chatcmpl_test',
+      model: 'deepseek-v4-pro',
+      choices: [],
+      usage: {
+        prompt_tokens: 123,
+        completion_tokens: 7,
+        total_tokens: 130,
+      },
+    } as OpenAIChatChunk)
+
+    const responseDelta = events.find(event => event.type === 'response_delta')
+    expect(responseDelta?.type === 'response_delta' ? responseDelta.usage : null)
+      .toEqual({
+        inputTokens: 123,
+        outputTokens: 7,
+      })
+  })
 })
 
 describe('OpenAIStreamState tool_use lifecycle', () => {

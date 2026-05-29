@@ -58,13 +58,14 @@ export function Notifications({
     const messagesForTokenCount = getMessagesAfterCompactBoundary(messages)
     return tokenCountFromLastAPIResponse(messagesForTokenCount)
   }, [messages])
+  const visibleTokenUsage = tokenUsage > 0 ? tokenUsage : null
 
   // AppState-sourced model — same source as API requests. Avoid resolving
   // from global route config here so another session's /model write does not
   // leak into this session's display.
   const mainLoopModel = useMainLoopModel()
   const isShowingCompactMessage = calculateTokenWarningState(
-    tokenUsage,
+    visibleTokenUsage ?? 0,
     mainLoopModel,
   ).isAboveWarningThreshold
   const notifications = useAppState(s => s.notifications)
@@ -135,7 +136,7 @@ export function Notifications({
           apiKeyStatus={apiKeyStatus}
           debug={debug}
           verbose={verbose}
-          tokenUsage={tokenUsage}
+          visibleTokenUsage={visibleTokenUsage}
           mainLoopModel={mainLoopModel}
         />
       </Box>
@@ -150,7 +151,7 @@ function NotificationContent({
   apiKeyStatus,
   debug,
   verbose,
-  tokenUsage,
+  visibleTokenUsage,
   mainLoopModel,
 }: {
   ideSelection: IDESelection | undefined
@@ -162,7 +163,7 @@ function NotificationContent({
   apiKeyStatus: VerificationStatus
   debug: boolean
   verbose: boolean
-  tokenUsage: number
+  visibleTokenUsage: number | null
   mainLoopModel: string
 }): ReactNode {
   const voiceState = useVoiceState(s => s.voiceState)
@@ -209,14 +210,19 @@ function NotificationContent({
           </Text>
         </Box>
       )}
-      {apiKeyStatus !== 'invalid' && apiKeyStatus !== 'missing' && verbose && (
+      {apiKeyStatus !== 'invalid' &&
+        apiKeyStatus !== 'missing' &&
+        verbose &&
+        visibleTokenUsage !== null && (
         <Box>
           <Text dimColor wrap="truncate">
-            {tokenUsage} tokens
+            {visibleTokenUsage} tokens
           </Text>
         </Box>
       )}
-      <TokenWarning tokenUsage={tokenUsage} model={mainLoopModel} />
+      {visibleTokenUsage !== null && (
+        <TokenWarning tokenUsage={visibleTokenUsage} model={mainLoopModel} />
+      )}
       {voiceEnabled && voiceError && (
         <Box>
           <Text color="error" wrap="truncate">
