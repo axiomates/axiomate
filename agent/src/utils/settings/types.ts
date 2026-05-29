@@ -309,7 +309,7 @@ export const SettingsSchema = lazySchema(() =>
         .optional()
         .describe(
           'Allowlist of models that users can select. ' +
-            'Accepts configured model aliases, version prefixes, ' +
+            'Accepts configured model keys, version prefixes, ' +
             'and full model IDs. ' +
             'If undefined, all models are available. If empty array, only the default model is available. ' +
             'Typically set in managed settings by enterprise administrators.',

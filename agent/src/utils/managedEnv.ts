@@ -22,7 +22,7 @@ function withoutSSHTunnelVars(
 /**
  * When the host owns inference routing (sets
  * AXIOMATE_CODE_PROVIDER_MANAGED_BY_HOST in spawn env), strip
- * provider-selection / model-default vars from settings-sourced env so a
+ * provider-selection vars from settings-sourced env so a
  * user's ~/.axiomate/settings.json can't redirect requests away from the
  * host-configured provider.
  */

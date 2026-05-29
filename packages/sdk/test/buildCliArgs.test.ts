@@ -11,10 +11,9 @@ describe('buildCliArgs', () => {
     expect(args).toContain('--verbose')
   })
 
-  it('passes model and fallback model', () => {
-    const args = buildCliArgs({ model: 'opus-4.7', fallbackModel: 'sonnet-4.6' })
+  it('passes model', () => {
+    const args = buildCliArgs({ model: 'opus-4.7' })
     expect(args).toEqual(expect.arrayContaining(['--model', 'opus-4.7']))
-    expect(args).toEqual(expect.arrayContaining(['--fallback-model', 'sonnet-4.6']))
   })
 
   it('passes effort level', () => {

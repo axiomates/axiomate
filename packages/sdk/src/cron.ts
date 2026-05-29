@@ -11,6 +11,8 @@
  * Ported from claude-code-sourcemap/restored-src/src/utils/cron.ts.
  */
 
+import type { CronJitterConfig } from './types/index.js'
+
 export type CronFields = {
   minute: number[]
   hour: number[]
@@ -178,7 +180,7 @@ export function jitteredNextCronRunMs(
   cron: string,
   fromMs: number,
   taskId: string,
-  cfg = DEFAULT_CRON_JITTER_CONFIG,
+  cfg: CronJitterConfig = DEFAULT_CRON_JITTER_CONFIG,
 ): number | null {
   const t1 = nextCronRunMs(cron, fromMs)
   if (t1 === null) return null
@@ -195,7 +197,7 @@ export function oneShotJitteredNextCronRunMs(
   cron: string,
   fromMs: number,
   taskId: string,
-  cfg = DEFAULT_CRON_JITTER_CONFIG,
+  cfg: CronJitterConfig = DEFAULT_CRON_JITTER_CONFIG,
 ): number | null {
   const t1 = nextCronRunMs(cron, fromMs)
   if (t1 === null) return null

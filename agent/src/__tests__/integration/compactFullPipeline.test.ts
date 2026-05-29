@@ -167,7 +167,6 @@ function makeMinimalContext() {
 function makeCacheSafeParams() {
   return {
     forkContextMessages: null,
-    fallbackModel: undefined,
   }
 }
 

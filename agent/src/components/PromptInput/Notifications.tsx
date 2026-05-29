@@ -59,9 +59,9 @@ export function Notifications({
     return tokenCountFromLastAPIResponse(messagesForTokenCount)
   }, [messages])
 
-  // AppState-sourced model — same source as API requests. getMainLoopModel()
-  // re-reads settings.json on every call, so another session's /model write
-  // would leak into this session's display (axiomates/axiomate#37596).
+  // AppState-sourced model — same source as API requests. Avoid resolving
+  // from global route config here so another session's /model write does not
+  // leak into this session's display.
   const mainLoopModel = useMainLoopModel()
   const isShowingCompactMessage = calculateTokenWarningState(
     tokenUsage,

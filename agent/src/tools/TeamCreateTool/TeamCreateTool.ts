@@ -142,7 +142,8 @@ export const TeamCreateTool: Tool<InputSchema, Output> = buildTool({
     // Generate a deterministic agent ID for the team lead
     const leadAgentId = formatAgentId(TEAM_LEAD_NAME, finalTeamName)
     const leadAgentType = agent_type || TEAM_LEAD_NAME
-    // Get the team lead's current model from AppState (handles session model, settings, CLI override)
+    // Get the team lead's current model from AppState, including any
+    // session-scoped route override.
     const leadModel = parseUserSpecifiedModel(
       appState.mainLoopModelOverrideForSession
         ? resolveMainModelOverride(

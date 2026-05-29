@@ -16,10 +16,6 @@ import {
   buildAddRouteFallback,
   buildSinglePrimaryMainRoute,
 } from '../utils/model/modelRoutePersistence.js'
-import {
-  DEFAULT_ROUTE_ID,
-  normalizeModelRoutingConfig,
-} from '../utils/model/modelRouting.js'
 
 export type { Protocol }
 
@@ -252,10 +248,9 @@ export const initialOnboardingProviderState: OnboardingProviderState = {
   routeUsage: 'main_primary',
 }
 
-export function shouldAskRouteUsage(
-  current: Pick<GlobalConfig, 'models'>,
-): boolean {
-  return Object.keys(current.models ?? {}).length > 0
+export function shouldAskRouteUsage(current: GlobalConfig): boolean {
+  const routeId = current.model?.defaultRoute
+  return !!routeId && !!current.model?.routes?.[routeId]?.primary
 }
 
 /**
@@ -476,17 +471,19 @@ export function buildOnboardingProviderConfigUpdateResult(
       }
     }
     case 'main_fallback': {
-      const next = addOnboardingFallback(withModel, state.modelId)
+      const routeId = requireDefaultRouteId(withModel)
+      const next = buildAddRouteFallback(withModel, routeId, state.modelId)
       return {
         config: next,
         result: {
           type: 'main_fallback',
           modelId: state.modelId,
-          routeId: getDefaultRouteId(next),
+          routeId,
         },
       }
     }
     case 'models_only':
+      requireDefaultRouteId(withModel)
       return {
         config: withModel,
         result: { type: 'models_only', modelId: state.modelId },
@@ -494,29 +491,16 @@ export function buildOnboardingProviderConfigUpdateResult(
   }
 }
 
-function ensureRouteForOnboarding(config: GlobalConfig): GlobalConfig {
-  const normalized = normalizeModelRoutingConfig(config)
-  const routeId = getDefaultRouteId(normalized)
-  if (normalized.model?.routes?.[routeId]) {
-    return normalized
-  }
-
-  const firstExistingModel = Object.keys(config.models ?? {})[0]
-  if (!firstExistingModel) {
-    return normalized
-  }
-
-  return buildSinglePrimaryMainRoute(normalized, firstExistingModel)
-}
-
 function getDefaultRouteId(config: GlobalConfig): string {
-  return config.model?.defaultRoute ?? DEFAULT_ROUTE_ID
+  return requireDefaultRouteId(config)
 }
 
-function addOnboardingFallback(
-  config: GlobalConfig,
-  modelId: string,
-): GlobalConfig {
-  const withRoute = ensureRouteForOnboarding(config)
-  return buildAddRouteFallback(withRoute, getDefaultRouteId(withRoute), modelId)
+function requireDefaultRouteId(config: GlobalConfig): string {
+  const routeId = config.model?.defaultRoute
+  if (!routeId || !config.model?.routes?.[routeId]) {
+    throw new Error(
+      'Cannot add a fallback/model-only entry before a main model route exists.',
+    )
+  }
+  return routeId
 }

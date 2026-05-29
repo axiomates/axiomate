@@ -35,7 +35,7 @@ const inputSchema = lazySchema(() =>
     setting: z
       .string()
       .describe(
-        'The setting key (e.g., "theme", "model", "permissions.defaultMode")',
+        'The setting key (e.g., "theme", "permissions.defaultMode")',
       ),
     value: z
       .union([z.string(), z.boolean(), z.number()])
@@ -63,7 +63,7 @@ export type Output = z.infer<OutputSchema>
 
 export const ConfigTool = buildTool({
   name: CONFIG_TOOL_NAME,
-  searchHint: 'get or set Axiomate settings (theme, model)',
+  searchHint: 'get or set Axiomate settings',
   maxResultSizeChars: 100_000,
   async description() {
     return DESCRIPTION

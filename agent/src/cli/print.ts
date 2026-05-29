@@ -396,7 +396,6 @@ export async function runHeadless(
     systemPrompt: string | undefined
     appendSystemPrompt: string | undefined
     userSpecifiedModel: string | undefined
-    fallbackModel: string | undefined
     replayUserMessages: boolean | undefined
     includePartialMessages: boolean | undefined
     forkSession: boolean | undefined
@@ -839,7 +838,6 @@ function runHeadlessStreaming(
     systemPrompt: string | undefined
     appendSystemPrompt: string | undefined
     userSpecifiedModel: string | undefined
-    fallbackModel: string | undefined
     replayUserMessages?: boolean | undefined
     includePartialMessages?: boolean | undefined
     enableAuthStatus?: boolean | undefined
@@ -1830,7 +1828,6 @@ function runHeadlessStreaming(
               maxBudgetUsd: options.maxBudgetUsd,
               canUseTool,
               userSpecifiedModel: activeUserSpecifiedModel,
-              fallbackModel: options.fallbackModel,
               jsonSchema: getInitJsonSchema() ?? options.jsonSchema,
               mutableMessages,
               getReadFileCache: () =>

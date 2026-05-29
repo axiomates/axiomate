@@ -207,7 +207,7 @@ describe('query recovery trace plumbing', () => {
     ).toHaveLength(1)
   })
 
-  it('treats an explicit fallback model as the next route-chain candidate', async () => {
+  it('uses the configured route chain for model-switch candidates', async () => {
     const onRecoveryTrace = vi.fn()
     const attemptedModels: string[] = []
     const callModel = vi.fn(async function* (input: {
@@ -215,11 +215,11 @@ describe('query recovery trace plumbing', () => {
     }) {
       attemptedModels.push(input.options.model)
       if (input.options.model === 'test-model') {
-        expect(input.options.fallbackModel).toBe('explicit-fallback')
-        throw new FallbackTriggeredError('test-model', 'explicit-fallback')
+        expect(input.options.fallbackModel).toBe('test-fallback-model')
+        throw new FallbackTriggeredError('test-model', 'test-fallback-model')
       }
-      expect(input.options.model).toBe('explicit-fallback')
-      expect(input.options.fallbackModel).toBe('test-fallback-model')
+      expect(input.options.model).toBe('test-fallback-model')
+      expect(input.options.fallbackModel).toBe('test-final-model')
       yield makeAssistantMessage()
     })
     const deps: QueryDeps = {
@@ -237,13 +237,12 @@ describe('query recovery trace plumbing', () => {
         systemContext: {},
         canUseTool: vi.fn(),
         toolUseContext: makeContext(onRecoveryTrace),
-        fallbackModel: 'explicit-fallback',
         querySource: 'sdk',
         deps,
       }),
     )
 
-    expect(attemptedModels).toEqual(['test-model', 'explicit-fallback'])
+    expect(attemptedModels).toEqual(['test-model', 'test-fallback-model'])
   })
 
   it('uses session route overrides as the main route chain', async () => {

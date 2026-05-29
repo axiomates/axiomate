@@ -75,8 +75,8 @@ export function onChangeAppState({
     setMainLoopModelOverride(defaultRouteOverride())
   }
 
-  // mainLoopModel: persist ordinary model switches by updating the default
-  // route primary in ~/.axiomate.json. Do not write settings.model.
+  // mainLoopModel: persist ordinary model switches by updating the configured
+  // default route primary in ~/.axiomate.json.
   if (
     newState.mainLoopModel !== oldState.mainLoopModel &&
     newState.mainLoopModel !== null

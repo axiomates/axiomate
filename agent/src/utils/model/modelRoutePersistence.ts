@@ -12,6 +12,7 @@ import {
   DEFAULT_MAIN_ALLOW_ACTIONS,
   DEFAULT_MAIN_SWITCH_MODEL_ON,
   DEFAULT_ROUTE_ID,
+  getDefaultRouteIdFromConfig,
   normalizeModelRoutingConfig,
   validateModelRoutingConfig,
 } from './modelRouting.js'
@@ -21,6 +22,7 @@ export function buildSinglePrimaryMainRoute(
   current: GlobalConfig,
   modelId: string,
 ): GlobalConfig {
+  assertModelExists(current, modelId)
   const normalized = normalizeModelRoutingConfig(current)
   const routeId = normalized.model?.defaultRoute ?? DEFAULT_ROUTE_ID
   const existingRoute = normalized.model?.routes?.[routeId]
@@ -359,7 +361,7 @@ export function persistMainRoutePrimary(modelId: string): void {
 
 export function getPersistedMainRoutePrimary(): string | null {
   const normalized = normalizeModelRoutingConfig(getGlobalConfig())
-  const routeId = normalized.model?.defaultRoute ?? DEFAULT_ROUTE_ID
+  const routeId = getDefaultRouteIdFromConfig(normalized)
   return normalized.model?.routes?.[routeId]?.primary ?? null
 }
 

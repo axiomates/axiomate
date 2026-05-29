@@ -35,7 +35,6 @@ import {
   createAssistantMessage,
   EMPTY_LOOKUPS,
 } from '../../utils/messages.js'
-import type { ModelAlias } from '../../utils/model/aliases.js'
 import {
   getMainLoopModel,
   parseUserSpecifiedModel,
@@ -378,7 +377,7 @@ export function renderToolUseTag(
     description: string
     prompt: string
     subagent_type: string
-    model?: ModelAlias
+    model?: string
   }>,
 ): React.ReactNode {
   const tags: React.ReactNode[] = []

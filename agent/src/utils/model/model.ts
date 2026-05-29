@@ -5,7 +5,6 @@ import { getMainLoopModelOverride } from '../../bootstrap/state.js'
 import { getGlobalConfig } from '../config.js'
 import type { PermissionMode } from '../permissions/PermissionMode.js'
 import { isModelAllowed } from './modelAllowlist.js'
-import { type ModelAlias } from './aliases.js'
 import {
   getAuxiliaryTaskPolicyFromConfig,
   getDefaultRouteIdFromConfig,
@@ -22,7 +21,7 @@ import {
 
 export type ModelShortName = string
 export type ModelName = string
-export type ModelSetting = ModelName | ModelAlias | null
+export type ModelSetting = ModelName | null
 
 function isConfiguredModel(model: ModelSetting | undefined): model is ModelName {
   return typeof model === 'string' && !!getGlobalConfig().models?.[model]
@@ -37,13 +36,12 @@ export function defaultRouteOverride(): MainModelOverride {
 }
 
 /**
- * Get the model from /model command, --model flag, settings, or config.
+ * Get the model from an explicit session override or the configured default
+ * route.
  *
  * Priority:
- * 1. Model override during session (from /model command)
- * 2. Model override at startup (from --model flag)
- * 3. Settings (from user's saved settings)
- * 4. model.defaultRoute primary (from ~/.axiomate.json)
+ * 1. MainModelOverride for this session/startup, when present
+ * 2. model.defaultRoute primary (from ~/.axiomate.json)
  *
  * No implicit fallback outside the normalized route config.
  */
@@ -78,28 +76,6 @@ export function getBestModel(): ModelName {
   return getDefaultMainLoopModel()
 }
 
-/**
- * Resolve the model for a non-main-loop "auxiliary" role (e.g. goal judge).
- *
- * `tier` lets the caller decide whether to nudge the user about cost.
- * 'main' = expensive fallback, anything else = OK.
- */
-export type AuxiliaryModelTier = 'mid' | 'fast' | 'main'
-
-export function getAuxiliaryModel(_role: 'goalJudge'): {
-  model: ModelName
-  tier: AuxiliaryModelTier
-} {
-  const config = getGlobalConfig()
-  const policy = getAuxiliaryTaskPolicyFromConfig(config, 'goalJudge')
-  const main = getMainRouteFromConfig(config)
-  if (policy.primary === main.primary) return { model: policy.primary, tier: 'main' }
-  if (policy.recoveryProfile === 'auxiliary-fast') {
-    return { model: policy.primary, tier: 'fast' }
-  }
-  return { model: policy.primary, tier: 'mid' }
-}
-
 export function getRuntimeMainLoopModel(params: {
   permissionMode: PermissionMode
   mainLoopModel: string
@@ -108,7 +84,7 @@ export function getRuntimeMainLoopModel(params: {
   return params.mainLoopModel
 }
 
-export function getDefaultMainLoopModelSetting(): ModelName | ModelAlias {
+export function getDefaultMainLoopModelSetting(): ModelName {
   return getMainRouteFromConfig(getGlobalConfig()).primary
 }
 
@@ -186,12 +162,12 @@ export function getNormalizedModelRoutingConfig() {
 }
 
 export function renderDefaultModelSetting(
-  setting: ModelName | ModelAlias,
+  setting: ModelName,
 ): string {
   return renderModelName(parseUserSpecifiedModel(setting))
 }
 
-export function renderModelSetting(setting: ModelName | ModelAlias): string {
+export function renderModelSetting(setting: ModelName): string {
   return renderModelName(setting)
 }
 
@@ -222,7 +198,7 @@ export function getPublicModelName(model: ModelName): string {
  * through unchanged (apart from trim).
  */
 export function parseUserSpecifiedModel(
-  modelInput: ModelName | ModelAlias,
+  modelInput: ModelName,
 ): ModelName {
   return modelInput.trim()
 }

@@ -1,4 +1,3 @@
-import { getModelOptions } from '../../utils/model/modelOptions.js'
 import {
   getOptionsForSetting,
   SUPPORTED_SETTINGS,
@@ -14,9 +13,6 @@ export function generatePrompt(): string {
   const projectSettings: string[] = []
 
   for (const [key, config] of Object.entries(SUPPORTED_SETTINGS)) {
-    // Skip model - it gets its own section with dynamic options
-    if (key === 'model') continue
-
     const options = getOptionsForSetting(key)
     let line = `- ${key}`
 
@@ -34,8 +30,6 @@ export function generatePrompt(): string {
       projectSettings.push(line)
     }
   }
-
-  const modelSection = generateModelSection()
 
   return `Get or set Axiomate configuration settings.
 
@@ -55,29 +49,13 @@ ${globalSettings.join('\n')}
 ### Project Settings (stored in settings.json)
 ${projectSettings.join('\n')}
 
-${modelSection}
+Model route changes are not settings. Use /model, /model route, /model fallback, and /model aux for model configuration.
+
 ## Examples
 - Get theme: { "setting": "theme" }
 - Set dark theme: { "setting": "theme", "value": "dark" }
 - Enable vim mode: { "setting": "editorMode", "value": "vim" }
 - Enable verbose: { "setting": "verbose", "value": true }
-- Change model: { "setting": "model", "value": "my-model" }
 - Change permission mode: { "setting": "permissions.defaultMode", "value": "plan" }
 `
-}
-
-function generateModelSection(): string {
-  try {
-    const options = getModelOptions()
-    const lines = options.map(o => {
-      const value = o.value === null ? 'null/"default"' : `"${o.value}"`
-      return `  - ${value}: ${o.descriptionForModel ?? o.description}`
-    })
-    return `## Model
-- model - Override the default model. Available options:
-${lines.join('\n')}`
-  } catch {
-    return `## Model
-- model - Override the default model with a configured model key or provider model ID`
-  }
 }

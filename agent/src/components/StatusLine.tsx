@@ -141,9 +141,9 @@ function StatusLineInner({
   const {
     addNotification
   } = useNotifications();
-  // AppState-sourced model — same source as API requests. getMainLoopModel()
-  // re-reads settings.json on every call, so another session's /model write
-  // would leak into this session's statusline (axiomates/axiomate#37596).
+  // AppState-sourced model — same source as API requests. Avoid resolving
+  // from global route config here so another session's /model write does not
+  // leak into this session's statusline.
   const mainLoopModel = useMainLoopModel();
 
   // Keep latest values in refs for stable callback access

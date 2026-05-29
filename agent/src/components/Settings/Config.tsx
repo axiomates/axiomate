@@ -80,7 +80,6 @@ import {
   getCliTeammateModeOverride,
   clearCliTeammateModeOverride,
 } from '../../utils/swarm/backends/teammateModeSnapshot.js'
-import { getHardcodedTeammateModelFallback } from '../../utils/swarm/teammateModel.js'
 import { useSearchInput } from '../../hooks/useSearchInput.js'
 import { useTerminalSize } from '../../hooks/useTerminalSize.js'
 import { isFullscreenEnvEnabled } from '../../utils/fullscreen.js'
@@ -130,7 +129,6 @@ type Setting =
 type SubMenu =
   | 'Theme'
   | 'Model'
-  | 'TeammateModel'
   | 'ExternalIncludes'
   | 'OutputStyle'
   | 'Language'
@@ -829,7 +827,7 @@ export function Config({
       },
     },
     {
-      id: 'model',
+      id: 'mainRoutePrimary',
       label: 'Model',
       value: mainLoopModel === null ? 'Default (recommended)' : mainLoopModel,
       type: 'managedEnum' as const,
@@ -923,15 +921,6 @@ export function Config({
                   teammateMode: mode,
                 })
               },
-            },
-            {
-              id: 'teammateDefaultModel',
-              label: 'Default teammate model',
-              value: teammateModelDisplayString(
-                globalConfig.teammateDefaultModel,
-              ),
-              type: 'managedEnum' as const,
-              onChange() {},
             },
           ]
         })()
@@ -1291,8 +1280,7 @@ export function Config({
 
     if (
       setting.id === 'theme' ||
-      setting.id === 'model' ||
-      setting.id === 'teammateDefaultModel' ||
+      setting.id === 'mainRoutePrimary' ||
       setting.id === 'showExternalIncludesDialog' ||
       setting.id === 'outputStyle' ||
       setting.id === 'language'
@@ -1304,12 +1292,8 @@ export function Config({
           setShowSubmenu('Theme')
           setTabsHidden(true)
           return
-        case 'model':
+        case 'mainRoutePrimary':
           setShowSubmenu('Model')
-          setTabsHidden(true)
-          return
-        case 'teammateDefaultModel':
-          setShowSubmenu('TeammateModel')
           setTabsHidden(true)
           return
         case 'showExternalIncludesDialog':
@@ -1486,56 +1470,6 @@ export function Config({
               onChangeMainModelConfig(model)
               setShowSubmenu(null)
               setTabsHidden(false)
-            }}
-            onCancel={() => {
-              setShowSubmenu(null)
-              setTabsHidden(false)
-            }}
-          />
-          <Text dimColor>
-            <Byline>
-              <KeyboardShortcutHint shortcut="Enter" action="confirm" />
-              <ConfigurableShortcutHint
-                action="confirm:no"
-                context="Confirmation"
-                fallback="Esc"
-                description="cancel"
-              />
-            </Byline>
-          </Text>
-        </>
-      ) : showSubmenu === 'TeammateModel' ? (
-        <>
-          <ModelPicker
-            initial={globalConfig.teammateDefaultModel ?? null}
-            skipSettingsWrite
-            headerText="Default model for newly spawned teammates. The leader can override via the tool call's model parameter."
-            onSelect={(model, _effort) => {
-              setShowSubmenu(null)
-              setTabsHidden(false)
-              // First-open-then-Enter from unset: picker highlights "Default"
-              // (initial=null) and confirming would write null, silently
-              // switching default-model fallback → follow-leader. Treat as no-op.
-              if (
-                globalConfig.teammateDefaultModel === undefined &&
-                model === null
-              ) {
-                return
-              }
-              isDirty.current = true
-              saveGlobalConfig(current =>
-                current.teammateDefaultModel === model
-                  ? current
-                  : { ...current, teammateDefaultModel: model },
-              )
-              setGlobalConfig({
-                ...getGlobalConfig(),
-                teammateDefaultModel: model,
-              })
-              setChanges(prev => ({
-                ...prev,
-                teammateDefaultModel: teammateModelDisplayString(model),
-              }))
             }}
             onCancel={() => {
               setShowSubmenu(null)
@@ -1808,14 +1742,6 @@ export function Config({
       )}
     </Box>
   )
-}
-
-function teammateModelDisplayString(value: string | null | undefined): string {
-  if (value === undefined) {
-    return modelDisplayString(getHardcodedTeammateModelFallback())
-  }
-  if (value === null) return "Default (leader's model)"
-  return modelDisplayString(value)
 }
 
 const THEME_LABELS: Record<string, string> = {

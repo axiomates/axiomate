@@ -12,8 +12,8 @@ originSessionId: 935d7d15-2fd6-4de0-9b95-b62085b7ed3e
 ## 1. 为什么需要
 
 axiomate 当前 retrieval 栈：
-- **SessionSearchTool**（关键词 substring + BM25 + 可选 fastModel summary）—— Layer 1 关键词检索 ✅
-- **findRelevantMemories**（midModel 读 frontmatter 选 top-5 memory 文件）—— LLM-based ranking，不是向量相似度
+- **SessionSearchTool**（关键词 substring + BM25 + 可选 `auxiliary.sessionSearchSummary` 摘要）—— Layer 1 关键词检索 ✅
+- **findRelevantMemories**（`auxiliary.memdirRelevance` 读取 frontmatter 选 top-5 memory 文件）—— LLM-based ranking，不是向量相似度
 - **startRelevantMemoryPrefetch**（attachments.ts，feature('DEV') gated）—— 每轮预取骨架已就绪
 
 **缺口**：

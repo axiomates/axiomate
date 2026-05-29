@@ -85,7 +85,10 @@ export function parseSessionInfoFromLite(
 
   const sessionCwd = extractJsonStringField(head, 'cwd') || projectPath || undefined
 
-  const tagLine = tail.split('\n').findLast((l) => l.startsWith('{"type":"tag"'))
+  const tagLine = tail
+    .split('\n')
+    .reverse()
+    .find((line: string) => line.startsWith('{"type":"tag"'))
   const tag = tagLine ? extractLastJsonStringField(tagLine, 'tag') || undefined : undefined
 
   return {

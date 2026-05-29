@@ -16,7 +16,7 @@ export function ModelSelector({
 }: ModelSelectorProps): React.ReactNode {
   const modelOptions = React.useMemo(() => {
     const base = getAgentModelOptions()
-    // If the agent's current model is a full ID not in the alias list, inject
+    // If the agent's current model is a configured key not in the picker list, inject
     // it as an option so it can round-trip through confirm without being
     // overwritten.
     if (initialModel && !base.some(o => o.value === initialModel)) {

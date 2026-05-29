@@ -21,7 +21,7 @@ const config = (input: Partial<GlobalConfig>): GlobalConfig =>
   input as unknown as GlobalConfig
 
 describe('modelRoutePersistence', () => {
-  test('updates the default route primary without legacy model fields', () => {
+  test('updates the default route primary without inventing config aliases', () => {
     const next = buildSinglePrimaryMainRoute(
       config({
         models: {
@@ -159,6 +159,12 @@ describe('modelRoutePersistence', () => {
           main: model('main'),
           aux: model('aux'),
           backup: model('backup'),
+        },
+        model: {
+          defaultRoute: 'default',
+          routes: {
+            default: { primary: 'main' },
+          },
         },
         auxiliary: {
           goalJudge: {

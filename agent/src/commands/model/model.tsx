@@ -103,16 +103,14 @@ function SetModelAndClose({
         return
       }
 
-      // Skip validation for default model
+      // Skip validation for the configured default route.
       if (!model) {
         setModel(null)
         return
       }
 
-      // Validate and set custom model
+      // Validate and set the route primary.
       try {
-        // Don't use parseUserSpecifiedModel for non-aliases since it lowercases the input
-        // and model names are case-sensitive
         const { valid, error } = await validateModel(model)
 
         if (valid) {

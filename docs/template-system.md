@@ -221,8 +221,8 @@ The user's per-model configuration:
 
 `models` is only the concrete provider resource map. Main-agent routing lives
 under `model.defaultRoute` / `model.routes`, and background or side-task routing
-lives under `auxiliary.<task>`. Do not use the removed top-level
-`currentModel`, `midModel`, or `fastModel` fields in new examples.
+lives under `auxiliary.<task>`. Template examples should use only this route
+and task-policy shape for model selection.
 
 ## The `thinking` field
 

@@ -532,7 +532,14 @@ describe('onboarding route persistence', () => {
 
   it('does not ask route usage for a fresh first model', () => {
     expect(shouldAskRouteUsage(config({}))).toBe(false)
-    expect(shouldAskRouteUsage(config({ models: { existing: model('existing') } }))).toBe(true)
+    expect(shouldAskRouteUsage(config({ models: { existing: model('existing') } }))).toBe(false)
+    expect(shouldAskRouteUsage(config({
+      models: { existing: model('existing') },
+      model: {
+        defaultRoute: 'default',
+        routes: { default: { primary: 'existing' } },
+      },
+    }))).toBe(true)
   })
 
   it('saves a first model as the default route primary', () => {
@@ -606,7 +613,23 @@ describe('onboarding route persistence', () => {
     })
   })
 
-  it('keeps the legacy helper as a config-only wrapper around structured results', () => {
+  it('requires an existing route before adding fallback or models-only entries', () => {
+    expect(() =>
+      buildOnboardingProviderConfigUpdateResult(
+        config({ models: { main: model('main') } }),
+        { ...baseState, routeUsage: 'main_fallback' },
+      ),
+    ).toThrow('before a main model route exists')
+
+    expect(() =>
+      buildOnboardingProviderConfigUpdateResult(
+        config({ models: { main: model('main') } }),
+        { ...baseState, routeUsage: 'models_only' },
+      ),
+    ).toThrow('before a main model route exists')
+  })
+
+  it('keeps the config-only wrapper around structured results', () => {
     const next = buildOnboardingProviderConfigUpdate(config({}), baseState)
     expect(next.model?.routes?.default.primary).toBe('new-model')
   })

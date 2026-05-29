@@ -1,0 +1,824 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Axiomate 模型配置用户指南</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f5f7f8;
+      --panel: #ffffff;
+      --panel-soft: #f0f5f6;
+      --text: #172126;
+      --muted: #5d6b73;
+      --line: #d7e0e3;
+      --accent: #0f766e;
+      --accent-soft: #dff5f2;
+      --warn: #8a5a00;
+      --warn-soft: #fff4d6;
+      --danger: #991b1b;
+      --danger-soft: #fee2e2;
+      --good: #166534;
+      --good-soft: #dcfce7;
+      --code: #f3f6f7;
+      --shadow: 0 12px 28px rgba(23, 33, 38, 0.08);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font: 15px/1.65 "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    }
+
+    .wrap {
+      width: min(1120px, calc(100vw - 32px));
+      margin: 26px auto 52px;
+      display: grid;
+      gap: 18px;
+    }
+
+    header,
+    section {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+    }
+
+    header {
+      padding: 28px 30px;
+    }
+
+    section {
+      padding: 24px 26px;
+    }
+
+    .eyebrow {
+      margin: 0 0 10px;
+      color: var(--accent);
+      font-weight: 700;
+      letter-spacing: 0;
+    }
+
+    h1,
+    h2,
+    h3 {
+      margin: 0;
+      line-height: 1.25;
+      letter-spacing: 0;
+    }
+
+    h1 {
+      font-size: 32px;
+      margin-bottom: 10px;
+    }
+
+    h2 {
+      font-size: 22px;
+      margin-bottom: 12px;
+    }
+
+    h3 {
+      font-size: 17px;
+      margin: 20px 0 8px;
+    }
+
+    p {
+      margin: 0 0 12px;
+    }
+
+    a {
+      color: var(--accent);
+      text-decoration-thickness: 1px;
+    }
+
+    code {
+      padding: 1px 5px;
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      background: var(--code);
+      font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+      font-size: 0.95em;
+    }
+
+    pre {
+      margin: 12px 0 18px;
+      padding: 15px 16px;
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #101820;
+      color: #f5fbfc;
+      font: 13px/1.55 ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+    }
+
+    pre code {
+      padding: 0;
+      border: 0;
+      background: transparent;
+      color: inherit;
+      font-size: inherit;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 12px 0 18px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow: hidden;
+      background: var(--panel);
+    }
+
+    th,
+    td {
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      background: var(--panel-soft);
+      font-weight: 700;
+    }
+
+    tr:last-child td {
+      border-bottom: 0;
+    }
+
+    ul,
+    ol {
+      margin: 8px 0 14px 22px;
+      padding: 0;
+    }
+
+    li {
+      margin: 6px 0;
+    }
+
+    .muted {
+      color: var(--muted);
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+      margin: 16px 0;
+    }
+
+    .tile {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 14px;
+      background: var(--panel-soft);
+    }
+
+    .tile strong {
+      display: block;
+      margin-bottom: 4px;
+    }
+
+    .callout,
+    .warn,
+    .danger,
+    .good {
+      margin: 14px 0 18px;
+      padding: 13px 15px;
+      border-left: 4px solid var(--accent);
+      border-radius: 6px;
+      background: var(--accent-soft);
+    }
+
+    .warn {
+      border-left-color: var(--warn);
+      background: var(--warn-soft);
+    }
+
+    .danger {
+      border-left-color: var(--danger);
+      background: var(--danger-soft);
+    }
+
+    .good {
+      border-left-color: var(--good);
+      background: var(--good-soft);
+    }
+
+    .nowrap {
+      white-space: nowrap;
+    }
+
+    @media (max-width: 860px) {
+      .wrap {
+        width: min(100vw - 20px, 1120px);
+        margin-top: 12px;
+      }
+
+      header,
+      section {
+        padding: 18px 16px;
+      }
+
+      h1 {
+        font-size: 26px;
+      }
+
+      .grid {
+        grid-template-columns: 1fr;
+      }
+
+      table {
+        display: block;
+        overflow-x: auto;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <header>
+      <p class="eyebrow">Axiomate user guide</p>
+      <h1>模型配置与路由策略</h1>
+      <p class="muted">更新时间：2026-05-29。本文面向第一次接触 Axiomate 的用户，解释 <code>~/.axiomate.json</code> 里模型相关字段、手动配置方法、<code>/model</code> 命令和 Settings 里的模型 UI。</p>
+      <div class="callout">
+        <p><strong>一句话：</strong><code>models</code> 定义“有哪些具体模型资源”，<code>model.defaultRoute</code> / <code>model.routes</code> 定义主对话走哪条模型链，<code>auxiliary</code> 定义标题生成、目标评审、摘要、OCR 等辅助任务走哪条模型链。</p>
+        <p>Axiomate 的 API 可靠性由统一的观察 → 决策 → 执行恢复系统负责。路由配置只提供候选模型和策略门槛，不是另一套独立 retry 逻辑。</p>
+      </div>
+    </header>
+
+    <section>
+      <h2>文件位置</h2>
+      <p>用户级配置文件在 <code>~/.axiomate.json</code>。Windows 上通常是 <code>C:\Users\&lt;你的用户名&gt;\.axiomate.json</code>。</p>
+      <p>首次运行或执行 <code>/model add</code> 时，Axiomate 会创建或更新这个文件。你也可以手动编辑它，但保存前要确保 JSON 合法。</p>
+      <div class="callout">
+        <p><strong>当前配置合同：</strong>模型配置只使用 <code>models</code>、<code>model.routes</code>、<code>model.defaultRoute</code> 和 <code>auxiliary</code>。模型切换和路由管理使用 <code>/model</code> 命令，不使用 <code>/config</code> 设置项。</p>
+      </div>
+    </section>
+
+    <section>
+      <h2>最小完整示例</h2>
+      <p>下面示例展示三件事：注册两个具体模型、设置主对话默认路由、给几个辅助任务指定模型。</p>
+      <pre><code>{
+  "models": {
+    "main-qwen": {
+      "model": "qwen/qwen3-235b",
+      "name": "Qwen3 235B",
+      "protocol": "openai-chat",
+      "baseUrl": "https://openrouter.ai/api/v1",
+      "apiKey": "sk-...",
+      "contextWindow": 131072,
+      "maxOutputTokens": 32768,
+      "supportsImages": true,
+      "thinking": { "enabled": true, "budget": 8192 }
+    },
+    "o4-mini": {
+      "model": "o4-mini",
+      "name": "o4-mini (Responses)",
+      "protocol": "openai-responses",
+      "baseUrl": "https://api.openai.com/v1",
+      "apiKey": "sk-...",
+      "contextWindow": 200000,
+      "maxOutputTokens": 100000,
+      "thinking": { "enabled": true, "effort": "high" }
+    }
+  },
+  "model": {
+    "defaultRoute": "default",
+    "routes": {
+      "default": {
+        "primary": "main-qwen",
+        "fallbackChain": ["o4-mini"],
+        "recoveryProfile": "main-agent"
+      }
+    }
+  },
+  "auxiliary": {
+    "sessionTitle": { "primary": "main-qwen" },
+    "sessionSearchSummary": {
+      "primary": "main-qwen",
+      "failure": "return_original"
+    },
+    "goalJudge": {
+      "primary": "o4-mini",
+      "recoveryProfile": "auxiliary-judge",
+      "failure": "fail_open",
+      "timeoutMs": 30000
+    }
+  }
+}</code></pre>
+      <div class="callout">
+        <p><strong><code>models</code> 的 key 和 <code>models[id].model</code> 不一定相同。</strong>例如上面 <code>main-qwen</code> 是 Axiomate 内部引用的模型 id，也是你在 route / auxiliary 里写的名字；里面的 <code>model: "qwen/qwen3-235b"</code> 是实际发给 provider API 的模型名。</p>
+      </div>
+    </section>
+
+    <section>
+      <h2><code>models</code> 字段</h2>
+      <p><code>models</code> 是具体模型资源表。每个条目描述“如何调用这个 provider 的这个模型”。</p>
+      <table>
+        <thead>
+          <tr>
+            <th>字段</th>
+            <th>必填</th>
+            <th>含义</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>model</code></td>
+            <td>是</td>
+            <td>发送给 provider API 的模型名。它可以和 <code>models</code> 的 key 一样，也可以不同。</td>
+          </tr>
+          <tr>
+            <td><code>name</code></td>
+            <td>否</td>
+            <td>模型选择器里显示的名字。省略时显示 <code>models</code> 的 key。</td>
+          </tr>
+          <tr>
+            <td><code>description</code></td>
+            <td>否</td>
+            <td>模型选择器里的说明。省略时显示协议和 endpoint。</td>
+          </tr>
+          <tr>
+            <td><code>protocol</code></td>
+            <td>是</td>
+            <td><code>openai-chat</code>、<code>openai-responses</code> 或 <code>anthropic</code>。决定请求/流式响应的 wire format。</td>
+          </tr>
+          <tr>
+            <td><code>vendor</code></td>
+            <td>否</td>
+            <td>供应商模板名，用来把中立的 <code>thinking</code> 配置翻译成 provider 需要的字段。通常可以省略，让 Axiomate 按协议、baseUrl、模型名推断。</td>
+          </tr>
+          <tr>
+            <td><code>baseUrl</code></td>
+            <td>是</td>
+            <td>API endpoint，例如 <code>https://api.openai.com/v1</code> 或 OpenRouter / SiliconFlow / vLLM / ollama 的兼容地址。</td>
+          </tr>
+          <tr>
+            <td><code>apiKey</code></td>
+            <td>是</td>
+            <td>API key。即使本地 ollama 不校验 key，也需要填一个占位字符串。</td>
+          </tr>
+          <tr>
+            <td><code>contextWindow</code></td>
+            <td>否</td>
+            <td>上下文窗口 token 数。用于截断、压缩和预算估算。</td>
+          </tr>
+          <tr>
+            <td><code>maxOutputTokens</code></td>
+            <td>否</td>
+            <td>单次响应最大输出 token。未填时使用 Axiomate 的默认/推断值。</td>
+          </tr>
+          <tr>
+            <td><code>supportsImages</code></td>
+            <td>否</td>
+            <td>模型是否支持图片输入。默认 <code>true</code>；纯文本模型应设为 <code>false</code>。</td>
+          </tr>
+          <tr>
+            <td><code>thinking</code></td>
+            <td>否</td>
+            <td>中立 reasoning 配置，例如 <code>{ "enabled": true, "effort": "high" }</code> 或 <code>{ "enabled": true, "budget": 8192 }</code>。</td>
+          </tr>
+          <tr>
+            <td><code>extraParams</code></td>
+            <td>否</td>
+            <td>每次请求都原样合并到 body 的 provider 私有参数。</td>
+          </tr>
+          <tr>
+            <td><code>usageMapping</code></td>
+            <td>否</td>
+            <td>OpenAI Chat 兼容响应中 cache token 字段路径映射。Responses 和 Anthropic 通常不需要。</td>
+          </tr>
+          <tr>
+            <td><code>userAgent</code></td>
+            <td>否</td>
+            <td>覆盖 HTTP User-Agent。某些 Responses 兼容网关会按 UA 放行。</td>
+          </tr>
+          <tr>
+            <td><code>repairToolCalls</code></td>
+            <td>否</td>
+            <td>兼容开关：对容易输出畸形 tool-call JSON 的模型启用修复。</td>
+          </tr>
+          <tr>
+            <td><code>stallTimeoutMs</code></td>
+            <td>否</td>
+            <td>覆盖流式响应卡顿告警阈值。设为 <code>0</code> 可关闭该模型的卡顿告警。</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3>三种协议怎么选</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>协议</th>
+            <th>适用场景</th>
+            <th>典型 baseUrl</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>openai-chat</code></td>
+            <td>OpenAI Chat Completions 兼容接口。OpenRouter、SiliconFlow、DeepSeek、vLLM、ollama 等通常用这个。</td>
+            <td><code>https://openrouter.ai/api/v1</code></td>
+          </tr>
+          <tr>
+            <td><code>openai-responses</code></td>
+            <td>OpenAI Responses API 或兼容网关。适合需要保留 reasoning item 和 Responses tool-call 语义的模型。</td>
+            <td><code>https://api.openai.com/v1</code></td>
+          </tr>
+          <tr>
+            <td><code>anthropic</code></td>
+            <td>Anthropic Messages wire format。用于真正按 Anthropic 协议暴露的 provider。</td>
+            <td><code>https://api.anthropic.com</code></td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>主对话路由：<code>model</code></h2>
+      <p><code>model.defaultRoute</code> 指向当前主对话默认 route；<code>model.routes</code> 里每个 route 是一个有序模型链。</p>
+      <pre><code>{
+  "model": {
+    "defaultRoute": "default",
+    "routes": {
+      "default": {
+        "primary": "main-qwen",
+        "fallbackChain": ["o4-mini"],
+        "allowActions": ["retry_same_model", "adapt_request", "switch_model"],
+        "switchModelOn": [
+          "rate_limit",
+          "overloaded",
+          "timeout",
+          "connection",
+          "server_error",
+          "malformed_response",
+          "responses_null_output",
+          "model_not_found",
+          "provider_policy_blocked"
+        ],
+        "recoveryProfile": "main-agent"
+      }
+    }
+  }
+}</code></pre>
+      <table>
+        <thead>
+          <tr>
+            <th>字段</th>
+            <th>含义</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>primary</code></td>
+            <td>第一轮尝试使用的模型，必须是 <code>models</code> 里的 key。</td>
+          </tr>
+          <tr>
+            <td><code>fallbackChain</code></td>
+            <td>当统一恢复系统决定可以 <code>switch_model</code> 时，按顺序尝试的后备模型列表。</td>
+          </tr>
+          <tr>
+            <td><code>allowActions</code></td>
+            <td>这条 route 允许的恢复动作：<code>retry_same_model</code>、<code>adapt_request</code>、<code>switch_model</code>。</td>
+          </tr>
+          <tr>
+            <td><code>switchModelOn</code></td>
+            <td>哪些语义错误原因允许切模型。常见值包括 <code>timeout</code>、<code>rate_limit</code>、<code>server_error</code>、<code>malformed_response</code>、<code>model_not_found</code>。</td>
+          </tr>
+          <tr>
+            <td><code>recoveryProfile</code></td>
+            <td>恢复规则 profile 名。主对话通常用 <code>main-agent</code>。</td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="warn">
+        <p><strong><code>fallbackChain</code> 不是“失败就无脑切模型”。</strong>每次 API 错误都会先被观察层分类并记录，再由决策层根据错误语义、上一轮尝试、route policy 和恢复规则表决定下一步。只有决策结果是 <code>switch_model</code> 时才会消耗 chain 里的下一个候选。</p>
+      </div>
+    </section>
+
+    <section>
+      <h2>辅助任务路由：<code>auxiliary</code></h2>
+      <p><code>auxiliary</code> 给“不是主对话、但需要 LLM 的小任务”配置模型链。标题生成、搜索摘要、目标评审、hook、OCR、token counting 都属于这个层。</p>
+      <pre><code>{
+  "auxiliary": {
+    "sessionTitle": {
+      "primary": "main-qwen",
+      "timeoutMs": 15000,
+      "failure": "return_null"
+    },
+    "goalJudge": {
+      "primary": "o4-mini",
+      "fallbackChain": ["main-qwen"],
+      "recoveryProfile": "auxiliary-judge",
+      "failure": "fail_open"
+    },
+    "visionOcr": {
+      "primary": "vision-model",
+      "fallbackChain": ["main-qwen"],
+      "recoveryProfile": "auxiliary-vision",
+      "failure": "return_null"
+    }
+  }
+}</code></pre>
+      <table>
+        <thead>
+          <tr>
+            <th>字段</th>
+            <th>只在 auxiliary 中额外出现吗</th>
+            <th>含义</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>primary</code> / <code>fallbackChain</code> / <code>allowActions</code> / <code>switchModelOn</code> / <code>recoveryProfile</code></td>
+            <td>否</td>
+            <td>和主 route 同语义。</td>
+          </tr>
+          <tr>
+            <td><code>failure</code></td>
+            <td>是</td>
+            <td>所有尝试失败后的最终处置。可选：<code>fail_open</code>、<code>fail_closed</code>、<code>return_null</code>、<code>return_original</code>、<code>return_empty</code>、<code>propagate_error</code>。</td>
+          </tr>
+          <tr>
+            <td><code>timeoutMs</code></td>
+            <td>是</td>
+            <td>该任务单次尝试超时。省略时使用内置 timeout policy。</td>
+          </tr>
+          <tr>
+            <td><code>extraBody</code></td>
+            <td>是</td>
+            <td>该辅助任务请求体额外字段。用于少量任务级 provider 参数。</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3>常见辅助任务</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>任务</th>
+            <th>用途</th>
+            <th>常见模型选择</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>sessionTitle</code></td>
+            <td>生成会话标题。</td>
+            <td>便宜、快速、稳定的文本模型。</td>
+          </tr>
+          <tr>
+            <td><code>tokenCounting</code></td>
+            <td>辅助 token 估算/计数路径。</td>
+            <td>便宜模型；失败通常 <code>return_null</code>。</td>
+          </tr>
+          <tr>
+            <td><code>sessionSearchSummary</code></td>
+            <td><code>/resume</code> 或 SessionSearch 命中后的摘要。</td>
+            <td>便宜摘要模型；失败可 <code>return_original</code>。</td>
+          </tr>
+          <tr>
+            <td><code>memdirRelevance</code></td>
+            <td>从 memory frontmatter 中选相关文件。</td>
+            <td>严格输出 JSON 的中等质量模型。</td>
+          </tr>
+          <tr>
+            <td><code>goalJudge</code></td>
+            <td><code>/goal</code> 每轮判断目标是否完成。</td>
+            <td>严格遵循 JSON 输出的模型，成本最好低于主模型。</td>
+          </tr>
+          <tr>
+            <td><code>hookPrompt</code> / <code>hookAgent</code></td>
+            <td>prompt hook 或完整 agent hook。</td>
+            <td><code>hookAgent</code> 通常需要更高质量和 <code>propagate_error</code>。</td>
+          </tr>
+          <tr>
+            <td><code>skillImprovement</code></td>
+            <td>技能改进建议。</td>
+            <td>便宜但能遵循格式的模型。</td>
+          </tr>
+          <tr>
+            <td><code>mcpDateTimeParse</code></td>
+            <td>MCP 表单里的自然语言日期时间解析。</td>
+            <td>快速文本模型。</td>
+          </tr>
+          <tr>
+            <td><code>shellPrefix</code></td>
+            <td>提取 shell 命令前缀，用于权限/展示。</td>
+            <td>快速文本模型。</td>
+          </tr>
+          <tr>
+            <td><code>permissionExplainer</code></td>
+            <td>生成权限请求解释。</td>
+            <td>快速文本模型。</td>
+          </tr>
+          <tr>
+            <td><code>compact</code> / <code>sideQuestion</code> / <code>forkedAgent</code></td>
+            <td>压缩、侧向问题、forked agent 类型任务。</td>
+            <td>质量优先，通常比标题/计数任务更强。</td>
+          </tr>
+          <tr>
+            <td><code>visionOcr</code></td>
+            <td>视觉 OCR/图片理解类辅助任务。</td>
+            <td><code>supportsImages !== false</code> 的视觉模型。</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>恢复语义：观察、决策、执行</h2>
+      <div class="grid">
+        <div class="tile">
+          <strong>观察</strong>
+          <p>每次 API 尝试都会记录协议、provider、模型、route、auxiliary task、attempt index、初次错误或 retry 错误，并把原始 400、52x、timeout、空输出等归类成语义原因。</p>
+        </div>
+        <div class="tile">
+          <strong>决策</strong>
+          <p>决策层读取恢复规则表、上一轮错误、当前错误、route policy 和剩余候选模型，决定 <code>retry_same_model</code>、<code>adapt_request</code>、<code>switch_model</code> 或停止。</p>
+        </div>
+        <div class="tile">
+          <strong>执行</strong>
+          <p>执行层按决策修改请求或切到下一个候选。失败结果会回写到同一个 recovery session，供下一轮决策继续使用。</p>
+        </div>
+      </div>
+      <p>例如第一轮遇到 400，第二轮调整请求后遇到 52x，这不是一个“覆盖掉旧错误”的状态，而是同一轮恢复会话里的两个 attempt 观察记录。决策层能看到“之前是请求形状问题，现在是服务端/网关问题”，再决定是否换模型或停止。</p>
+    </section>
+
+    <section>
+      <h2><code>/model</code> 命令</h2>
+      <p><code>/model</code> 是当前模型配置的主要 UI。它能添加模型、编辑单个模型 entry、切主 route、管理 fallback 和辅助任务策略。</p>
+      <table>
+        <thead>
+          <tr>
+            <th>命令</th>
+            <th>作用</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>/model</code></td>
+            <td>打开模型选择器。选择模型会更新当前默认 route 的 <code>primary</code>。</td>
+          </tr>
+          <tr>
+            <td><code>/model show</code></td>
+            <td>显示当前主模型 route、fallback chain 和会话 override 信息。</td>
+          </tr>
+          <tr>
+            <td><code>/model add</code></td>
+            <td>交互式添加 provider/model：协议、baseUrl、apiKey、model id、context window、图片支持、vendor template、thinking、User-Agent，并验证连接后写入 <code>~/.axiomate.json</code>。</td>
+          </tr>
+          <tr>
+            <td><code>/model edit &lt;model-id&gt;</code></td>
+            <td>用编辑器修改 <code>models[model-id]</code>。保存时会校验 JSON、模型字段、route 和 auxiliary 引用。</td>
+          </tr>
+          <tr>
+            <td><code>/model use &lt;model-id&gt;</code></td>
+            <td>把当前默认 route 的 <code>primary</code> 改成指定模型。</td>
+          </tr>
+          <tr>
+            <td><code>/model route list</code></td>
+            <td>列出所有主对话 route。默认 route 前会有标记。</td>
+          </tr>
+          <tr>
+            <td><code>/model route show [route-id]</code></td>
+            <td>显示某条 route 的 chain、profile、allowActions、switchModelOn。</td>
+          </tr>
+          <tr>
+            <td><code>/model route &lt;route-id&gt;</code> 或 <code>/model default &lt;route-id&gt;</code></td>
+            <td>把 <code>model.defaultRoute</code> 切到指定 route。</td>
+          </tr>
+          <tr>
+            <td><code>/model route create &lt;id&gt; &lt;model-id&gt;</code></td>
+            <td>创建一条新主 route。</td>
+          </tr>
+          <tr>
+            <td><code>/model route delete &lt;id&gt;</code></td>
+            <td>删除非默认 route。默认 route 不能直接删除。</td>
+          </tr>
+          <tr>
+            <td><code>/model route rename &lt;from&gt; &lt;to&gt;</code></td>
+            <td>重命名 route，并保持默认 route 引用一致。</td>
+          </tr>
+          <tr>
+            <td><code>/model route policy &lt;id&gt; allowActions|switchModelOn|recoveryProfile &lt;value&gt;</code></td>
+            <td>修改 route 的恢复策略字段。数组字段用逗号分隔。</td>
+          </tr>
+          <tr>
+            <td><code>/model fallback list|add|remove &lt;model-id&gt;</code></td>
+            <td>查看或修改当前默认 route 的 fallback chain。</td>
+          </tr>
+          <tr>
+            <td><code>/model aux list</code> / <code>/model aux show &lt;task&gt;</code></td>
+            <td>查看辅助任务模型链和策略。</td>
+          </tr>
+          <tr>
+            <td><code>/model aux set &lt;task&gt; &lt;model-id&gt;</code></td>
+            <td>设置辅助任务的 <code>primary</code>。</td>
+          </tr>
+          <tr>
+            <td><code>/model aux fallback list|add|remove &lt;task&gt; &lt;model-id&gt;</code></td>
+            <td>查看或修改辅助任务 fallback chain。</td>
+          </tr>
+          <tr>
+            <td><code>/model aux policy &lt;task&gt; failure|timeoutMs|allowActions|switchModelOn|recoveryProfile &lt;value&gt;</code></td>
+            <td>修改辅助任务最终失败处置、超时或恢复策略字段。</td>
+          </tr>
+        </tbody>
+      </table>
+      <p><code>/template list</code>、<code>/template show &lt;name&gt;</code>、<code>/template new</code>、<code>/template delete &lt;name&gt;</code> 用于管理 provider/vendor template。它们修改的是顶层 <code>templates</code>，不是 route。</p>
+    </section>
+
+    <section>
+      <h2>Settings 里的模型 UI</h2>
+      <p>Settings → Config 里的 <strong>Model</strong> 项使用同一个模型选择器。它适合快速切换当前主 route 的 <code>primary</code> 和调整 picker 中的 effort 选择。</p>
+      <div class="warn">
+        <p><strong>Settings 里的 Model 不是完整 route 编辑器。</strong>它不会创建 route、编辑 fallback chain 或设置 auxiliary policy。完整路由和辅助任务管理请使用 <code>/model route ...</code>、<code>/model fallback ...</code>、<code>/model aux ...</code> 或手动编辑 <code>~/.axiomate.json</code>。</p>
+      </div>
+      <p><code>/model add</code> 的 onboarding 向导会在添加第二个及之后模型时询问用途：设为主 route primary、加入主 route fallback，或只写入 <code>models</code> 暂不加入路由。</p>
+    </section>
+
+    <section>
+      <h2>手动配置流程</h2>
+      <ol>
+        <li>打开 <code>~/.axiomate.json</code>。</li>
+        <li>在 <code>models</code> 中添加一个新 key，例如 <code>"fast-summary"</code>。</li>
+        <li>填好 <code>model</code>、<code>protocol</code>、<code>baseUrl</code>、<code>apiKey</code>，按需要补 <code>contextWindow</code>、<code>supportsImages</code>、<code>thinking</code>。</li>
+        <li>把这个 key 写进 <code>model.routes.&lt;route-id&gt;.primary</code>、<code>fallbackChain</code> 或 <code>auxiliary.&lt;task&gt;.primary</code>。</li>
+        <li>保存后重新打开 Axiomate，或用 <code>/model show</code>、<code>/model route list</code>、<code>/model aux list</code> 检查。</li>
+      </ol>
+      <pre><code>{
+  "models": {
+    "fast-summary": {
+      "model": "Qwen/Qwen3-8B",
+      "name": "Qwen3 8B Summary",
+      "protocol": "openai-chat",
+      "baseUrl": "https://api.siliconflow.cn/v1",
+      "apiKey": "sk-...",
+      "contextWindow": 32768,
+      "supportsImages": false
+    }
+  },
+  "auxiliary": {
+    "sessionTitle": { "primary": "fast-summary" },
+    "sessionSearchSummary": {
+      "primary": "fast-summary",
+      "failure": "return_original"
+    }
+  }
+}</code></pre>
+      <p>上面片段只展示新增部分。实际文件中还需要保留原有 <code>models</code>、<code>model</code> 和其他配置。</p>
+    </section>
+
+    <section>
+      <h2>会话级 override</h2>
+      <p>有些入口会临时指定主模型，例如启动参数或当前会话里的模型选择。这类 override 是内部 <code>MainModelOverride</code> 语义：可以指向默认 route、命名 route，或单模型 route。</p>
+      <p>会话 override 的目标是“这次会话用什么”，不是“改写全局策略”。它不会隐式重写 <code>model.defaultRoute</code>、route primary 或 auxiliary policy。普通 <code>/model</code> 选择和 <code>/model use</code> 则是持久化修改当前默认 route primary。</p>
+    </section>
+
+    <section>
+      <h2>常见检查</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>现象</th>
+            <th>检查项</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>启动时报模型不存在</td>
+            <td>确认 <code>model.routes.*.primary</code>、<code>fallbackChain</code>、<code>auxiliary.*.primary</code> 都引用 <code>models</code> 中存在的 key。</td>
+          </tr>
+          <tr>
+            <td>图片请求失败</td>
+            <td>纯文本模型把 <code>supportsImages</code> 设为 <code>false</code>；视觉任务把 <code>auxiliary.visionOcr.primary</code> 指向支持图片的模型。</td>
+          </tr>
+          <tr>
+            <td>目标评审成本太高</td>
+            <td>把 <code>auxiliary.goalJudge.primary</code> 指向便宜、稳定、严格 JSON 的模型。</td>
+          </tr>
+          <tr>
+            <td>fallback 没有发生</td>
+            <td>确认 route/aux policy 允许 <code>switch_model</code>，并且错误原因包含在 <code>switchModelOn</code>。某些错误会优先 <code>adapt_request</code> 或停止。</td>
+          </tr>
+          <tr>
+            <td>Settings 里找不到 route 管理</td>
+            <td>Settings 目前只提供 Model 快速选择；route 和 auxiliary 管理在 <code>/model</code> 命令里。</td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="good">
+        <p>建议第一次配置时优先用 <code>/model add</code>，确认能连接后再手动精修 route、fallback 和 auxiliary policy。</p>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

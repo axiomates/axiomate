@@ -215,7 +215,7 @@ describe('model route commands', () => {
     expect(mockSaveGlobalConfig).not.toHaveBeenCalled()
   })
 
-  test('returns handled false for legacy direct model arguments', () => {
+  test('returns handled false for bare model arguments', () => {
     expect(handleModelRouteCommand('main')).toEqual({ handled: false })
   })
 })

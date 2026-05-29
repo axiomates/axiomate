@@ -1,16 +1,15 @@
 import type { PermissionMode } from '../permissions/PermissionMode.js'
 import { capitalize } from '../stringUtils.js'
-import type { ModelAlias } from './aliases.js'
 import {
   getRuntimeMainLoopModel,
   parseUserSpecifiedModel,
 } from './model.js'
 
 export const AGENT_MODEL_OPTIONS = ['inherit'] as const
-export type AgentModelAlias = (typeof AGENT_MODEL_OPTIONS)[number]
+export type AgentModelChoice = (typeof AGENT_MODEL_OPTIONS)[number]
 
 export type AgentModelOption = {
-  value: AgentModelAlias
+  value: AgentModelChoice
   label: string
   description: string
 }

@@ -37,7 +37,6 @@ export function buildCliArgs(options: Options, prompt?: string): string[] {
   args.push('--verbose')
 
   if (options.model) args.push('--model', options.model)
-  if (options.fallbackModel) args.push('--fallback-model', options.fallbackModel)
   if (options.effort) args.push('--effort', options.effort)
   if (options.agent) args.push('--agent', options.agent)
   if (options.name) args.push('--name', options.name)

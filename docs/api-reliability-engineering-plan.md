@@ -107,8 +107,8 @@ harness completion.
 | Observe / decide / execute architecture | Core complete. `RecoverySession` observes, `decideRecovery()` chooses, and `withRetry()` / auxiliary runners execute. Route policy only gates `switch_model`; it is not a second recovery table. | Keep this boundary intact while finishing model routing. New provider cases must enter through fixtures and recovery rules. | Guardrail |
 | Three-protocol recovery matrix | Mostly complete for OpenAI Chat, OpenAI Responses, and Anthropic. Request mutation, stream fallback, malformed response, partial stream, timeout, rate-limit, and image recovery paths are covered. | Add only narrow fixtures for newly observed provider envelopes. | Ongoing |
 | Hermes resilience intake | API-core lessons are mostly absorbed: request validation 400/502, unsupported fields, Responses encrypted replay/null output, Anthropic thinking/long-context/image, stream stalls, generic 404, SDK retry suppression, wrapped metadata bodies, xAI/Grok sanitizers. | Credential-pool rotation is intentionally not implemented until pooled credentials become a product policy. OAuth/stale-call guidance belongs to product diagnostics. | Mostly done |
-| Main route fallback | Route chains, policy gates, semantic `switch_model`, trace fields, `/model` persistence, onboarding route selection, provider-cache isolation, no-compat config reads, and route-aware session overrides are implemented. | Keep new route features behind the same decision/policy gate tests. | Done |
-| Model configuration product surface | Complete for the current API-harness milestone. Final config shape is active, user config has been updated to route/task policy shape, `/model add` reports structured route usage, ModelEditor validates route/task references, and `/model` can administer route/aux policy without JSON edits. | Keep docs/examples aligned with `models`, `model.routes`, `auxiliary`, and `MainModelOverride`. | Done |
+| Main route fallback | Route chains, policy gates, semantic `switch_model`, trace fields, `/model` persistence, onboarding route selection, provider-cache isolation, strict final-shape config reads, and route-aware session overrides are implemented. | Keep new route features behind the same decision/policy gate tests. | Done |
+| Model configuration product surface | Complete for the current API-harness milestone. Final config shape is active, user config has been updated to route/task policy shape, `/model add` reports structured route usage, ModelEditor validates route/task references, `/model` can administer route/aux policy without JSON edits, and first-user model configuration docs exist at `docs/user/model_configuration_zhcn.html`. | Keep docs/examples aligned with `models`, `model.routes`, `auxiliary`, and `MainModelOverride`. | Done |
 | Auxiliary route runner | Complete for API-harness scope. Central runner covers `queryAuxiliaryTask()` / route-first `sideQuery()` / direct helper paths; `apiQueryHookHelper` accepts auxiliary task policies; `hookAgent` full-query execution accepts route policy overrides; final disposition behavior has a fixture matrix. | Run real-provider integration confidence. | Done |
 | Release confidence | `pnpm run gate:api` passes locally. Focused model-route and recovery suites pass. | Add real-API integration config that exercises main route fallback and at least one auxiliary fallback with live credentials before merging the milestone. | P2 |
 
@@ -116,23 +116,23 @@ harness completion.
 
 | Order | Task | Status | Exit condition |
 |---|---|---|---|
-| 1 | Freeze the no-compat configuration contract | Done | Config read/write paths accept only `models`, `model.routes`, `auxiliary`, and explicit session route overrides. No top-level model aliases or settings-level default model field exist. |
+| 1 | Freeze the strict configuration contract | Done | Config read/write paths accept only `models`, `model.routes`, `auxiliary`, and explicit session route overrides. `models` is a resource map only; runtime routing requires explicit route/task policy. |
 | 2 | Route-ize session override semantics | Done | Bootstrap and AppState both use `MainModelOverride`; ModelPicker, `/model show`, PromptInput, TeamCreateTool, and `query()` resolve session overrides as default/named/single-model routes without mutating global config. |
 | 3 | Finish `/model add` result semantics | Done | Onboarding returns whether the model was persisted as active primary, fallback candidate, or models-only; `/model add` reports that result and only updates AppState when the new model is actually active. |
 | 4 | Add ModelEditor route-reference validation | Done | Editing a model validates `models`, `model.routes`, and `auxiliary`; broken route/task references are blocked with explicit paths before save. |
 | 5 | Complete `/model` route administration surface | Done | Commands can inspect and edit the final route/task policy surface without JSON hand-editing: route create/delete/rename/show, route policy fields, auxiliary fallback chains, and auxiliary policy fields. |
-| 6 | Lock final config examples and onboarding persistence | Done | `~/.axiomate.json`, integration config fixtures, onboarding flow, `/model show`, and settings UI use `models`, `model.routes`, `auxiliary`, and `MainModelOverride` semantics. |
-| 7 | Run configuration-system gate | Done | Focused model route, onboarding, config validation, ModelEditor, `/model`, and typecheck pass. Full API gate remains the release-confidence check for this turn. |
+| 6 | Lock final config examples and onboarding persistence | Done | `~/.axiomate.json`, integration config fixtures, onboarding flow, `/model show`, settings UI, and first-user docs use `models`, `model.routes`, `auxiliary`, and `MainModelOverride` semantics. |
+| 7 | Run configuration-system gate | Done | Focused model route, onboarding, config validation, ModelEditor, `/model`, typecheck, and `pnpm run gate:api` pass locally. |
 | 8 | Migrate `utils/hooks/apiQueryHookHelper.ts` | Done | Helper enters the central auxiliary route/task runner via `auxiliaryTask`, preserves explicit `getModel` as a bypass, and has route/fallback metadata tests for skill-improvement-style hooks. |
 | 9 | Define `hookAgent` / `execAgentHook` semantics | Done | `query()` accepts an explicit full-query route override. `execAgentHook` uses `auxiliary.hookAgent` as a full route policy when no hook model is specified; explicit `hook.model` becomes a single-model route bypass. |
 | 10 | Add auxiliary final-disposition fixture matrix | Done | Chain exhaustion tests cover `return_null`, `return_empty`, `return_original`, `fail_open`, `fail_closed`, and `propagate_error`, including caller-defined `return_original` semantics. |
 | 11 | Clean task-tagged `sideQuery()` manual model/provider preselection | Done | Runtime call sites use route-first `sideQuery({ auxiliaryTask, ... })`; explicit `modelOverride` remains a deliberate provider/model bypass. |
-| 12 | Retire legacy runtime helper usage | Done | `getFastModel()`, `getMidModel()`, `getAuxiliaryTaskModel()`, `queryFastModel()`, and fast/mid/current runtime semantics have been removed from source usage. Runtime paths use route/task policy helpers, `queryAuxiliaryTask()`, route-first `sideQuery()`, or explicit direct-model bypasses. |
+| 12 | Retire tier-name runtime helper usage | Done | Runtime source no longer selects API models through fast/mid/current tier helpers. Runtime paths use route/task policy helpers, `queryAuxiliaryTask()`, route-first `sideQuery()`, or explicit direct-model bypasses. |
 | 13 | Run real-API integration gate | Queued | Integration config proves one main route fallback and one auxiliary fallback against real providers. |
 
 After items 1-7, the model configuration system is product-ready enough to stop
 creating semantic ambiguity while the remaining API harness work continues.
-After items 8-12, the API harness body and legacy-helper cleanup are complete.
+After items 8-12, the API harness body and route/task selection cleanup are complete.
 Item 13 is release confidence. Product diagnostics and `/doctor` API cards can
 be scheduled separately from harness engineering.
 
@@ -156,7 +156,7 @@ audited from `C:\public\workspace\hermes-agent`.
 | Mid-tool-call partial stream should route through length continuation | Absorbed | Axiomate throws `PartialStreamRecoveryError`, creates a `partial-stream-stub` assistant message after retry exhaustion, records dropped tool names, and drives a continuation turn instead of replaying incomplete tool calls. |
 | Stale-call / silent-reject patterns should surface actionable hints | Missing product layer | Trace has enough raw fields, but `/doctor` / session diagnostics do not yet turn known silent-reject patterns into user actions. |
 | Responses request timeout sizing and stale-call defaults | Absorbed for API core | `apiTimeoutPolicy.ts` centralizes timeout semantics: stream labels, non-streaming fallback budgets, `API_TIMEOUT_MS` override, auxiliary source-aware budgets, parent-abort handling, and trace fields `timeoutKind` / `timeoutMs`. |
-| Auxiliary main-model fallback and payment/rate-limit fallback | Absorbed for API harness | The M8 route/task policy runner covers migrated auxiliary calls. `models` remains the resource map; `model.routes` and `auxiliary.<task>` define candidates and policy gates only. `decideRecovery()` still owns `switch_model` decisions. Credential-pool fallback remains a separate product decision. |
+| Auxiliary main-model fallback and payment/rate-limit fallback | Absorbed for API harness | The M8 route/task policy runner covers auxiliary calls. `models` remains the resource map; `model.routes` and `auxiliary.<task>` define candidates and policy gates only. `decideRecovery()` still owns `switch_model` decisions. Credential-pool fallback remains a separate product decision. |
 | Generic 404 without a model-not-found signal should not switch models | Absorbed | Generic 404 now classifies as retryable `unknown`; explicit model-not-found bodies still classify as `model_not_found`. Stream creation routes generic 404 immediately to the outer non-streaming fallback delegate instead of burning retry attempts or switching models. |
 | Message-only 413 / payload-too-large wrappers | Absorbed | `payload_too_large` now recognizes message-only `request entity too large`, `payload too large`, and `error code: 413` shapes. |
 | SDK `RateLimitError` without HTTP status | Absorbed | Constructor-name detection maps it to semantic `rate_limit` with status 429. |
@@ -206,7 +206,7 @@ Acceptance:
 
 - API unit tests pass.
 - Type checking passes.
-- Existing retry semantics stay compatible.
+- Current retry semantics stay contract-stable.
 
 ### M0.5: Recovery Contract v2
 
@@ -214,7 +214,7 @@ Status: complete.
 
 Delivered:
 
-- `RecoveryProtocol`: explicit protocol type with `axiomate-generic` as legacy
+- `RecoveryProtocol`: explicit protocol type with `axiomate-generic` as the
   generic mode. `axiomate` is no longer used as an ambiguous wildcard.
 - `RecoveryHistory`: history view with previous observation, previous decision,
   rule/action/intent counters, and last-decision lookup helpers.
@@ -604,16 +604,15 @@ Remaining:
 ### M8: Model Route and Auxiliary Fallback Policy
 
 Status: main-loop route fallback, route persistence, session override
-semantics, auxiliary route runner migration, and legacy helper retirement are
-complete for the API-harness scope. The remaining item is real-provider
-integration confidence.
+semantics, and the auxiliary route runner are complete for the API-harness
+scope. The remaining item is real-provider integration confidence.
 
 This milestone uses Hermes-style route/task policies while keeping Axiomate's
 existing `models` map.
 
-Compatibility posture: no compatibility with old model shapes exists. Runtime
-code, persisted config, integration fixtures, onboarding, `/model`, and tests
-use only the final contract below.
+Configuration posture: model routing has one accepted shape. Runtime code,
+persisted config, integration fixtures, onboarding, `/model`, and tests use
+only the final contract below.
 
 #### Final Configuration Contract
 
@@ -784,17 +783,18 @@ table. Example:
 
 1. Config schema:
    - [x] Add `model.defaultRoute`, `model.routes`, and `auxiliary`.
-   - [x] Remove top-level model aliases as supported runtime semantics.
-   - [x] Remove settings-level persistent default model source. Convert model
-     overrides to `MainModelOverride` at session boundaries.
+   - [x] Keep `models` as a resource map only; route/task policy owns runtime
+     model selection.
+   - [x] Keep persistent route-primary writes under `model.routes`; convert
+     session choices to `MainModelOverride` at session boundaries.
    - [x] Add validation that every `primary` and `fallbackChain` entry exists in
      `models`.
    - [x] Add validation for duplicate fallback entries, invalid actions,
      invalid semantic reasons, and invalid auxiliary failure dispositions.
    - [x] Tighten validation so `fallbackChain` must be an array and broken
      route references fail fast.
-   - [x] Delete old-config import from normal runtime paths. No compatibility
-     path remains for top-level model aliases.
+   - [x] Remove automatic model-route synthesis from startup/config reads.
+     Missing or broken route policy is a configuration error.
 
 2. Model helper API:
    - [x] Add route-aware helpers:
@@ -802,17 +802,17 @@ table. Example:
      `resolveModelChain()`, `getMainModelCandidate()`, and
      `getAuxiliaryTaskPolicy()`.
    - [x] Keep `models` map access unchanged for provider execution.
-   - [x] Replace API-runtime `getFastModel()` / `getMidModel()` / legacy
-     `getAuxiliaryModel()` call sites with explicit auxiliary task policies.
-     The legacy helper exports have been removed from `utils/model/model.ts`.
+   - [x] Replace API-runtime tier helper call sites with explicit auxiliary
+     task policies. Route/task policy helpers are the only runtime selection
+     surface for auxiliary work.
    - [x] Replace naked runtime model overrides with `MainModelOverride` through
      the full UI/AppState surface. Bootstrap, AppState, ModelPicker,
      PromptInput, `/model show`, TeamCreateTool, and main-loop `query()` now
      resolve default/named/single-model route overrides consistently.
 
 3. Main-loop model fallback:
-   - [x] Replace the single `fallbackModel` path in `query.ts` with an ordered
-     route chain.
+   - [x] Replace external single-fallback selection with an ordered route
+     chain.
    - [x] Emit trace fields for `routeId`, `fromModel`, `toModel`, `chainIndex`,
      and policy gate results.
    - [x] Ensure model switching is requested through the same
@@ -837,7 +837,7 @@ table. Example:
      `runAuxiliaryTask()`. Covered tasks include session-search summary,
      agentic session search, memdir relevance, permission explainer, model
      validation when task-tagged, and other task-tagged side queries.
-   - [x] Direct migrated helpers include goal judge, away summary, token
+   - [x] Direct helper paths include goal judge, away summary, token
      counting fallback, prompt hooks, and skill improvement apply.
    - [x] `utils/hooks/apiQueryHookHelper.ts` now supports `auxiliaryTask`
      route policies, forwards recovery metadata and trace sinks, and treats
@@ -885,11 +885,11 @@ table. Example:
      make policy fields auditable without hand-editing JSON.
    - [x] `ModelEditor` validates that edited model entries do
      not leave broken route or auxiliary references.
-   - [x] Integration config loader/example must stop synthesizing top-level
-     model aliases.
+   - [x] Integration config loader/example uses the explicit final route/task
+     policy shape.
 
 6. Tests and release gate:
-   - [x] Unit tests for config validation and old-config migration.
+   - [x] Unit tests for strict route/task config validation.
    - [x] Unit tests for route resolution and auxiliary task policy defaults.
    - [x] Contract tests proving policy gates do not bypass semantic recovery
      rules for main-loop model fallback.
@@ -913,22 +913,22 @@ remaining row is release confidence against live providers.
 | P0 | `/model add` result semantics | Complete. | Onboarding returns a structured route-usage result; `/model add` reports primary/fallback/models-only accurately and updates AppState only when primary changed. |
 | P0 | `ModelEditor` route-reference validation | Complete. | Saving validates the final config; broken references are blocked with route/task paths and model ids. |
 | P0 | `/model` route administration surface | Complete. | `/model route show/create/delete/rename`, route policy edits, auxiliary fallback edits, and auxiliary policy edits are command-accessible and covered by tests. |
-| P0 | Final config examples and onboarding persistence | Complete for this milestone. | Runtime/docs/fixtures/onboarding/settings use `models`, `model.routes`, `auxiliary`, and `MainModelOverride`; user `~/.axiomate.json` has been rewritten to the final route/task policy shape with a backup. |
-| P0 | Configuration-system gate | Focused gate passed; full API gate is running as release confidence. | Typecheck, model route tests, onboarding tests, `/model` tests, ModelEditor tests, and config validation tests pass. |
-| P1 | `apiQueryHookHelper` route migration | Complete. | Helper accepts `auxiliaryTask` for route/task policy execution, forwards fallback metadata and trace sinks, logs null final disposition as an error result, and keeps explicit `getModel` as a direct-model bypass with tests. |
+| P0 | Final config examples, onboarding persistence, and user docs | Complete for this milestone. | Runtime/docs/fixtures/onboarding/settings use `models`, `model.routes`, `auxiliary`, and `MainModelOverride`; user `~/.axiomate.json` has been rewritten to the final route/task policy shape with a backup; `docs/user/model_configuration_zhcn.html` explains manual config and UI usage. |
+| P0 | Configuration-system gate | Complete. | Typecheck, model route tests, onboarding tests, `/model` tests, ModelEditor tests, config validation tests, and `pnpm run gate:api` pass locally. |
+| P1 | `apiQueryHookHelper` route policy integration | Complete. | Helper accepts `auxiliaryTask` for route/task policy execution, forwards fallback metadata and trace sinks, logs null final disposition as an error result, and keeps explicit `getModel` as a direct-model bypass with tests. |
 | P1 | `hookAgent` full-query route semantics | Complete. | `query()` supports explicit full-query route overrides; `execAgentHook` routes unspecified hook agents through `auxiliary.hookAgent`, and explicit `hook.model` is tested as a single-model bypass. |
-| P1 | No-compat config contract | Implemented in runtime reads and focused tests. | Runtime config accepts only `models`, `model.routes`, `auxiliary`, and `MainModelOverride`. |
+| P1 | Strict config contract | Implemented in runtime reads and focused tests. | Runtime config accepts only `models`, `model.routes`, `auxiliary`, and `MainModelOverride`; missing route policy is not synthesized. |
 | P1 | Auxiliary failure-disposition fixture matrix | Complete. | Tests cover `return_null`, `return_empty`, `return_original`, `fail_open`, `fail_closed`, and `propagate_error` after chain exhaustion, including the caller-owned meaning of `return_original`. |
 | P1 | Session override semantics | Complete. | Session override resolves to `MainModelOverride` end to end and cannot mutate global route config implicitly. |
 | P1 | Residual manual side-query model lookup cleanup | Complete. | Task-tagged runtime call sites use route-first `sideQuery({ auxiliaryTask, ... })`; explicit model overrides are documented/tested bypasses. |
-| P2 | Legacy helper retirement plan | Complete. | Legacy helper exports and source references are gone; runtime code uses route/task policy helpers, `queryAuxiliaryTask()`, route-first `sideQuery()`, or explicit direct-model bypasses. |
+| P2 | Route/task selection cleanup | Complete. | Runtime code uses route/task policy helpers, `queryAuxiliaryTask()`, route-first `sideQuery()`, or explicit direct-model bypasses. |
 | P2 | Real-API integration gate | Local API gate passes, but productization needs live-provider confidence. | Integration config exercises main route fallback and at least one auxiliary fallback with real credentials. |
 
 #### Completion Criteria
 
 M8 is complete when:
 
-- Top-level model aliases are not required by runtime API paths.
+- Runtime API paths require the final route/task model configuration contract.
 - All main-loop model switching goes through the observe/decide/execute recovery
   architecture.
 - Auxiliary model fallback is centralized and policy-driven.
@@ -937,13 +937,14 @@ M8 is complete when:
   auxiliary text.
 - `/model` edits route/task policy and `models` resources with clear persistence
   semantics.
-- Existing user `models` maps remain usable after migration.
+- `models` remains usable as a resource map, but routing requires
+  `model.defaultRoute` and `model.routes`.
 
 ## Immediate Next Work
 
 Configuration system is no longer the blocking track for API harness work.
 The next engineering track is release confidence. The API harness body and
-legacy helper cleanup are complete for the current scope; one task remains:
+route/task selection cleanup are complete for the current scope; one task remains:
 run real-provider integration.
 
 1. Run the full local API gate and real-API integration series before merging the API harness

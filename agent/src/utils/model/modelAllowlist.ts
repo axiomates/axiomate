@@ -16,8 +16,8 @@ function prefixMatchesModel(modelName: string, prefix: string): boolean {
  * If availableModels is not set, all models are allowed. Empty array blocks all.
  *
  * Matching: exact match OR segment-boundary prefix match. Axiomate has no
- * hardcoded model aliases; the allowlist entry must literally match the
- * resolved model ID or be a prefix segment of it.
+ * hardcoded model names; the allowlist entry must literally match the
+ * configured model key or be a prefix segment of it.
  */
 export function isModelAllowed(model: string): boolean {
   const settings = getSettings_DEPRECATED() || {}

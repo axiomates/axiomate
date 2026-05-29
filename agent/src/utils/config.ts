@@ -628,10 +628,6 @@ export type GlobalConfig = {
 
   // Teammate spawn mode: 'auto' | 'tmux' | 'in-process'
   teammateMode?: 'auto' | 'tmux' | 'in-process' // How to spawn teammates (default: 'auto')
-  // Model for new teammates when the tool call doesn't pass one.
-  // undefined = default model; null = leader's model; string = model alias/ID.
-  teammateDefaultModel?: string | null
-
   // PR status footer configuration (feature-flagged via config)
   prStatusFooterEnabled?: boolean // Show PR review status in footer (default: true)
 

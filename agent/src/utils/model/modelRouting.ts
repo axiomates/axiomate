@@ -294,48 +294,26 @@ export function normalizeModelRoutingConfig(config: GlobalConfig): GlobalConfig 
     return config
   }
 
-  const firstModel = modelIds[0]
-  const primary =
-    validModelOrUndefined(config.model?.routes?.[config.model.defaultRoute ?? '']?.primary, models) ??
-    firstModel
-
-  const defaultRoute = config.model?.defaultRoute ?? DEFAULT_ROUTE_ID
+  const defaultRoute = config.model?.defaultRoute
   const existingRoutes = config.model?.routes ?? {}
-  const existingDefaultRoute = existingRoutes[defaultRoute]
 
   const routes: Record<string, ModelRouteConfig> = {}
   for (const [routeId, route] of Object.entries(existingRoutes)) {
-    const routePrimary = validModelOrUndefined(route.primary, models) ?? primary
-    routes[routeId] = normalizeRouteConfig(
-      {
-        ...route,
-        primary: routePrimary,
-      },
-      models,
-    )
+    routes[routeId] = normalizeRouteConfig(route)
   }
-  routes[defaultRoute] = normalizeRouteConfig(
-    {
-      primary,
-      fallbackChain: existingDefaultRoute?.fallbackChain ?? [],
-      recoveryProfile: existingDefaultRoute?.recoveryProfile ?? 'main-agent',
-      allowActions: existingDefaultRoute?.allowActions ?? DEFAULT_MAIN_ALLOW_ACTIONS,
-      switchModelOn:
-        existingDefaultRoute?.switchModelOn ?? DEFAULT_MAIN_SWITCH_MODEL_ON,
-    },
-    models,
-  )
 
-  const auxiliary = normalizeAuxiliaryPolicies(config, primary, models)
+  const auxiliary = normalizeAuxiliaryPolicies(config, models)
 
   return {
     ...config,
-    model: {
-      ...config.model,
-      defaultRoute,
-      routes,
-    },
-    auxiliary,
+    model: config.model
+      ? {
+          ...config.model,
+          ...(defaultRoute ? { defaultRoute } : {}),
+          routes,
+        }
+      : config.model,
+    ...(Object.keys(auxiliary).length > 0 ? { auxiliary } : {}),
   }
 }
 
@@ -347,6 +325,12 @@ export function validateModelRoutingConfig(
   const modelIds = new Set(Object.keys(models))
 
   const routes = config.model?.routes ?? {}
+  if (Object.keys(models).length > 0 && !config.model?.defaultRoute) {
+    issues.push({
+      path: 'model.defaultRoute',
+      message: 'Main route id is required when models are configured.',
+    })
+  }
   if (config.model?.defaultRoute && !routes[config.model.defaultRoute]) {
     issues.push({
       path: 'model.defaultRoute',
@@ -375,12 +359,23 @@ export function validateModelRoutingConfig(
 }
 
 export function getDefaultRouteIdFromConfig(config: GlobalConfig): string {
-  return normalizeModelRoutingConfig(config).model?.defaultRoute ?? DEFAULT_ROUTE_ID
+  const routeId = normalizeModelRoutingConfig(config).model?.defaultRoute
+  if (!routeId) {
+    throw new Error(
+      'No main model route configured. Set "model.defaultRoute" in ~/.axiomate.json.',
+    )
+  }
+  return routeId
 }
 
 export function getMainRouteFromConfig(config: GlobalConfig): ResolvedModelRoute {
   const normalized = normalizeModelRoutingConfig(config)
-  const routeId = normalized.model?.defaultRoute ?? DEFAULT_ROUTE_ID
+  const routeId = normalized.model?.defaultRoute
+  if (!routeId) {
+    throw new Error(
+      'No main model route configured. Set "model.defaultRoute" in ~/.axiomate.json.',
+    )
+  }
   const route = normalized.model?.routes?.[routeId]
   if (!route) {
     throw new Error(
@@ -462,35 +457,44 @@ export function getAuxiliaryTaskPolicyFromConfig(
 
 function normalizeAuxiliaryPolicies(
   config: GlobalConfig,
-  primary: string,
   models: Record<string, unknown>,
 ): Record<string, AuxiliaryTaskConfig> {
   const auxiliary = { ...(config.auxiliary ?? {}) }
+  const mainRouteId = config.model?.defaultRoute
+  const mainPrimary = mainRouteId
+    ? config.model?.routes?.[mainRouteId]?.primary
+    : undefined
+  const defaultPrimary = validModelOrUndefined(mainPrimary, models)
 
   for (const [task, defaults] of Object.entries(DEFAULT_AUXILIARY_TASK_POLICIES)) {
     const existing = auxiliary[task]
-    const defaultPrimary =
-      defaults.recoveryProfile === 'auxiliary-vision'
-        ? findVisionModel(config, primary)
-        : primary
-    const defaultChain =
-      defaults.recoveryProfile === 'auxiliary-vision'
-        ? uniqueModelIds([primary], models).filter(
-            candidate => candidate !== defaultPrimary,
+    if (!existing && !defaultPrimary) {
+      continue
+    }
+    const primary =
+      validModelOrUndefined(existing?.primary, models) ??
+      (defaults.recoveryProfile === 'auxiliary-vision' && defaultPrimary
+        ? findVisionModel(config, defaultPrimary)
+        : defaultPrimary)
+    if (!primary) {
+      continue
+    }
+    const fallbackChain =
+      existing?.fallbackChain != null
+        ? uniqueModelIds(asArray(existing.fallbackChain), models).filter(
+            candidate => candidate !== primary,
           )
-        : []
+        : defaults.recoveryProfile === 'auxiliary-vision' && defaultPrimary
+          ? uniqueModelIds([defaultPrimary], models).filter(
+              candidate => candidate !== primary,
+            )
+          : []
 
     auxiliary[task] = {
       ...defaults,
       ...existing,
-      primary:
-        validModelOrUndefined(existing?.primary, models) ?? defaultPrimary,
-      fallbackChain:
-        existing?.fallbackChain != null
-          ? uniqueModelIds(asArray(existing.fallbackChain), models).filter(
-              candidate => candidate !== (existing.primary ?? defaultPrimary),
-            )
-          : defaultChain,
+      primary,
+      fallbackChain,
     }
   }
 
@@ -499,11 +503,10 @@ function normalizeAuxiliaryPolicies(
 
 function normalizeRouteConfig(
   route: ModelRouteConfig,
-  models: Record<string, unknown>,
 ): ModelRouteConfig {
   return {
     ...route,
-    fallbackChain: uniqueModelIds(asArray(route.fallbackChain), models).filter(
+    fallbackChain: uniqueStrings(asArray(route.fallbackChain)).filter(
       candidate => candidate !== route.primary,
     ),
     allowActions: route.allowActions ?? DEFAULT_MAIN_ALLOW_ACTIONS,

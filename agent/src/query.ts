@@ -243,7 +243,6 @@ export type QueryParams = {
   systemContext: { [k: string]: string }
   canUseTool: CanUseToolFn
   toolUseContext: ToolUseContext
-  fallbackModel?: string
   querySource: QuerySource
   maxOutputTokensOverride?: number
   maxTurns?: number
@@ -262,7 +261,6 @@ type MainLoopRouteChain = {
 
 function buildMainLoopRouteChain(
   mainLoopModel: string | undefined,
-  explicitFallbackModel?: string,
   override?: MainModelOverride,
   routeOverride?: ResolvedModelRoute & { auxiliaryTask?: AuxiliaryTaskId },
 ): MainLoopRouteChain {
@@ -279,9 +277,7 @@ function buildMainLoopRouteChain(
   const primary =
     routeOverride || override ? route.primary : (mainLoopModel ?? route.primary)
   const tail = resolvedChain.filter(model => model !== primary)
-  const models = explicitFallbackModel
-    ? [primary, explicitFallbackModel, ...tail.filter(model => model !== explicitFallbackModel)]
-    : [primary, ...tail]
+  const models = [primary, ...tail]
 
   return {
     routeId: route.id,
@@ -376,7 +372,6 @@ async function* queryLoop(
   } = params
   const mainRouteChain = buildMainLoopRouteChain(
     params.toolUseContext.options.mainLoopModel,
-    params.fallbackModel,
     params.toolUseContext.getAppState().mainLoopModelOverrideForSession,
     params.modelRouteOverride,
   )

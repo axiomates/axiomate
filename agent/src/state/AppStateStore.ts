@@ -381,7 +381,7 @@ export function getDefaultAppState(): AppState {
     tasks: {},
     agentNameRegistry: new Map(),
     verbose: false,
-    mainLoopModel: null, // alias, full name (as with --model or env var), or null (default)
+    mainLoopModel: null, // configured model key, raw model ID, or null (default route)
     mainLoopModelOverrideForSession: undefined,
     statusLineText: undefined,
     expandedView: 'none',

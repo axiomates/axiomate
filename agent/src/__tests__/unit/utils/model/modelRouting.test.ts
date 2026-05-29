@@ -25,7 +25,7 @@ const config = (input: Partial<GlobalConfig>): GlobalConfig =>
   input as unknown as GlobalConfig
 
 describe('modelRouting', () => {
-  test('normalizes final route config without legacy model fields', () => {
+  test('normalizes the final route config without inventing route shape', () => {
     const routeConfig = config({
       models: {
         main: model('main'),
@@ -67,6 +67,22 @@ describe('modelRouting', () => {
       recoveryProfile: 'auxiliary-fast',
       failure: 'return_null',
     })
+  })
+
+  test('does not synthesize a main route from the models map', () => {
+    const normalized = normalizeModelRoutingConfig(config({
+      models: {
+        main: model('main'),
+      },
+    }))
+
+    expect(normalized.model).toBeUndefined()
+    expect(normalized.auxiliary).toBeUndefined()
+    expect(() => getMainRouteFromConfig(normalized)).toThrow(
+      'No main model route configured',
+    )
+    expect(validateModelRoutingConfig(normalized).map(issue => issue.path))
+      .toEqual(['model.defaultRoute'])
   })
 
   test('uses explicit route and auxiliary policies', () => {
@@ -148,6 +164,23 @@ describe('modelRouting', () => {
       'model.routes.default.fallbackChain[2]',
       'auxiliary.goalJudge.fallbackChain[0]',
     ])
+  })
+
+  test('requires an explicit default route when models are configured', () => {
+    const issues = validateModelRoutingConfig(config({
+      models: {
+        main: model('main'),
+      },
+      model: {
+        routes: {
+          default: {
+            primary: 'main',
+          },
+        },
+      },
+    }))
+
+    expect(issues.map(issue => issue.path)).toEqual(['model.defaultRoute'])
   })
 
   test('validates policy action, switch reason, and auxiliary failure values', () => {

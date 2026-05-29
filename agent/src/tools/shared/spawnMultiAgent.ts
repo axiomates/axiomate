@@ -18,12 +18,14 @@ import type { InProcessTeammateTaskState } from '../../tasks/InProcessTeammateTa
 import { formatAgentId } from '../../utils/agentId.js'
 import { quote } from '../../utils/bash/shellQuote.js'
 import { isInBundledMode } from '../../utils/bundledMode.js'
-import { getGlobalConfig } from '../../utils/config.js'
 import { getCwd } from '../../utils/cwd.js'
 import { logForDebugging } from '../../utils/debug.js'
 import { errorMessage } from '../../utils/errors.js'
 import { execFileNoThrow } from '../../utils/execFileNoThrow.js'
-import { parseUserSpecifiedModel } from '../../utils/model/model.js'
+import {
+  getDefaultMainLoopModel,
+  parseUserSpecifiedModel,
+} from '../../utils/model/model.js'
 import type { PermissionMode } from '../../utils/permissions/PermissionMode.js'
 import { isTmuxAvailable } from '../../utils/swarm/backends/detection.js'
 import {
@@ -62,30 +64,18 @@ import {
   isInsideTmux,
   sendCommandToPane,
 } from '../../utils/swarm/teammateLayoutManager.js'
-import { getHardcodedTeammateModelFallback } from '../../utils/swarm/teammateModel.js'
 import { registerTask } from '../../utils/task/framework.js'
 import { writeToMailbox } from '../../utils/teammateMailbox.js'
 import type { CustomAgentDefinition } from '../AgentTool/loadAgentsDir.js'
 import { isCustomAgent } from '../AgentTool/loadAgentsDir.js'
 
 function getDefaultTeammateModel(leaderModel: string | null): string {
-  const configured = getGlobalConfig().teammateDefaultModel
-  if (configured === null) {
-    // User picked "Default" in the /config picker — follow the leader.
-    return leaderModel ?? getHardcodedTeammateModelFallback()
-  }
-  if (configured !== undefined) {
-    return parseUserSpecifiedModel(configured)
-  }
-  return getHardcodedTeammateModelFallback()
+  return leaderModel ?? getDefaultMainLoopModel()
 }
 
 /**
- * Resolve a teammate model value. Handles the 'inherit' alias (from agent
- * frontmatter) by substituting the leader's model. gh-31069: 'inherit' was
- * passed literally to --model, producing "It may not exist or you may not
- * have access". If leader model is null (not yet set), falls through to the
- * default.
+ * Resolve a teammate model value. `inherit` and omitted model both use the
+ * leader's current route primary, falling back to the configured default route.
  *
  * Exported for testing.
  */
@@ -96,7 +86,9 @@ export function resolveTeammateModel(
   if (inputModel === 'inherit') {
     return leaderModel ?? getDefaultTeammateModel(leaderModel)
   }
-  return inputModel ?? getDefaultTeammateModel(leaderModel)
+  return inputModel
+    ? parseUserSpecifiedModel(inputModel)
+    : getDefaultTeammateModel(leaderModel)
 }
 
 // ============================================================================
@@ -295,7 +287,8 @@ async function handleSpawnSplitPane(
   const { setAppState, getAppState } = context
   const { name, prompt, agent_type, cwd, plan_mode_required } = input
 
-  // Resolve model: 'inherit' → leader's model; undefined → default model
+  // Resolve model: 'inherit' uses the leader's current route primary; undefined
+  // uses the configured teammate route default.
   const model = resolveTeammateModel(input.model, getAppState().mainLoopModel)
 
   if (!name || !prompt) {
@@ -535,7 +528,8 @@ async function handleSpawnSeparateWindow(
   const { setAppState, getAppState } = context
   const { name, prompt, agent_type, cwd, plan_mode_required } = input
 
-  // Resolve model: 'inherit' → leader's model; undefined → default model
+  // Resolve model: 'inherit' uses the leader's current route primary; undefined
+  // uses the configured teammate route default.
   const model = resolveTeammateModel(input.model, getAppState().mainLoopModel)
 
   if (!name || !prompt) {
@@ -830,7 +824,8 @@ async function handleSpawnInProcess(
   const { setAppState, getAppState } = context
   const { name, prompt, agent_type, plan_mode_required } = input
 
-  // Resolve model: 'inherit' → leader's model; undefined → default model
+  // Resolve model: 'inherit' uses the leader's current route primary; undefined
+  // uses the configured teammate route default.
   const model = resolveTeammateModel(input.model, getAppState().mainLoopModel)
 
   if (!name || !prompt) {

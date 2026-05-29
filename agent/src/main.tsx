@@ -94,7 +94,6 @@ import { processSessionStartHooks, processSetupHooks } from './utils/sessionStar
 import { cacheSessionTitle, getSessionIdFromLog, loadTranscriptFromFile, saveAgentSetting, saveMode, searchSessionsByCustomTitle, sessionIdExists } from './utils/sessionStorage.js';
 import { ensureMdmSettingsLoaded } from './utils/settings/mdm/settings.js';
 import { getInitialSettings, getManagedSettingsKeysForLogging, getSettingsForSource, getSettingsWithErrors } from './utils/settings/settings.js';
-import { migrateOrphanModelReferences } from './utils/settings/migrateOrphanModelReferences.js';
 import { resetSettingsCache } from './utils/settings/settingsCache.js';
 import type { ValidationError } from './utils/settings/validation.js';
 // Side-effect import: tasks module must initialize before Ink renders
@@ -238,8 +237,8 @@ async function logStartupTelemetry(): Promise<void> {
 }
 
 function runMigrations(): void {
-  // Migration system cleared — axiomate v0.2.0 has no legacy migrations.
-  // Add new axiomate-specific migrations here if needed in the future.
+  // Reserved for future explicit config transforms. Model configuration does
+  // not auto-convert retired shapes.
 }
 
 /**
@@ -553,10 +552,6 @@ async function run(): Promise<CommanderCommand> {
     await init();
     profileCheckpoint('preAction_after_init');
 
-    // Self-heal references to deleted models in route config and settings
-    // before getInitialMainLoopModel() so /model remains reachable.
-    migrateOrphanModelReferences();
-
     // process.title on Windows sets the console title directly; on POSIX,
     // terminal shell integration may mirror the process name to the tab.
     // After init() so settings.json env can also gate this (gh-4765).
@@ -621,7 +616,7 @@ async function run(): Promise<CommanderCommand> {
       throw new InvalidArgumentError(`It must be one of: ${allowed.join(', ')}`);
     }
     return value;
-  })).option('--agent <agent>', `Agent for the current session. Overrides the 'agent' setting.`).option('--betas <betas...>', 'Beta headers to include in API requests (API key users only)').option('--fallback-model <model>', 'Enable automatic fallback to specified model when default model is overloaded (only works with --print)').addOption(new Option('--workload <tag>', 'Workload tag for billing-header attribution (cc_workload). Process-scoped; set by SDK daemon callers that spawn subprocesses for cron work. (only works with --print)').hideHelp()).option('--settings <file-or-json>', 'Path to a settings JSON file or a JSON string to load additional settings from').option('--add-dir <directories...>', 'Additional directories to allow tool access to').option('--ide', 'Automatically connect to IDE on startup if exactly one valid IDE is available', () => true).option('--strict-mcp-config', 'Only use MCP servers from --mcp-config, ignoring all other MCP configurations', () => true).option('--session-id <uuid>', 'Use a specific session ID for the conversation (must be a valid UUID)').option('-n, --name <name>', 'Set a display name for this session (shown in /resume and terminal title)').option('--agents <json>', 'JSON object defining custom agents (e.g. \'{"reviewer": {"description": "Reviews code", "prompt": "You are a code reviewer"}}\')').option('--setting-sources <sources>', 'Comma-separated list of setting sources to load (user, project, local).')
+  })).option('--agent <agent>', `Agent for the current session. Overrides the 'agent' setting.`).option('--betas <betas...>', 'Beta headers to include in API requests (API key users only)').addOption(new Option('--workload <tag>', 'Workload tag for billing-header attribution (cc_workload). Process-scoped; set by SDK daemon callers that spawn subprocesses for cron work. (only works with --print)').hideHelp()).option('--settings <file-or-json>', 'Path to a settings JSON file or a JSON string to load additional settings from').option('--add-dir <directories...>', 'Additional directories to allow tool access to').option('--ide', 'Automatically connect to IDE on startup if exactly one valid IDE is available', () => true).option('--strict-mcp-config', 'Only use MCP servers from --mcp-config, ignoring all other MCP configurations', () => true).option('--session-id <uuid>', 'Use a specific session ID for the conversation (must be a valid UUID)').option('-n, --name <name>', 'Set a display name for this session (shown in /resume and terminal title)').option('--agents <json>', 'JSON object defining custom agents (e.g. \'{"reviewer": {"description": "Reviews code", "prompt": "You are a code reviewer"}}\')').option('--setting-sources <sources>', 'Comma-separated list of setting sources to load (user, project, local).')
   // gh-33508: <paths...> (variadic) consumed everything until the next
   // --flag. `axiomate --plugin-dir /path mcp add --transport http` swallowed
   // `mcp` and `add` as paths, then choked on --transport as an unknown
@@ -659,7 +654,6 @@ async function run(): Promise<CommanderCommand> {
       mcpConfig = [],
       permissionMode: permissionModeCli,
       addDir = [],
-      fallbackModel,
       betas = [],
       ide = false,
       sessionId,
@@ -798,12 +792,6 @@ async function run(): Promise<CommanderCommand> {
 
     // Get isNonInteractiveSession from state (was set before init())
     const isNonInteractiveSession = getIsNonInteractiveSession();
-
-    // Validate that fallback model is different from main model
-    if (fallbackModel && options.model && fallbackModel === options.model) {
-      process.stderr.write(chalk.red('Error: Fallback model cannot be the same as the main model. Please specify a different model for --fallback-model.\n'));
-      process.exit(1);
-    }
 
     // Handle system prompt options
     let systemPrompt = options.systemPrompt;
@@ -1145,36 +1133,17 @@ async function run(): Promise<CommanderCommand> {
         }
         // Interactive: fall through. showSetupScreens() runs the wizard.
       } else if (!_route || !_hasValidCurrent) {
-        // Models are configured but no route primary is selected — normalize a
-        // default route from existing model entries and persist it.
-        const _healedCfg = normalizeModelRoutingConfig(_normalizedCfg)
-        const _healedRouteId = _healedCfg.model?.defaultRoute
-        const _healedRoute = _healedRouteId
-          ? _healedCfg.model?.routes?.[_healedRouteId]
-          : undefined
-        if (_healedRoute?.primary && _healedCfg.models?.[_healedRoute.primary]) {
-          saveGlobalConfig(current => normalizeModelRoutingConfig(current))
-          const _firstKey = _healedRoute.primary
-          console.log(
-            chalk.dim(
-              `ℹ  No main model route set; using ${chalk.cyan(`"${_firstKey}"`)} (first entry in models). Set "model.defaultRoute" in ${chalk.underline(configPath)} to choose a different route.`,
-            ),
-          )
-        } else {
-          // Route exists but points at a key that isn't in models — typo/misconfig
-          // that requires a human edit. Don't guess past normalization failure.
-          console.log(chalk.bold.yellow('\n⚠  No active model route selected.\n'))
-          console.log(
-            `Your main model route is invalid. Set ${chalk.cyan('"model.defaultRoute"')} to a route whose primary exists in "models".\n`,
-          )
-          console.log(`Config file: ${chalk.underline(configPath)}\n`)
-          console.log('Available model keys in your config:')
-          for (const key of _modelKeys) {
-            console.log(`  - ${chalk.cyan(key)}`)
-          }
-          console.log()
-          process.exit(1)
+        console.log(chalk.bold.yellow('\n⚠  No active model route selected.\n'))
+        console.log(
+          `Your model config must set ${chalk.cyan('"model.defaultRoute"')} to a route whose primary exists in ${chalk.cyan('"models"')}.\n`,
+        )
+        console.log(`Config file: ${chalk.underline(configPath)}\n`)
+        console.log('Available model keys in your config:')
+        for (const key of _modelKeys) {
+          console.log(`  - ${chalk.cyan(key)}`)
         }
+        console.log()
+        process.exit(1)
       }
     }
 
@@ -1222,22 +1191,10 @@ async function run(): Promise<CommanderCommand> {
       cacheSessionTitle(sessionNameArg);
     }
 
-    // Model overrides via the ax_ant_model_override config flag
-    // resolve through this path. _CACHED_MAY_BE_STALE reads
-    // disk synchronously; disk is populated by a fire-and-forget write. On a
-    // cold cache, parseUserSpecifiedModel returns the unresolved alias, the
-    // API 404s, and -p exits before the async write lands — crashloop on
-    // fresh pods. Awaiting init here populates the in-memory payload map that
-    // _CACHED_MAY_BE_STALE now checks first. Gated so the warm path stays
-    // non-blocking:
-    //  - explicit model via --model or AXIOMATE_MODEL (both feed alias resolution)
-    //  - no env override (which short-circuits _CACHED_MAY_BE_STALE before disk)
-    //  - flag absent from disk (== null also catches pre-#22279 poisoned null)
     const explicitModel = options.model;
-    // Special case the default model with the null keyword
+    // Special case the default route with the null keyword
     // NOTE: Model resolution happens after setup() to ensure trust is established before AWS auth
     const userSpecifiedModel = options.model === 'default' ? getDefaultMainLoopModel() : options.model;
-    const userSpecifiedFallbackModel = fallbackModel === 'default' ? getDefaultMainLoopModel() : fallbackModel;
 
     // Reuse preSetupCwd unless setup() chdir'd (worktreeEnabled). Saves a
     // getCwd() syscall in the common path.
@@ -1742,7 +1699,6 @@ async function run(): Promise<CommanderCommand> {
         systemPrompt,
         appendSystemPrompt,
         userSpecifiedModel: effectiveModel,
-        fallbackModel: userSpecifiedFallbackModel,
         replayUserMessages: effectiveReplayUserMessages,
         includePartialMessages: effectiveIncludePartialMessages,
         forkSession: options.forkSession || false,

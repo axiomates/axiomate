@@ -18,7 +18,6 @@ export type Options = {
   cliPath?: string
   cwd?: string
   model?: string
-  fallbackModel?: string
   effort?: EffortLevel
   agent?: string
   systemPrompt?: string
@@ -577,6 +576,7 @@ export type CronTask = {
   cron: string
   prompt: string
   createdAt: number
+  lastFiredAt?: number
   recurring?: boolean
 }
 

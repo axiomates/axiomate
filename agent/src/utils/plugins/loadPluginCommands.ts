@@ -268,7 +268,8 @@ function createPluginCommand(
     const version = frontmatter.version as string | undefined
     const displayName = frontmatter.name as string | undefined
 
-    // Handle model configuration, resolving configured aliases when present.
+    // Handle model configuration. A value of "inherit" uses the caller route;
+    // any other value is a configured model key or raw provider model ID.
     const model =
       frontmatter.model === 'inherit'
         ? undefined

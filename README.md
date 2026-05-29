@@ -222,6 +222,10 @@ Then start a new WSL session. Verify with `which bun` — it should print `/root
 
 Models are configured in `~/.axiomate.json`. On first run the file is created automatically — add your models to it:
 
+For a first-time user guide covering model fields, manual edits, `/model`
+commands, Settings UI behavior, routes, fallbacks, and auxiliary task policies,
+see [`docs/user/model_configuration_zhcn.html`](docs/user/model_configuration_zhcn.html).
+
 ```jsonc
 {
   "searchProviders": {

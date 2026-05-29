@@ -213,6 +213,7 @@
 
     <section class="callout">
       <p><strong>当前结论：</strong>配置系统本体已经完成。旧模型配置不再是正常运行语义，<code>~/.axiomate.json</code> 已更新到 route/task policy 形状，命令、编辑校验、示例和 focused tests 已收口。</p>
+      <p>面向第一次使用者的配置说明见 <a href="user/model_configuration_zhcn.html"><code>docs/user/model_configuration_zhcn.html</code></a>：覆盖 <code>models</code>、<code>model.routes</code>、<code>auxiliary</code>、手动编辑、<code>/model</code> 命令和 Settings 模型 UI 的边界。</p>
     </section>
 
     <h2>已经完成</h2>
@@ -231,9 +232,9 @@
           <td><code>models</code> 定义具体模型资源；<code>model.defaultRoute</code> / <code>model.routes</code> 定义主链路；<code>auxiliary</code> 定义辅助任务策略。</td>
         </tr>
         <tr>
-          <td>旧配置语义退出运行路径</td>
+          <td>最终配置合同</td>
           <td><span class="status done">已完成</span></td>
-          <td>顶层 <code>currentModel</code>、<code>midModel</code>、<code>fastModel</code> 和 <code>settings.model</code> 不再是正常运行配置来源。</td>
+          <td>模型配置只使用 <code>models</code>、<code>model.defaultRoute</code>、<code>model.routes</code>、<code>auxiliary</code> 和 session-only <code>MainModelOverride</code>。</td>
         </tr>
         <tr>
           <td>Session override</td>
@@ -243,7 +244,7 @@
         <tr>
           <td>API gate</td>
           <td><span class="status done">通过</span></td>
-          <td><code>pnpm run gate:api</code> 已通过：44 个测试文件、641 个测试。</td>
+          <td><code>pnpm run gate:api</code> 已通过：44 个测试文件、654 个测试。</td>
         </tr>
       </tbody>
     </table>
