@@ -75,17 +75,17 @@ export const SUPPORTED_SETTINGS: Record<string, SettingConfig> = {
     source: 'global',
     type: 'number',
     description:
-      'Default row count for `/checkpoints status` and `/checkpoints list` (CLI --rows overrides per call). Range 1..5000.',
+      'Default row count for `/checkpoints status` and `/checkpoints list` (CLI --rows overrides per call). Range 1..500.',
     min: 1,
-    max: 5000,
+    max: 500,
   },
   checkpointsMaxSnapshotsPerProject: {
     source: 'global',
     type: 'number',
     description:
-      'Per-project snapshot cap. Both write-time ring buffer (createSnapshot) and prune-time snapshot-cap pass enforce this. 0 disables the cap entirely (size-cap still bounds total). Range 0..1000000.',
+      'Per-project snapshot cap. Both write-time ring buffer (createSnapshot) and prune-time snapshot-cap pass enforce this. 0 disables the cap entirely (size-cap still bounds total). Range 0..100000.',
     min: 0,
-    max: 1_000_000,
+    max: 100_000,
   },
   showTurnDuration: {
     source: 'global',

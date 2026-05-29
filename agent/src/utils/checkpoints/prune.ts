@@ -81,19 +81,18 @@ const REF_MISSING = new Set([128])
 const REFS_PREFIX = 'refs/axiomate'
 
 /**
- * Default retention for stale-pass (days). 60d targets longer dogfood
- * arcs — a typical project may go untouched for several weeks (vacation,
- * context switches, scheduled sprints) and losing rewindability after
- * two weeks turned out to be a sharp UX regression.
+ * Default retention for stale-pass (days). 30d preserves recent work
+ * across normal context switches while letting abandoned project refs
+ * age out before they become permanent disk clutter.
  */
-export const DEFAULT_RETENTION_DAYS = 60
+export const DEFAULT_RETENTION_DAYS = 30
 
 /**
- * Default cross-project size cap (MB). 5 GB on a modern dev machine
- * (~0.5% of a 1 TB SSD) buys plenty of headroom for the per-project
- * ring buffer (MAX_SNAPSHOTS=5000) without crowding the disk.
+ * Default cross-project size cap (MB). 1 GB is a conservative product
+ * default: enough for meaningful rewind history with git object
+ * deduplication, small enough that unattended checkpointing feels safe.
  */
-export const DEFAULT_MAX_TOTAL_SIZE_MB = 5000
+export const DEFAULT_MAX_TOTAL_SIZE_MB = 1000
 
 /**
  * Default per-project snapshot cap, used when globalConfig
@@ -101,7 +100,7 @@ export const DEFAULT_MAX_TOTAL_SIZE_MB = 5000
  * `MAX_SNAPSHOTS` in createSnapshot.ts so write-time and prune-time
  * caps agree by default; users overriding via /config override both.
  */
-export const DEFAULT_MAX_SNAPSHOTS_PER_REF = 5000
+export const DEFAULT_MAX_SNAPSHOTS_PER_REF = 1000
 
 /**
  * Minimum interval between auto-prune runs. 24h matches Hermes
@@ -111,9 +110,9 @@ export const DEFAULT_MAX_SNAPSHOTS_PER_REF = 5000
 export const MIN_INTERVAL_HOURS = 24
 
 export interface PruneOptions {
-  /** Override default 60-day retention. Use `0` to disable stale pass. */
+  /** Override default 30-day retention. Use `0` to disable stale pass. */
   retentionDays?: number
-  /** Override default 5000 MB (5 GB) cap. Use `0` to disable size pass. */
+  /** Override default 1000 MB (1 GB) cap. Use `0` to disable size pass. */
   maxTotalSizeMb?: number
   /**
    * Override per-project snapshot cap. Defaults to globalConfig

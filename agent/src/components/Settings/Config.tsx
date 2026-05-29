@@ -523,7 +523,7 @@ export function Config({
             id: 'checkpointsStatusRows',
             label: 'Checkpoints rows shown (status / list)',
             value: String(globalConfig.checkpointsStatusRows),
-            options: ['30', '50', '100', '200', '500', '1000', '2000', '5000'],
+            options: ['10', '20', '50', '100', '200', '500'],
             type: 'enum' as const,
             onChange(value: string) {
               const n = Number(value)
@@ -542,7 +542,7 @@ export function Config({
             id: 'checkpointsMaxSnapshotsPerProject',
             label: 'Checkpoints per-project snapshot cap',
             value: String(globalConfig.checkpointsMaxSnapshotsPerProject),
-            options: ['500', '1000', '2000', '5000', '10000', '20000', '50000', '0'],
+            options: ['100', '300', '500', '1000', '2000', '5000', '10000', '0'],
             type: 'enum' as const,
             onChange(value: string) {
               const n = Number(value)

@@ -543,7 +543,7 @@ export type GlobalConfig = {
   // Per-project snapshot ring-buffer ceiling. Both write-time
   // (createSnapshot.ts) and prune-time (prune.ts snapshot-cap pass)
   // read this. 0 disables snapshot-count enforcement entirely.
-  // Range 0..1_000_000.
+  // Range 0..100_000.
   checkpointsMaxSnapshotsPerProject: number
 
   // Terminal progress bar configuration (OSC 9;4)
@@ -721,8 +721,8 @@ function createDefaultGlobalConfig(): GlobalConfig {
     autoConnectIde: false,
     autoInstallIdeExtension: true,
     fileCheckpointingEnabled: true,
-    checkpointsStatusRows: 100,
-    checkpointsMaxSnapshotsPerProject: 5000,
+    checkpointsStatusRows: 50,
+    checkpointsMaxSnapshotsPerProject: 1000,
     terminalProgressBarEnabled: true,
     respectGitignore: true,
     copyFullResponse: false,

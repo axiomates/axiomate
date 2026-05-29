@@ -5,11 +5,11 @@
  * Priority (highest first):
  *   1. Explicit per-call override (positional `N` or `--rows N`)
  *   2. `globalConfig.checkpointsStatusRows`
- *   3. Hard-coded fallback `100`.
+ *   3. Hard-coded fallback `50`.
  *
  * Invariants the caller can rely on:
- *   - Returns a finite integer in `[1, 5000]`. Out-of-range or non-integer
- *     values from config silently fall back to 100 — config writes go through
+ *   - Returns a finite integer in `[1, 500]`. Out-of-range or non-integer
+ *     values from config silently fall back to 50 — config writes go through
  *     ConfigTool which already rejects bad values, but this defends against
  *     hand-edited `~/.axiomate.json`.
  */
@@ -17,8 +17,8 @@
 import { getGlobalConfig } from '../../utils/config.js'
 
 export const ROWS_MIN = 1
-export const ROWS_MAX = 5000
-export const ROWS_FALLBACK = 100
+export const ROWS_MAX = 500
+export const ROWS_FALLBACK = 50
 
 export function resolveStatusRows(override?: number): number {
   if (override !== undefined) return clamp(override)

@@ -8,7 +8,7 @@ description、Settings UI、用户 doc、单测期望），改一个常量需要
 更新哪些地方。
 
 按这份操作能避免典型遗漏：改了源码常量但 CLI `--help` 描述还说旧默认值、
-Settings 选项循环里还有旧值、user doc 还说"默认 30"等。
+Settings 选项循环里还有旧值、user doc 还说"默认 50"等。
 
 ## 七个相关常量 + 触达清单
 
@@ -27,8 +27,8 @@ Settings 选项循环里还有旧值、user doc 还说"默认 30"等。
   `--rows` option description 文本（"default: globalConfig.checkpointsStatusRows = N"）
 - `agent/src/components/Settings/Config.tsx` 的 `checkpointsStatusRows`
   enum option 列表 —— 选项里要有这个新默认值，且首项接近最常用尺寸
-- `docs/user/checkpoints_zhcn.html`：搜"默认 30"或当前默认数；
-  搜"30 行"；commands 子命令表格描述；`/checkpoints status` /
+- `docs/user/checkpoints_zhcn.html`：搜"默认 50"或当前默认数；
+  搜"50 行"；commands 子命令表格描述；`/checkpoints status` /
   `list` 子节描述；FAQ
 - 单测 `agent/src/__tests__/unit/commands/checkpoints/resolveStatusRows.test.ts`
   里硬编码 `30` 的断言（如果有）
@@ -137,8 +137,8 @@ checkpoint 的工作目录文件数上限。**别动它**。
 
 1. **先确定新值**：跟用户对齐每个常量的目标值。注意常量之间的关联——
    - `MAX_SNAPSHOTS` × `DEFAULT_MAX_TOTAL_SIZE_MB`：snap 数 × 每 snap 大小
-     不该长期超 size cap，否则 size pass 一直在删。5000 snap × 1MB ≈ 5GB
-     是当前默认的平衡点
+     不该长期超 size cap，否则 size pass 一直在删。1000 snap × 1MB ≈ 1GB
+     是当前产品化默认的平衡点
    - `ROWS_FALLBACK` ≤ `MAX_SNAPSHOTS`：list 默认显示的行数不超过实际能
      存的 snap 数，否则 fallback 是噪音
    - `DEFAULT_RETENTION_DAYS` × turn 频率 × `MAX_SNAPSHOTS`：retention

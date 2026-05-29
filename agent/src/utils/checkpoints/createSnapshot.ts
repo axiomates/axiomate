@@ -70,11 +70,11 @@ export const MAX_FILE_SIZE_MB = 50
 /**
  * Fallback per-project snapshot ring-buffer ceiling. Used only when the
  * user has not set `checkpointsMaxSnapshotsPerProject` in globalConfig.
- * 5000 turns ≈ several weeks of intensive dogfood; combined with
- * `DEFAULT_MAX_TOTAL_SIZE_MB` (5GB), the two caps reach equilibrium
- * without either dominating.
+ * 1000 turns keeps a useful recent history for active projects while
+ * avoiding an unbounded-looking default in product installs. Combined
+ * with the 1GB store cap, size and count limits stay aligned.
  */
-export const MAX_SNAPSHOTS = 5000
+export const MAX_SNAPSHOTS = 1000
 const REF_NOT_EXIST = new Set([128])
 const DIFF_HAS_CHANGES = new Set([1])
 
