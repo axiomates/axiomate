@@ -317,7 +317,7 @@ export function onboardingProviderReducer(
         ...state,
         stage: 'baseUrl',
         protocol: action.protocol,
-        baseUrl: state.baseUrl || DEFAULT_BASE_URLS[action.protocol],
+        baseUrl: state.baseUrl,
       }
     case 'submitBaseUrl':
       return { ...state, stage: 'apiKey', baseUrl: action.value.trim() }

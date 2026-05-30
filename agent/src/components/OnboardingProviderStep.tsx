@@ -328,7 +328,7 @@ function BaseUrlStep({
   onSubmit: (v: string) => void
   onBack: () => void
 }): React.ReactNode {
-  const seed = initial || DEFAULT_BASE_URLS[protocol]
+  const seed = initial
   const [value, setValue] = useState(seed)
   const [cursor, setCursor] = useState(seed.length)
 

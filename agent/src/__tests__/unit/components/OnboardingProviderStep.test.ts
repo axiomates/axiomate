@@ -28,14 +28,14 @@ describe('onboardingProviderReducer', () => {
     expect(initialOnboardingProviderState.protocol).toBe('openai-chat')
   })
 
-  it('advances protocol → baseUrl and seeds a protocol-appropriate default baseUrl', () => {
+  it('advances protocol → baseUrl without auto-filling the default baseUrl', () => {
     const next = onboardingProviderReducer(initialOnboardingProviderState, {
       type: 'pickProtocol',
       protocol: 'anthropic',
     })
     expect(next.stage).toBe('baseUrl')
     expect(next.protocol).toBe('anthropic')
-    expect(next.baseUrl).toBe('https://api.anthropic.com')
+    expect(next.baseUrl).toBe('')
   })
 
   it('does not overwrite a user-entered baseUrl when the protocol is re-picked', () => {
