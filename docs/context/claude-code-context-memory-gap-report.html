@@ -1,0 +1,1654 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Claude Code Context/Memory Gap Report: 2.1.88 -> 2.1.158</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f3f6f7;
+      --panel: #ffffff;
+      --panel-soft: #f8fafb;
+      --border: #d9e2e5;
+      --text: #172126;
+      --muted: #5c6d75;
+      --accent: #0f766e;
+      --accent-2: #22577a;
+      --accent-soft: #dff5f2;
+      --info-soft: #e7f0fb;
+      --warn: #8a4b0f;
+      --warn-soft: #fff4d6;
+      --danger: #9b1c1c;
+      --danger-soft: #fee5e5;
+      --good: #17613a;
+      --good-soft: #def7e8;
+      --code: #f1f5f7;
+      --shadow: 0 10px 28px rgba(24, 38, 46, 0.08);
+      --radius: 16px;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font: 15px/1.68 "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at top left, rgba(15, 118, 110, 0.13), transparent 32%),
+        linear-gradient(180deg, #edf3f4 0%, var(--bg) 100%);
+      min-height: 100vh;
+    }
+
+    .wrap {
+      width: min(1440px, calc(100vw - 32px));
+      margin: 24px auto 54px;
+      display: grid;
+      gap: 18px;
+    }
+
+    .hero {
+      color: #f7fbfc;
+      background: linear-gradient(135deg, #12343b 0%, #22577a 58%, #0f766e 100%);
+      border-radius: 24px;
+      padding: 34px 36px;
+      box-shadow: var(--shadow);
+    }
+
+    h1, h2, h3, h4 { margin: 0; line-height: 1.22; }
+    h1 { margin-top: 14px; font-size: clamp(30px, 4.8vw, 48px); max-width: 1100px; }
+    h2 { font-size: 23px; }
+    h3 { font-size: 18px; }
+    h4 { font-size: 15px; }
+    p { margin: 9px 0 0; }
+    ul { margin: 9px 0 0; padding-left: 20px; }
+    li + li { margin-top: 5px; }
+    a { color: var(--accent-2); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    code {
+      font-family: "JetBrains Mono", "Fira Code", Consolas, monospace;
+      font-size: 0.92em;
+      background: var(--code);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 1px 5px;
+    }
+
+    .hero code {
+      color: #10242a;
+      background: rgba(255, 255, 255, 0.94);
+      border-color: rgba(255, 255, 255, 0.72);
+      font-weight: 650;
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      background: rgba(255, 255, 255, 0.12);
+      border-radius: 999px;
+      padding: 6px 11px;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .hero p {
+      max-width: 1080px;
+      color: rgba(247, 251, 252, 0.91);
+      font-size: 17px;
+    }
+
+    .meta {
+      margin-top: 18px;
+      color: rgba(247, 251, 252, 0.76);
+      font-size: 13px;
+    }
+
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 22px 24px;
+      box-shadow: 0 1px 0 rgba(255, 255, 255, 0.55) inset, 0 7px 18px rgba(24, 38, 46, 0.04);
+    }
+
+    .soft { background: var(--panel-soft); }
+
+    .grid-2,
+    .grid-3,
+    .grid-4 {
+      display: grid;
+      gap: 14px;
+    }
+
+    .grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .grid-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+
+    .subcard {
+      border: 1px solid var(--border);
+      background: var(--panel-soft);
+      border-radius: 13px;
+      padding: 15px 16px;
+    }
+
+    .section-title {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 16px;
+      margin-bottom: 14px;
+    }
+
+    .kicker,
+    .stat-label {
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      font-size: 12px;
+      font-weight: 750;
+    }
+
+    .stat-value {
+      margin-top: 5px;
+      color: var(--accent);
+      font-size: 24px;
+      font-weight: 800;
+      line-height: 1.18;
+    }
+
+    .muted { color: var(--muted); }
+
+    .callout {
+      border-left: 4px solid var(--accent);
+      background: var(--accent-soft);
+      border-radius: 12px;
+      padding: 14px 16px;
+    }
+
+    .callout.warn { border-left-color: #d97706; background: var(--warn-soft); color: #4a2d08; }
+    .callout.danger { border-left-color: #b91c1c; background: var(--danger-soft); color: #4b1010; }
+    .callout.info { border-left-color: var(--accent-2); background: var(--info-soft); }
+
+    .pill-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 15px; }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      border: 1px solid transparent;
+      border-radius: 999px;
+      padding: 5px 10px;
+      font-size: 12px;
+      font-weight: 750;
+    }
+    .pill.good { background: var(--good-soft); color: var(--good); border-color: #bceccd; }
+    .pill.warn { background: var(--warn-soft); color: var(--warn); border-color: #f5d889; }
+    .pill.danger { background: var(--danger-soft); color: var(--danger); border-color: #f5bebe; }
+    .pill.info { background: var(--info-soft); color: var(--accent-2); border-color: #c7dff5; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+    }
+
+    th, td {
+      text-align: left;
+      vertical-align: top;
+      padding: 12px 13px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    th {
+      color: #34454d;
+      background: #eef4f5;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    tr:last-child td { border-bottom: 0; }
+
+    .table-scroll {
+      overflow-x: auto;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: #fff;
+    }
+
+    .table-scroll table { min-width: 1160px; }
+
+    .feature {
+      display: grid;
+      gap: 12px;
+      border: 1px solid var(--border);
+      background: #fff;
+      border-radius: 14px;
+      padding: 18px;
+    }
+
+    .feature + .feature {
+      margin-top: 14px;
+    }
+
+    .feature-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 14px;
+    }
+
+    .feature-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .feature-grid.wide {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .mini {
+      border: 1px solid #e3ebee;
+      background: #fbfdfe;
+      border-radius: 10px;
+      padding: 12px;
+    }
+
+    .mini b {
+      display: block;
+      margin-bottom: 5px;
+      color: #2c424b;
+    }
+
+    .runtime-flow {
+      border: 1px dashed #c7d5da;
+      border-radius: 12px;
+      padding: 12px 14px;
+      background: #f8fbfc;
+      color: #33464f;
+    }
+
+    .runtime-flow b {
+      color: #243940;
+    }
+
+    .source-note {
+      font-size: 13px;
+      color: var(--muted);
+      margin-top: 8px;
+    }
+
+    .priority {
+      display: grid;
+      gap: 10px;
+    }
+
+    .priority-row {
+      display: grid;
+      grid-template-columns: 82px 1fr 1.2fr;
+      gap: 12px;
+      align-items: start;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 13px;
+      background: #fff;
+    }
+
+    .badge {
+      display: inline-flex;
+      width: max-content;
+      border-radius: 999px;
+      padding: 4px 9px;
+      font-size: 12px;
+      font-weight: 800;
+      border: 1px solid transparent;
+    }
+    .badge.p0 { color: var(--danger); background: var(--danger-soft); border-color: #f5bebe; }
+    .badge.p1 { color: var(--warn); background: var(--warn-soft); border-color: #f5d889; }
+    .badge.p2 { color: var(--accent-2); background: var(--info-soft); border-color: #c7dff5; }
+
+    .timeline {
+      display: grid;
+      gap: 10px;
+    }
+
+    .timeline-item {
+      display: grid;
+      grid-template-columns: 118px 1fr;
+      gap: 14px;
+      border-left: 3px solid var(--accent);
+      padding: 8px 0 10px 14px;
+    }
+
+    .version {
+      font-family: "JetBrains Mono", "Fira Code", Consolas, monospace;
+      font-weight: 800;
+      color: var(--accent);
+    }
+
+    .source-list {
+      columns: 2;
+      column-gap: 28px;
+    }
+
+    .source-list li { break-inside: avoid; }
+
+    @media (max-width: 1050px) {
+      .grid-2,
+      .grid-3,
+      .grid-4,
+      .feature-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .priority-row {
+        grid-template-columns: 1fr;
+      }
+
+      .source-list {
+        columns: 1;
+      }
+    }
+
+    @media print {
+      body { background: #fff; }
+      .wrap { width: auto; margin: 0; }
+      .card, .hero, .subcard, .feature { box-shadow: none; }
+      a { color: inherit; text-decoration: underline; }
+    }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <section class="hero">
+      <div class="eyebrow">Context / Memory Gap Report</div>
+      <h1>Claude Code Context/Memory Gap Report: <code>2.1.88</code> -> <code>2.1.158</code></h1>
+      <p>
+        本报告只聚焦 Claude Code 与 Axiomate 的 context / memory 系统。按照当前维护判断，Axiomate 在这一层可视为
+        Claude Code CLI <code>2.1.88</code> 基线：fork 之后基本没有重写 memory 架构，主要是品牌、配置、provider 和局部 UI/稳定性改动。
+      </p>
+      <p>
+        结论：下一版本 Axiomate 的首要任务不是再引入一套 Hermes 式 RAG memory provider，而是补齐 Claude Code 在
+        <code>2.1.88</code> 之后公开产品化出来的上下文生命周期：可解释、可审计、可压缩、可分层、可按路径懒加载、可隔离到 subagent。
+      </p>
+      <div class="meta">
+        生成日期：2026-05-30 · 目标版本：Claude Code 官方文档与 changelog 截止 <code>2.1.158</code>（May 30, 2026） · 基线源码：
+        <code>C:\public\workspace\claude-code-sourcemap</code>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="section-title">
+        <div>
+          <div class="kicker">Executive Judgment</div>
+          <h2>核心判断</h2>
+        </div>
+      </div>
+      <div class="grid-3">
+        <div class="subcard">
+          <div class="stat-label">Baseline</div>
+          <div class="stat-value">Axiomate ≈ Claude Code 2.1.88</div>
+          <p class="muted">
+            Axiomate 继承了 filesystem markdown memory、<code>MEMORY.md</code> index、topic files、auto extraction、session memory、
+            autoDream、compact、transcript search、context visualization 的早期基础。
+          </p>
+        </div>
+        <div class="subcard">
+          <div class="stat-label">Latest Claude</div>
+          <div class="stat-value">上下文工程产品化</div>
+          <p class="muted">
+            Claude Code 最新文档的重心已经不是“有没有 memory”，而是让用户和模型都知道哪些内容进了 context、为什么进、何时失效、compact 后会不会回来。
+          </p>
+        </div>
+        <div class="subcard">
+          <div class="stat-label">Next Version</div>
+          <div class="stat-value">全力补 context/memory</div>
+          <p class="muted">
+            API harness 已经补过一轮，下一阶段最基础、最像 Claude Code 主线的缺口是 context doctor、memory audit、path-scoped rules、targeted summarization 与 subagent context isolation。
+          </p>
+        </div>
+      </div>
+      <div class="callout warn" style="margin-top: 16px;">
+        <b>范围说明：</b>
+        本报告不再证明 Axiomate 与 2.1.88 在 memory 代码上是否逐行一致；按维护口径直接视为同一基线。凡是 Claude Code 2.1.88 之后才在官方文档 / changelog 出现的能力，均视为 Axiomate 需要补齐或重新评估的目标。
+      </div>
+      <div class="callout info" style="margin-top: 12px;">
+        <b>官方公开仓库边界：</b>
+        <code>C:\public\workspace\claude-code</code> 与
+        <a href="https://github.com/anthropics/claude-code">anthropics/claude-code</a>
+        是 Claude Code 的官方公开资料仓库，包含 README、CHANGELOG、demo、examples 和 plugins；它不是新版 Claude Code 的源码仓库。本文只把它用于确认 release notes、插件/agent 定义样例和官方产品方向，不把其中内容当作实现源码。
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="section-title">
+        <div>
+          <div class="kicker">Current Axiomate Baseline</div>
+          <h2>2.1.88 基线已经有的东西</h2>
+        </div>
+      </div>
+      <div class="grid-2">
+        <div class="subcard">
+          <h3>Memory 文件系统</h3>
+          <ul>
+            <li><code>MEMORY.md</code> 作为 memory 入口和索引，topic markdown files 存放细节。</li>
+            <li><code>agent/src/memdir/*</code> 负责路径、扫描、age/freshness、relevant memory 查找。</li>
+            <li><code>agent/src/utils/axiomatemd.ts</code> 对应 Claude 线的 <code>claudemd</code> loader。</li>
+            <li><code>agent/src/services/extractMemories/*</code> 与 <code>SessionMemory/*</code> 负责抽取和 session 级整理。</li>
+          </ul>
+        </div>
+        <div class="subcard">
+          <h3>Compact / Dream / Agent 早期能力</h3>
+          <ul>
+            <li><code>agent/src/services/compact/*</code> 具备普通 compact / auto compact / session memory compact 的基础。</li>
+            <li><code>agent/src/services/autoDream/*</code> 与 <code>agent/src/tasks/DreamTask/DreamTask.ts</code> 已有后台整理 memory 的方向。</li>
+            <li><code>agent/src/components/ContextVisualization.tsx</code> 和 <code>agent/src/utils/analyzeContext.ts</code> 是 context doctor 的早期基础。</li>
+            <li><code>agent/src/tools/AgentTool/{agentMemory,agentMemorySnapshot}.ts</code> 已经给 AgentTool 留了 memory 表达面。</li>
+          </ul>
+        </div>
+      </div>
+      <div class="callout info" style="margin-top: 16px;">
+        这说明 Axiomate 不缺“存 memory 的目录”。真正缺的是 Claude Code 后来补齐的可解释层、规则层、生命周期层、分层加载层、targeted summarization 层和 subagent memory scope 层。
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="section-title">
+        <div>
+          <div class="kicker">Gap Matrix</div>
+          <h2>Claude 最新能力差距矩阵</h2>
+        </div>
+      </div>
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>能力</th>
+              <th>Claude Code 最新行为</th>
+              <th>如何使用</th>
+              <th>什么时候用</th>
+              <th>依赖基础系统</th>
+              <th>Axiomate 目标</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><b><code>.claude/rules/</code> 与 path-scoped rules</b></td>
+              <td>规则文件递归发现；无 <code>paths</code> 的规则启动加载；有 <code>paths:</code> frontmatter 的规则在读取匹配文件时懒加载。</td>
+              <td>把大型 <code>CLAUDE.md</code> 拆成 <code>.claude/rules/testing.md</code>、<code>api.md</code>；给局部规则加 glob。</td>
+              <td>monorepo、前后端规范不同、测试/安全/迁移规则只对部分文件有效时。</td>
+              <td>规则扫描、YAML frontmatter、glob matcher、Read tool trigger、InstructionsLoaded hook、<code>/memory</code> 可见性。</td>
+              <td>实现 <code>.axiomate/rules/</code>，支持懒加载、冲突提示、loaded reason、compact survival 显示。</td>
+            </tr>
+            <tr>
+              <td><b>扩展的 <code>CLAUDE.md</code> 层级治理</b></td>
+              <td>managed policy、user、project、local、多级目录、subdirectory lazy loading、<code>@path</code> import、<code>claudeMdExcludes</code>。</td>
+              <td>全局偏好写 <code>~/.claude/CLAUDE.md</code>；团队规范写项目根；个人本地写 <code>CLAUDE.local.md</code>；大型仓库用 excludes。</td>
+              <td>需要同时管理组织策略、团队规范、个人偏好、子目录规范和外部 add-dir 规范时。</td>
+              <td>settings layer、import resolver、trust gate、exclude glob、subdirectory file-read trigger。</td>
+              <td>补齐 AXIOMATE.md 层级、exclude、import depth、source list、trust-aware import 审计。</td>
+            </tr>
+            <tr>
+              <td><b>Auto memory productization</b></td>
+              <td>auto memory 默认开启；每项目目录；<code>MEMORY.md</code> 前 200 行或 25KB 启动加载；topic files 按需读；worktree 共享。</td>
+              <td>让 Claude 记住偏好或项目事实；用 <code>/memory</code> 打开目录；用 settings/env 控制开关和目录。</td>
+              <td>长期项目、跨 session 的调试经验、测试环境、架构约束、常见工作流。</td>
+              <td>git-root project id、memory directory resolver、Read/Write/Edit 权限 carve-out、trust gate。</td>
+              <td>固定同等限制、可视化大小阈值、topic split 建议、写入来源、撤回/归档能力。</td>
+            </tr>
+            <tr>
+              <td><b><code>/memory</code> 作为 audit UI</b></td>
+              <td>列出当前 session 加载的 <code>CLAUDE.md</code>、<code>CLAUDE.local.md</code>、rules；切换 auto memory；打开 memory folder。</td>
+              <td>运行 <code>/memory</code> 检查指令文件是否被加载，打开相关 markdown 编辑。</td>
+              <td>模型不遵守指令、怀疑 memory 过期、想知道自动记了什么、需要关闭自动 memory 时。</td>
+              <td>loaded instruction registry、memory directory registry、editor opener、settings writer。</td>
+              <td>把 <code>/memory</code> 做成“已加载源 + 加载原因 + token size + scope + edit/open + toggle”。</td>
+            </tr>
+            <tr>
+              <td><b><code>/context</code> context doctor</b></td>
+              <td>按类别展示 system prompt、memory、skills、MCP tools、conversation、file reads 等占用，并给优化建议。</td>
+              <td>运行 <code>/context</code> 或 context-window guide 对照，定位谁占 token、compact 后谁会回来。</td>
+              <td>长会话变慢、频繁 auto compact、MCP/skill/tool schema 太大、用户想知道为什么满窗时。</td>
+              <td>token estimator、message/source attribution、bucket classifier、compact survival map、route contextWindow。</td>
+              <td>P0：Axiomate 必须有 live context breakdown，并把建议绑定到 route 的 <code>contextWindow</code>/<code>maxOutputTokens</code>。</td>
+            </tr>
+            <tr>
+              <td><b>Compaction survival map</b></td>
+              <td>system prompt、root <code>CLAUDE.md</code>、unscoped rules、auto memory 从磁盘重注入；path rules/nested CLAUDE.md 下次匹配再加载；skill listing 不重注入。</td>
+              <td>在 <code>/compact</code> 前查看哪些内容会保留、总结、丢失或按需回来。</td>
+              <td>任务边界、长会话进入新阶段、发现 path-scoped rule 在 compact 后暂时没生效时。</td>
+              <td>context item provenance、startup reloader、skill invocation tracker、compact summary builder。</td>
+              <td>在 <code>/context</code> 和 compact confirmation 中显示“survives / summarized / lazy reload / dropped”。</td>
+            </tr>
+            <tr>
+              <td><b>Checkpoint targeted summarization</b></td>
+              <td>rewind 菜单支持 restore code/conversation，也支持 <code>Summarize from here</code> 和 <code>Summarize up to here</code>。</td>
+              <td>在 <code>/rewind</code> 选择某个用户消息，把它之前或之后压成 summary。</td>
+              <td>要保留最近实现细节但压缩早期调研，或丢掉一个 side track 但保留开头上下文。</td>
+              <td>checkpoint anchors、transcript slicing、partial compact prompt、summary replacement、original transcript retention。</td>
+              <td>补齐边界压缩 UI，与现有 checkpoint store 和 <code>REPL.tsx</code> partial summarize 对齐。</td>
+            </tr>
+            <tr>
+              <td><b>Prompt cache awareness</b></td>
+              <td>文档明确 system/project/conversation 三层 cache；模型/effort/MCP/tool deny/compact/upgrade 会 miss；repo edit 和 rewind 通常 cache-safe。</td>
+              <td>在任务开始定模型/effort/MCP；用 statusline 或 usage 看 cache read/create tokens。</td>
+              <td>下一轮突然慢或贵、MCP 重连后、模型切换后、compact 后、provider/gateway 不支持缓存时。</td>
+              <td>request prefix stability、usage accounting、cache token telemetry、MCP/toolset change detector。</td>
+              <td>context doctor 加“cache impact”，解释下一 turn 是否会贵、为什么 miss、哪个 schema 或设置变了。</td>
+            </tr>
+            <tr>
+              <td><b>Deferred tool search</b></td>
+              <td>默认延迟 full tool schema；只给工具摘要；需要时搜索目录并加载 3-5 个相关工具；<code>ENABLE_TOOL_SEARCH</code> 控制阈值。</td>
+              <td>大量 MCP/custom tools 时保持默认或设 <code>ENABLE_TOOL_SEARCH=auto:5</code>；小工具集可关掉。</td>
+              <td>工具定义超过 context 10%、MCP server 很多、tool selection 准确率下降时。</td>
+              <td>tool catalog index、tool_reference API support、model/provider compatibility、compact 后重发现。</td>
+              <td>Axiomate 已有 <code>utils/toolSearch.ts</code> 表面，需要补产品级诊断、route/provider 兼容、context bucket 显示。</td>
+            </tr>
+            <tr>
+              <td><b>Subagents context isolation + memory scopes</b></td>
+              <td>subagent 独立 context；Explore/Plan 跳过 CLAUDE.md 和父 git status；custom subagent 有 tools/model/permission/memory/skills 等 frontmatter。</td>
+              <td>用 Explore/Plan 做读-only 调研；定义 custom subagent；给 subagent 设置 <code>memory: user|project|local</code>。</td>
+              <td>调研会污染主窗口、重复工作流需要专门 agent、审查/测试/迁移 agent 需要积累独立经验时。</td>
+              <td>agent definition loader、isolated system prompt、tool resolver、agent-memory directory、foreground/background lifecycle。</td>
+              <td>补齐 agent memory scopes、Explore/Plan skip policy、fork cache semantics、worktree isolation 的可解释 UI。</td>
+            </tr>
+            <tr>
+              <td><b>Session / resume / branch context controls</b></td>
+              <td><code>/resume</code> picker 支持 worktree/all projects/branch filter/search/preview/rename；session JSONL 本地存储；<code>/branch</code> 分叉。</td>
+              <td>用 <code>--continue</code>、<code>--resume</code>、<code>/resume</code>、<code>/branch</code> 管理上下文资产。</td>
+              <td>多任务并行、跨 worktree 恢复、从旧会话找事实、避免一个 transcript 被两个终端交错写入。</td>
+              <td>session metadata index、JSONL streaming scanner、branch/worktree resolver、preview renderer。</td>
+              <td>把 transcript/search 当 context 资产管理，补 degraded search、CJK fallback、large transcript streaming。</td>
+            </tr>
+            <tr>
+              <td><b>Large-codebase context scoping</b></td>
+              <td>per-directory CLAUDE.md、rules、read deny、code intelligence、sparse worktree、<code>--add-dir</code>、per-directory skills。</td>
+              <td>把不同模块规则放到对应目录；禁止 vendor/generated 读取；用 code intelligence 减少 read token。</td>
+              <td>monorepo、generated code、vendor 大目录、跨目录共享 config、模型反复读取不相关文件时。</td>
+              <td>glob deny、path-scoped instruction loading、LSP/code intelligence、add-dir trust model。</td>
+              <td>把 path scope 作为 token control 主路径，而不是依赖用户不断手动提醒模型。</td>
+            </tr>
+            <tr>
+              <td><b>Hooks as context producers</b></td>
+              <td>hook 的 <code>hookSpecificOutput.additionalContext</code> 进入 Claude context；plain stdout 只是 debug；InstructionsLoaded / PreCompact / SessionStart 等 hook 扩展上下文生命周期。</td>
+              <td>让 lint/test/format hook 只输出必要上下文；用 InstructionsLoaded 调试加载源。</td>
+              <td>需要在工具事件后给模型补充事实、compact 前记录状态、session start 注入 title/reload skills 时。</td>
+              <td>hook runner、JSON output parser、additionalContext budget、debug log、source attribution。</td>
+              <td>加 context budget 和 origin audit，避免 hook 静默把大量文本塞进 context。</td>
+            </tr>
+            <tr>
+              <td><b>Dream / memory consolidation</b></td>
+              <td>Managed Agents dreams 是异步 memory curation job：读取一个 input memory store 和 1-100 个 sessions，生成独立 output memory store；input 永不原地改写。</td>
+              <td>指定 memory store、session ids、model 和 instructions；等待 pending/running/completed；review output store 后 attach、archive 或 discard。</td>
+              <td>memory 出现重复、矛盾、过期、索引膨胀、跨 session 模式需要提炼、多个 agent 写同一类经验时。</td>
+              <td>memory store versioning、session transcript selection、async job lifecycle、partial output preservation、review/promote/discard UI、cost/usage accounting。</td>
+              <td>把现有 <code>autoDream</code> 升级为本地非破坏式 dream pipeline：生成候选 output store/diff/report，人工 review 后 promote。</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="section-title">
+        <div>
+          <div class="kicker">Feature Playbook</div>
+          <h2>这些功能到底是什么、怎么用、运行时发生什么</h2>
+        </div>
+      </div>
+      <div class="callout info">
+        下面按“用户要解决的问题 -> 操作入口 -> 运行时机制 -> Axiomate 落地层”写。读这部分的目标不是背 Claude 的功能名，而是明确下一轮 Axiomate 应该补哪些可见行为、状态机和审计面。
+      </div>
+
+      <div class="feature">
+        <div class="feature-head">
+          <div>
+            <h3>1. Path-scoped rules：把指令从全局噪音变成按文件触发</h3>
+            <p class="muted">官方 Claude Code 用 <code>.claude/rules/</code> 承载项目规则；带 <code>paths:</code> frontmatter 的规则只在匹配文件被读取时进入 context。</p>
+          </div>
+          <span class="badge p0">P0</span>
+        </div>
+        <div class="feature-grid wide">
+          <div class="mini"><b>解决什么问题</b>单个 <code>CLAUDE.md</code> 越写越大后，每次启动都把测试、前端、API、迁移、安全规则全部塞进 context。模型会被无关规则干扰，启动 token 也被浪费。Path-scoped rules 的核心价值是“只在相关路径工作时加载相关规则”。</div>
+          <div class="mini"><b>用户怎么用</b>把规则拆到 <code>.claude/rules/testing.md</code>、<code>.claude/rules/frontend/react.md</code>、<code>.claude/rules/api.md</code>。全局适用的文件不写 <code>paths</code>；局部规则写 <code>paths: ["src/api/**/*.ts"]</code> 或测试 glob。</div>
+          <div class="mini"><b>什么时候用</b>monorepo、前后端规范不同、某些测试命令只适用于子目录、生成代码/迁移代码有特殊约束、团队规则互相冲突时。</div>
+        </div>
+        <div class="runtime-flow">
+          <b>运行时发生什么：</b>启动时扫描规则目录；无 <code>paths</code> 的规则进入启动 context；有 <code>paths</code> 的规则登记在 matcher 中但暂不占用 context。Claude 调用 Read 读取匹配文件时，loader 把规则内容注入当前消息历史，并发出 loaded notice。compact 后这类规则会随消息历史被总结掉，直到下次再读匹配文件才回来。
+        </div>
+        <div class="feature-grid wide">
+          <div class="mini"><b>Axiomate 当前基础</b>有 AXIOMATE.md loader、memory file 统计、Read/Edit 工具链和 <code>analyzeContext</code> 基础，但没有产品化的 <code>.axiomate/rules/</code>、frontmatter glob、loaded reason 和 compact survival 标记。</div>
+          <div class="mini"><b>Axiomate 要实现</b><code>.axiomate/rules/</code> 递归扫描、YAML 解析、glob matcher、Read 触发注入、InstructionsLoaded debug 事件、<code>/memory</code> 展示“为何加载”、<code>/context</code> 展示 token 与 survival。</div>
+          <div class="mini"><b>验收例子</b>用户读取 <code>src/api/user.ts</code> 后，界面显示“Loaded .axiomate/rules/api.md because path matched src/api/**/*.ts”。运行 <code>/compact</code> 前能看到该规则属于 lazy reload，而不是永久保留。</div>
+        </div>
+      </div>
+
+      <div class="feature">
+        <div class="feature-head">
+          <div>
+            <h3>2. CLAUDE.md 层级治理：把组织、团队、个人和子目录说明分清</h3>
+            <p class="muted">Claude Code 文档把 memory 明确分成用户写的指令文件和 Claude 自动写的 auto memory；二者都只是 context，不是强制配置。</p>
+          </div>
+          <span class="badge p0">P0</span>
+        </div>
+        <div class="feature-grid wide">
+          <div class="mini"><b>解决什么问题</b>同一个项目里会同时存在企业安全要求、用户个人偏好、团队 build/test 规范、当前机器的私有 URL、子目录专用说明。如果 loader 不说明来源和优先级，用户无法判断模型到底看到了哪份指令。</div>
+          <div class="mini"><b>用户怎么用</b>组织策略放 managed policy 位置；个人偏好放 <code>~/.claude/CLAUDE.md</code>；团队规范放 <code>./CLAUDE.md</code> 或 <code>./.claude/CLAUDE.md</code>；本机私有说明放 <code>CLAUDE.local.md</code>；共享片段用 <code>@path</code> import。</div>
+          <div class="mini"><b>什么时候用</b>团队需要共享规范但不共享个人配置；monorepo 的祖先目录有无关 CLAUDE.md；多个 worktree 需要同一项目规范；本地测试 URL/账号不能提交。</div>
+        </div>
+        <div class="runtime-flow">
+          <b>运行时发生什么：</b>启动按 scope 顺序加载上层目录中的 <code>CLAUDE.md</code> / local 文件；子目录文件不是启动全量加载，而是 Claude 读取子目录文件时再按需加载。<code>@path</code> import 会在启动时展开，因此它帮助组织文件，但不节省启动 context。<code>claudeMdExcludes</code> 用于跳过不相关祖先或团队文件。
+        </div>
+        <div class="feature-grid wide">
+          <div class="mini"><b>Axiomate 当前基础</b>有 <code>agent/src/utils/axiomatemd.ts</code> 与 memory file 展示，但报告按 2.1.88 基线看待，缺的是新版文档中更清晰的 source/scope/exclude/import 审计。</div>
+          <div class="mini"><b>Axiomate 要实现</b>AXIOMATE.md 等价层级、local 文件、import 深度限制、exclude glob、trust-aware custom directory、<code>/memory</code> source tree、冲突检测和“指令只是 context，不是 guardrail”的提示。</div>
+          <div class="mini"><b>验收例子</b><code>/memory</code> 能列出 user/project/local/subdirectory/imported，每项显示路径、scope、是否从启动加载、是否懒加载、token 估算和最近修改时间。</div>
+        </div>
+      </div>
+
+      <div class="feature">
+        <div class="feature-head">
+          <div>
+            <h3>3. Auto memory：模型自己写的长期项目笔记，不是用户手写规则</h3>
+            <p class="muted">官方文档强调 auto memory 默认开启，按 git repo 共享；<code>MEMORY.md</code> 是索引，topic files 是详细内容。</p>
+          </div>
+          <span class="badge p0">P0</span>
+        </div>
+        <div class="feature-grid wide">
+          <div class="mini"><b>解决什么问题</b>用户不断纠正“这个项目用 pnpm”“API 测试要 Redis”“不要再改 generated 文件”，这些事实如果只留在 transcript，下次 session 会丢。Auto memory 让模型把未来可复用的经验写成 markdown。</div>
+          <div class="mini"><b>用户怎么用</b>直接对模型说“remember that ...”；用 <code>/memory</code> 打开 memory folder 查看/编辑；用 <code>autoMemoryEnabled</code> 或环境变量关闭；用 <code>autoMemoryDirectory</code> 改存储位置。</div>
+          <div class="mini"><b>什么时候用</b>长期项目、跨 session 调试经验、常见测试命令、用户风格偏好、模型第二次犯同一个错误时。</div>
+        </div>
+        <div class="runtime-flow">
+          <b>运行时发生什么：</b>每个项目有独立 memory 目录；同一 git repo 的 worktree 和子目录共享。启动时只加载 <code>MEMORY.md</code> 的前 200 行或 25KB，以先到者为准；topic files 不启动加载，而是在模型需要细节时用普通文件工具读取。模型可在会话中读写 memory 文件，界面会显示 writing/recalled memory。
+        </div>
+        <div class="feature-grid wide">
+          <div class="mini"><b>Axiomate 当前基础</b><code>agent/src/memdir/*</code>、<code>extractMemories</code>、<code>SessionMemory</code> 已有 2.1.88 风格 filesystem memory。问题不是没有存储，而是缺少写入 provenance、大小阈值 UI、撤回和 stale/contradiction 标记。</div>
+          <div class="mini"><b>Axiomate 要实现</b>明确 200 lines / 25KB 行为、topic split 建议、memory 写入来源、session id、agent id、风险标签、memory doctor、手动/自动写入开关和按路径打开编辑。</div>
+          <div class="mini"><b>验收例子</b>当 <code>MEMORY.md</code> 接近阈值，<code>/memory</code> 提醒“索引过长，建议 dream/prune”；<code>/context</code> 显示 auto memory startup token 与 topic files 未加载状态。</div>
+        </div>
+      </div>
+
+      <div class="feature">
+        <div class="feature-head">
+          <div>
+            <h3>4. <code>/memory</code> audit：证明模型到底看到了哪些记忆和规则</h3>
+            <p class="muted">新版 Claude 文档把 <code>/memory</code> 写成排查入口，而不只是“打开文件”的快捷方式。</p>
+          </div>
+          <span class="badge p0">P0</span>
+        </div>
+        <div class="feature-grid wide">
+          <div class="mini"><b>解决什么问题</b>用户说“我明明写了规则，模型为什么没遵守”。这时最需要的不是再提示模型，而是可视化确认规则是否加载、来自哪个路径、是否被 exclude、是否只在读匹配文件后才加载。</div>
+          <div class="mini"><b>用户怎么用</b>运行 <code>/memory</code>，查看当前 session 加载的 <code>CLAUDE.md</code>、<code>CLAUDE.local.md</code>、rules 和 auto memory；选中文件打开编辑；切换 auto memory。</div>
+          <div class="mini"><b>什么时候用</b>模型不听规则、怀疑 memory 过期、想知道 auto memory 写了什么、调试 path-scoped rule 触发时。</div>
+        </div>
+        <div class="runtime-flow">
+          <b>运行时发生什么：</b>loader 维护 loaded source registry，记录 source path、scope、加载时机、触发原因、token 估算。<code>/memory</code> 读取这个 registry，而不是重新猜测文件系统。与 InstructionsLoaded hook 配合时，可以把“何时加载、为何加载”写入 debug log。
+        </div>
+        <div class="feature-grid wide">
+          <div class="mini"><b>Axiomate 当前基础</b>已有 memory selector 和 auto-dream 状态的部分 UI，但缺少完整 loaded-source registry 和 reason 字段。</div>
+          <div class="mini"><b>Axiomate 要实现</b><code>/memory</code> 列表分组：instructions、rules、auto memory index、loaded topic files、subagent memory、dream outputs；每项支持 open/edit、copy path、disable/exclude、查看来源。</div>
+          <div class="mini"><b>验收例子</b>用户能在一个屏幕回答：这条规则是启动加载、按路径加载、import 进来、还是根本没加载。</div>
+        </div>
+      </div>
+
+      <div class="feature">
+        <div class="feature-head">
+          <div>
+            <h3>5. <code>/context</code> doctor：上下文为什么满、哪些内容最贵</h3>
+            <p class="muted">这是下一轮 Axiomate 最基础的仪表盘：没有它，rules、memory、tool search、compact 的效果都不可解释。</p>
+          </div>
+          <span class="badge p0">P0</span>
+        </div>
+        <div class="feature-grid wide">
+          <div class="mini"><b>解决什么问题</b>长会话变慢、auto compact 反复触发、MCP 很多、skills 很多、文件读太多时，用户需要知道 token 被谁占了，而不是只看到“context 快满了”。</div>
+          <div class="mini"><b>用户怎么用</b>运行 <code>/context</code>，看 system prompt、memory、rules、skills、MCP tools、conversation、file reads、tool results、attachments 等 bucket 的估算与建议。</div>
+          <div class="mini"><b>什么时候用</b>开始大任务前、compact 前、模型变慢/贵、路由模型 contextWindow 或 maxOutputTokens 配置变化后。</div>
+        </div>
+        <div class="runtime-flow">
+          <b>运行时发生什么：</b>系统用 token counter 或估算器对 system prompt、工具 schema、loaded memory、agent definitions、skill frontmatter、消息历史和工具结果分桶计数。它还结合 route 的 contextWindow / maxOutputTokens 计算有效窗口，并标注哪些 bucket 会在 compact 后重注入、哪些只是历史的一部分。
+        </div>
+        <div class="feature-grid wide">
+          <div class="mini"><b>Axiomate 当前基础</b><code>agent/src/utils/analyzeContext.ts</code> 已能分桶 system/tools/MCP/agents/memory/skills/messages；<code>ContextVisualization.tsx</code> 已有可视化。但 DEV-only 细节多、用户级建议不足、缺 survival/cache/source 语义。</div>
+          <div class="mini"><b>Axiomate 要实现</b>生产级 <code>/context</code>：source provenance、loaded reason、compact survival、cache impact、route limits、top tool results、top file reads、优化建议和 link 到 <code>/memory</code>/<code>/mcp</code>/<code>/skills</code>。</div>
+          <div class="mini"><b>验收例子</b>用户看到“MCP tools deferred saved 38k tokens”“tool result auth.log 占 22k，建议 compact 或 move to file reference”“path rule will reload only after next Read”。</div>
+        </div>
+      </div>
+
+      <div class="feature">
+        <div class="feature-head">
+          <div>
+            <h3>6. Compaction survival map：compact 后哪些内容还在</h3>
+            <p class="muted">Claude 文档已经把 compact survival 明确成用户模型；Axiomate 应该在 compact 前后显示这张地图。</p>
+          </div>
+          <span class="badge p0">P0</span>
+        </div>
+        <div class="feature-grid wide">
+          <div class="mini"><b>解决什么问题</b>用户 compact 后经常以为“规则丢了”或“模型忘了”。真实情况是不同来源的 context 生命周期不同：有些重注入，有些被总结，有些需要下次触发。</div>
+          <div class="mini"><b>用户怎么用</b>在 <code>/context</code> 或 <code>/compact</code> 确认页查看每类 context 的 survival：re-injected、summarized、lazy reload、dropped。</div>
+          <div class="mini"><b>什么时候用</b>长任务切阶段、compact 前、path-scoped rule 依赖较强、准备进入实现/测试新阶段时。</div>
+        </div>
+        <div class="runtime-flow">
+          <b>运行时发生什么：</b><code>/compact</code> 用 summary 替换 conversation history。system prompt 不属于消息历史；project-root instructions、unscoped rules、auto memory 会从磁盘重新注入；path-scoped rules 和 nested instructions 在下次读取匹配文件时再加载；skills 的 body 和 listing 有自己的预算/重注入规则。
+        </div>
+        <div class="feature-grid wide">
+          <div class="mini"><b>Axiomate 当前基础</b>有 compact/autoCompact/session memory compact；但 UI 没把每个 source 的 survival 明确显示给用户。</div>
+          <div class="mini"><b>Axiomate 要实现</b>为 context item 增加生命周期字段：startup、lazy、message、tool-result、hook、skill-invoked、deferred-tool；compact 前后生成 diff。</div>
+          <div class="mini"><b>验收例子</b>compact 前确认页显示：<code>AXIOMATE.md</code> re-injected，<code>.axiomate/rules/tests.md</code> lazy reload，当前 conversation summarized，uninvoked skill listing dropped。</div>
+        </div>
+      </div>
+
+      <div class="feature">
+        <div class="feature-head">
+          <div>
+            <h3>7. Checkpoint targeted summarization：只压缩一段历史</h3>
+            <p class="muted">Claude Code changelog 和 checkpointing 文档新增 <code>Summarize from here</code> / <code>Summarize up to here</code>，比全局 compact 更贴近长会话实际。</p>
+          </div>
+          <span class="badge p0">P0</span>
+        </div>
+        <div class="feature-grid wide">
+          <div class="mini"><b>解决什么问题</b>上下文压力通常来自某一段：早期调研太长、某个失败方向太长、日志太多。全局 compact 会把近期实现细节也压缩掉，代价过大。</div>
+          <div class="mini"><b>用户怎么用</b>打开 <code>/rewind</code> 或 checkpoint 菜单，选择某条用户消息，然后选 <code>Summarize from here</code> 或 <code>Summarize up to here</code>，可附加 summary focus 指令。</div>
+          <div class="mini"><b>什么时候用</b>保留最近代码修改细节但压缩早期调研；丢掉一个 side track；保留开头约束但压缩中间调试日志。</div>
+        </div>
+        <div class="runtime-flow">
+          <b>运行时发生什么：</b>checkpoint 给 transcript 提供锚点。系统把锚点一侧的消息切片送入 summarizer，用 summary message 替换当前 context 中那段历史；原始 JSONL transcript 保留，之后可追溯。文件系统 restore 和 conversation summarize 是不同动作，不应混在一起。
+        </div>
+        <div class="feature-grid wide">
+          <div class="mini"><b>Axiomate 当前基础</b>已有 checkpoints/rewind 与 compact 基础，最近也围绕 checkpoint UI 修过问题；缺的是边界选择、partial summary prompt、summary replacement 和原文索引。</div>
+          <div class="mini"><b>Axiomate 要实现</b>在 rewind 菜单新增两项 summarize；保存 summary metadata：input range、anchor message、focus instruction、source transcript offsets、affected memory/files。</div>
+          <div class="mini"><b>验收例子</b>用户能把“前 80 轮调研”压成一条 summary，同时保留最近 12 轮实现、工具结果和修改细节原样在上下文里。</div>
+        </div>
+      </div>
+
+      <div class="feature">
+        <div class="feature-head">
+          <div>
+            <h3>8. Prompt cache awareness：上下文工程也影响成本和延迟</h3>
+            <p class="muted">Claude 文档把 prompt caching 与 context 管理绑定：模型、effort、MCP/tool schema、compact、upgrade 都可能影响缓存命中。</p>
+          </div>
+          <span class="badge p1">P1</span>
+        </div>
+        <div class="feature-grid wide">
+          <div class="mini"><b>解决什么问题</b>用户看到下一 turn 突然变慢/变贵，往往不知道是换模型、MCP 重连、tool schema 变化、compact 边界还是 effort 变化导致 cache miss。</div>
+          <div class="mini"><b>用户怎么用</b>任务开始固定模型、effort、MCP 和工具权限；用 status line、<code>/usage</code>、<code>/context</code> 查看 cache read/create tokens 和可能 miss 原因。</div>
+          <div class="mini"><b>什么时候用</b>高 token 成本模型、1M context、MCP 工具很多、长期 session、用户频繁切模型/effort 时。</div>
+        </div>
+        <div class="runtime-flow">
+          <b>运行时发生什么：</b>API 以稳定前缀缓存 system/project/conversation 的一部分。只要请求前缀发生影响缓存的变化，下一次就需要重新创建 cache。compact 会改写消息历史，tool search/deferred schemas 会改变工具定义进入 context 的方式。
+        </div>
+        <div class="feature-grid wide">
+          <div class="mini"><b>Axiomate 当前基础</b>usage 中已有 cache_read/cache_creation 字段使用点，toolSearch 也记录 compact boundary carrying；但 UI 还没有把 cache miss 原因作为 context doctor 的一部分。</div>
+          <div class="mini"><b>Axiomate 要实现</b>记录 request shape diff：model、effort、tool list hash、MCP server hash、system prompt hash、compact boundary；<code>/context</code> 给出“下一 turn 是否会 miss”的解释。</div>
+          <div class="mini"><b>验收例子</b>用户切换模型后，<code>/context</code> 显示“model changed from X to Y; cache prefix will be recreated next request”。</div>
+        </div>
+      </div>
+
+      <div class="feature">
+        <div class="feature-head">
+          <div>
+            <h3>9. Deferred tool search：大型 MCP 工具目录不能全塞进 context</h3>
+            <p class="muted">Claude Code 2.1.88 之后多次修复 deferred tools / MCP / resume / compact 交互，说明它已是基础设施而非边缘功能。</p>
+          </div>
+          <span class="badge p1">P1</span>
+        </div>
+        <div class="feature-grid wide">
+          <div class="mini"><b>解决什么问题</b>MCP server 多时，工具名、描述、schema 会占掉大量 context。全量加载会让模型工具选择更差，prompt cache 更容易 miss。</div>
+          <div class="mini"><b>用户怎么用</b>保持默认 auto；或用 <code>ENABLE_TOOL_SEARCH=auto:N</code> 设阈值；对必须常驻的 MCP server 使用 always-load 类配置；小工具集可关闭。</div>
+          <div class="mini"><b>什么时候用</b>工具定义超过窗口 10%、MCP server 动态更新、连接很多 server、provider 支持 tool reference/search 语义时。</div>
+        </div>
+        <div class="runtime-flow">
+          <b>运行时发生什么：</b>启动时只给模型工具摘要或 searchable catalog；当模型需要具体工具时，调用 tool search 返回少量相关工具 definition。compact/resume 后需要携带已发现工具集合，避免工具突然不可用或重新消耗上下文。
+        </div>
+        <div class="feature-grid wide">
+          <div class="mini"><b>Axiomate 当前基础</b><code>agent/src/utils/toolSearch.ts</code> 已有阈值、auto:N、compact boundary carrying 和 provider/model context window 逻辑。</div>
+          <div class="mini"><b>Axiomate 要实现</b>把工具搜索状态放进 <code>/context</code>：loaded/deferred、schema token、server、provider support、search hit、alwaysLoad、compact carried count；并为不支持的 route 降级。</div>
+          <div class="mini"><b>验收例子</b><code>/context</code> 能显示“192 MCP tools deferred, 7 loaded, 54k schema tokens saved; 3 carried from compact boundary”。</div>
+        </div>
+      </div>
+
+      <div class="feature">
+        <div class="feature-head">
+          <div>
+            <h3>10. Subagents context isolation + memory scopes：让调研不污染主窗口</h3>
+            <p class="muted">Claude Code 文档明确 subagent 在独立 context window 中运行，只把 summary 带回主会话；custom subagent 可声明工具、模型、权限、memory、skills。</p>
+          </div>
+          <span class="badge p1">P1</span>
+        </div>
+        <div class="feature-grid wide">
+          <div class="mini"><b>解决什么问题</b>大规模搜索、日志读取、架构探索会把主会话 context 塞满，但主任务真正需要的只是结论。Subagent 把这些读文件成本隔离到子窗口。</div>
+          <div class="mini"><b>用户怎么用</b>让 Explore 做快速 read-only 代码搜索；Plan 模式用 Plan subagent 收集上下文；写 <code>.claude/agents/reviewer.md</code> 定义专用 reviewer/tester/debugger；需要长期经验时给 subagent 配 <code>memory:</code>。</div>
+          <div class="mini"><b>什么时候用</b>调研和实现分离、重复工作流、审查/测试/迁移 agent 需要独立经验、文件读取很多但主会话只需摘要时。</div>
+        </div>
+        <div class="runtime-flow">
+          <b>运行时发生什么：</b>named subagent 使用自己的 system prompt、工具限制和模型配置；它通常不继承主会话历史。Explore/Plan 会跳过 CLAUDE.md 和父 git status 以减少成本；其他 custom subagent 会加载相应 instructions。若声明 memory scope，它加载自己的 memory store，而不是主线程 auto memory。fork subagent 则继承当前上下文，适合需要同样前缀并复用 cache 的分支任务。
+        </div>
+        <div class="feature-grid wide">
+          <div class="mini"><b>Axiomate 当前基础</b>AgentTool、agent memory snapshot、in-process teammate/context isolation、background task UI 已有不少表面，但按 Claude 最新语义仍缺清晰的 built-in Explore/Plan skip policy、memory scopes 和 resume/fork/worktree 解释。</div>
+          <div class="mini"><b>Axiomate 要实现</b>agent definition frontmatter 支持 <code>memory: user|project|local|none</code>、skills、tool allow/deny、model/effort；agent view 显示子上下文 token 和返回 summary 大小；resume 恢复 subagent transcript。</div>
+          <div class="mini"><b>验收例子</b>主会话 <code>/context</code> 只增加 600 token subagent summary，而不是 40k file reads；子任务详情里能看到 file reads 留在 subagent context。</div>
+        </div>
+        <div class="source-note">官方公开仓库的 <code>plugins/feature-dev</code> 提供了 code-explorer、code-architect、code-reviewer 三个 custom agent 定义样例，可作为 Axiomate 插件/agent 文档参考，但不是 Claude Code 内部实现源码。</div>
+      </div>
+
+      <div class="feature">
+        <div class="feature-head">
+          <div>
+            <h3>11. Session / resume / branch：transcript 是 context 资产，不是日志垃圾</h3>
+            <p class="muted">Claude Code 在 2.1.88 之后持续修 resume、large session streaming、background subagent reporting、branch/fork、session picker 搜索。</p>
+          </div>
+          <span class="badge p1">P1</span>
+        </div>
+        <div class="feature-grid wide">
+          <div class="mini"><b>解决什么问题</b>长项目的重要事实常在旧会话里：为什么这么改、哪个测试失败、哪条 PR 是这个 session 创建的。恢复和搜索不可靠时，memory 系统会被迫承担 transcript 应该承担的职责。</div>
+          <div class="mini"><b>用户怎么用</b><code>--continue</code> 恢复当前目录最新 session；<code>/resume</code> 搜索/预览/改名；<code>/branch</code> 或 fork 开新路径；按 worktree、project、branch、PR URL 找回上下文。</div>
+          <div class="mini"><b>什么时候用</b>多任务并行、从旧会话找事实、切 worktree、避免当前会话被两个终端交错写入、需要审计 dream 输入 sessions 时。</div>
+        </div>
+        <div class="runtime-flow">
+          <b>运行时发生什么：</b>session JSONL 是 append-only transcript；resume 会根据 metadata/index 加载消息链，compact 后对模型可见的是 summary 而非全量原文，但原始 entries 仍应保留。subagent transcript 可能在 subpath 下，branch/fork 需要重写 session id 和 message ids，不能只复制文件。
+        </div>
+        <div class="feature-grid wide">
+          <div class="mini"><b>Axiomate 当前基础</b>已有 sessionStorage、transcript search/resume、checkpoint/branch 相关功能，但用户之前已经暴露过搜索/fuzzy/CJK/large transcript 类问题。</div>
+          <div class="mini"><b>Axiomate 要实现</b>large JSONL streaming、CJK/fuzzy fallback、all-worktrees/all-projects/branch filter、session health doctor、subagent transcript index、dream session selector。</div>
+          <div class="mini"><b>验收例子</b>dream selector 能列出“自上次 dream 后触达 memory 的 12 个 sessions”，每个有 branch、mtime、touched memory files、token/size 和选择理由。</div>
+        </div>
+      </div>
+
+      <div class="feature">
+        <div class="feature-head">
+          <div>
+            <h3>12. Large-codebase context scoping：把“读多少代码”变成可控系统</h3>
+            <p class="muted">Claude 的公开文档方向是用 per-directory instructions、rules、deny、code intelligence、sparse worktree、add-dir 和 skills 控制上下文。</p>
+          </div>
+          <span class="badge p1">P1</span>
+        </div>
+        <div class="feature-grid wide">
+          <div class="mini"><b>解决什么问题</b>大型仓库里模型最常见的问题不是不会写代码，而是读错目录、读太多 generated/vendor、反复读同一类文件，把 context 用在低价值内容上。</div>
+          <div class="mini"><b>用户怎么用</b>把模块规则放在模块目录或 path rules；禁止 generated/vendor；用 <code>--add-dir</code> 只加必要外部目录；把任务型参考放 skill，避免启动全量加载。</div>
+          <div class="mini"><b>什么时候用</b>monorepo、generated code、跨 repo config、大量供应商代码、模型经常误入无关目录时。</div>
+        </div>
+        <div class="runtime-flow">
+          <b>运行时发生什么：</b>file access policy、glob deny、path-scoped instruction loader 和 code intelligence 一起决定模型能读什么、何时加载说明、如何减少读文件 token。<code>/context</code> 应能显示 top file-read buckets，帮助用户把常用说明从历史移动到 rules/skills/memory。
+        </div>
+        <div class="feature-grid wide">
+          <div class="mini"><b>Axiomate 当前基础</b>有文件工具、权限系统、context analysis 和部分 LSP/code map 表面；缺少统一的大仓库 context policy 说明和 UI。</div>
+          <div class="mini"><b>Axiomate 要实现</b>read reason logging、deny/allow glob 可视化、per-directory memory/rules、large file partial view 策略、generated/vendor 提示和 context doctor 建议。</div>
+          <div class="mini"><b>验收例子</b><code>/context</code> 指出“vendor/generated file reads 18k tokens，建议 deny 或 move summary to skill”。</div>
+        </div>
+      </div>
+
+      <div class="feature">
+        <div class="feature-head">
+          <div>
+            <h3>13. Hooks as context producers：hook 输出必须有预算和来源</h3>
+            <p class="muted">Claude context-window 文档明确：hook 的 <code>hookSpecificOutput.additionalContext</code> 会进入 Claude context，plain stdout 不会。</p>
+          </div>
+          <span class="badge p1">P1</span>
+        </div>
+        <div class="feature-grid wide">
+          <div class="mini"><b>解决什么问题</b>hook 很容易变成看不见的 token 漏洞：formatter/test/lint 输出一大段，用户界面只看到简短提示，但模型上下文里被塞入大量文本。</div>
+          <div class="mini"><b>用户怎么用</b>在 PostToolUse、SessionStart、PreCompact、InstructionsLoaded 等 hook 中只输出必要事实；把详细日志写文件或 debug log，给模型的 additionalContext 保持短。</div>
+          <div class="mini"><b>什么时候用</b>工具执行后要告诉模型环境变化、测试失败摘要、session start 设 title/reload skills、compact 前记录状态、调试 instruction load。</div>
+        </div>
+        <div class="runtime-flow">
+          <b>运行时发生什么：</b>hook runner 解析 JSON 输出；<code>additionalContext</code> 被添加到模型可见上下文；exit code 2 的 stderr 可能作为错误反馈进入流程；plain stdout exit 0 只进 debug log。没有 token cap 时，hook 可以静默放大 context。
+        </div>
+        <div class="feature-grid wide">
+          <div class="mini"><b>Axiomate 当前基础</b>已有 hooks 和 debug log 表面，但 context analysis 没把 hook additionalContext 单独作为来源和预算展示。</div>
+          <div class="mini"><b>Axiomate 要实现</b>hook output token cap、origin/source display、debug log link、per-hook budget、security/trust gate、<code>/context</code> hook bucket、<code>/hooks</code> 显示最近输出大小。</div>
+          <div class="mini"><b>验收例子</b>一个 PostToolUse hook 输出 8k additionalContext 时，Axiomate 提醒“hook exceeded recommended budget; only first N tokens sent; full output saved to debug log”。</div>
+        </div>
+      </div>
+
+      <div class="feature">
+        <div class="feature-head">
+          <div>
+            <h3>14. Dream / memory consolidation：长期记忆的离线整理与晋升系统</h3>
+            <p class="muted">Dream 不是普通 summary，也不是 RAG。官方 Managed Agents dreams 是异步 job：读取 input memory store 和 1-100 个 sessions，产出独立 output memory store。</p>
+          </div>
+          <span class="badge p0">P0</span>
+        </div>
+        <div class="feature-grid wide">
+          <div class="mini"><b>解决什么问题</b>auto memory 长期运行后会出现重复、矛盾、过期、索引膨胀、topic files 像日志 dump。Dream 的任务是把多次会话中的信号整理成更少、更准、更可读的长期 memory。</div>
+          <div class="mini"><b>用户怎么用</b>选择 input memory store / 本地 memory 目录，选择 1-100 个 sessions，指定 model 和 instructions，运行 dream；完成后 review output store/diff/report，再 promote、attach、archive 或 discard。</div>
+          <div class="mini"><b>什么时候用</b><code>MEMORY.md</code> 接近 200 行/25KB，topic files 重复，旧事实被新代码推翻，用户反复纠正同类问题，多个 agent/session 产生同类经验时。</div>
+        </div>
+        <div class="runtime-flow">
+          <b>官方运行时语义：</b>dream 创建后状态为 <code>pending</code>，运行时变 <code>running</code> 并产生 output memory store；底层 <code>session_id</code> 可用于 stream events 观察它读写什么；终态包括 <code>completed</code>、<code>failed</code>、<code>canceled</code>。input store 永不原地修改；失败/取消时 output store 保留已写的部分内容。usage 记录 token，成本随 sessions 数量和长度大致线性增长。
+        </div>
+        <div class="feature-grid wide">
+          <div class="mini"><b>Axiomate 当前基础</b><code>autoDream.ts</code> 有 24h/5 sessions gate、lock、forked agent、read-only-ish 约束、progress watcher、cache usage log；<code>consolidationPrompt.ts</code> 已有 Orient/Gather/Consolidate/Prune 四阶段；<code>DreamTask.ts</code> 有后台任务 UI。</div>
+          <div class="mini"><b>Axiomate 要实现</b>把 autoDream 从“后台直接改 live memory”升级为非破坏式 pipeline：input manifest、候选 output store、diff/report、audit.jsonl、manual review/promote/discard、rollback/redact、usage/cost、partial output inspect。</div>
+          <div class="mini"><b>验收例子</b><code>/dream run --since last</code> 生成 <code>memory/.dreams/&lt;id&gt;/output/</code> 和 report；用户运行 <code>/dream review &lt;id&gt;</code> 看新增/删除/合并/矛盾修复原因，确认后才替换 live memory。</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="section-title">
+        <div>
+          <div class="kicker">Detailed Targets</div>
+          <h2>每项 Claude 能力的具体目标参考</h2>
+        </div>
+      </div>
+
+      <div class="feature">
+        <div class="feature-head">
+          <div>
+            <h3>1. <code>.claude/rules/</code> 与按路径懒加载规则</h3>
+            <p class="muted">这是比单个 <code>CLAUDE.md</code> 更细的 instruction scoping 系统。</p>
+          </div>
+          <span class="badge p0">P0</span>
+        </div>
+        <div class="feature-grid">
+          <div class="mini"><b>是什么</b>规则文件放在 <code>.claude/rules/</code>，递归扫描；无 <code>paths</code> 的规则启动加载，有 <code>paths</code> 的规则在 Claude 读取匹配文件时加载。</div>
+          <div class="mini"><b>怎么用</b><code>testing.md</code>、<code>frontend/react.md</code>、<code>api.md</code> 拆分规则；在 YAML frontmatter 写 glob，例如 <code>src/api/**/*.ts</code>。</div>
+          <div class="mini"><b>什么时候用</b><code>CLAUDE.md</code> 太大、规则只对某类文件有效、monorepo 团队规则冲突、想降低启动 context。</div>
+          <div class="mini"><b>Axiomate 依赖</b>规则 loader、glob matcher、read-trigger、loaded-source registry、<code>/memory</code> 和 <code>/context</code> 可视化。</div>
+        </div>
+      </div>
+
+      <div class="feature">
+        <div class="feature-head">
+          <div>
+            <h3>2. <code>CLAUDE.md</code> 层级、local 文件、imports、excludes</h3>
+            <p class="muted">这是组织策略、团队规范、个人偏好和子目录规范的治理层。</p>
+          </div>
+          <span class="badge p0">P0</span>
+        </div>
+        <div class="feature-grid">
+          <div class="mini"><b>是什么</b>managed policy、user <code>~/.claude/CLAUDE.md</code>、project <code>./CLAUDE.md</code> / <code>./.claude/CLAUDE.md</code>、local <code>CLAUDE.local.md</code>、subdirectory lazy loading。</div>
+          <div class="mini"><b>怎么用</b>共享规范提交到项目；个人本地笔记写 local；用 <code>@path</code> import 共享说明；用 <code>claudeMdExcludes</code> 排除不相关祖先文件。</div>
+          <div class="mini"><b>什么时候用</b>多个 worktree、monorepo、企业策略、个人测试 URL、跨目录共享规范。</div>
+          <div class="mini"><b>Axiomate 依赖</b>settings precedence、import resolver、max import depth、trust gate、exclude glob、source/debug list。</div>
+        </div>
+      </div>
+
+      <div class="feature">
+        <div class="feature-head">
+          <div>
+            <h3>3. Auto memory 的产品化边界</h3>
+            <p class="muted">Claude 最新文档把 auto memory 从“内部机制”变成了用户可理解的文件系统。</p>
+          </div>
+          <span class="badge p0">P0</span>
+        </div>
+        <div class="feature-grid">
+          <div class="mini"><b>是什么</b>auto memory 默认开启；每个项目一个 <code>~/.claude/projects/&lt;project&gt;/memory/</code>；<code>MEMORY.md</code> 是 index；topic files 按需读取。</div>
+          <div class="mini"><b>怎么用</b>直接说“remember ...”；用 <code>/memory</code> 打开 memory folder；用 <code>autoMemoryEnabled</code> 或 env 关闭；用 <code>autoMemoryDirectory</code> 改目录。</div>
+          <div class="mini"><b>什么时候用</b>跨 session 的项目事实、调试经验、测试环境、本地 workflow、长期重复约束。</div>
+          <div class="mini"><b>Axiomate 依赖</b>200 lines / 25KB startup limit、topic split、trust-aware custom directory、write audit、plain markdown editing。</div>
+        </div>
+      </div>
+
+      <div class="feature">
+        <div class="feature-head">
+          <div>
+            <h3>4. <code>/memory</code> 不只是编辑器入口，而是 loaded-source audit</h3>
+            <p class="muted">用户必须能证明“Claude 看到了哪些规则和 memory”。</p>
+          </div>
+          <span class="badge p0">P0</span>
+        </div>
+        <div class="feature-grid">
+          <div class="mini"><b>是什么</b><code>/memory</code> 列出当前 session 加载的 CLAUDE.md / local / rules，提供 auto memory toggle 和 memory folder opener。</div>
+          <div class="mini"><b>怎么用</b>模型不听规则时先运行 <code>/memory</code>，确认文件是否加载；选中文件直接打开。</div>
+          <div class="mini"><b>什么时候用</b>规则缺失、规则冲突、auto memory 写入未知、memory 需要删改时。</div>
+          <div class="mini"><b>Axiomate 依赖</b>loaded source registry、scope/source/reason 字段、editor integration、settings writer。</div>
+        </div>
+      </div>
+
+      <div class="feature">
+        <div class="feature-head">
+          <div>
+            <h3>5. <code>/context</code> command / context doctor</h3>
+            <p class="muted">这是 Axiomate 下一轮最核心的基础设施，不只是漂亮图表。</p>
+          </div>
+          <span class="badge p0">P0</span>
+        </div>
+        <div class="feature-grid">
+          <div class="mini"><b>是什么</b>实时按 bucket 展示 system prompt、project context、auto memory、rules、skills、MCP、conversation、file reads、tool results 的 token 占用。</div>
+          <div class="mini"><b>怎么用</b>运行 <code>/context</code>，看哪些 bucket 最大、哪些会在 compact 后重注入、哪些可移动到 rules/skills/topic files。</div>
+          <div class="mini"><b>什么时候用</b>上下文满、模型变慢、auto compact 反复触发、MCP 工具很多、用户不理解 token 消耗时。</div>
+          <div class="mini"><b>Axiomate 依赖</b><code>analyzeContext</code>、token estimator、source provenance、route model context limits、optimization suggestions。</div>
+        </div>
+      </div>
+
+      <div class="feature">
+        <div class="feature-head">
+          <div>
+            <h3>6. Compact 后什么会留下，什么会丢</h3>
+            <p class="muted">Claude 文档已经把 compaction survival 写成用户模型，Axiomate 需要同样明确。</p>
+          </div>
+          <span class="badge p0">P0</span>
+        </div>
+        <div class="feature-grid">
+          <div class="mini"><b>是什么</b>system prompt 不属于 message history；root CLAUDE.md / unscoped rules / auto memory 会从磁盘重注入；path-scoped rules 和 nested CLAUDE.md 要等匹配文件再次被读。</div>
+          <div class="mini"><b>怎么用</b>在任务边界运行 <code>/compact</code>；必要时把必须持久生效的规则从 path-scoped 移到 root 或 unscoped。</div>
+          <div class="mini"><b>什么时候用</b>长任务切阶段、需要释放上下文、或 compact 后规则似乎消失。</div>
+          <div class="mini"><b>Axiomate 依赖</b>startup loader、lazy reload、skill invocation tracker、compact summary metadata、survival UI。</div>
+        </div>
+      </div>
+
+      <div class="feature">
+        <div class="feature-head">
+          <div>
+            <h3>7. Checkpoint targeted summarization</h3>
+            <p class="muted">这比全局 <code>/compact</code> 更接近用户实际长会话需求。</p>
+          </div>
+          <span class="badge p0">P0</span>
+        </div>
+        <div class="feature-grid">
+          <div class="mini"><b>是什么</b>在 rewind/checkpoint 菜单里选择 <code>Summarize from here</code> 或 <code>Summarize up to here</code>，只压缩一侧历史。</div>
+          <div class="mini"><b>怎么用</b>压缩早期调研但保留最近实现；或压缩某个 side path 之后的内容，回到主线。</div>
+          <div class="mini"><b>什么时候用</b>上下文压力来自某段历史，而不是整个会话都需要总结。</div>
+          <div class="mini"><b>Axiomate 依赖</b>checkpoint anchors、message slicing、summary replacement、transcript retention、optional focus instructions。</div>
+        </div>
+      </div>
+
+      <div class="feature">
+        <div class="feature-head">
+          <div>
+            <h3>8. Prompt cache awareness</h3>
+            <p class="muted">Context 工程和成本/延迟工程在 Claude Code 主线里已经绑定。</p>
+          </div>
+          <span class="badge p1">P1</span>
+        </div>
+        <div class="feature-grid">
+          <div class="mini"><b>是什么</b>system prompt、project context、conversation 三层 prefix；模型/effort/MCP/tool deny/compact/upgrade 会触发 cache miss。</div>
+          <div class="mini"><b>怎么用</b>任务开始先定模型和 MCP；中途尽量不要改 effort；看 <code>cache_read_input_tokens</code> / <code>cache_creation_input_tokens</code>。</div>
+          <div class="mini"><b>什么时候用</b>用户抱怨下一 turn 突然慢、费用升高、MCP reconnect 后或 compact 后。</div>
+          <div class="mini"><b>Axiomate 依赖</b>usage telemetry、request shape diff、tool schema stability、provider cache support detection。</div>
+        </div>
+      </div>
+
+      <div class="feature">
+        <div class="feature-head">
+          <div>
+            <h3>9. Tool search / deferred MCP schemas</h3>
+            <p class="muted">这是 MCP 和大型工具目录下的 context 控制基础。</p>
+          </div>
+          <span class="badge p1">P1</span>
+        </div>
+        <div class="feature-grid">
+          <div class="mini"><b>是什么</b>工具 full definitions 不全部进 context；模型先看到摘要，需要时搜索 catalog，加载 3-5 个相关工具。</div>
+          <div class="mini"><b>怎么用</b>默认开启；用 <code>ENABLE_TOOL_SEARCH=auto</code>/<code>auto:N</code>/<code>false</code> 控制。</div>
+          <div class="mini"><b>什么时候用</b>工具定义超过窗口 10%、工具多到选择变差、MCP server 数量增长。</div>
+          <div class="mini"><b>Axiomate 依赖</b><code>utils/toolSearch.ts</code>、tool catalog、route/provider support、compact 后 discovery state、diagnostics。</div>
+        </div>
+      </div>
+
+      <div class="feature">
+        <div class="feature-head">
+          <div>
+            <h3>10. Subagents 作为 context isolation 与 persistent memory scopes</h3>
+            <p class="muted">这不是单纯“多 agent”，而是防止主会话被调研结果污染。</p>
+          </div>
+          <span class="badge p1">P1</span>
+        </div>
+        <div class="feature-grid">
+          <div class="mini"><b>是什么</b>subagent 在独立 context window 里工作，只把 final summary 带回主会话；custom subagent 支持 <code>memory: user|project|local</code>。</div>
+          <div class="mini"><b>怎么用</b>用 Explore 做快速 read-only 搜索；Plan 在计划阶段收集上下文；自定义 reviewer/tester/migration agent 并给独立 memory。</div>
+          <div class="mini"><b>什么时候用</b>调研会产生大量文件读、日志、搜索结果；重复工作流需要独立长期经验。</div>
+          <div class="mini"><b>Axiomate 依赖</b>agent definition frontmatter、agent memory directory、skip policy、resume subagent、fork/cache/worktree isolation。</div>
+        </div>
+      </div>
+
+      <div class="feature">
+        <div class="feature-head">
+          <div>
+            <h3>11. Sessions / resume / branch 作为 context 资产</h3>
+            <p class="muted">transcript 不是日志垃圾，而是可搜索、可分叉、可恢复的 context store。</p>
+          </div>
+          <span class="badge p1">P1</span>
+        </div>
+        <div class="feature-grid">
+          <div class="mini"><b>是什么</b><code>/resume</code> picker 支持 worktree、all projects、branch filter、search、preview、rename；<code>/branch</code> 复制会话路径。</div>
+          <div class="mini"><b>怎么用</b><code>--continue</code> 恢复当前目录最新会话；<code>/resume</code> 切换；<code>/branch</code> 试验另一条路径。</div>
+          <div class="mini"><b>什么时候用</b>多任务、多 worktree、从旧会话找上下文、分叉试验实现方案。</div>
+          <div class="mini"><b>Axiomate 依赖</b>JSONL transcript streaming、metadata index、CJK/fuzzy fallback、worktree resolver、session collision guard。</div>
+        </div>
+      </div>
+
+      <div class="feature">
+        <div class="feature-head">
+          <div>
+            <h3>12. Large codebase scoping</h3>
+            <p class="muted">Claude 的方向是把“读多少代码”变成可控系统，而不是让模型随便扫。</p>
+          </div>
+          <span class="badge p1">P1</span>
+        </div>
+        <div class="feature-grid">
+          <div class="mini"><b>是什么</b>per-directory CLAUDE.md、rules、read deny、code intelligence、sparse worktree、<code>--add-dir</code> 和 per-directory skills 共同限流。</div>
+          <div class="mini"><b>怎么用</b>把模块规则放到模块目录；禁止 generated/vendor；只 add 需要的外部目录；用 skill 承载任务型参考。</div>
+          <div class="mini"><b>什么时候用</b>monorepo 或大型生成代码仓库中，模型经常读错目录、读太多、读重复。</div>
+          <div class="mini"><b>Axiomate 依赖</b>glob/policy deny、read reason logging、LSP/code map、context doctor 的 file-read bucket。</div>
+        </div>
+      </div>
+
+      <div class="feature">
+        <div class="feature-head">
+          <div>
+            <h3>13. Hooks 作为 context producer，需要预算和审计</h3>
+            <p class="muted">Hook 输出进入 context 的路径必须显式化，否则会成为不可见 token 泄漏。</p>
+          </div>
+          <span class="badge p1">P1</span>
+        </div>
+        <div class="feature-grid">
+          <div class="mini"><b>是什么</b>hook JSON 的 <code>hookSpecificOutput.additionalContext</code> 进入 Claude context；plain stdout exit 0 只进 debug log。</div>
+          <div class="mini"><b>怎么用</b>只把必要事实作为 additionalContext 输出，例如 formatter 结果、test failure 摘要、InstructionsLoaded 调试信息。</div>
+          <div class="mini"><b>什么时候用</b>tool 后需要告诉模型环境变化、session start 需要 reload skills/title、pre-compact 需要记录边界信息。</div>
+          <div class="mini"><b>Axiomate 依赖</b>hook parser、additionalContext token cap、source attribution、debug log link、security/trust gate。</div>
+        </div>
+      </div>
+
+      <div class="feature">
+        <div class="feature-head">
+          <div>
+            <h3>14. Dream / memory consolidation 是独立重点</h3>
+            <p class="muted">Dream 不是普通 summary，也不是 RAG 检索；它是长期 memory 的离线整理、冲突修复和可审计晋升机制。</p>
+          </div>
+          <span class="badge p0">P0</span>
+        </div>
+        <div class="feature-grid">
+          <div class="mini"><b>是什么</b>官方 Managed Agents dreams 是异步 job：读取现有 memory store 和 1-100 个 session transcripts，生成独立 output memory store，合并重复、替换矛盾/过期项、提炼新模式。</div>
+          <div class="mini"><b>怎么用</b>指定 input store、sessions、model 和 instructions；跟踪 pending/running/completed/failed/canceled；完成后 review output store，再 attach、archive 或 discard。</div>
+          <div class="mini"><b>什么时候用</b>memory index 膨胀、topic files 重复、旧事实被新代码推翻、用户纠正反复出现、多个 agent/session 暴露同一类经验时。</div>
+          <div class="mini"><b>Axiomate 依赖</b>非破坏式 output store、session batch selector、diff/report、memory version/audit、manual promote、rollback/redact、usage/cost 显示。</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="section-title">
+        <div>
+          <div class="kicker">Dream Deep Dive</div>
+          <h2>Dream 不是附属功能，而是 memory 系统的整理层</h2>
+        </div>
+      </div>
+
+      <div class="callout info">
+        <b>官方语义：</b>
+        Claude Managed Agents 的 dream 是 research preview。它读取一个既有 memory store 和 1 到 100 个历史 sessions，异步运行整理管线，并产出一个新的 output memory store。input store 不被原地修改，因此开发者可以先 review，再决定是否用新 store 替换旧 store、并行 attach，或直接丢弃。
+      </div>
+      <div class="callout warn" style="margin-top: 12px;">
+        <b>Axiomate 语义转换：</b>
+        Axiomate 不需要照搬云端 Managed Agents API，但应该照搬 dream 的产品边界：输入不可变、输出独立、运行可观察、失败可检查、晋升需要 review。也就是说，本地实现仍然是 markdown/filesystem store，但状态机和审计方式要接近官方 dream。
+      </div>
+
+      <div class="grid-3" style="margin-top: 16px;">
+        <div class="subcard">
+          <h3>Dream 解决的问题</h3>
+          <ul>
+            <li><b>重复：</b>同一事实在多个 topic files 或多次 session 中被反复写入。</li>
+            <li><b>矛盾：</b>旧调试结论、旧路径、旧命令被新代码或新配置推翻。</li>
+            <li><b>过期：</b>相对日期、临时 workaround、一次性失败原因在后续 session 中不再成立。</li>
+            <li><b>信号稀释：</b><code>MEMORY.md</code> 变成长列表，topic files 变成日志 dump。</li>
+            <li><b>跨 session 模式：</b>单次 session 看不出来的用户偏好、项目惯例、常见错误，需要从一批 transcript 里提炼。</li>
+          </ul>
+        </div>
+        <div class="subcard">
+          <h3>官方管线要点</h3>
+          <ul>
+            <li>输入：一个 pre-existing memory store，加 1-100 个 sessions。</li>
+            <li>输出：另一个 memory store，独立于 input。</li>
+            <li>状态：<code>pending</code>、<code>running</code>、<code>completed</code>、<code>failed</code>、<code>canceled</code>。</li>
+            <li>可观察：running 后有底层 <code>session_id</code>，可以 stream events 看它读写了什么。</li>
+            <li>失败/取消：partial output store 会保留，供检查后清理。</li>
+          </ul>
+        </div>
+        <div class="subcard">
+          <h3>Axiomate 当前基础</h3>
+          <ul>
+            <li><code>agent/src/services/autoDream/autoDream.ts</code> 已有后台触发、lock、progress watcher、cache usage log。</li>
+            <li><code>consolidationPrompt.ts</code> 已有四阶段：Orient、Gather recent signal、Consolidate、Prune and index。</li>
+            <li><code>DreamTask.ts</code> 和 background task dialog 已能展示 dream task、turns、files touched、kill。</li>
+            <li><code>/memory</code> UI 已有 Auto-dream toggle 和 last ran/running 状态。</li>
+            <li>这说明 Axiomate 不是从零开始；缺的是官方 dream 的产品化边界。</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="section-title" style="margin-top: 22px;">
+        <div>
+          <div class="kicker">Concrete Dream Flow</div>
+          <h2>Dream 对用户来说应该长什么样</h2>
+        </div>
+      </div>
+      <div class="grid-2">
+        <div class="subcard">
+          <h3>手动运行示例</h3>
+          <ul>
+            <li><code>/dream run --since last</code>：从上次 dream 之后的 sessions 里选择候选输入。</li>
+            <li><code>/dream run --sessions 20 --focus "coding style and repeated test failures"</code>：限制批次和整理重点。</li>
+            <li><code>/dream status</code>：显示 pending/running/completed/failed/canceled、session 数、读写文件数、usage、wall time。</li>
+            <li><code>/dream review &lt;id&gt;</code>：打开候选 output store 的 report 和 diff。</li>
+            <li><code>/dream promote &lt;id&gt;</code>：确认后替换 live memory，并保留 rollback snapshot。</li>
+            <li><code>/dream discard &lt;id&gt;</code> / <code>/dream archive &lt;id&gt;</code>：丢弃或归档候选结果。</li>
+          </ul>
+        </div>
+        <div class="subcard">
+          <h3>Review 页面必须回答的问题</h3>
+          <ul>
+            <li>这次 dream 读了哪些 sessions，为什么选它们。</li>
+            <li>新增了哪些 memory，来自哪些 transcript 证据。</li>
+            <li>合并了哪些重复条目，保留了哪个版本。</li>
+            <li>删除或替换了哪些 stale/contradicted facts，依据是什么。</li>
+            <li>有没有 secret-like、untrusted-source、tool-output-derived 内容。</li>
+            <li>promote 后 <code>MEMORY.md</code> 启动 token 会增加还是减少。</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="section-title" style="margin-top: 22px;">
+        <div>
+          <div class="kicker">Missing Layers</div>
+          <h2>Axiomate autoDream 目前缺的关键层</h2>
+        </div>
+      </div>
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>缺口</th>
+              <th>为什么重要</th>
+              <th>Claude / Managed Agents 参考语义</th>
+              <th>Axiomate 应该怎么补</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><b>非破坏式 output store</b></td>
+              <td>当前 dream 如果直接改 live memory，错误整理会污染之后所有 session；用户很难知道哪些事实被悄悄改掉。</td>
+              <td>官方 dream 永不改 input store，而是生成独立 output memory store。</td>
+              <td>本地创建 <code>memory/.dreams/&lt;dream-id&gt;/output/</code> 或 sibling store；所有整理先写候选目录，不直接覆盖 live memory。</td>
+            </tr>
+            <tr>
+              <td><b>Review / promote / discard</b></td>
+              <td>Dream 的价值在整理，但风险在误删、误合并、误判断 contradiction；必须有人类可审计入口。</td>
+              <td>官方建议 review output store 后 attach 或 discard。</td>
+              <td>新增 <code>/dream review</code>：展示文件级 diff、index diff、删除/合并/新增原因；支持 promote、archive、discard。</td>
+            </tr>
+            <tr>
+              <td><b>Memory version/audit</b></td>
+              <td>长期 memory 最危险的是不可追溯：谁写的、来自哪个 session、为什么改、能否回滚。</td>
+              <td>Managed Agents memory 每次 mutation 都有 immutable memory version，可审计和 point-in-time recovery。</td>
+              <td>为 markdown store 增加 <code>.memory-versions/</code> 或 manifest：session id、agent id、source transcript、operation、old/new sha、timestamp、reason。</td>
+            </tr>
+            <tr>
+              <td><b>Session batch selection</b></td>
+              <td>梦到什么取决于读了哪些 transcript。全量扫会贵、慢、噪音大；扫少了又看不出跨 session 模式。</td>
+              <td>官方 dream 显式接收 1-100 个 sessions。</td>
+              <td>按 last dream timestamp、touched memory files、goal tags、project branch、error keywords 选 session batch，并在 report 中列出选择理由。</td>
+            </tr>
+            <tr>
+              <td><b>Partial output preservation</b></td>
+              <td>长 dream 失败不应只留下“失败”；部分输出可能包含有价值发现，也可能暴露 bug。</td>
+              <td>官方 failed/canceled 会保留 output store 的已写内容。</td>
+              <td>失败时保留 <code>.dreams/&lt;id&gt;/output/</code>、transcript、usage、last phase、错误类型；UI 提供 inspect / delete。</td>
+            </tr>
+            <tr>
+              <td><b>Cost / cache / token accounting</b></td>
+              <td>Dream 是后台任务，用户更需要知道它为什么跑、读了多少、花了多少、是否值得。</td>
+              <td>官方 dream resource 有 usage；成本随 sessions 数量和长度近似线性增长。</td>
+              <td>Dream report 显示 input tokens、cache read/create、output tokens、读取文件数、session 数、wall time、是否命中节流。</td>
+            </tr>
+            <tr>
+              <td><b>Safety and trust</b></td>
+              <td>如果 transcript 里有 prompt injection 或 untrusted web/tool output，dream 可能把恶意内容升级成长期 memory。</td>
+              <td>Managed Agents memory 支持 read_only/read_write store，并提醒 untrusted input 可污染 writable memory。</td>
+              <td>对候选 memory 打标签：untrusted-source、user-confirmed、tool-output-derived、secret-like、policy-sensitive；promote 前提醒。</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="section-title" style="margin-top: 22px;">
+        <div>
+          <div class="kicker">Recommended Local Design</div>
+          <h2>Axiomate 本地 dream 设计建议</h2>
+        </div>
+      </div>
+      <div class="grid-2">
+        <div class="subcard">
+          <h3>目录与数据模型</h3>
+          <ul>
+            <li><code>memory/</code>：当前 live store，仍是 markdown，不引入默认 RAG。</li>
+            <li><code>memory/.dreams/&lt;dream-id&gt;/input-manifest.json</code>：记录 input store sha、sessions、instructions、model、trigger。</li>
+            <li><code>memory/.dreams/&lt;dream-id&gt;/output/</code>：候选整理后的完整 store。</li>
+            <li><code>memory/.dreams/&lt;dream-id&gt;/report.md</code>：新增/修改/删除/合并/矛盾修复列表。</li>
+            <li><code>memory/.dreams/&lt;dream-id&gt;/audit.jsonl</code>：每个文件操作的 old sha、new sha、source transcript、reason。</li>
+          </ul>
+        </div>
+        <div class="subcard">
+          <h3>运行流程</h3>
+          <ul>
+            <li><b>Plan：</b>选择 session batch，读取 <code>MEMORY.md</code> 与 topic files，生成 dream plan。</li>
+            <li><b>Consolidate：</b>写入 output store，而不是 live store。</li>
+            <li><b>Validate：</b>检查 index 行数/大小、死链、重复标题、过长 topic、矛盾标记、secret-like 内容。</li>
+            <li><b>Report：</b>生成 human-readable diff 和 machine-readable audit。</li>
+            <li><b>Promote：</b>用户确认后原子替换 live store，并保留 rollback snapshot。</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="grid-3" style="margin-top: 14px;">
+        <div class="subcard">
+          <h3>候选 report 字段</h3>
+          <ul>
+            <li><code>summary</code>：这次整理的总判断。</li>
+            <li><code>inputs</code>：memory root、base sha、session ids、选择理由。</li>
+            <li><code>changes</code>：added/modified/deleted/merged/replaced。</li>
+            <li><code>evidence</code>：每项改动引用 transcript id 和 message/time。</li>
+            <li><code>risk</code>：secret-like、untrusted、low-confidence。</li>
+            <li><code>context_effect</code>：启动 index token 增减、topic files 数量变化。</li>
+          </ul>
+        </div>
+        <div class="subcard">
+          <h3>失败/取消处理</h3>
+          <ul>
+            <li>失败不回滚 live memory，因为 live memory 根本不应被写。</li>
+            <li>保留 output store、partial report、usage、错误类型和最后阶段。</li>
+            <li>用户可以 inspect partial output，再决定 delete/archive。</li>
+            <li>如果输入 session 或 memory 在运行中消失，dream 标记 failed，report 说明 unavailable input。</li>
+            <li>取消 running dream 后进入 canceled，已写 output 保留供检查。</li>
+          </ul>
+        </div>
+        <div class="subcard">
+          <h3>自动调度边界</h3>
+          <ul>
+            <li>Auto-dream 只能创建候选 output store，不能直接 promote。</li>
+            <li>默认按时间 + session 数 gate 触发，继续保留用户可关闭开关。</li>
+            <li>触发原因要写进 report：超过阈值、memory 太大、重复度高、上次 dream 后 session 数达到阈值。</li>
+            <li>高风险结果只提示 review，不自动晋升。</li>
+            <li>后台任务必须显示 usage，避免用户不知道后台花费。</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="grid-3" style="margin-top: 14px;">
+        <div class="subcard">
+          <h3><code>/dream</code> 命令面</h3>
+          <ul>
+            <li><code>/dream run [--since last|7d|N sessions]</code></li>
+            <li><code>/dream status</code></li>
+            <li><code>/dream review &lt;id&gt;</code></li>
+            <li><code>/dream promote &lt;id&gt;</code></li>
+            <li><code>/dream discard &lt;id&gt;</code></li>
+            <li><code>/dream archive &lt;id&gt;</code></li>
+          </ul>
+        </div>
+        <div class="subcard">
+          <h3><code>/memory</code> 集成</h3>
+          <ul>
+            <li>Auto-dream toggle 保留。</li>
+            <li>显示 last dream、running dream、pending review 数量。</li>
+            <li>Memory file selector 增加 “open latest dream report”。</li>
+            <li>当 <code>MEMORY.md</code> 超过阈值时提示运行 dream。</li>
+          </ul>
+        </div>
+        <div class="subcard">
+          <h3><code>/context</code> 集成</h3>
+          <ul>
+            <li>显示 dream 是否会读取 transcripts。</li>
+            <li>显示 memory index 是否过大、topic 是否过碎。</li>
+            <li>显示哪些 memory 是 dream 产物。</li>
+            <li>显示 promoted dream 对 context startup token 的影响。</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="callout warn" style="margin-top: 16px;">
+        <b>优先级修正：</b>
+        Dream 不应排到 P2。正确顺序是：<code>/memory</code> audit、memory version/audit、dream 非破坏式 output store、dream review/promote/discard 同属 P0；自动调度、复杂评分、跨 agent shared dream 可以放到 P1/P2。
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="section-title">
+        <div>
+          <div class="kicker">Changelog Signals</div>
+          <h2>2.1.88 之后与 context/memory 直接相关的更新信号</h2>
+        </div>
+      </div>
+      <div class="timeline">
+        <div class="timeline-item">
+          <div><span class="version">2.1.89</span></div>
+          <div>named subagents 支持 @ mention；MCP nonblocking；autocompact thrash loop detection；nested <code>CLAUDE.md</code> re-injection 修复；prompt cache miss 与 tool schema bytes 相关修复。</div>
+        </div>
+        <div class="timeline-item">
+          <div><span class="version">2.1.90</span></div>
+          <div><code>--resume</code> 对 deferred tools / MCP / custom agents 的 cache miss 修复；MCP schema stringify 性能；长 transcript quadratic write 修复；resume all-projects parallel。</div>
+        </div>
+        <div class="timeline-item">
+          <div><span class="version">2.1.91</span></div>
+          <div>transcript chain break 修复；<code>/claude-api</code> context management guidance；Edit anchors 缩短，减少无谓上下文。</div>
+        </div>
+        <div class="timeline-item">
+          <div><span class="version">2.1.139</span></div>
+          <div>agent view、<code>/goal</code>、plugin token cost、compaction preserves sensitive instructions、<code>/context all</code> skill token estimates、<code>/context</code> plugin source names、remote MCP reconnect、subagent telemetry ids。</div>
+        </div>
+        <div class="timeline-item">
+          <div><span class="version">2.1.141</span></div>
+          <div>Rewind 新增 <code>Summarize up to here</code>；hooks transcript path 修复；feedback 能带 recent sessions。</div>
+        </div>
+        <div class="timeline-item">
+          <div><span class="version">2.1.142</span></div>
+          <div>reactive compaction 根据 overflow size 改进种子，说明 compact 触发不只是阈值，而是有上下文压力感知。</div>
+        </div>
+        <div class="timeline-item">
+          <div><span class="version">2.1.145</span></div>
+          <div>Read tool 对巨大文件返回 partial view 而不是 hard error；background/subagent telemetry 继续补齐。</div>
+        </div>
+        <div class="timeline-item">
+          <div><span class="version">2.1.149</span></div>
+          <div><code>/usage</code> 增加 skills、subagents、plugins、per-MCP-server 成本拆分；feedback 包含 compaction 前 conversation。</div>
+        </div>
+        <div class="timeline-item">
+          <div><span class="version">2.1.152</span></div>
+          <div>skills/slash commands 可声明 <code>disallowed-tools</code>；<code>/reload-skills</code>；SessionStart hook <code>reloadSkills</code>；large session files streaming scan；cache_creation token reporting 修复。</div>
+        </div>
+        <div class="timeline-item">
+          <div><span class="version">2.1.153</span></div>
+          <div>subagent frontmatter MCP policy 修复；按 transcript path resume 时 excessive memory usage 修复；background/Agent worktree 修复。</div>
+        </div>
+        <div class="timeline-item">
+          <div><span class="version">2.1.154</span></div>
+          <div>dynamic workflows、lean system prompt default、background-agent context 修复、MCP session env。虽然 workflows 不是 Axiomate P0，但说明 Claude 在继续把大任务拆到隔离上下文。</div>
+        </div>
+        <div class="timeline-item">
+          <div><span class="version">2.1.157</span></div>
+          <div><code>.claude/skills</code> auto-loaded；agent setting honored for dispatched sessions；<code>EnterWorktree</code> mid-session；resume reporting background subagents；长/恢复会话渲染性能。</div>
+        </div>
+        <div class="timeline-item">
+          <div><span class="version">2.1.158</span></div>
+          <div>May 30, 2026 最新公开 changelog 版本。此版本主要是 Opus 4.7/4.8 auto mode provider 支持；context/memory 直接更新不多，但确认本报告使用的 changelog 上限。</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="section-title">
+        <div>
+          <div class="kicker">Implementation Priority</div>
+          <h2>Axiomate 下一轮建议路线</h2>
+        </div>
+      </div>
+      <div class="priority">
+        <div class="priority-row">
+          <span class="badge p0">P0</span>
+          <div><b><code>/context</code> doctor</b><br><span class="muted">这是所有后续 context/memory 改进的仪表盘。</span></div>
+          <div>分桶 token、source provenance、loaded reason、compact survival、cache impact、route contextWindow/maxOutputTokens、优化建议。</div>
+        </div>
+        <div class="priority-row">
+          <span class="badge p0">P0</span>
+          <div><b><code>/memory</code> loaded-source audit</b><br><span class="muted">先让用户知道模型看到了什么。</span></div>
+          <div>AXIOMATE.md / local / rules / memory index / topic files / auto-memory folder / toggle / open-edit / write provenance。</div>
+        </div>
+        <div class="priority-row">
+          <span class="badge p0">P0</span>
+          <div><b>Path-scoped rules</b><br><span class="muted">解决大型项目指令噪音。</span></div>
+          <div><code>.axiomate/rules/</code>、YAML <code>paths:</code>、glob、symlink、安全循环检测、read-trigger、InstructionsLoaded hook。</div>
+        </div>
+        <div class="priority-row">
+          <span class="badge p0">P0</span>
+          <div><b>Compaction survival map</b><br><span class="muted">让 compact 行为不再黑箱。</span></div>
+          <div>标记每类 context item 是 re-injected、summarized、lazy reload 还是 dropped；compact 前后 diff。</div>
+        </div>
+        <div class="priority-row">
+          <span class="badge p0">P0</span>
+          <div><b>Targeted checkpoint summarization</b><br><span class="muted">比全局 compact 更符合长会话。</span></div>
+          <div>在 rewind/checkpoint 菜单实现 <code>Summarize from here</code> 和 <code>Summarize up to here</code>，保留 transcript 原文可追溯。</div>
+        </div>
+        <div class="priority-row">
+          <span class="badge p1">P1</span>
+          <div><b>Tool search diagnostics</b><br><span class="muted">把已有 toolSearch 变成可解释系统。</span></div>
+          <div>显示 deferred vs loaded tools、schema token、provider support、搜索命中、compact 后重新发现成本。</div>
+        </div>
+        <div class="priority-row">
+          <span class="badge p1">P1</span>
+          <div><b>Subagent memory scopes</b><br><span class="muted">补齐 Claude 的 context isolation 语义。</span></div>
+          <div><code>memory: user|project|local</code>、Explore/Plan skip policy、fork cache semantics、worktree isolation、subagent resume。</div>
+        </div>
+        <div class="priority-row">
+          <span class="badge p1">P1</span>
+          <div><b>Session transcript resilience</b><br><span class="muted">resume/search 是 context 系统的一部分。</span></div>
+          <div>large JSONL streaming、CJK/fuzzy fallback、all-worktrees/all-projects filter、branch filter、session index health。</div>
+        </div>
+        <div class="priority-row">
+          <span class="badge p1">P1</span>
+          <div><b>Hook context budgets</b><br><span class="muted">additionalContext 需要限额和来源。</span></div>
+          <div>hook output token cap、origin display、debug log link、pre-compact/session-start/instructions-loaded lifecycle。</div>
+        </div>
+        <div class="priority-row">
+          <span class="badge p0">P0</span>
+          <div><b>Dream review productization</b><br><span class="muted">这是 memory 系统的整理层，不再作为 P2 注脚。</span></div>
+          <div>autoDream 改为非破坏式 output store；输出 run report、memory diff、stale/duplicate/contradiction 分类、usage、source sessions；manual promote/discard/archive；默认仍是 markdown store。</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="section-title">
+        <div>
+          <div class="kicker">Non-Goals</div>
+          <h2>明确不建议照抄的方向</h2>
+        </div>
+      </div>
+      <div class="grid-2">
+        <div class="callout danger">
+          <b>不要默认把 codebase 切进 RAG。</b>
+          Axiomate 的默认 memory 应继续是 plain markdown + model-managed read/write/search/summary/dream。RAG/vector 可以作为 adapter，但不应成为默认路径；它容易切碎代码上下文，并让可审计性下降。
+        </div>
+        <div class="callout warn">
+          <b>不要先做 workflows/background agent 大系统。</b>
+          Claude 2.1.154 的 dynamic workflows 很强，但 Axiomate 当前更基础的缺口仍是 context doctor、memory audit、path rules、targeted summarization。没有这些，workflow 只会放大不可解释 context。
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="section-title">
+        <div>
+          <div class="kicker">Acceptance Criteria</div>
+          <h2>下一轮补齐的验收标准</h2>
+        </div>
+      </div>
+      <div class="grid-3">
+        <div class="subcard">
+          <h3>用户可解释</h3>
+          <ul>
+            <li>用户能回答“本轮 context 为什么满了”。</li>
+            <li>用户能看到每条规则/memory 的路径、scope、加载原因。</li>
+            <li>用户能知道 compact 后哪些内容还在、哪些要重新触发。</li>
+          </ul>
+        </div>
+        <div class="subcard">
+          <h3>模型可操作</h3>
+          <ul>
+            <li>模型能按规则索引知道何时读取 topic memory。</li>
+            <li>模型能在 path-scoped rules 触发后得到清晰提示。</li>
+            <li>模型能避免在主会话里塞进大量调研噪音。</li>
+          </ul>
+        </div>
+        <div class="subcard">
+          <h3>系统可维护</h3>
+          <ul>
+            <li>memory 写入有来源、session id、agent id、变更 diff。</li>
+            <li>hook additionalContext 有预算和来源。</li>
+            <li>session/search/tool schema 有性能和降级策略。</li>
+            <li>dream 输出先进入候选 store，review/promote 后才改 live memory。</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="section-title">
+        <div>
+          <div class="kicker">Evidence</div>
+          <h2>证据与来源</h2>
+        </div>
+      </div>
+      <div class="grid-2">
+        <div class="subcard">
+          <h3>本地基线</h3>
+          <ul>
+            <li><code>C:\public\workspace\claude-code-sourcemap\README.md</code>：说明来源为公开 npm package <code>@anthropic-ai/claude-code</code> 的 <code>cli.js.map</code> / <code>sourcesContent</code>，还原版本 <code>2.1.88</code>。</li>
+            <li><code>C:\public\workspace\claude-code-sourcemap\restored-src\src\memdir\*</code></li>
+            <li><code>C:\public\workspace\claude-code-sourcemap\restored-src\src\services\{extractMemories,SessionMemory,autoDream,compact}\*</code></li>
+            <li><code>C:\public\workspace\axiomate\agent\src\memdir\*</code></li>
+            <li><code>C:\public\workspace\axiomate\agent\src\services\{extractMemories,SessionMemory,autoDream,compact}\*</code></li>
+            <li><code>C:\public\workspace\axiomate\docs\context\context-memory-claude-code-2.1.88-upgrade-plan.md</code></li>
+          </ul>
+        </div>
+        <div class="subcard">
+          <h3>官方 Claude 文档</h3>
+          <ul class="source-list">
+            <li><a href="https://code.claude.com/docs/en/changelog.md">Claude Code changelog</a></li>
+            <li><a href="https://code.claude.com/docs/en/memory.md">Claude Code memory</a></li>
+            <li><a href="https://code.claude.com/docs/en/context-window.md">Claude Code context window</a></li>
+            <li><a href="https://code.claude.com/docs/en/debug-your-config.md">Debug your config</a></li>
+            <li><a href="https://code.claude.com/docs/en/prompt-caching.md">Prompt caching</a></li>
+            <li><a href="https://code.claude.com/docs/en/sub-agents.md">Subagents</a></li>
+            <li><a href="https://code.claude.com/docs/en/sessions.md">Sessions</a></li>
+            <li><a href="https://code.claude.com/docs/en/checkpointing.md">Checkpointing</a></li>
+            <li><a href="https://code.claude.com/docs/en/agent-sdk/tool-search.md">Agent SDK tool search</a></li>
+            <li><a href="https://code.claude.com/docs/en/large-codebases.md">Large codebases</a></li>
+            <li><a href="https://platform.claude.com/docs/en/managed-agents/memory.md">Managed Agents memory</a></li>
+            <li><a href="https://platform.claude.com/docs/en/managed-agents/dreams.md">Managed Agents dreams</a></li>
+            <li><a href="https://claude.com/blog/claude-managed-agents-memory">Built-in memory for Claude Managed Agents</a></li>
+            <li><a href="https://claude.com/blog/new-in-claude-managed-agents">New in Claude Managed Agents: dreaming, outcomes, and multiagent orchestration</a></li>
+          </ul>
+        </div>
+      </div>
+      <div class="grid-2" style="margin-top: 14px;">
+        <div class="subcard">
+          <h3>官方公开仓库资料</h3>
+          <ul>
+            <li><code>C:\public\workspace\claude-code\README.md</code>：确认该仓库是 Claude Code 官方公开资料入口，指向 official documentation，并说明 plugins 目录。</li>
+            <li><code>C:\public\workspace\claude-code\CHANGELOG.md</code>：本报告用来确认 <code>2.1.89</code> 到 <code>2.1.158</code> 的 release notes，特别是 <code>/context</code>、rules、subagents、resume、checkpoint、tool search、background agents 相关条目。</li>
+            <li><code>C:\public\workspace\claude-code\plugins\feature-dev\README.md</code> 与 <code>plugins\feature-dev\agents\*.md</code>：作为官方 custom agents / plugin packaging 示例，说明 subagent 可用于 code exploration、architecture、review 等工作流。</li>
+          </ul>
+          <div class="source-note">这些文件不是新版 Claude Code 源码；本文只把它们作为官方 changelog、插件示例和产品方向证据。</div>
+        </div>
+        <div class="subcard">
+          <h3>这次重新联网确认的 Managed Agents 细节</h3>
+          <ul>
+            <li><a href="https://platform.claude.com/docs/en/managed-agents/memory.md">Managed Agents memory markdown</a>：memory store 挂载为 sandbox 目录；支持 <code>read_write</code>/<code>read_only</code>；每次 mutation 产生 immutable memory version；memory store 每 session 最多 8 个；单条 memory 100 kB，store 最多 2,000 memories；untrusted input 写入长期 memory 有 prompt-injection 风险。</li>
+            <li><a href="https://platform.claude.com/docs/en/managed-agents/dreams.md">Managed Agents dreams markdown</a>：dream 是异步 job；输入为 pre-existing memory store 和 1-100 sessions；输出为独立 output memory store；状态包括 pending/running/completed/failed/canceled；running 后有 underlying session_id；失败/取消保留 partial output；usage 记录 token，成本随 session 数量和长度增长。</li>
+            <li><a href="https://claude.com/blog/claude-managed-agents-memory">Managed Agents memory blog</a>：确认 memory 面向 production-grade agents，强调 scoped permissions、audit logs、programmatic control、read-only shared stores 和 per-user read-write stores。</li>
+            <li><a href="https://claude.com/blog/new-in-claude-managed-agents">Managed Agents dreaming blog</a>：确认 dreaming 是 scheduled process，会 review agent sessions 和 memory stores，提炼 patterns，并可选择自动更新 memory 或人工 review 后落地。</li>
+          </ul>
+        </div>
+      </div>
+      <div class="callout info" style="margin-top: 16px;">
+        <b>来源边界：</b>
+        Claude Code <code>2.1.88</code> 之后源码不再以同样方式开源，本报告对“新版 Claude Code 具备什么”的判断来自官方文档、官方 public repo changelog/plugin examples、Managed Agents 官方文档与博客；对“Axiomate 目前具备什么”的判断按维护者说明视为 2.1.88 基线，不在本文重新做 semantic diff。
+      </div>
+    </section>
+  </main>
+</body>
+</html>
