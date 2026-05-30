@@ -1,14 +1,15 @@
 [
   {
-    "action": "non_streaming_fallback",
+    "action": "retry_backoff",
     "final": false,
-    "innerCause": "Error: Stream ended without receiving any events",
-    "intent": "switch_to_non_streaming",
-    "outcome": "fallback_triggered",
+    "innerCause": "Error: missing response_start before block_delta",
+    "intent": "retry_transient_failure",
+    "outcome": "retrying",
     "protocol": "openai-chat",
-    "reason": "unknown",
-    "repeatPolicy": "outer_policy",
+    "querySource": "sdk",
+    "reason": "malformed_response",
+    "repeatPolicy": "until_reason_changes",
     "requestId": "req_stream_trace",
-    "streamPhase": "fallback"
+    "streamPhase": "streaming"
   }
 ]

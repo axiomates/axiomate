@@ -226,7 +226,7 @@ describe('projectApiFailureCards', () => {
     expect(cards[0]).toMatchObject({
       scope: 'stream',
       impact: 'main response streaming',
-      observed: 'timeout · HTTP 408 · request req-stream',
+      observed: 'timeout · HTTP 408 · phase streaming · request req-stream',
       status: 'retrying',
       severity: 'warning',
     })
@@ -239,7 +239,7 @@ describe('projectApiFailureCards', () => {
       trace({
         traceId: 'stream-fallback',
         operation: 'non_streaming_fallback',
-        reason: 'malformed_response',
+        reason: 'streaming_unsupported',
         intent: 'switch_to_non_streaming',
         action: 'non_streaming_fallback',
         outcome: 'fallback_triggered',
@@ -253,8 +253,33 @@ describe('projectApiFailureCards', () => {
       title: 'API request switched to non-streaming',
       impact: 'non-streaming fallback',
     })
-    expect(cards[0]?.nextAction).toContain('models["model-a"].protocol')
+    expect(cards[0]?.nextAction).toContain('explicitly rejected streaming')
+  })
+
+  it('projects explicit stream endpoint fallback without unknown wording', () => {
+    const cards = projectApiFailureCards([
+      trace({
+        traceId: 'generic-404',
+        operation: 'non_streaming_fallback',
+        reason: 'stream_endpoint_not_found',
+        intent: 'switch_to_non_streaming',
+        action: 'non_streaming_fallback',
+        outcome: 'fallback_triggered',
+        statusCode: 404,
+        streamPhase: 'fallback',
+        innerCause: 'LLMAPIError: Not Found',
+        final: false,
+      }),
+    ])
+
+    expect(cards[0]).toMatchObject({
+      observed:
+        'stream_endpoint_not_found · HTTP 404 · phase fallback · LLMAPIError: Not Found',
+      status: 'switched_request_mode',
+    })
+    expect(cards[0]?.advanced.innerCause).toBe('LLMAPIError: Not Found')
     expect(cards[0]?.nextAction).toContain('models["model-a"].baseUrl')
+    expect(cards[0]?.nextAction).toContain('streaming endpoint returned 404')
   })
 
   it('projects completed stream salvage as an informational recovered card', () => {
@@ -392,6 +417,29 @@ describe('projectApiFailureCards', () => {
       title: 'API authentication failed',
       severity: 'error',
     })
+  })
+
+  it('explains explicit streaming fallback reasons without unknown wording', () => {
+    const cards = projectApiFailureCards([
+      trace({
+        reason: 'streaming_unsupported',
+        intent: 'switch_to_non_streaming',
+        action: 'non_streaming_fallback',
+        outcome: 'fallback_triggered',
+        operation: 'non_streaming_fallback',
+        streamPhase: 'fallback',
+        statusCode: 400,
+        final: false,
+      }),
+    ])
+
+    expect(cards[0]).toMatchObject({
+      status: 'switched_request_mode',
+      title: 'API request switched to non-streaming',
+    })
+    expect(cards[0]?.observed).toContain('streaming_unsupported')
+    expect(cards[0]?.observed).not.toContain('unknown')
+    expect(cards[0]?.nextAction).toContain('explicitly rejected streaming')
   })
 
   it('marks request-shape adaptation as adapted instead of generic retrying', () => {

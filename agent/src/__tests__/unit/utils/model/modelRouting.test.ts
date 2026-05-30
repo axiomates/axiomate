@@ -54,6 +54,9 @@ describe('modelRouting', () => {
     expect(normalized.model?.routes?.default.switchModelOn).toContain(
       'rate_limit',
     )
+    expect(normalized.model?.routes?.default.switchModelOn).toContain(
+      'content_policy_blocked',
+    )
 
     expect(normalized.auxiliary?.goalJudge).toMatchObject({
       primary: 'main',

@@ -39,6 +39,7 @@ type ResponsesStreamFixture = {
     status: number
     messageIncludes: string
     expectedReason?: ReturnType<typeof classifyError>['reason']
+    expectedRetryable?: boolean
   }
 }
 
@@ -333,7 +334,11 @@ describe('OpenAI Responses stream event-order golden fixtures', () => {
         expect(classified.reason).toBe(
           fixture.throws.expectedReason ?? 'server_error',
         )
-        expect(classified.retryable).toBe(true)
+        if (fixture.throws.expectedRetryable !== undefined) {
+          expect(classified.retryable).toBe(fixture.throws.expectedRetryable)
+        } else {
+          expect(classified.retryable).toBe(true)
+        }
       }
       return
     }
@@ -344,7 +349,7 @@ describe('OpenAI Responses stream event-order golden fixtures', () => {
 })
 
 describe('OpenAI Responses stream fallback parity', () => {
-  it('uses non-streaming fallback for stream-shape failures before assistant output', () => {
+  it('does not use non-streaming fallback for local stream-shape failures before assistant output', () => {
     expect(
       shouldUseNonStreamingFallbackForStreamError(
         makeProvider(),
@@ -354,7 +359,7 @@ describe('OpenAI Responses stream fallback parity', () => {
         ),
         'gpt-4o',
       ),
-    ).toBe(true)
+    ).toBe(false)
   })
 
   it('does not use non-streaming fallback after assistant output was committed', () => {

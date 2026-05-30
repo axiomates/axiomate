@@ -56,6 +56,7 @@ export interface SafeApiRecoveryTraceEvent {
   streamPhase?: RecoveryStreamPhase
   timeoutKind?: RecoveryTraceEvent['timeoutKind']
   timeoutMs?: number
+  innerCause?: string
   safeHeaders?: Record<string, string>
   operation?: RecoveryTraceOperation
   querySource?: string
@@ -130,6 +131,7 @@ export function toSafeApiRecoveryTraceEvent(
     streamPhase: event.streamPhase,
     timeoutKind: event.timeoutKind,
     timeoutMs: event.timeoutMs,
+    innerCause: sanitizeInnerCause(event.innerCause),
     safeHeaders: sanitizeSafeHeaders(event.safeHeaders),
     operation: event.operation,
     querySource: truncate(event.querySource, 80),
@@ -182,6 +184,41 @@ function sanitizePolicyGate(
     actionAllowed: policyGate.actionAllowed,
     reasonAllowed: policyGate.reasonAllowed,
   })
+}
+
+function sanitizeInnerCause(value: string | undefined): string | undefined {
+  if (typeof value !== 'string' || value.length === 0) {
+    return undefined
+  }
+  const normalized = value.replace(/\s+/g, ' ').trim()
+  if (!normalized) {
+    return undefined
+  }
+  const [prefix, ...rest] = normalized.split(':')
+  const errorName = isLikelyErrorName(prefix) ? prefix : 'Error'
+  const message = isLikelyErrorName(prefix)
+    ? rest.join(':').trim()
+    : normalized
+  if (containsSensitiveText(message)) {
+    return `${errorName}: [redacted]`
+  }
+  const redacted = redactSensitiveText(message)
+  return `${errorName}: ${redacted}`.slice(0, 240)
+}
+
+function isLikelyErrorName(value: string | undefined): boolean {
+  return typeof value === 'string' && /^[A-Za-z][A-Za-z0-9_.-]*(Error)?$/.test(value)
+}
+
+function redactSensitiveText(value: string): string {
+  return value
+    .replace(/\b(?:bearer|token|api[-_ ]?key)\s+[A-Za-z0-9._~+/=-]+/gi, '[redacted]')
+    .replace(/\bsk-[A-Za-z0-9._-]{8,}\b/g, '[redacted]')
+    .replace(/\b(?:authorization|cookie|set-cookie)\s*[:=]\s*[^,\s;]+/gi, '$1=[redacted]')
+}
+
+function containsSensitiveText(value: string): boolean {
+  return /\b(?:bearer|authorization|cookie|set-cookie|api[-_ ]?key|sk-[A-Za-z0-9._-]{8,}|raw prompt|prompt text)\b/i.test(value)
 }
 
 function cloneSafeApiRecoveryTraceEvent(

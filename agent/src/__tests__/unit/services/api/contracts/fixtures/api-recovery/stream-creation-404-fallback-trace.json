@@ -6,7 +6,8 @@
     "intent": "switch_to_non_streaming",
     "outcome": "delegated",
     "protocol": "openai-chat",
-    "reason": "unknown",
+    "querySource": "sdk",
+    "reason": "stream_endpoint_not_found",
     "repeatPolicy": "outer_policy",
     "requestId": "req_stream_404",
     "streamPhase": "client_init"
@@ -18,7 +19,8 @@
     "intent": "switch_to_non_streaming",
     "outcome": "fallback_triggered",
     "protocol": "openai-chat",
-    "reason": "unknown",
+    "querySource": "sdk",
+    "reason": "stream_endpoint_not_found",
     "repeatPolicy": "outer_policy",
     "requestId": "req_stream_404",
     "streamPhase": "fallback"

@@ -79,6 +79,35 @@ function shouldDeferModelFallback(
   )
 }
 
+function shouldTreatGeneric404AsStreamEndpoint(
+  classified: ReturnType<typeof classifyError>,
+  options: RetryOptions,
+): boolean {
+  return (
+    options.deferModelNotFoundFallback &&
+    classified.statusCode === 404 &&
+    (classified.reason === 'unknown' ||
+      classified.reason === 'stream_endpoint_not_found')
+  )
+}
+
+function createStreamEndpointNotFoundDecisionError(error: unknown): LLMAPIError {
+  const wrapped =
+    error instanceof LLMAPIError
+      ? error
+      : new LLMAPIError(
+          error instanceof Error ? error.message : String(error),
+          { cause: error },
+        )
+  return new LLMAPIError(`Stream endpoint not found: ${wrapped.message}`, {
+    status: wrapped.status ?? 404,
+    cause: wrapped,
+    headers: wrapped.headers,
+    request_id: wrapped.request_id,
+    error: wrapped.error,
+  })
+}
+
 export interface RetryContext {
   maxTokensOverride?: number
   /**
@@ -238,7 +267,16 @@ export async function* withRetry<C, T>(
 
       // Observe -> decide -> execute. Classification is single-pass and the
       // recovery session retains the full failure history for traceability.
-      const classified = classifyError(error, {
+      const rawClassified = classifyError(error, {
+        provider: normalizeRecoveryProtocol(options.protocol),
+        model: retryContext.model,
+      })
+      const decisionError =
+        error instanceof LLMAPIError &&
+        shouldTreatGeneric404AsStreamEndpoint(rawClassified, options)
+          ? createStreamEndpointNotFoundDecisionError(error)
+          : error
+      const classified = classifyError(decisionError, {
         provider: normalizeRecoveryProtocol(options.protocol),
         model: retryContext.model,
       })
@@ -265,7 +303,7 @@ export async function* withRetry<C, T>(
         willRefreshClient: isStaleConnectionError(error),
         retryContext,
         history: session.history,
-        error,
+        error: decisionError,
         delayMsForRetryable: () => getRecoveryDelay(attempt, classified),
       })
 
@@ -277,7 +315,7 @@ export async function* withRetry<C, T>(
         observation,
         recordedDecision,
         previousDecision,
-        error,
+        decisionError,
         fallbackAvailability,
       )
 
@@ -360,6 +398,7 @@ function emitRecoveredTraceIfNeeded(
     timeoutMs: options.recoveryTraceContext?.timeoutMs,
     safeHeaders: options.recoveryTraceContext?.safeHeaders,
     operation: options.operation,
+    querySource: options.querySource,
     routeId: options.recoveryTraceContext?.routeId,
     fromModel: options.recoveryTraceContext?.fromModel,
     toModel: options.recoveryTraceContext?.toModel,
@@ -434,6 +473,7 @@ function emitDecisionTrace(
       getTraceInnerCause(error),
     safeHeaders: options.recoveryTraceContext?.safeHeaders,
     operation: options.operation,
+    querySource: options.querySource,
     routeId: options.recoveryTraceContext?.routeId,
     fromModel: options.recoveryTraceContext?.fromModel,
     toModel: options.recoveryTraceContext?.toModel,
@@ -457,6 +497,9 @@ function getTraceInnerCause(error: unknown): string | undefined {
     const cause = (error as { cause?: unknown }).cause
     if (cause instanceof Error) {
       return formatTraceError(cause)
+    }
+    if (error.message.startsWith('Stream endpoint not found: ')) {
+      return formatTraceError(error)
     }
     return formatTraceError(error)
   }

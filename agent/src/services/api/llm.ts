@@ -3,7 +3,11 @@ import type {
 } from './streamTypes.js'
 import { LLMAbortError, LLMAPIError, LLMTimeoutError } from './streamTypes.js'
 import { neutralToolToSDK, toolChoiceToAnthropic } from './adapters/anthropicRequestAdapter.js'
-import type { ContentBlockParam, NeutralToolSchema, TextBlockParam } from './streamTypes.js'
+import type {
+  ContentBlockParam,
+  NeutralToolSchema,
+  TextBlockParam,
+} from './streamTypes.js'
 // Stream type neutralized — uses structural interface instead of SDK Stream<T>
 import { randomUUID } from 'crypto'
 import { neutralUsageToDeltaUsage, updateUsage } from './usageUtils.js'
@@ -191,14 +195,24 @@ function isLocalStreamShapeError(error: unknown): boolean {
     return false
   }
 
+  if (error instanceof EmptyStreamResponseError) {
+    return false
+  }
+
   const message = error.message.toLowerCase()
   return (
-    message.includes('stream ended without receiving any events') ||
     message.includes('missing response_start') ||
     message.includes('content block not found') ||
     (message.includes('responses stream:') &&
       message.includes('without prior'))
   )
+}
+
+class EmptyStreamResponseError extends Error {
+  constructor(message = 'Stream ended without receiving any events') {
+    super(message)
+    this.name = 'EmptyStreamResponseError'
+  }
 }
 
 function isLikelyModelNotFound404(error: LLMAPIError, model: string): boolean {
@@ -229,6 +243,7 @@ function emitStreamConsumptionRecoveryTrace(input: {
   traceId: string
   protocol: string
   model: string
+  querySource?: QuerySource
   attempt: number
   maxAttempts: number
   error: LLMAPIError
@@ -240,6 +255,7 @@ function emitStreamConsumptionRecoveryTrace(input: {
     sink: input.sink,
     protocol: input.protocol,
     model: input.model,
+    querySource: input.querySource,
     attempt: input.attempt,
     maxAttempts: input.maxAttempts,
     error: input.error,
@@ -258,23 +274,27 @@ function emitNonStreamingFallbackRecoveryTrace(input: {
   traceId: string
   protocol: string
   model: string
+  querySource?: QuerySource
   error: unknown
+  decisionError?: unknown
   context: RecoveryTraceContext
 }): void {
+  const traceError = input.decisionError ?? input.error
   const wrappedError =
-    input.error instanceof LLMAPIError
-      ? input.error
+    traceError instanceof LLMAPIError
+      ? traceError
       : new LLMAPIError(
-          input.error instanceof Error
-            ? input.error.message
-            : String(input.error),
-          { cause: input.error },
+          traceError instanceof Error
+            ? traceError.message
+            : String(traceError),
+          { cause: traceError },
         )
   emitBoundaryRecoveryDecisionTrace({
     traceId: input.traceId,
     sink: input.sink,
     protocol: input.protocol,
     model: input.model,
+    querySource: input.querySource,
     attempt: 1,
     maxAttempts: 1,
     error: input.error,
@@ -317,6 +337,8 @@ function apiRecoveryFromRetryContext(
 
 export interface StreamFallbackSafetyContext {
   committedAssistantMessages?: number
+  debugLabel?: string
+  allowStreamEndpoint404Fallback?: boolean
 }
 
 export function shouldUseNonStreamingFallbackForStreamError(
@@ -325,38 +347,51 @@ export function shouldUseNonStreamingFallbackForStreamError(
   model: string,
   context: StreamFallbackSafetyContext = {},
 ): boolean {
-  // Once processStream has yielded an assistant message, downstream tool
-  // dispatch may already be active. Replaying the same request in non-streaming
-  // mode can duplicate tool_use execution, so recovery must propagate instead.
-  if ((context.committedAssistantMessages ?? 0) > 0) {
-    return false
-  }
-
-  if (provider.isStreamUnsupportedError?.(error)) {
-    return true
-  }
-
   const wrappedError = provider.wrapError(error)
-  if (wrappedError.status === 404) {
-    return !isLikelyModelNotFound404(wrappedError, model)
-  }
-
-  const isStreamShapeError =
-    isLocalStreamShapeError(wrappedError) ||
-    isLocalStreamShapeError(wrappedError.cause ?? error)
-  if (isStreamShapeError) {
-    return true
-  }
-
+  const providerStreamUnsupported =
+    provider.isStreamUnsupportedError?.(error) ?? false
+  const likelyModelNotFound404 =
+    wrappedError.status === 404 && isLikelyModelNotFound404(wrappedError, model)
+  const localStreamShapeWrapped = isLocalStreamShapeError(wrappedError)
+  const localStreamShapeCause = isLocalStreamShapeError(
+    wrappedError.cause ?? error,
+  )
   const classified = classifyError(wrappedError, {
     provider: provider.name,
     model,
   })
+  let decision = false
+  let rule = 'not_evaluated'
 
-  // Retryable transport/provider failures should stay on the original retry
-  // semantics. Non-streaming fallback is for stream-shape incompatibility,
-  // not a replacement for timeout/rate-limit/server-error retry handling.
-  if (
+  // Once processStream has yielded an assistant message, downstream tool
+  // dispatch may already be active. Replaying the same request in non-streaming
+  // mode can duplicate tool_use execution, so recovery must propagate instead.
+  if ((context.committedAssistantMessages ?? 0) > 0) {
+    rule = 'blocked_committed_assistant_messages'
+  } else if (providerStreamUnsupported) {
+    decision = true
+    rule = 'provider_stream_unsupported'
+  } else if (
+    context.allowStreamEndpoint404Fallback === true &&
+    wrappedError.status === 404
+  ) {
+    decision =
+      classified.reason === 'unknown' ||
+      classified.reason === 'stream_endpoint_not_found'
+    rule = likelyModelNotFound404
+      ? '404_model_not_found_not_request_mode'
+      : classified.reason === 'provider_policy_blocked'
+        ? '404_provider_policy_not_request_mode'
+        : decision
+          ? '404_stream_endpoint_shape'
+          : '404_not_request_mode'
+  } else if (wrappedError.status === 404) {
+    rule = likelyModelNotFound404
+      ? '404_model_not_found_not_request_mode'
+      : '404_not_stream_creation_context'
+  } else if (localStreamShapeWrapped || localStreamShapeCause) {
+    rule = 'local_stream_shape_error_retry_stream_first'
+  } else if (
     classified.reason === 'timeout' ||
     classified.reason === 'rate_limit' ||
     classified.reason === 'overloaded' ||
@@ -367,12 +402,99 @@ export function shouldUseNonStreamingFallbackForStreamError(
     classified.reason === 'thinking_signature' ||
     classified.reason === 'long_context_tier'
   ) {
-    return false
+    rule = 'retryable_or_request_error_uses_retry_semantics'
+  } else {
+    // Only local stream validation/protocol-shape failures fall back to
+    // non-streaming. Other status-less local errors keep the normal retry path.
+    rule = 'no_non_streaming_fallback_rule'
   }
 
-  // Only local stream validation/protocol-shape failures fall back to
-  // non-streaming. Other status-less local errors keep the normal retry path.
-  return false
+  logNonStreamingFallbackDecision({
+    label: context.debugLabel,
+    provider: provider.name,
+    model,
+    error,
+    wrappedError,
+    classified,
+    committedAssistantMessages: context.committedAssistantMessages ?? 0,
+    allowStreamEndpoint404Fallback:
+      context.allowStreamEndpoint404Fallback === true,
+    providerStreamUnsupported,
+    likelyModelNotFound404,
+    localStreamShapeWrapped,
+    localStreamShapeCause,
+    decision,
+    rule,
+  })
+
+  return decision
+}
+
+function logNonStreamingFallbackDecision(input: {
+  label?: string
+  provider: string
+  model: string
+  error: unknown
+  wrappedError: LLMAPIError
+  classified: ReturnType<typeof classifyError>
+  committedAssistantMessages: number
+  allowStreamEndpoint404Fallback: boolean
+  providerStreamUnsupported: boolean
+  likelyModelNotFound404: boolean
+  localStreamShapeWrapped: boolean
+  localStreamShapeCause: boolean
+  decision: boolean
+  rule: string
+}): void {
+  if (!input.label) {
+    return
+  }
+  logForDebugging(
+    [
+      '[api:non-streaming-fallback:decision]',
+      `label=${input.label}`,
+      `provider=${input.provider}`,
+      `model=${input.model}`,
+      `decision=${input.decision}`,
+      `rule=${input.rule}`,
+      `reason=${input.classified.reason}`,
+      `retryable=${input.classified.retryable}`,
+      `status=${input.wrappedError.status ?? 'none'}`,
+      `committedAssistantMessages=${input.committedAssistantMessages}`,
+      `allowStreamEndpoint404Fallback=${input.allowStreamEndpoint404Fallback}`,
+      `providerStreamUnsupported=${input.providerStreamUnsupported}`,
+      `likelyModelNotFound404=${input.likelyModelNotFound404}`,
+      `localStreamShapeWrapped=${input.localStreamShapeWrapped}`,
+      `localStreamShapeCause=${input.localStreamShapeCause}`,
+      `error=${formatDebugError(input.error)}`,
+      `wrapped=${formatDebugError(input.wrappedError)}`,
+    ].join(' '),
+    { level: 'debug' },
+  )
+}
+
+function formatDebugError(error: unknown): string {
+  if (error instanceof Error) {
+    return `${error.name}:${error.message}`.replace(/\s+/g, ' ').slice(0, 240)
+  }
+  return String(error).replace(/\s+/g, ' ').slice(0, 240)
+}
+
+function createStreamEndpointNotFoundDecisionError(error: unknown): LLMAPIError {
+  const wrapped =
+    error instanceof LLMAPIError
+      ? error
+      : new LLMAPIError(
+          error instanceof Error ? error.message : String(error),
+          { cause: error },
+        )
+  return new LLMAPIError(`Stream endpoint not found: ${wrapped.message}`, {
+    status: wrapped.status ?? 404,
+    cause: wrapped,
+    headers: wrapped.headers,
+    request_id: wrapped.request_id,
+    error: wrapped.error,
+  })
 }
 
 function shouldRetryStreamingConsumptionError(
@@ -1309,7 +1431,11 @@ async function* queryModel(
     didFallBackToNonStreaming = false
     fallbackMessage = undefined
     setRecoveryTraceContext(recoveryTraceContext, {
+      requestId: undefined,
+      safeHeaders: undefined,
       streamPhase: 'client_init',
+      ttfbMs: undefined,
+      bytesReceived: undefined,
       elapsedMs: undefined,
       timeoutKind: undefined,
       timeoutMs: undefined,
@@ -1625,11 +1751,15 @@ async function* queryModel(
       if (!hasResponseStart || (newMessages.length === 0 && !stopReason)) {
         logForDebugging(
           !hasResponseStart
-            ? 'Stream completed without receiving message_start event - triggering non-streaming fallback'
-            : 'Stream completed with message_start but no content blocks completed - triggering non-streaming fallback',
+            ? 'Stream completed without receiving message_start event - entering recovery'
+            : 'Stream completed with message_start but no content blocks completed - entering recovery',
           { level: 'error' },
         )
-        throw new Error('Stream ended without receiving any events')
+        throw new EmptyStreamResponseError(
+          !hasResponseStart
+            ? 'Stream ended without receiving any events'
+            : 'Stream ended before producing assistant output',
+        )
       }
 
       // Stall summary is now logged by withStallDetection.onStreamEnd
@@ -1726,7 +1856,10 @@ async function* queryModel(
           provider,
           streamingError,
           options.model,
-          { committedAssistantMessages: newMessages.length },
+          {
+            committedAssistantMessages: newMessages.length,
+            debugLabel: 'stream-consumption-catch',
+          },
         )
       ) {
         if (
@@ -1766,6 +1899,7 @@ async function* queryModel(
             traceId: streamConsumptionTraceId,
             protocol: provider.name,
             model: options.model,
+            querySource: options.querySource,
             attempt: streamConsumptionAttempt,
             maxAttempts: maxStreamConsumptionRetries,
             error: wrappedStreamingError,
@@ -1820,6 +1954,7 @@ async function* queryModel(
         traceId: nonStreamingFallbackTraceId,
         protocol: provider.name,
         model: options.model,
+        querySource: options.querySource,
         error: provider.wrapError(streamingError),
         context: recoveryTraceContext,
       })
@@ -1906,8 +2041,14 @@ async function* queryModel(
       errorFromRetry instanceof CannotRetryError &&
       (() => {
         const wrapped = provider.wrapError(errorFromRetry.originalError)
+        const classified = classifyError(wrapped, {
+          provider: provider.name,
+          model: options.model,
+        })
         return (
           wrapped.status === 404 &&
+          (classified.reason === 'unknown' ||
+            classified.reason === 'stream_endpoint_not_found') &&
           !isLikelyModelNotFound404(wrapped, options.model)
         )
       })()
@@ -1955,6 +2096,7 @@ async function* queryModel(
             ),
           },
           operation: 'stream',
+          querySource: options.querySource,
           fallbackAvailability: boundaryFallbackAvailability,
           recoveryBudgetExhausted: true,
           final: true,
@@ -1988,17 +2130,32 @@ async function* queryModel(
     const rawErrorForStreamCheck = errorFromRetry instanceof CannotRetryError
       ? errorFromRetry.originalError
       : errorFromRetry
+    const streamCreationUnsupported = provider.isStreamUnsupportedError?.(
+      rawErrorForStreamCheck,
+    ) ?? false
+    logForDebugging(
+      [
+        '[api:non-streaming-fallback:stream-creation-check]',
+        `provider=${provider.name}`,
+        `model=${options.model}`,
+        `is404StreamCreationError=${is404StreamCreationError}`,
+        `isDeferredModelNotFound404=${isDeferredModelNotFound404}`,
+        `is400StreamUnsupportedError=${streamCreationUnsupported}`,
+        `error=${formatDebugError(rawErrorForStreamCheck)}`,
+      ].join(' '),
+      { level: 'debug' },
+    )
     const is400StreamUnsupportedError =
       !didFallBackToNonStreaming &&
       !is404StreamCreationError &&
-      !!provider.isStreamUnsupportedError?.(rawErrorForStreamCheck)
+      streamCreationUnsupported
 
     if (is404StreamCreationError) {
       // 404 is thrown at .withResponse() before streamRequestId is assigned,
       // and CannotRetryError means every retry failed — so grab the failed
       // request's ID from the error header instead.
       const failedRequestId =
-        (errorFromRetry.originalError as { request_id?: string }).request_id ?? 'unknown'
+        (errorFromRetry.originalError as { request_id?: string }).request_id
       setRecoveryTraceContext(recoveryTraceContext, {
         requestId: failedRequestId,
         streamPhase: 'fallback',
@@ -2010,7 +2167,11 @@ async function* queryModel(
         traceId: streamCreationTraceId,
         protocol: provider.name,
         model: options.model,
+        querySource: options.querySource,
         error: provider.wrapError(errorFromRetry.originalError),
+        decisionError: createStreamEndpointNotFoundDecisionError(
+          errorFromRetry.originalError,
+        ),
         context: recoveryTraceContext,
       })
       logForDebugging(
@@ -2038,7 +2199,7 @@ async function* queryModel(
             maxOutputTokens = tokens
           },
           captureRequest: (params: Record<string, unknown>) => captureAPIRequest(params, options.querySource),
-          originatingRequestId: failedRequestId,
+          originatingRequestId: failedRequestId ?? null,
         } satisfies import('./provider.js').ProviderRequestExt)
         if (!fallback404Bound.createNonStreamingFallback) {
           throw new Error('Provider does not support non-streaming fallback')
@@ -2127,7 +2288,7 @@ async function* queryModel(
       const failedRequestId =
         (errorFromRetry instanceof CannotRetryError
           ? (errorFromRetry.originalError as { request_id?: string }).request_id
-          : undefined) ?? 'unknown'
+          : undefined)
       setRecoveryTraceContext(recoveryTraceContext, {
         requestId: failedRequestId,
         streamPhase: 'fallback',
@@ -2139,6 +2300,7 @@ async function* queryModel(
         traceId: streamCreationTraceId,
         protocol: provider.name,
         model: options.model,
+        querySource: options.querySource,
         error: provider.wrapError(rawErrorForStreamCheck),
         context: recoveryTraceContext,
       })
@@ -2165,7 +2327,7 @@ async function* queryModel(
             maxOutputTokens = tokens
           },
           captureRequest: (params: Record<string, unknown>) => captureAPIRequest(params, options.querySource),
-          originatingRequestId: failedRequestId,
+          originatingRequestId: failedRequestId ?? null,
         } satisfies import('./provider.js').ProviderRequestExt)
         if (!fallbackStreamBound.createNonStreamingFallback) {
           throw new Error('Provider does not support non-streaming fallback')

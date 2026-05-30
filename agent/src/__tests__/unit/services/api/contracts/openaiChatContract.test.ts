@@ -308,7 +308,9 @@ describe('OpenAI Chat error envelope golden fixtures', () => {
 
       expect(classified.reason).toBe(fixture.reason)
       expect(
-        shouldUseNonStreamingFallbackForStreamError(provider, error, 'gpt-4o'),
+        shouldUseNonStreamingFallbackForStreamError(provider, error, 'gpt-4o', {
+          allowStreamEndpoint404Fallback: true,
+        }),
       ).toBe(fixture.useNonStreamingFallback)
 
       if (fixture.action !== 'non_streaming_fallback') {

@@ -33,6 +33,9 @@ export type ErrorFailoverReason =
   | 'image_too_large'    // Image part exceeds provider per-image limits
   | 'model_not_found'    // explicit 404/400 invalid model signals
   | 'provider_policy_blocked' // Aggregator/account policy excludes available endpoints
+  | 'content_policy_blocked' // Provider safety/content filter rejected this prompt
+  | 'streaming_unsupported' // Endpoint/model explicitly rejects stream mode
+  | 'stream_endpoint_not_found' // Stream endpoint 404, non-streaming may still work
   | 'format_error'       // 400 bad request (not context overflow)
   | 'unsupported_parameter' // Provider rejects a recoverable top-level request field
   | 'invalid_encrypted_content' // OpenAI Responses encrypted reasoning replay rejected
@@ -90,12 +93,14 @@ export interface ErrorClassificationContext {
 const BILLING_PATTERNS = [
   'insufficient credits',
   'insufficient_quota',
+  'insufficient balance',
   'credit balance',
   'credits have been exhausted',
   'top up your credits',
   'payment required',
   'billing hard limit',
   'exceeded your current quota',
+  'spending limit',
   'account is deactivated',
   'plan does not include',
 ]
@@ -228,6 +233,14 @@ const REQUEST_VALIDATION_PATTERNS = [
   'unsupported_parameter',
 ]
 
+const REQUEST_FIELD_VALIDATION_PATTERNS = [
+  'unknown parameter',
+  'unsupported parameter',
+  'unrecognized request argument',
+  'unknown_parameter',
+  'unsupported_parameter',
+]
+
 const OMITTABLE_REQUEST_FIELDS = new Set([
   'frequency_penalty',
   'include',
@@ -256,6 +269,26 @@ const PROVIDER_POLICY_BLOCKED_PATTERNS = [
   'no endpoints available matching your guardrail',
   'no endpoints available matching your data policy',
   'no endpoints found matching your data policy',
+]
+
+const CONTENT_POLICY_BLOCKED_PATTERNS = [
+  'flagged for possible cybersecurity risk',
+  'trusted access for cyber',
+  'violates our usage policies',
+  "violates openai's usage policies",
+  'your request was flagged by',
+  'prompt was flagged by our safety',
+  'responses cannot be generated due to safety',
+  'content_filter',
+  'responsibleaipolicyviolation',
+]
+
+const STREAMING_UNSUPPORTED_PATTERNS = [
+  /\bstreaming\s+(?:is\s+)?not\s+supported\b/,
+  /\bstream\s+mode\s+(?:is\s+)?not\s+supported\b/,
+  /\bdoes\s+not\s+support\s+streaming\b/,
+  /\bdoes\s+not\s+support\s+stream(?:ing)?\s+(?:mode|responses?|requests?)\b/,
+  /\bstream(?:ing)?\s+(?:mode\s+)?(?:is\s+)?unsupported\b/,
 ]
 
 const IMAGE_TOO_LARGE_PATTERNS = [
@@ -335,6 +368,12 @@ const SSL_TRANSIENT_PATTERNS = [
   '[ssl:',
 ]
 
+const MALFORMED_RESPONSE_PATTERNS = [
+  'stream ended without receiving any events',
+  'stream ended before producing assistant output',
+  'missing response_start',
+]
+
 // ---------------------------------------------------------------------------
 // Main classifier
 // ---------------------------------------------------------------------------
@@ -362,6 +401,31 @@ export function classifyError(
   const message = extractMessage(error)
   const lowerMessage = buildPatternMessage(error, message)
   const errorCode = extractErrorCode(error)
+
+  if (hasAnyPattern(lowerMessage, CONTENT_POLICY_BLOCKED_PATTERNS)) {
+    return result('content_policy_blocked', {
+      statusCode,
+      retryable: false,
+      shouldFallback: true,
+      message,
+    })
+  }
+
+  if (statusCode === 400 && isStreamingUnsupportedMessage(lowerMessage)) {
+    return result('streaming_unsupported', {
+      statusCode,
+      retryable: false,
+      message,
+    })
+  }
+
+  if (isMalformedResponseMessage(lowerMessage)) {
+    return result('malformed_response', {
+      statusCode,
+      retryable: true,
+      message,
+    })
+  }
 
   if (statusCode === undefined && isRateLimitLikeError(error)) {
     return result('rate_limit', {
@@ -476,6 +540,18 @@ export function classifyError(
     switch (statusCode) {
       case 401:
       case 403:
+        if (
+          statusCode === 403 &&
+          (lowerMessage.includes('key limit exceeded') ||
+            lowerMessage.includes('spending limit'))
+        ) {
+          return result('billing', {
+            statusCode,
+            retryable: false,
+            shouldFallback: true,
+            message,
+          })
+        }
         // Distinguish transient auth (can refresh) from permanent
         if (hasAnyPattern(lowerMessage, AUTH_PERMANENT_PATTERNS)) {
           return result('auth_permanent', {
@@ -498,6 +574,13 @@ export function classifyError(
       case 404:
         if (hasAnyPattern(lowerMessage, PROVIDER_POLICY_BLOCKED_PATTERNS)) {
           return result('provider_policy_blocked', {
+            statusCode,
+            retryable: false,
+            message,
+          })
+        }
+        if (isStreamEndpointNotFoundMessage(lowerMessage)) {
+          return result('stream_endpoint_not_found', {
             statusCode,
             retryable: false,
             message,
@@ -562,10 +645,7 @@ export function classifyError(
 
       case 500:
       case 502:
-        if (
-          hasAnyPattern(lowerMessage, REQUEST_VALIDATION_PATTERNS) ||
-          hasAnyPattern(errorCode, REQUEST_VALIDATION_PATTERNS)
-        ) {
+        if (hasDeterministicRequestValidationSignal(lowerMessage, errorCode)) {
           const requestFieldsToOmit = extractOmittableRequestFields(
             error,
             lowerMessage,
@@ -640,7 +720,7 @@ export function classifyError(
     // ECONNRESET/EPIPE + large session → likely context overflow (hermes heuristic)
     if (
       (connectionDetails.code === 'ECONNRESET' || connectionDetails.code === 'EPIPE') &&
-      isLargeSession(context)
+      isLargeDisconnectSession(context)
     ) {
       return result('context_overflow', {
         retryable: true,
@@ -652,15 +732,18 @@ export function classifyError(
   }
 
   // 6. Non-SDK errors — try message pattern matching
-  if (hasAnyPattern(lowerMessage, SERVER_DISCONNECT_PATTERNS) && isLargeSession(context)) {
-    return result('context_overflow', {
-      retryable: true,
-      shouldCompress: true,
-      message,
-    })
+  if (hasAnyPattern(lowerMessage, SSL_TRANSIENT_PATTERNS)) {
+    return result('timeout', { retryable: true, message })
   }
 
-  if (hasAnyPattern(lowerMessage, SSL_TRANSIENT_PATTERNS)) {
+  if (hasAnyPattern(lowerMessage, SERVER_DISCONNECT_PATTERNS)) {
+    if (isLargeDisconnectSession(context)) {
+      return result('context_overflow', {
+        retryable: true,
+        shouldCompress: true,
+        message,
+      })
+    }
     return result('timeout', { retryable: true, message })
   }
 
@@ -694,6 +777,33 @@ export function classifyError(
   ) {
     return result('invalid_encrypted_content', {
       retryable: true,
+      message,
+    })
+  }
+
+  if (hasExplicitRequestFieldValidationSignal(lowerMessage, errorCode)) {
+    const requestFieldsToOmit = extractOmittableRequestFields(
+      error,
+      lowerMessage,
+    )
+    if (requestFieldsToOmit.length > 0) {
+      return result('unsupported_parameter', {
+        retryable: true,
+        requestFieldsToOmit,
+        message,
+      })
+    }
+    return result('format_error', {
+      retryable: false,
+      shouldFallback: true,
+      message,
+    })
+  }
+
+  if (hasAnyPattern(lowerMessage, MAX_TOKENS_TOO_LARGE_PATTERNS)) {
+    return result('max_tokens_too_large', {
+      retryable: true,
+      shouldCompress: false,
       message,
     })
   }
@@ -776,7 +886,10 @@ function classify402(
   message: string,
   retryAfterMs: number | undefined,
 ): ClassifiedError {
-  if (hasAnyPattern(lowerMessage, RATE_LIMIT_TRANSIENT_SIGNALS)) {
+  if (
+    hasUsageLimitWithTransientSignal(lowerMessage) ||
+    (retryAfterMs !== undefined && hasAnyPattern(lowerMessage, RATE_LIMIT_PATTERNS))
+  ) {
     return result('rate_limit', {
       statusCode,
       retryable: true,
@@ -819,29 +932,6 @@ function classify400(
       message,
     })
   }
-  if (
-    hasAnyPattern(lowerMessage, REQUEST_VALIDATION_PATTERNS) ||
-    hasAnyPattern(errorCode, REQUEST_VALIDATION_PATTERNS)
-  ) {
-    const requestFieldsToOmit = extractOmittableRequestFields(
-      error,
-      lowerMessage,
-    )
-    if (requestFieldsToOmit.length > 0) {
-      return result('unsupported_parameter', {
-        statusCode,
-        retryable: true,
-        requestFieldsToOmit,
-        message,
-      })
-    }
-    return result('format_error', {
-      statusCode,
-      retryable: false,
-      shouldFallback: true,
-      message,
-    })
-  }
   if (hasAnyPattern(lowerMessage, MULTIMODAL_TOOL_CONTENT_PATTERNS)) {
     return result('multimodal_tool_content_unsupported', {
       statusCode,
@@ -869,6 +959,26 @@ function classify400(
     return result('invalid_encrypted_content', {
       statusCode,
       retryable: true,
+      message,
+    })
+  }
+  if (hasExplicitRequestFieldValidationSignal(lowerMessage, errorCode)) {
+    const requestFieldsToOmit = extractOmittableRequestFields(
+      error,
+      lowerMessage,
+    )
+    if (requestFieldsToOmit.length > 0) {
+      return result('unsupported_parameter', {
+        statusCode,
+        retryable: true,
+        requestFieldsToOmit,
+        message,
+      })
+    }
+    return result('format_error', {
+      statusCode,
+      retryable: false,
+      shouldFallback: true,
       message,
     })
   }
@@ -911,9 +1021,10 @@ function classify400(
       message,
     })
   }
-  // Hermes heuristic: generic 400 + large session → likely context overflow
-  // Threshold: >40% of context window OR >80K tokens OR >80 messages
-  if (isLargeSession(context)) {
+  // Hermes heuristic: generic 400 + large session → likely context overflow.
+  // Only apply it to generic/bare messages; a specific unknown 400 should not
+  // trigger expensive compaction just because the current session is large.
+  if (isGenericBadRequestMessage(lowerMessage) && isLargeSession(context)) {
     return result('context_overflow', {
       statusCode,
       retryable: true,
@@ -1142,6 +1253,26 @@ function isLargeSession(context: ErrorClassificationContext): boolean {
   return false
 }
 
+function isLargeDisconnectSession(context: ErrorClassificationContext): boolean {
+  const contextLength = context.contextLength
+  const approxTokens = context.approxTokens ?? 0
+  const numMessages = context.numMessages ?? 0
+
+  if (contextLength !== undefined && approxTokens > contextLength * 0.6) {
+    return true
+  }
+
+  if (
+    contextLength !== undefined &&
+    contextLength <= 256_000 &&
+    (approxTokens > 120_000 || numMessages > 200)
+  ) {
+    return true
+  }
+
+  return contextLength === undefined && approxTokens > 120_000
+}
+
 // ---------------------------------------------------------------------------
 // Pattern matching
 // ---------------------------------------------------------------------------
@@ -1154,6 +1285,62 @@ function hasUsageLimitWithTransientSignal(lowerMessage: string): boolean {
   return (
     hasAnyPattern(lowerMessage, USAGE_LIMIT_PATTERNS) &&
     hasAnyPattern(lowerMessage, RATE_LIMIT_TRANSIENT_SIGNALS)
+  )
+}
+
+function isStreamingUnsupportedMessage(lowerMessage: string): boolean {
+  if (
+    lowerMessage.includes('stream_options') ||
+    lowerMessage.includes('stream option')
+  ) {
+    return false
+  }
+  return STREAMING_UNSUPPORTED_PATTERNS.some(pattern =>
+    pattern.test(lowerMessage),
+  )
+}
+
+function isStreamEndpointNotFoundMessage(lowerMessage: string): boolean {
+  return (
+    (lowerMessage.includes('streaming endpoint') ||
+      lowerMessage.includes('stream endpoint')) &&
+    (lowerMessage.includes('not found') ||
+      lowerMessage.includes('does not exist') ||
+      lowerMessage.includes('not exist') ||
+      lowerMessage.includes('404'))
+  )
+}
+
+function isGenericBadRequestMessage(lowerMessage: string): boolean {
+  const normalized = lowerMessage.trim()
+  return (
+    normalized.length === 0 ||
+    normalized === 'error' ||
+    normalized === 'bad request' ||
+    normalized === 'invalid request' ||
+    normalized === 'invalid_request_error' ||
+    /^bad request[:.\s-]*$/i.test(normalized) ||
+    /^invalid request[:.\s-]*$/i.test(normalized)
+  )
+}
+
+function hasExplicitRequestFieldValidationSignal(
+  lowerMessage: string,
+  errorCode: string,
+): boolean {
+  return (
+    hasAnyPattern(lowerMessage, REQUEST_FIELD_VALIDATION_PATTERNS) ||
+    hasAnyPattern(errorCode, REQUEST_FIELD_VALIDATION_PATTERNS)
+  )
+}
+
+function hasDeterministicRequestValidationSignal(
+  lowerMessage: string,
+  errorCode: string,
+): boolean {
+  return (
+    hasExplicitRequestFieldValidationSignal(lowerMessage, errorCode) ||
+    errorCode === 'invalid_request_error'
   )
 }
 
@@ -1226,6 +1413,10 @@ function isResponsesMalformedOutputMessage(lowerMessage: string): boolean {
     lowerMessage.includes('stream ended without receiving any events') ||
     lowerMessage.includes('missing response_start')
   )
+}
+
+function isMalformedResponseMessage(lowerMessage: string): boolean {
+  return hasAnyPattern(lowerMessage, MALFORMED_RESPONSE_PATTERNS)
 }
 
 function extractOmittableRequestFields(

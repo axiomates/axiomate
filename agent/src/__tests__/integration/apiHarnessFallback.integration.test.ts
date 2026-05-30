@@ -44,6 +44,7 @@ const SWITCH_MODEL_ON = [
   'malformed_response',
   'responses_null_output',
   'provider_policy_blocked',
+  'content_policy_blocked',
 ] as const
 
 const state = vi.hoisted(() => ({

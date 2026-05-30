@@ -74,6 +74,9 @@ function ApiFailureCardView({ card }: { card: ApiFailureCard }): React.ReactNode
               .join('; ')}
           </Text>
         )}
+        {card.advanced.innerCause && (
+          <Text dimColor>cause: {card.advanced.innerCause}</Text>
+        )}
         {advancedSummary(card) && (
           <Text dimColor>advanced: {advancedSummary(card)}</Text>
         )}
@@ -133,7 +136,11 @@ function formatTimelineItem(item: ApiFailureCardTimelineItem): string {
       ? ` +${item.mutation.join(',')}`
       : ''
   const status = item.statusCode !== undefined ? ` HTTP ${item.statusCode}` : ''
-  return `#${item.attempt}/${item.maxAttempts} ${item.reason}${status} -> ${item.action}/${item.outcome}${mutation}`
+  return `#${item.attempt}/${item.maxAttempts} ${formatReason(item.reason)}${status} -> ${item.action}/${item.outcome}${mutation}`
+}
+
+function formatReason(reason: ApiFailureCardTimelineItem['reason']): string {
+  return reason === 'unknown' ? 'unclassified' : reason
 }
 
 function colorFor(

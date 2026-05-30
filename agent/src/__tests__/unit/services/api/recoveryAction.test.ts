@@ -49,6 +49,18 @@ describe('resolveRecoveryAction', () => {
     ).toBe('fail_fast')
   })
 
+  it('maps content policy blocks to fallback only when a candidate is available', () => {
+    const error = classified('content_policy_blocked', {
+      retryable: false,
+      shouldFallback: true,
+    })
+
+    expect(resolveRecoveryAction(error)).toBe('fail_fast')
+    expect(resolveRecoveryAction(error, { canFallback: true })).toBe(
+      'fallback_model',
+    )
+  })
+
   it('maps thinking signature errors to disable_thinking', () => {
     expect(resolveRecoveryAction(classified('thinking_signature'))).toBe(
       'disable_thinking',

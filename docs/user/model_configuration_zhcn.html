@@ -350,21 +350,21 @@
         "fallbackChain": ["gpt-5.4", "Pro/zai-org/GLM-5.1", "Pro/moonshotai/Kimi-K2.6", "Qwen/Qwen3.5-397B-A17B", "Pro/MiniMaxAI/MiniMax-M2.5", "Qwen/Qwen3.5-122B-A10B", "Qwen/Qwen3-8B"],
         "recoveryProfile": "main-agent",
         "allowActions": ["retry_same_model", "adapt_request", "switch_model"],
-        "switchModelOn": ["rate_limit", "overloaded", "timeout", "connection", "server_error", "malformed_response", "responses_null_output", "model_not_found", "provider_policy_blocked"]
+        "switchModelOn": ["rate_limit", "overloaded", "timeout", "connection", "server_error", "malformed_response", "responses_null_output", "model_not_found", "provider_policy_blocked", "content_policy_blocked"]
       },
       "quality-main": {
         "primary": "gpt-5.4",
         "fallbackChain": ["deepseek-v4-pro", "Pro/zai-org/GLM-5.1", "Pro/moonshotai/Kimi-K2.6", "Qwen/Qwen3.5-397B-A17B", "Pro/MiniMaxAI/MiniMax-M2.5", "Qwen/Qwen3.5-122B-A10B", "Qwen/Qwen3-8B"],
         "recoveryProfile": "main-agent",
         "allowActions": ["retry_same_model", "adapt_request", "switch_model"],
-        "switchModelOn": ["rate_limit", "overloaded", "timeout", "connection", "server_error", "malformed_response", "responses_null_output", "model_not_found", "provider_policy_blocked"]
+        "switchModelOn": ["rate_limit", "overloaded", "timeout", "connection", "server_error", "malformed_response", "responses_null_output", "model_not_found", "provider_policy_blocked", "content_policy_blocked"]
       },
       "fast-main": {
         "primary": "Qwen/Qwen3.5-122B-A10B",
         "fallbackChain": ["Pro/MiniMaxAI/MiniMax-M2.5", "Qwen/Qwen3.5-397B-A17B", "Pro/moonshotai/Kimi-K2.6", "deepseek-v4-pro", "Qwen/Qwen3-8B"],
         "recoveryProfile": "main-agent",
         "allowActions": ["retry_same_model", "adapt_request", "switch_model"],
-        "switchModelOn": ["rate_limit", "overloaded", "timeout", "connection", "server_error", "malformed_response", "responses_null_output", "model_not_found", "provider_policy_blocked"]
+        "switchModelOn": ["rate_limit", "overloaded", "timeout", "connection", "server_error", "malformed_response", "responses_null_output", "model_not_found", "provider_policy_blocked", "content_policy_blocked"]
       }
     }
   }
@@ -1015,13 +1015,19 @@
             <td>等待后重试；预算耗尽且策略允许时切到 <code>fallbackChain</code>。</td>
           </tr>
           <tr>
-            <td>模型不存在、provider 策略阻止、响应结构为空或畸形</td>
-            <td><code>model_not_found</code> / <code>provider_policy_blocked</code> / <code>responses_null_output</code> / <code>malformed_response</code></td>
-            <td>按规则重试、适配请求或切换模型；不可恢复时停止并记录 trace。</td>
+            <td>模型不存在、provider/内容策略阻止、响应结构为空或畸形</td>
+            <td><code>model_not_found</code> / <code>provider_policy_blocked</code> / <code>content_policy_blocked</code> / <code>responses_null_output</code> / <code>malformed_response</code></td>
+            <td>按规则重试、适配请求或切换模型；内容策略拒绝不会原样重试同一请求，不可恢复时停止并记录 trace。</td>
+          </tr>
+          <tr>
+            <td>provider 明确拒绝 streaming，或 streaming endpoint 返回 404 但不是模型不存在</td>
+            <td><code>streaming_unsupported</code> / <code>stream_endpoint_not_found</code></td>
+            <td>只在这些窄语义下切到 non-streaming fallback；空流、本地 stream 解析错误和普通 52x 会先走流式重试，不会直接降级。</td>
           </tr>
         </tbody>
       </table>
       <p><code>allowActions</code> 决定一条 route 或辅助任务允许哪些动作类型，<code>switchModelOn</code> 只决定哪些语义错误允许切模型。它们只是决策系统的输入，不会绕过观察和规则表直接 fallback。</p>
+      <p><code>content_policy_blocked</code> 表示 provider 对本轮 prompt 做出了安全/内容过滤拒绝。Axiomate 不会把它当作 transient retry 原样重试；只有当 <code>allowActions</code> 包含 <code>switch_model</code>、<code>switchModelOn</code> 包含 <code>content_policy_blocked</code>，且 <code>fallbackChain</code> 有不同模型时，才会切到候选模型。</p>
       <p>每一轮失败都会重新观察错误原因，并从当前 <code>primary</code> / <code>fallbackChain</code> / policy 生成一份独立的 fallback 可用性快照。也就是说，上一次是 <code>rate_limit</code> 并允许切模型，不会污染下一次 <code>model_not_found</code> 或 <code>server_error</code> 的判断。<code>/doctor</code> 中看到的 <code>actionAllowed</code> / <code>reasonAllowed</code> 是这轮请求的诊断快照，不是需要手动写进配置的字段。</p>
 
       <h3><code>/doctor</code> API Providers：怎么看 API 失败</h3>

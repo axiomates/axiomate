@@ -873,7 +873,7 @@ async function* queryLoop(
             // Yield system message about fallback — use 'warning' level so
             // users see the notification without needing verbose mode
             yield createSystemMessage(
-              `Switched to ${renderModelName(innerError.fallbackModel)} due to high demand for ${renderModelName(innerError.originalModel)}`,
+              `Switched to ${renderModelName(innerError.fallbackModel)} after API recovery on ${renderModelName(innerError.originalModel)}`,
               'warning',
             )
 

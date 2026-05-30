@@ -60,6 +60,7 @@ export interface ApiFailureCard {
     requestIds: string[]
     timeout?: string
     elapsed?: string
+    innerCause?: string
     safeHeaders?: Record<string, string>
     policyGate?: string
   }
@@ -165,6 +166,7 @@ function projectGroup(group: TraceGroup): ApiFailureCard {
       requestIds: unique(events.map(event => event.requestId)),
       timeout: timeoutFor(latest),
       elapsed: elapsedFor(latest),
+      innerCause: latest.innerCause,
       safeHeaders: latest.safeHeaders,
       policyGate: policyGateFor(latest),
     },
@@ -330,11 +332,34 @@ function modelPathFor(events: readonly SafeApiRecoveryTraceEvent[]): string {
 }
 
 function observedFor(event: SafeApiRecoveryTraceEvent): string {
-  const parts: string[] = [event.reason]
+  const parts: string[] = [observedReasonFor(event)]
   if (event.statusCode !== undefined) parts.push(`HTTP ${event.statusCode}`)
+  if (event.streamPhase) parts.push(`phase ${event.streamPhase}`)
+  const cause = compactCause(event.innerCause)
+  if (cause) parts.push(cause)
   const requestId = event.requestId ?? event.safeHeaders?.['x-request-id'] ?? event.safeHeaders?.['request-id']
   if (requestId) parts.push(`request ${requestId}`)
   return parts.join(' · ')
+}
+
+function observedReasonFor(event: SafeApiRecoveryTraceEvent): string {
+  if (event.reason !== 'unknown') {
+    return event.reason
+  }
+  if (event.statusCode !== undefined) {
+    return 'unclassified provider error'
+  }
+  if (event.streamPhase) {
+    return 'unclassified stream error'
+  }
+  return 'unclassified API error'
+}
+
+function compactCause(cause: string | undefined): string | undefined {
+  if (!cause) {
+    return undefined
+  }
+  return cause.replace(/\s+/g, ' ').slice(0, 120)
 }
 
 function stoppedReasonFor(
@@ -385,6 +410,12 @@ function nextActionFor(event: SafeApiRecoveryTraceEvent): string {
       return `Check ${modelField(event, 'model')}, ${modelField(event, 'protocol')}, and ${modelField(event, 'baseUrl')}, then run /model route show to confirm the active route points at it.`
     case 'provider_policy_blocked':
       return `Choose a provider/model allowed by the account or gateway policy, then update ${modelEntry(event)} or the active route.`
+    case 'content_policy_blocked':
+      return `The provider safety/content filter rejected this prompt. Rephrase the request, or use a route whose fallback policy allows another provider for content_policy_blocked.`
+    case 'streaming_unsupported':
+      return `This endpoint explicitly rejected streaming. Keep the automatic non-streaming fallback, or set ${modelField(event, 'protocol')} / ${modelField(event, 'baseUrl')} to an endpoint with streaming support.`
+    case 'stream_endpoint_not_found':
+      return `The streaming endpoint returned 404 while model-not-found was not indicated. Check ${modelField(event, 'baseUrl')} and ${modelField(event, 'protocol')}; non-streaming fallback may still work for this gateway.`
     case 'context_overflow':
     case 'payload_too_large':
       return event.action === 'request_compaction'
@@ -414,7 +445,13 @@ function nextActionFor(event: SafeApiRecoveryTraceEvent): string {
     case 'abort':
       return 'No action needed unless this was unexpected; retry the request.'
     case 'unknown':
-      return 'Reproduce once, open /doctor, and inspect protocol/baseUrl/model fields; check provider status if the same card repeats.'
+      if (event.statusCode === 404) {
+        return `Check ${modelField(event, 'baseUrl')} and ${modelField(event, 'protocol')}; HTTP 404 without a model-not-found signal usually means an endpoint path or gateway routing problem.`
+      }
+      if (event.innerCause) {
+        return `Use the observed cause above with ${modelField(event, 'baseUrl')}, ${modelField(event, 'protocol')}, and provider status; add a classifier rule if this provider emits the same stable error shape.`
+      }
+      return `Reproduce once, then inspect ${modelField(event, 'protocol')}, ${modelField(event, 'baseUrl')}, and provider status; add a classifier rule if the same unclassified shape repeats.`
   }
 }
 

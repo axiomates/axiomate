@@ -614,7 +614,8 @@
     "throws": {
       "status": 502,
       "messageIncludes": "response.incomplete",
-      "expectedReason": "server_error"
+      "expectedReason": "content_policy_blocked",
+      "expectedRetryable": false
     }
   },
   {

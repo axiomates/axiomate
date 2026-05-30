@@ -318,6 +318,37 @@ describe('withRetry semantic recovery', () => {
     ])
   })
 
+  it('does not reinterpret provider-policy 404 as stream endpoint fallback', async () => {
+    let calls = 0
+    const traces: RecoveryTraceEvent[] = []
+    const gen = withRetry(
+      async () => ({}),
+      async () => {
+        calls++
+        throw new LLMAPIError(
+          'No endpoints available matching your guardrail restrictions and data policy.',
+          { status: 404 },
+        )
+      },
+      withTrace(traces, {
+        protocol: 'openai-chat',
+        deferModelNotFoundFallback: true,
+        maxRetries: 10,
+      }),
+    )
+
+    await expect(consume(gen)).rejects.toBeInstanceOf(CannotRetryError)
+    expect(calls).toBe(1)
+    expect(traces[0]).toMatchObject({
+      reason: 'provider_policy_blocked',
+      statusCode: 404,
+      intent: 'fail_unrecoverable',
+      action: 'fail_fast',
+      outcome: 'failing',
+      final: true,
+    })
+  })
+
   it('delegates generic 404 stream creation to non-streaming fallback routing immediately', async () => {
     let calls = 0
     const traces: RecoveryTraceEvent[] = []
@@ -337,7 +368,7 @@ describe('withRetry semantic recovery', () => {
     await expect(consume(gen)).rejects.toBeInstanceOf(CannotRetryError)
     expect(calls).toBe(1)
     expect(traces[0]).toMatchObject({
-      reason: 'unknown',
+      reason: 'stream_endpoint_not_found',
       statusCode: 404,
       intent: 'switch_to_non_streaming',
       action: 'non_streaming_fallback',

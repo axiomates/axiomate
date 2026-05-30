@@ -304,6 +304,42 @@ describe('query recovery trace plumbing', () => {
     expect(attemptedModels).toEqual(['test-model', 'test-fallback-model'])
   })
 
+  it('describes model fallback as API recovery, not high demand only', async () => {
+    const callModel = vi.fn(async function* (input: {
+      options: { model: string; fallbackModel?: string }
+    }) {
+      if (input.options.model === 'test-model') {
+        throw new FallbackTriggeredError('test-model', 'test-fallback-model')
+      }
+      yield makeAssistantMessage()
+    })
+    const deps: QueryDeps = {
+      callModel: callModel as unknown as QueryDeps['callModel'],
+      microcompact: vi.fn(async messages => ({ messages })) as QueryDeps['microcompact'],
+      autocompact: vi.fn(async () => ({ wasCompacted: false })) as QueryDeps['autocompact'],
+      uuid: vi.fn(() => '00000000-0000-4000-8000-000000000099'),
+    }
+
+    const output = await drain(
+      query({
+        messages: [],
+        systemPrompt: '' as never,
+        userContext: {},
+        systemContext: {},
+        canUseTool: vi.fn(),
+        toolUseContext: makeContext(vi.fn()),
+        querySource: 'sdk',
+        deps,
+      }),
+    )
+
+    const fallbackNotice = output.find(message =>
+      JSON.stringify(message).includes('Switched to test-fallback-model'),
+    )
+    expect(JSON.stringify(fallbackNotice)).toContain('after API recovery')
+    expect(JSON.stringify(fallbackNotice)).not.toContain('high demand')
+  })
+
   it('uses session route overrides as the main route chain', async () => {
     const onRecoveryTrace = vi.fn()
     const attemptedModels: string[] = []

@@ -115,17 +115,29 @@ export async function verifyConnection(
 
 /**
  * Detect "endpoint does not support streaming" errors. Kept intentionally
- * narrow: must be a 400 whose message mentions both "stream" and "not support"
- * (case-insensitive). Used by the orchestration layer to decide whether to
- * fall back to non-streaming mode.
+ * narrow: must be a 400 whose message rejects streaming mode itself. Do not
+ * match request-field errors such as unsupported `stream_options`; those belong
+ * to the normal observe→decide→execute request-shape recovery path.
  */
 export function isStreamUnsupportedError(err: unknown): boolean {
   const wrapped = wrapError(err)
   if (wrapped.status !== 400) return false
   const msg = String(wrapped.message || '').toLowerCase()
-  if (msg.includes('streaming is not supported')) return true
-  if (msg.includes('stream mode is not supported')) return true
-  if (msg.includes('does not support streaming')) return true
-  if (msg.includes('does not support stream')) return true
-  return msg.includes('not support') && msg.includes('stream')
+  if (mentionsRequestStreamOption(msg)) return false
+  return STREAM_UNSUPPORTED_PATTERNS.some(pattern => pattern.test(msg))
+}
+
+const STREAM_UNSUPPORTED_PATTERNS = [
+  /\bstreaming\s+(?:is\s+)?not\s+supported\b/,
+  /\bstream\s+mode\s+(?:is\s+)?not\s+supported\b/,
+  /\bdoes\s+not\s+support\s+streaming\b/,
+  /\bdoes\s+not\s+support\s+stream(?:ing)?\s+(?:mode|responses?|requests?)\b/,
+  /\bstream(?:ing)?\s+(?:mode\s+)?(?:is\s+)?unsupported\b/,
+]
+
+function mentionsRequestStreamOption(message: string): boolean {
+  return (
+    message.includes('stream_options') ||
+    message.includes('stream option')
+  )
 }

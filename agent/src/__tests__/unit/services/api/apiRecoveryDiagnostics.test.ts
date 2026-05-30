@@ -48,7 +48,7 @@ describe('apiRecoveryDiagnostics', () => {
     expect(traces.at(-1)?.traceId).toBe('trace-5')
   })
 
-  it('keeps only safe headers and drops raw error cause fields', () => {
+  it('keeps only safe headers and redacts raw error cause fields', () => {
     const safe = toSafeApiRecoveryTraceEvent(event({
       innerCause: 'Error containing bearer sk-secret and raw prompt text',
       safeHeaders: {
@@ -59,11 +59,21 @@ describe('apiRecoveryDiagnostics', () => {
       },
     }))
 
-    expect((safe as { innerCause?: string }).innerCause).toBeUndefined()
+    expect(safe.innerCause).toBe('Error: [redacted]')
     expect(safe.safeHeaders).toEqual({
       'x-request-id': 'req-123',
       'retry-after': '2',
     })
+  })
+
+  it('preserves non-sensitive inner causes for Doctor diagnosis', () => {
+    const safe = toSafeApiRecoveryTraceEvent(event({
+      innerCause: 'LLMAPIError: Stream ended without receiving any events',
+    }))
+
+    expect(safe.innerCause).toBe(
+      'LLMAPIError: Stream ended without receiving any events',
+    )
   })
 
   it('returns defensive copies', () => {

@@ -186,7 +186,7 @@ export const RECOVERY_RULES: readonly RecoveryRule[] = [
   {
     id: 'retry-malformed-responses-output',
     reasons: ['responses_null_output', 'malformed_response'],
-    protocols: ['openai-responses', 'axiomate-generic'],
+    protocols: ['openai-chat', 'openai-responses', 'anthropic', 'axiomate-generic'],
     intent: 'retry_transient_failure',
     actions: ['retry_backoff'],
     outcome: 'retrying',

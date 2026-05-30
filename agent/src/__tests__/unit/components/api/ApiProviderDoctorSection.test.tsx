@@ -86,6 +86,33 @@ describe('ApiProviderDoctorSection', () => {
     expect(output).not.toContain('authorization')
   })
 
+  it('renders stream endpoint fallback observations without bare unknown', async () => {
+    appendApiRecoveryTrace({
+      ...event(),
+      reason: 'stream_endpoint_not_found',
+      intent: 'switch_to_non_streaming',
+      action: 'non_streaming_fallback',
+      outcome: 'fallback_triggered',
+      statusCode: 404,
+      retryable: true,
+      shouldFallback: false,
+      operation: 'non_streaming_fallback',
+      streamPhase: 'fallback',
+      innerCause: 'LLMAPIError: Not Found',
+      final: false,
+    })
+
+    const output = await renderToString(<ApiProviderDoctorSection />)
+
+    expect(output).toContain(
+      'observed: stream_endpoint_not_found · HTTP 404 · phase fallback ·',
+    )
+    expect(output).toContain('LLMAPIError: Not Found')
+    expect(output).toContain('cause: LLMAPIError: Not Found')
+    expect(output).toContain('timeline: #1/1 stream_endpoint_not_found HTTP 404 ->')
+    expect(output).not.toContain('observed: unknown')
+  })
+
 
   it('renders recovered API sessions as recovered cards', async () => {
     appendApiRecoveryTrace({
@@ -196,6 +223,7 @@ describe('ApiProviderDoctorSection', () => {
         auxiliaryTask: undefined,
         ruleIds: ['retry-transient'],
         requestIds: [],
+        innerCause: undefined,
         safeHeaders: { 'retry-after': '2' },
       },
     })).toBe(

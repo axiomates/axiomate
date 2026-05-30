@@ -156,6 +156,15 @@ const cases: ContractCase[] = [
     expectedAction: 'fail_fast',
   },
   {
+    name: 'Provider safety filter: content policy block is deterministic',
+    protocol: 'openai-chat',
+    error: new LLMAPIError('The prompt was flagged by our safety system.', {
+      status: 400,
+    }),
+    expectedReason: 'content_policy_blocked',
+    expectedAction: 'fail_fast',
+  },
+  {
     name: 'Transport: SSL alert remains timeout even on large session',
     protocol: 'anthropic',
     error: new Error('SSL alert bad record mac'),

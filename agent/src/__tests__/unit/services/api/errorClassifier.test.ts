@@ -53,6 +53,21 @@ describe('classifyError: HTTP status → reason', () => {
     expect(result.statusCode).toBe(403)
   })
 
+  it('403 + key/spending limit → billing', () => {
+    const keyLimit = classifyError(
+      makeAPIError(403, 'Key limit exceeded for this key'),
+      defaultContext,
+    )
+    const spendingLimit = classifyError(
+      makeAPIError(403, 'Spending limit reached'),
+      defaultContext,
+    )
+
+    expect(keyLimit.reason).toBe('billing')
+    expect(keyLimit.retryable).toBe(false)
+    expect(spendingLimit.reason).toBe('billing')
+  })
+
   it('401 + "account has been disabled" → auth_permanent', () => {
     const result = classifyError(
       makeAPIError(401, 'Your account has been disabled'),
@@ -280,6 +295,15 @@ describe('classifyError: 402 billing vs transient rate_limit', () => {
     expect(result.retryable).toBe(true)
   })
 
+  it('402 + retry wording without usage/quota signal stays billing', () => {
+    const result = classifyError(
+      makeAPIError(402, 'Payment required. Please retry after updating billing.'),
+      defaultContext,
+    )
+    expect(result.reason).toBe('billing')
+    expect(result.retryable).toBe(false)
+  })
+
   it('402 + "resets at" → rate_limit (transient)', () => {
     const result = classifyError(
       makeAPIError(402, 'Rate quota exceeded. Window resets at 2026-04-14T10:00:00Z.'),
@@ -469,6 +493,24 @@ describe('classifyError: 400 context_overflow vs format_error', () => {
     expect(result.retryable).toBe(true)
   })
 
+  it('400 + invalid_request_error type does not mask multimodal tool-content recovery', () => {
+    const result = classifyError(
+      new LLMAPIError('Param Incorrect: text is not set', {
+        status: 400,
+        error: {
+          error: {
+            type: 'invalid_request_error',
+            message: 'Param Incorrect: text is not set',
+          },
+        },
+      }),
+      defaultContext,
+    )
+
+    expect(result.reason).toBe('multimodal_tool_content_unsupported')
+    expect(result.retryable).toBe(true)
+  })
+
   it('400 + image size rejection → image_too_large', () => {
     const result = classifyError(
       makeAPIError(400, 'image exceeds 5 MB maximum'),
@@ -509,6 +551,29 @@ describe('classifyError: 400 context_overflow vs format_error', () => {
     expect(result.shouldFallback).toBe(false)
   })
 
+  it('404 + OpenRouter data policy block → provider_policy_blocked', () => {
+    const result = classifyError(
+      makeAPIError(
+        404,
+        'No endpoints available matching your guardrail restrictions and data policy.',
+      ),
+      defaultContext,
+    )
+    expect(result.reason).toBe('provider_policy_blocked')
+    expect(result.retryable).toBe(false)
+    expect(result.shouldFallback).toBe(false)
+  })
+
+  it('400 + provider safety/content policy block → content_policy_blocked', () => {
+    const result = classifyError(
+      makeAPIError(400, 'Your request was flagged by our safety system.'),
+      defaultContext,
+    )
+    expect(result.reason).toBe('content_policy_blocked')
+    expect(result.retryable).toBe(false)
+    expect(result.shouldFallback).toBe(true)
+  })
+
   it('400 + "invalid model" → model_not_found', () => {
     const result = classifyError(
       makeAPIError(400, 'gpt-5-turbo is not a valid model'),
@@ -527,12 +592,39 @@ describe('classifyError: 400 context_overflow vs format_error', () => {
     expect(result.shouldCompress).toBe(true)
   })
 
+  it('400 + specific unknown message + large session does not trigger compaction heuristic', () => {
+    const result = classifyError(
+      makeAPIError(400, 'The provider rejected the request shape'),
+      largeSessionContext,
+    )
+    expect(result.reason).toBe('format_error')
+    expect(result.shouldCompress).toBe(false)
+  })
+
   it('400 + generic message + small session → format_error', () => {
     const result = classifyError(
       makeAPIError(400, 'Bad Request'),
       { provider: 'openai', model: 'gpt-4o', approxTokens: 5000, contextLength: 128000 },
     )
     expect(result.reason).toBe('format_error')
+    expect(result.retryable).toBe(false)
+  })
+
+  it('400 + explicit stream unsupported → streaming_unsupported', () => {
+    const result = classifyError(
+      makeAPIError(400, 'This endpoint does not support streaming'),
+      defaultContext,
+    )
+    expect(result.reason).toBe('streaming_unsupported')
+    expect(result.retryable).toBe(false)
+  })
+
+  it('404 + explicit stream endpoint missing → stream_endpoint_not_found', () => {
+    const result = classifyError(
+      makeAPIError(404, 'The requested streaming endpoint does not exist'),
+      defaultContext,
+    )
+    expect(result.reason).toBe('stream_endpoint_not_found')
     expect(result.retryable).toBe(false)
   })
 
@@ -566,13 +658,43 @@ describe('classifyError: transport errors', () => {
     expect(result.retryable).toBe(true)
   })
 
-  it('server disconnected + large session → context_overflow', () => {
+  it('empty stream completion → malformed_response (retryable)', () => {
+    const result = classifyError(
+      new Error('Stream ended without receiving any events'),
+      { provider: 'openai-chat', model: 'deepseek-v4-pro' },
+    )
+    expect(result.reason).toBe('malformed_response')
+    expect(result.retryable).toBe(true)
+  })
+
+  it('server disconnected + very large session → context_overflow', () => {
     const result = classifyError(
       new Error('server disconnected without sending a response'),
-      largeSessionContext,
+      {
+        provider: 'openai',
+        model: 'gpt-4o',
+        approxTokens: 180_000,
+        contextLength: 256_000,
+        numMessages: 240,
+      },
     )
     expect(result.reason).toBe('context_overflow')
     expect(result.shouldCompress).toBe(true)
+  })
+
+  it('server disconnected + moderate large session stays timeout', () => {
+    const result = classifyError(
+      new Error('server disconnected without sending a response'),
+      {
+        provider: 'openai',
+        model: 'gpt-4o',
+        approxTokens: 100_000,
+        contextLength: 256_000,
+        numMessages: 120,
+      },
+    )
+    expect(result.reason).toBe('timeout')
+    expect(result.shouldCompress).toBe(false)
   })
 
   it('server disconnected + small session → unknown', () => {
@@ -580,8 +702,16 @@ describe('classifyError: transport errors', () => {
       new Error('server disconnected without sending a response'),
       { provider: 'anthropic', model: 'provider-main-model', approxTokens: 1000 },
     )
-    // small session, not context overflow
-    expect(result.reason).toBe('unknown')
+    expect(result.reason).toBe('timeout')
+  })
+
+  it('message-only max_tokens output cap → max_tokens_too_large', () => {
+    const result = classifyError(
+      new Error('max_tokens is too large: model output cap is 64000'),
+      defaultContext,
+    )
+    expect(result.reason).toBe('max_tokens_too_large')
+    expect(result.shouldCompress).toBe(false)
   })
 
   it('SSL alert text → timeout instead of context compression', () => {
@@ -677,6 +807,15 @@ describe('classifyError: message-only classification', () => {
     )
     expect(result.reason).toBe('invalid_encrypted_content')
     expect(result.retryable).toBe(true)
+  })
+
+  it('message-only content_filter token → content_policy_blocked', () => {
+    const result = classifyError(
+      new Error('Provider failed with finish_reason=content_filter'),
+      { provider: 'openai-chat', model: 'gpt-5' },
+    )
+    expect(result.reason).toBe('content_policy_blocked')
+    expect(result.retryable).toBe(false)
   })
 })
 

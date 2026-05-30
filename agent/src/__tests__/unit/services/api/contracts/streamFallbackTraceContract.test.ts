@@ -23,6 +23,7 @@ import { withRetry } from '../../../../../services/api/withRetry.js'
 const fakeProviderState = vi.hoisted(() => ({
   mode: 'stream_fallback' as
     | 'stream_fallback'
+    | 'empty_stream_retry'
     | 'stream_creation_404'
     | 'stream_creation_model_not_found'
     | 'watchdog_retry',
@@ -197,6 +198,30 @@ function makeWatchdogStreamResult(
   }
 }
 
+function makeEmptyStreamResult(
+  request: StreamRequest,
+  attempt: number,
+): ProviderStreamResult {
+  const requestId = `req_empty_stream_${attempt}`
+  const responseHeaders = new Headers({ 'x-request-id': requestId })
+  request.hooks?.onAttemptStart?.({ attempt, start: Date.now() })
+  request.hooks?.onRequestSent?.({
+    maxOutputTokens: 4096,
+    requestId,
+    response: { headers: responseHeaders },
+  })
+  request.hooks?.onProviderEvent?.({ type: 'ttfb', ms: 5 })
+
+  return {
+    requestId,
+    responseHeaders,
+    maxOutputTokens: 4096,
+    stream: {
+      async *[Symbol.asyncIterator](): AsyncIterator<StreamEvent> {},
+    },
+  }
+}
+
 type FakeProviderState = typeof fakeProviderState
 
 class FakeFallbackProvider implements LLMProvider {
@@ -230,6 +255,37 @@ class FakeFallbackProvider implements LLMProvider {
           const attempt = this.state.streamAttempts
           return attempt === 1
             ? makeWatchdogStreamResult(request, attempt)
+            : makeSuccessfulRetryStreamResult(request, attempt)
+        }
+        if (
+          this.state.mode === 'empty_stream_retry' ||
+          this.state.mode === 'stream_fallback'
+        ) {
+          this.state.streamAttempts++
+          const attempt = this.state.streamAttempts
+          const streamError = this.state.streamError
+          return attempt === 1
+            ? this.state.mode === 'stream_fallback'
+              ? {
+                  requestId: 'req_stream_trace',
+                  responseHeaders: undefined,
+                  maxOutputTokens: 4096,
+                  stream: {
+                    async *[Symbol.asyncIterator](): AsyncIterator<StreamEvent> {
+                      yield {
+                        type: 'response_start',
+                        response: {
+                          id: 'resp_trace',
+                          model: 'gpt-4o',
+                          stopReason: null,
+                          usage: { inputTokens: 1, outputTokens: 0 },
+                        },
+                      }
+                      throw streamError
+                    },
+                  },
+                }
+              : makeEmptyStreamResult(request, attempt)
             : makeSuccessfulRetryStreamResult(request, attempt)
         }
 
@@ -320,6 +376,7 @@ class FakeFallbackProvider implements LLMProvider {
 function projectTrace(event: RecoveryTraceEvent) {
   return {
     protocol: event.protocol,
+    querySource: event.querySource,
     reason: event.reason,
     intent: event.intent,
     action: event.action,
@@ -378,7 +435,7 @@ describe('stream fallback recovery trace golden fixture', () => {
   beforeEach(() => {
     fakeProviderState.mode = 'stream_fallback'
     fakeProviderState.streamError = new Error(
-      'Stream ended without receiving any events',
+      'missing response_start before block_delta',
     )
     fakeProviderState.streamAttempts = 0
   })
@@ -387,7 +444,7 @@ describe('stream fallback recovery trace golden fixture', () => {
     vi.unstubAllEnvs()
   })
 
-  it('emits non_streaming_fallback trace before running fallback request', async () => {
+  it('retries local stream-shape errors before changing request mode', async () => {
     const traces: RecoveryTraceEvent[] = []
     const messages = await collect(
       queryModelWithStreaming({
@@ -401,13 +458,47 @@ describe('stream fallback recovery trace golden fixture', () => {
     )
 
     expect(messages.some(message => (message as { type?: string }).type === 'assistant')).toBe(true)
+    expect(fakeProviderState.streamAttempts).toBe(2)
     expect(new Set(traces.map(trace => trace.traceId)).size).toBe(1)
-    expect(traces[0]?.traceId).toMatch(
-      /^api-stream-non-streaming-fallback-\d+$/,
-    )
+    expect(traces[0]?.traceId).toMatch(/^api-stream-consumption-\d+$/)
     expect(traces.map(projectTrace)).toEqual(
       readFixture('api-recovery/stream-fallback-trace.json'),
     )
+    expect(traces.some(trace => trace.action === 'non_streaming_fallback')).toBe(false)
+  })
+
+  it('retries empty provider streams instead of switching request mode', async () => {
+    fakeProviderState.mode = 'empty_stream_retry'
+    const traces: RecoveryTraceEvent[] = []
+    const messages = await collect(
+      queryModelWithStreaming({
+        messages: [],
+        systemPrompt: asSystemPrompt([]),
+        thinkingConfig: { type: 'disabled' },
+        tools: [],
+        signal: new AbortController().signal,
+        options: makeModelOptions(traces),
+      }),
+    )
+
+    expect(messages.some(message => (message as { type?: string }).type === 'assistant')).toBe(true)
+    expect(fakeProviderState.streamAttempts).toBe(2)
+    expect(traces.map(trace => trace.action)).toEqual([
+      'retry_backoff',
+    ])
+    expect(traces[0]).toMatchObject({
+      protocol: 'openai-chat',
+      querySource: 'sdk',
+      reason: 'malformed_response',
+      intent: 'retry_transient_failure',
+      action: 'retry_backoff',
+      outcome: 'retrying',
+      operation: 'stream',
+      streamPhase: 'streaming',
+      requestId: 'req_empty_stream_1',
+      final: false,
+    })
+    expect(traces.some(trace => trace.action === 'non_streaming_fallback')).toBe(false)
   })
 
   it('emits immediate non_streaming_fallback trace for generic stream-creation 404', async () => {

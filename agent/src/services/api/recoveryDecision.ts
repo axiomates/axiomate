@@ -70,8 +70,9 @@ export function decideRecovery(
 
   if (
     context.deferGeneric404StreamFallback &&
-    classified.reason === 'unknown' &&
-    observation.statusCode === 404
+    observation.statusCode === 404 &&
+    (classified.reason === 'unknown' ||
+      classified.reason === 'stream_endpoint_not_found')
   ) {
     return buildOuterPolicyDecision(
       observation,
@@ -97,9 +98,8 @@ export function decideRecovery(
 
   if (
     context.canUseNonStreamingFallback &&
-    (classified.reason === 'format_error' ||
-      classified.reason === 'malformed_response' ||
-      classified.reason === 'unknown')
+    (classified.reason === 'streaming_unsupported' ||
+      classified.reason === 'stream_endpoint_not_found')
   ) {
     return buildOuterPolicyDecision(
       observation,

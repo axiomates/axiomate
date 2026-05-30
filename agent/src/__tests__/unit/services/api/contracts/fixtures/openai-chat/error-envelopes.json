@@ -3,7 +3,7 @@
     "action": "non_streaming_fallback",
     "message": "This endpoint does not support streaming",
     "name": "400 stream unsupported",
-    "reason": "format_error",
+    "reason": "streaming_unsupported",
     "status": 400,
     "useNonStreamingFallback": true
   },
@@ -11,7 +11,7 @@
     "action": "non_streaming_fallback",
     "message": "The requested streaming endpoint does not exist",
     "name": "404 stream endpoint missing",
-    "reason": "unknown",
+    "reason": "stream_endpoint_not_found",
     "status": 404,
     "useNonStreamingFallback": true
   },

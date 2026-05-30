@@ -73,6 +73,7 @@ export const DEFAULT_MAIN_SWITCH_MODEL_ON: ModelSwitchReason[] = [
   'responses_null_output',
   'model_not_found',
   'provider_policy_blocked',
+  'content_policy_blocked',
 ]
 
 export const DEFAULT_AUXILIARY_SWITCH_MODEL_ON: ModelSwitchReason[] = [
@@ -83,6 +84,7 @@ export const DEFAULT_AUXILIARY_SWITCH_MODEL_ON: ModelSwitchReason[] = [
   'responses_null_output',
   'model_not_found',
   'provider_policy_blocked',
+  'content_policy_blocked',
 ]
 
 const VALID_POLICY_ACTIONS = new Set<ModelRecoveryPolicyAction>([
@@ -101,6 +103,9 @@ const VALID_SWITCH_REASONS = new Set<ModelSwitchReason>([
   'responses_null_output',
   'model_not_found',
   'provider_policy_blocked',
+  'content_policy_blocked',
+  'streaming_unsupported',
+  'stream_endpoint_not_found',
   'unknown',
 ])
 

@@ -202,11 +202,11 @@ describe('RECOVERY_RULES', () => {
     expect(decision?.mutation).toBeUndefined()
   })
 
-  it('delegates stream-shape failures to non-streaming through decision context', () => {
+  it('delegates explicit stream-mode incompatibility to non-streaming through decision context', () => {
     const decision = decideRecovery(
-      observe('unknown', {
+      observe('streaming_unsupported', {
         protocol: 'openai-chat',
-        classified: { retryable: true },
+        classified: { retryable: false },
       }),
       {
         ...context(),
@@ -220,6 +220,26 @@ describe('RECOVERY_RULES', () => {
       outcome: 'fallback_triggered',
       disposition: 'delegate',
       repeatPolicy: 'outer_policy',
+    })
+  })
+
+  it('does not use non-streaming fallback for unknown errors even when boundary flag is present', () => {
+    const decision = decideRecovery(
+      observe('unknown', {
+        protocol: 'openai-chat',
+        classified: { retryable: true },
+      }),
+      {
+        ...context(),
+        canUseNonStreamingFallback: true,
+      },
+    )
+
+    expect(decision).toMatchObject({
+      intent: 'retry_transient_failure',
+      action: 'retry_backoff',
+      outcome: 'retrying',
+      disposition: 'retry',
     })
   })
 

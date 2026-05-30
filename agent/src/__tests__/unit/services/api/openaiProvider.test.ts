@@ -207,22 +207,67 @@ describe('streaming fallback decision', () => {
     ).toBe(true)
   })
 
-  it('uses non-streaming fallback for generic streaming 404 errors', () => {
+  it('does not use non-streaming fallback for unsupported stream_options', () => {
+    const error = new LLMAPIError(
+      'Unsupported parameter: stream_options is not supported by this model',
+      {
+        status: 400,
+        error: {
+          error: {
+            code: 'unsupported_parameter',
+            param: 'stream_options',
+          },
+        },
+      },
+    )
+
+    expect(
+      shouldUseNonStreamingFallbackForStreamError(provider, error, 'gpt-4o'),
+    ).toBe(false)
+  })
+
+  it('does not use non-streaming fallback for generic 404 outside stream creation', () => {
     expect(
       shouldUseNonStreamingFallbackForStreamError(
         provider,
         new LLMAPIError('Not Found', { status: 404 }),
         'gpt-4o',
       ),
+    ).toBe(false)
+  })
+
+  it('uses non-streaming fallback for generic 404 during stream creation', () => {
+    expect(
+      shouldUseNonStreamingFallbackForStreamError(
+        provider,
+        new LLMAPIError('Not Found', { status: 404 }),
+        'gpt-4o',
+        { allowStreamEndpoint404Fallback: true },
+      ),
     ).toBe(true)
   })
 
-  it('uses non-streaming fallback for endpoint-not-found 404 errors', () => {
+  it('does not use non-streaming fallback for provider-policy 404 during stream creation', () => {
+    expect(
+      shouldUseNonStreamingFallbackForStreamError(
+        provider,
+        new LLMAPIError(
+          'No endpoints available matching your guardrail restrictions and data policy.',
+          { status: 404 },
+        ),
+        'gpt-4o',
+        { allowStreamEndpoint404Fallback: true },
+      ),
+    ).toBe(false)
+  })
+
+  it('uses non-streaming fallback for endpoint-not-found 404 during stream creation', () => {
     expect(
       shouldUseNonStreamingFallbackForStreamError(
         provider,
         new LLMAPIError('The requested endpoint does not exist', { status: 404 }),
         'gpt-4o',
+        { allowStreamEndpoint404Fallback: true },
       ),
     ).toBe(true)
   })
@@ -255,14 +300,24 @@ describe('streaming fallback decision', () => {
     ).toBe(false)
   })
 
-  it('uses non-streaming fallback for local stream-shape failures', () => {
+  it('does not use non-streaming fallback for empty provider streams', () => {
     expect(
       shouldUseNonStreamingFallbackForStreamError(
         provider,
         new Error('Stream ended without receiving any events'),
         'gpt-4o',
       ),
-    ).toBe(true)
+    ).toBe(false)
+  })
+
+  it('does not use non-streaming fallback for local stream-shape failures', () => {
+    expect(
+      shouldUseNonStreamingFallbackForStreamError(
+        provider,
+        new Error('missing response_start before content block'),
+        'gpt-4o',
+      ),
+    ).toBe(false)
   })
 
   it('does not use non-streaming fallback after assistant output was committed', () => {
@@ -276,7 +331,7 @@ describe('streaming fallback decision', () => {
     ).toBe(false)
   })
 
-  it('uses non-streaming fallback for wrapped Responses stream-shape failures', () => {
+  it('does not use non-streaming fallback for wrapped Responses stream-shape failures', () => {
     expect(
       shouldUseNonStreamingFallbackForStreamError(
         provider,
@@ -286,7 +341,7 @@ describe('streaming fallback decision', () => {
         ),
         'gpt-4o',
       ),
-    ).toBe(true)
+    ).toBe(false)
   })
 
   it('does not use non-streaming fallback for unrelated local errors', () => {

@@ -270,6 +270,9 @@ Delivered:
   - `oauth_long_context_beta_forbidden`
   - `image_too_large`
   - `provider_policy_blocked`
+  - `content_policy_blocked`
+  - `streaming_unsupported`
+  - `stream_endpoint_not_found`
   - `slash_enum_unsupported`
 - Added recovery actions:
   - `omit_request_fields`
@@ -293,7 +296,10 @@ Acceptance:
 
 - Hermes-derived corner cases classify to semantic reasons, not generic `format_error` or `unknown`.
 - Recoverable cases mutate the next request once, then fail fast if the same semantic error repeats.
-- Non-recoverable policy/account errors fail fast and do not trigger misleading model fallback.
+- Non-recoverable account/provider-policy errors fail fast. Per-prompt
+  `content_policy_blocked` is deterministic for the unchanged request, so it
+  does not retry the same model; it can only switch model when route policy and
+  a distinct fallback candidate allow `switch_model`.
 
 ### M2: OpenAI Chat Contract Matrix
 
@@ -307,8 +313,10 @@ Covered now:
   keywords, and downgrade multimodal tool results.
 - Golden error-envelope fixtures for Chat fallback routing and semantic recovery.
 - Golden retry trace fixtures for core Chat request mutations.
-- `400 stream unsupported` remains eligible for non-streaming fallback.
-- `404 stream endpoint missing` remains eligible for non-streaming fallback.
+- `400 stream unsupported` classifies as `streaming_unsupported` and remains
+  eligible for non-streaming fallback.
+- `404 stream endpoint missing` classifies as `stream_endpoint_not_found` and
+  remains eligible for non-streaming fallback.
 - `404 model_not_found` routes to model fallback instead of non-streaming fallback.
 - Generic stream-creation `404` produces a delegated recovery decision trace at
   `client_init`, then an outer non-streaming fallback trace with request id and
@@ -321,6 +329,10 @@ Covered now:
   inline malformed error envelope, and empty stream.
 - Partial tool-use stream commits are explicitly protected from non-streaming
   fallback replay.
+- Local stream-shape failures and empty streams classify as
+  `malformed_response` and retry the streaming path first; they no longer
+  trigger non-streaming fallback merely because no assistant output was
+  committed.
 
 Remaining:
 
@@ -351,10 +363,13 @@ Covered now:
   - completed responses with incomplete status / max-token stop reason
   - `response.incomplete` stream error
   - malformed text delta before message item
-- Responses stream-shape failures remain eligible for non-streaming fallback
-  before assistant output is committed.
-- Responses stream-shape fallback is disabled after assistant output is
-  committed, matching the Chat duplicate-tool-execution guard.
+- Responses stream-shape failures and empty streams retry the streaming path
+  first as `malformed_response`; they no longer trigger non-streaming fallback
+  merely because no assistant output has been committed.
+- Non-streaming fallback remains reserved for explicit stream-mode
+  incompatibility (`streaming_unsupported`) or stream endpoint 404
+  (`stream_endpoint_not_found`), matching the Chat duplicate-tool-execution
+  guard.
 - Responses stream creation 404 now defers model fallback like Chat, preserving
   outer non-streaming fallback routing.
 - Responses non-streaming fallback now rejects empty content with
@@ -706,11 +721,16 @@ Data flow:
    - `unsupported_parameter`, schema, max-token, image, multimodal, thinking, or
      encrypted-content errors: show the request mutation Axiomate attempted and
      whether it was exhausted.
-   - `provider_policy_blocked`: change prompt/provider/model or remove blocked
-     capability.
-   - `responses_null_output`, `malformed_response`, stream-shape failures, or
-     stream watchdog stalls: show provider/gateway compatibility guidance and
-     whether non-streaming fallback or stream salvage was used.
+   - `provider_policy_blocked`: change provider/account policy, model, or route.
+   - `content_policy_blocked`: the provider safety/content filter rejected this
+     prompt; rephrase the request, or allow a fallback provider for
+     `content_policy_blocked`.
+   - `responses_null_output`, `malformed_response`, local stream-shape
+     failures, empty streams, or stream watchdog stalls: show
+     provider/gateway compatibility guidance and whether stream retry or stream
+     salvage was used.
+   - `streaming_unsupported` / `stream_endpoint_not_found`: show that a narrow
+     request-mode rule triggered non-streaming fallback.
    - OAuth/stale-call/silent-reject patterns use the same mapping once their
      trace evidence is present; this is product guidance, not a retry branch.
 
@@ -834,7 +854,7 @@ Main agent routing moves into `model`:
         "fallbackChain": ["gpt-5.4", "Qwen/Qwen3.5-397B-A17B", "Qwen/Qwen3-8B"],
         "recoveryProfile": "main-agent",
         "allowActions": ["retry_same_model", "adapt_request", "switch_model"],
-        "switchModelOn": ["rate_limit", "overloaded", "timeout", "connection", "server_error"]
+        "switchModelOn": ["rate_limit", "overloaded", "timeout", "connection", "server_error", "content_policy_blocked"]
       }
     }
   }
@@ -851,7 +871,7 @@ Auxiliary task routing moves into `auxiliary`:
       "fallbackChain": ["Qwen/Qwen3-8B", "deepseek-v4-pro"],
       "recoveryProfile": "auxiliary-judge",
       "allowActions": ["retry_same_model", "adapt_request", "switch_model"],
-      "switchModelOn": ["timeout", "connection", "server_error", "malformed_response"],
+      "switchModelOn": ["timeout", "connection", "server_error", "malformed_response", "content_policy_blocked"],
       "failure": "fail_open",
       "timeoutMs": 30000
     }
