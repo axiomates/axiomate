@@ -46,14 +46,19 @@ export function defaultRouteOverride(): MainModelOverride {
  * No implicit fallback outside the normalized route config.
  */
 export function getUserSpecifiedModelSetting(): ModelSetting | undefined {
+  const config = getGlobalConfig()
   let specifiedModel: ModelSetting | undefined
 
   const modelOverride = getMainLoopModelOverride()
   if (modelOverride) {
-    specifiedModel = resolveMainModelOverride(getGlobalConfig(), modelOverride).primary
+    specifiedModel = resolveMainModelOverride(config, modelOverride).primary
   }
 
   if (!specifiedModel) {
+    // First run: no model exists yet, so let the onboarding wizard collect one.
+    if (Object.keys(config.models ?? {}).length === 0) {
+      return undefined
+    }
     specifiedModel = getDefaultMainLoopModelSetting()
   }
 
