@@ -642,7 +642,7 @@ export type GlobalConfig = {
 
   autoPermissionsNotificationCount?: number // Number of times the auto permissions notification has been shown
 
-  speculationEnabled?: boolean // Whether speculation is enabled (default: true)
+  speculationEnabled?: boolean // Whether speculation is enabled (default: false)
 
   // Version of the last-applied migration set. When equal to
   // CURRENT_MIGRATION_VERSION, runMigrations() skips all sync migrations

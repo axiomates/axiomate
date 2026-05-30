@@ -53,8 +53,9 @@ export function shouldEnablePromptSuggestion(): boolean {
     return false
   }
 
-  // Default ON — disable explicitly via settings or env.
-  return getInitialSettings()?.promptSuggestionEnabled !== false
+  // Default OFF: prompt suggestions use an auxiliary model call. Opt in via
+  // settings or env so single-model setups do not pay for background requests.
+  return getInitialSettings()?.promptSuggestionEnabled === true
 }
 
 export function abortPromptSuggestion(): void {

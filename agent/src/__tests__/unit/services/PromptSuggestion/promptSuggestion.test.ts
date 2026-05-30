@@ -3,6 +3,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const mocks = vi.hoisted(() => ({
   runForkedAgent: vi.fn(),
   getAuxiliaryTaskPolicy: vi.fn(),
+  getInitialSettings: vi.fn<
+    [],
+    { promptSuggestionEnabled?: boolean }
+  >(() => ({ promptSuggestionEnabled: true })),
+  getIsNonInteractiveSession: vi.fn(() => false),
+  isAgentSwarmsEnabled: vi.fn(() => false),
+  isTeammate: vi.fn(() => false),
 }))
 
 vi.mock('../../../../utils/forkedAgent.js', () => ({
@@ -16,19 +23,19 @@ vi.mock('../../../../utils/model/model.js', () => ({
 
 vi.mock('../../../../bootstrap/state.js', async importOriginal => ({
   ...(await importOriginal<typeof import('../../../../bootstrap/state.js')>()),
-  getIsNonInteractiveSession: vi.fn(() => false),
+  getIsNonInteractiveSession: mocks.getIsNonInteractiveSession,
 }))
 
 vi.mock('../../../../utils/settings/settings.js', () => ({
-  getInitialSettings: vi.fn(() => ({ promptSuggestionEnabled: true })),
+  getInitialSettings: mocks.getInitialSettings,
 }))
 
 vi.mock('../../../../utils/agentSwarmsEnabled.js', () => ({
-  isAgentSwarmsEnabled: vi.fn(() => false),
+  isAgentSwarmsEnabled: mocks.isAgentSwarmsEnabled,
 }))
 
 vi.mock('../../../../utils/teammate.js', () => ({
-  isTeammate: vi.fn(() => false),
+  isTeammate: mocks.isTeammate,
 }))
 
 vi.mock('../../../../services/analytics/index.js', () => ({
@@ -40,12 +47,48 @@ vi.mock('../../../../services/PromptSuggestion/speculation.js', () => ({
   startSpeculation: vi.fn(),
 }))
 
-import { generateSuggestion } from '../../../../services/PromptSuggestion/promptSuggestion.js'
+import {
+  generateSuggestion,
+  shouldEnablePromptSuggestion,
+} from '../../../../services/PromptSuggestion/promptSuggestion.js'
 
 describe('promptSuggestion', () => {
   beforeEach(() => {
     mocks.runForkedAgent.mockReset()
     mocks.getAuxiliaryTaskPolicy.mockReset()
+    mocks.getInitialSettings.mockReset()
+    mocks.getInitialSettings.mockReturnValue({ promptSuggestionEnabled: true })
+    mocks.getIsNonInteractiveSession.mockReset()
+    mocks.getIsNonInteractiveSession.mockReturnValue(false)
+    mocks.isAgentSwarmsEnabled.mockReset()
+    mocks.isAgentSwarmsEnabled.mockReturnValue(false)
+    mocks.isTeammate.mockReset()
+    mocks.isTeammate.mockReturnValue(false)
+    delete process.env.AXIOMATE_CODE_ENABLE_PROMPT_SUGGESTION
+  })
+
+  it('keeps prompt suggestions off by default', () => {
+    mocks.getInitialSettings.mockReturnValue({})
+
+    expect(shouldEnablePromptSuggestion()).toBe(false)
+  })
+
+  it('enables prompt suggestions only when settings opt in', () => {
+    mocks.getInitialSettings.mockReturnValue({ promptSuggestionEnabled: true })
+
+    expect(shouldEnablePromptSuggestion()).toBe(true)
+  })
+
+  it('lets env override the settings opt-in', () => {
+    mocks.getInitialSettings.mockReturnValue({ promptSuggestionEnabled: true })
+    process.env.AXIOMATE_CODE_ENABLE_PROMPT_SUGGESTION = '0'
+
+    expect(shouldEnablePromptSuggestion()).toBe(false)
+
+    mocks.getInitialSettings.mockReturnValue({})
+    process.env.AXIOMATE_CODE_ENABLE_PROMPT_SUGGESTION = '1'
+
+    expect(shouldEnablePromptSuggestion()).toBe(true)
   })
 
   it('routes prompt suggestions through the configured auxiliary model and task output cap', async () => {

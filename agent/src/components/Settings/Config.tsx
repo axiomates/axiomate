@@ -342,8 +342,12 @@ export function Config({
       onChange(enabled: boolean) {
         setAppState(prev => ({ ...prev, promptSuggestionEnabled: enabled }))
         updateSettingsForSource('userSettings', {
-          promptSuggestionEnabled: enabled ? undefined : false,
+          promptSuggestionEnabled: enabled || undefined,
         })
+        setSettingsData(prev => ({
+          ...prev,
+          promptSuggestionEnabled: enabled || undefined,
+        }))
       },
     },
     ...(promptSuggestionEnabled
@@ -1105,6 +1109,14 @@ export function Config({
     } else {
       logForDebugging(
         `[rtk-trace] handleSaveAndClose: rtk unchanged (current=${settingsData?.rtk?.enabled ?? false}, initial=${initialSettingsData.current?.rtk?.enabled ?? false})`,
+      )
+    }
+    if (
+      (settingsData?.promptSuggestionEnabled ?? false) !==
+      (initialSettingsData.current?.promptSuggestionEnabled ?? false)
+    ) {
+      formattedChanges.push(
+        `${settingsData?.promptSuggestionEnabled ? 'Enabled' : 'Disabled'} prompt suggestions`,
       )
     }
     if (

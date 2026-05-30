@@ -629,8 +629,7 @@ export const SettingsSchema = lazySchema(() =>
         .boolean()
         .optional()
         .describe(
-          'When false, prompt suggestions are disabled. When absent or true, ' +
-            'prompt suggestions are enabled.',
+          'When true, enable prompt suggestions. Default: false.',
         ),
       speculationEnabled: z
         .boolean()

@@ -268,11 +268,11 @@ export function usePasteHandler({
       return
     }
     onInput(input, key)
-    if (input.length > 10) {
-      // Ensure that setIsPasting is turned off on any other multicharacter
-      // input, because the stdin buffer may chunk at arbitrary points and split
-      // the closing escape sequence if the input length is too long for the
-      // stdin buffer.
+    if (isFromPaste || input.length > 10) {
+      // Ensure that setIsPasting is turned off for paste content that was
+      // delivered as normal input. Short bracketed pastes without an onPaste
+      // handler (for example a copied context-window number) otherwise leave
+      // the input in paste mode and the next Enter is swallowed.
       setIsPasting(false)
     }
   }
