@@ -14,13 +14,14 @@ import {
 } from 'path'
 import { getCwd } from '../utils/cwd.js'
 import { logForDebugging } from './debug.js'
-import { isENOENT, isFsInaccessible } from './errors.js'
+import { errorMessage, isENOENT, isFsInaccessible } from './errors.js'
 import {
   detectEncodingForResolvedPath,
   detectLineEndingsForString,
   UTF8_BOM,
   type LineEndingType,
 } from './fileRead.js'
+import { throwFileHarnessFailure } from './fileHarnessFailures.js'
 import { fileReadCache } from './fileReadCache.js'
 import { getFsImplementation, safeResolvePath } from './fsOperations.js'
 import { logError } from './log.js'
@@ -456,7 +457,13 @@ export function writeFileSyncAndFlush_DEPRECATED(
       logForDebugging(`Failed to clean up temp file: ${cleanupError}`)
     }
 
-    throw atomicError
+    throwFileHarnessFailure(
+      errorMessage(atomicError),
+      'atomic_write_failed',
+      'helper',
+      filePath,
+      { cause: atomicError },
+    )
   }
 }
 

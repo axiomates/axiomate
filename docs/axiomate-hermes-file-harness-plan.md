@@ -250,12 +250,21 @@ Stage 6B execution-metadata local verification passed:
 - `git diff --check`
 - `pnpm run test` with 156 files / 2144 tests passing
 
+Stage 6B atomic-helper local verification passed:
+
+- `pnpm --filter ./agent exec vitest run src/__tests__/unit/utils/file.test.ts --hookTimeout 120000 --testTimeout 30000`
+- `pnpm --filter ./agent exec vitest run src/__tests__/unit/utils/fileHarnessFailures.test.ts src/__tests__/unit/tools/FileHarness/failureMetadata.test.ts --hookTimeout 120000 --testTimeout 30000`
+- `pnpm --filter ./agent exec vitest run src/__tests__/unit/tools/FileHarness src/__tests__/unit/utils/file.test.ts src/__tests__/unit/utils/fileHarnessFailures.test.ts --no-file-parallelism --hookTimeout 120000 --testTimeout 30000`
+- `pnpm run build:types`
+- `git diff --check`
+- `pnpm run test` with 156 files / 2144 tests passing
+
 ## Remaining Migration Work
 
 ## Current Position
 
-We are in late Stage 6B. Validation metadata and execution-time typed stale
-failures are implemented; shared atomic helper failure wrapping remains.
+Stage 6B is complete. Validation metadata, execution-time typed stale failures,
+and shared atomic helper failure wrapping are implemented.
 
 Completed and pushed:
 
@@ -270,8 +279,9 @@ Completed and pushed:
 - Stage 5: BOM and line-ending policy for structured file writes.
 - Stage 6A: internal file-harness failure taxonomy/catalog.
 - Stage 6B: validation result metadata.
+- Stage 6B: execution-time typed failures and atomic helper wrapping.
 
-Current Stage 6B slice:
+Completed Stage 6B slice:
 
 - Add `FileHarnessError` / `throwFileHarnessFailure` for execution-time
   failures while preserving existing thrown message text.
@@ -286,11 +296,14 @@ Current Stage 6B slice:
   `sibling_write_after_read`, and `stale_mtime`. It does not claim
   `stale_content` because the final notebook write path does not currently run
   a content fallback.
+- `writeFileSyncAndFlush_DEPRECATED` now wraps atomic write failures in
+  `FileHarnessError` with `reason: atomic_write_failed`, `phase: helper`,
+  `path`, errno `code`, and original filesystem error in `cause`.
 
 Next implementation target:
 
-- Finish Stage 6B shared atomic helper wrapping, then decide whether
-  `encoding_unsupported` should stay planned or become an explicit guard.
+- Move to Stage 7 patch/edit failure escalation, or take a separate encoding
+  policy slice for `encoding_unsupported`.
 
 ### Stage 3: Complete Registry Coverage
 
@@ -504,8 +517,8 @@ Estimated work:
 
 ### Stage 6: Failure Taxonomy
 
-Status: Stage 6A complete; Stage 6B validation metadata and execution-time
-typed failures complete; atomic helper wrapping remains.
+Status: Stage 6A and Stage 6B complete. `encoding_unsupported` remains a
+planned future encoding-policy slice, not unfinished Stage 6B work.
 
 Hermes has more explicit failure categories and model-facing escalation paths.
 Axiomate currently mixes validation `errorCode`s with thrown generic errors such
@@ -548,7 +561,8 @@ Current Stage 6A mapping:
 - `string_not_found`: current FileEdit errorCode 8.
 - `multiple_match`: current FileEdit errorCode 9.
 - `permission_denied`: current file permission deny validation branches.
-- `atomic_write_failed`: current atomic helper rethrow path.
+- `atomic_write_failed`: atomic helper throws `FileHarnessError` with original
+  filesystem error as `cause`.
 - `encoding_unsupported`: planned only; current helpers explicitly detect
   UTF-8 and UTF-16LE but do not have a dedicated unsupported-encoding failure.
 
@@ -560,17 +574,16 @@ Stage 6B options:
   optional original `cause`.
 - Done: map execution-time stale failures to distinct reasons at their branch
   sites.
-- Remaining: wrap atomic helper failures with `atomic_write_failed` while
-  preserving errno/code/cause.
-- Decide whether unsupported encodings should be rejected or left as best-effort
-  UTF-8/UTF-16LE decoding.
+- Done: wrap atomic helper failures with `atomic_write_failed` while preserving
+  errno `code`, original message, and original `cause`.
+- Deferred: decide whether unsupported encodings should be rejected or left as
+  best-effort UTF-8/UTF-16LE decoding.
 
 Estimated work:
 
 - Stage 6A: complete.
-- Stage 6B: about 0.5-1 day remains for atomic helper wrapping and the
-  unsupported-encoding decision. UI/error rendering changes remain a separate
-  optional follow-up.
+- Stage 6B: complete. UI/error rendering changes and unsupported-encoding
+  policy remain separate optional follow-ups.
 
 ### Stage 7: Patch/Edit Failure Escalation
 
@@ -685,8 +698,9 @@ Estimated work:
       where the tool already knows the exact path and content.
 
 15. Atomic write failure does not fall back to direct target writes.
-    - `writeFileSyncAndFlush_DEPRECATED` cleans its temp file and rethrows the
-      atomic error.
+    - `writeFileSyncAndFlush_DEPRECATED` cleans its temp file and throws
+      `FileHarnessError` with the original atomic error as `cause`.
+    - The wrapper preserves the original error message and errno `code`.
     - The stricter behavior applies to all current callers of the shared
       helper, not only file tools.
     - This matches Hermes' "target unchanged unless rename succeeds" invariant.
@@ -712,6 +726,13 @@ Estimated work:
       notebook in `call()`, so execution-time mtime drift remains
       `stale_mtime`.
 
+19. Unsupported encoding is a policy decision, not Stage 6B cleanup.
+    - The catalog keeps `encoding_unsupported` so future code has a stable
+      reason name.
+    - Current helpers still explicitly handle UTF-8 and UTF-16LE only.
+    - Adding rejection for other encodings would be a behavior change and needs
+      its own tests/decision.
+
 ## Open Questions
 
 1. Should registry warnings be hard errors everywhere, or should some agent
@@ -727,8 +748,8 @@ Estimated work:
 
 ## Recommended Next Slice
 
-The immediate next slice is Stage 6B typed failure metadata or Stage 7
-patch/edit failure escalation.
+The immediate next slice is Stage 7 patch/edit failure escalation, unless
+encoding policy is more urgent.
 
 Focused verification note:
 

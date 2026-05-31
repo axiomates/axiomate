@@ -1,3 +1,5 @@
+import { getErrnoCode } from './errors.js'
+
 export const FILE_HARNESS_FAILURE_REASONS = [
   'not_read',
   'partial_read_for_write',
@@ -39,16 +41,21 @@ export type FileHarnessFailureMetadata = {
 export class FileHarnessError extends Error {
   readonly fileHarnessFailure: FileHarnessFailureMetadata
   readonly cause?: unknown
+  readonly code?: string
 
   constructor(
     message: string,
     failure: FileHarnessFailureMetadata,
-    options: { cause?: unknown } = {},
+    options: { cause?: unknown; code?: string } = {},
   ) {
     super(message)
     this.name = 'FileHarnessError'
     this.fileHarnessFailure = failure
     this.cause = options.cause
+    const code = options.code ?? getErrnoCode(options.cause)
+    if (code !== undefined) {
+      this.code = code
+    }
   }
 }
 
@@ -165,7 +172,7 @@ export const FILE_HARNESS_FAILURE_CATALOG = [
       'The same-directory temp write, chmod, cleanup, or rename path failed before a structured write completed.',
     phases: ['helper', 'execution'],
     currentSignals: [
-      'writeFileSyncAndFlush_DEPRECATED rethrows the atomic filesystem error',
+      'writeFileSyncAndFlush_DEPRECATED throws FileHarnessError with the original filesystem error as cause',
     ],
     disposition: 'implemented',
     stage6bAction:
@@ -204,9 +211,10 @@ export function throwFileHarnessFailure(
   reason: FileHarnessFailureReason,
   phase: FileHarnessFailurePhase,
   path?: string,
-  options: { cause?: unknown } = {},
+  options: { cause?: unknown; code?: string } = {},
 ): never {
   throw new FileHarnessError(message, fileHarnessFailure(reason, phase, path), {
     cause: options.cause,
+    code: options.code,
   })
 }
