@@ -7,6 +7,7 @@ import {
   cloneFileStateCache,
   createFileStateCacheWithSizeLimit,
 } from '../../../../utils/fileStateCache.js'
+import { withFileStatePathLock } from '../../../../utils/fileStateRegistry.js'
 import {
   allowToolUse,
   getHarnessCwd,
@@ -335,6 +336,42 @@ describe('FileEditTool file harness behavior', () => {
       ),
     ).rejects.toThrow(FILE_UNEXPECTEDLY_MODIFIED_ERROR)
     expect(await readFile(path, 'utf8')).toBe('alpha\nchild\n')
+  })
+
+  test('call waits for the same-path file state lock before final stale check and write', async () => {
+    const { FileEditTool } = await loadFileTools()
+    const path = join(getHarnessCwd(), 'locked-edit.txt')
+    await writeFile(path, 'alpha\nbeta\n', 'utf8')
+    const context = await readIntoContext(path)
+
+    let releaseLock!: () => void
+    const lockMayRelease = new Promise<void>(resolve => {
+      releaseLock = resolve
+    })
+    const lockHolder = withFileStatePathLock(path, async () => {
+      await lockMayRelease
+    })
+
+    let editSettled = false
+    const editAttempt = FileEditTool.call(
+      { file_path: path, old_string: 'beta', new_string: 'BETA' },
+      context,
+      allowToolUse,
+      parentMessage,
+    ).finally(() => {
+      editSettled = true
+    })
+
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(editSettled).toBe(false)
+    expect(await readFile(path, 'utf8')).toBe('alpha\nbeta\n')
+
+    releaseLock()
+    await lockHolder
+    await editAttempt
+
+    expect(await readFile(path, 'utf8')).toBe('alpha\nBETA\n')
   })
 
   test('allows mtime-only drift after edit-updated full-file state', async () => {

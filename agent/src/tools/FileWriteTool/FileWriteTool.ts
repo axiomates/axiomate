@@ -21,6 +21,7 @@ import { fileStateHasFullContent } from '../../utils/fileStateCache.js'
 import {
   noteFileWrite,
   wasFileModifiedAfterReadByAnotherContext,
+  withFileStatePathLock,
 } from '../../utils/fileStateRegistry.js'
 import { readFileSyncWithMetadata } from '../../utils/fileRead.js'
 import { getFsImplementation } from '../../utils/fsOperations.js'
@@ -279,59 +280,72 @@ export const FileWriteTool = buildTool({
     // inside writeFileSyncAndFlush_DEPRECATED before ENOENT propagates back).
     await getFsImplementation().mkdir(dir)
 
-    // Load current state and confirm no changes since last read.
-    // Please avoid async operations between here and writing to disk to preserve atomicity.
-    let meta: ReturnType<typeof readFileSyncWithMetadata> | null
-    try {
-      meta = readFileSyncWithMetadata(fullFilePath)
-    } catch (e) {
-      if (isENOENT(e)) {
-        meta = null
-      } else {
-        throw e
+    const oldContent = await withFileStatePathLock(fullFilePath, async () => {
+      // Load current state and confirm no changes since last read.
+      // Keep the final stale check and write in this same critical section.
+      let meta: ReturnType<typeof readFileSyncWithMetadata> | null
+      try {
+        meta = readFileSyncWithMetadata(fullFilePath)
+      } catch (e) {
+        if (isENOENT(e)) {
+          meta = null
+        } else {
+          throw e
+        }
       }
-    }
 
-    if (meta !== null) {
-      const lastWriteTime = getFileModificationTime(fullFilePath)
-      const lastRead = readFileState.get(fullFilePath)
-      if (!lastRead || lastRead.isPartialView) {
-        throw new Error(FILE_UNEXPECTEDLY_MODIFIED_ERROR)
-      }
-      if (
-        wasFileModifiedAfterReadByAnotherContext(
-          {
-            agentId,
-            readFileState,
-          },
-          fullFilePath,
-        )
-      ) {
-        throw new Error(FILE_UNEXPECTEDLY_MODIFIED_ERROR)
-      }
-      if (lastWriteTime > lastRead.timestamp) {
-        // Timestamp indicates modification, but on Windows timestamps can change
-        // without content changes (cloud sync, antivirus, etc.). For full reads,
-        // compare content as a fallback to avoid false positives.
-        // meta.content is CRLF-normalized — matches readFileState's normalized form.
+      if (meta !== null) {
+        const lastWriteTime = getFileModificationTime(fullFilePath)
+        const lastRead = readFileState.get(fullFilePath)
+        if (!lastRead || lastRead.isPartialView) {
+          throw new Error(FILE_UNEXPECTEDLY_MODIFIED_ERROR)
+        }
         if (
-          !fileStateHasFullContent(lastRead) ||
-          meta.content !== lastRead.content
+          wasFileModifiedAfterReadByAnotherContext(
+            {
+              agentId,
+              readFileState,
+            },
+            fullFilePath,
+          )
         ) {
           throw new Error(FILE_UNEXPECTEDLY_MODIFIED_ERROR)
         }
+        if (lastWriteTime > lastRead.timestamp) {
+          // Timestamp indicates modification, but on Windows timestamps can change
+          // without content changes (cloud sync, antivirus, etc.). For full reads,
+          // compare content as a fallback to avoid false positives.
+          // meta.content is CRLF-normalized — matches readFileState's normalized form.
+          if (
+            !fileStateHasFullContent(lastRead) ||
+            meta.content !== lastRead.content
+          ) {
+            throw new Error(FILE_UNEXPECTEDLY_MODIFIED_ERROR)
+          }
+        }
       }
-    }
 
-    const enc = meta?.encoding ?? 'utf8'
-    const oldContent = meta?.content ?? null
+      const enc = meta?.encoding ?? 'utf8'
+      const oldContent = meta?.content ?? null
 
-    // Write is a full content replacement — the model sent explicit line endings
-    // in `content` and meant them. Do not rewrite them. Previously we preserved
-    // the old file's line endings (or sampled the repo via ripgrep for new
-    // files), which silently corrupted e.g. bash scripts with \r on Linux when
-    // overwriting a CRLF file or when binaries in cwd poisoned the repo sample.
-    writeTextContent(fullFilePath, content, enc, 'LF')
+      // Write is a full content replacement — the model sent explicit line endings
+      // in `content` and meant them. Do not rewrite them. Previously we preserved
+      // the old file's line endings (or sampled the repo via ripgrep for new
+      // files), which silently corrupted e.g. bash scripts with \r on Linux when
+      // overwriting a CRLF file or when binaries in cwd poisoned the repo sample.
+      writeTextContent(fullFilePath, content, enc, 'LF')
+
+      // Update read timestamp, to invalidate stale writes
+      readFileState.set(fullFilePath, {
+        content,
+        timestamp: getFileModificationTime(fullFilePath),
+        offset: undefined,
+        limit: undefined,
+      })
+      noteFileWrite({ agentId, readFileState }, fullFilePath)
+
+      return oldContent
+    })
 
     // Notify LSP servers about file modification (didChange) and save (didSave)
     const lspManager = getLspServerManager()
@@ -353,15 +367,6 @@ export const FileWriteTool = buildTool({
         logError(err)
       })
     }
-
-    // Update read timestamp, to invalidate stale writes
-    readFileState.set(fullFilePath, {
-      content,
-      timestamp: getFileModificationTime(fullFilePath),
-      offset: undefined,
-      limit: undefined,
-    })
-    noteFileWrite({ agentId, readFileState }, fullFilePath)
 
     // Log when writing to AXIOMATE.md
     if (fullFilePath.endsWith(`${sep}AXIOMATE.md`)) {

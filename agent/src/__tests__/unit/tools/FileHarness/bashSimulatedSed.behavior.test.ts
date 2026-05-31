@@ -4,6 +4,7 @@ import { beforeAll, describe, expect, test } from 'vitest'
 import { FILE_UNEXPECTEDLY_MODIFIED_ERROR } from '../../../../tools/FileEditTool/constants.js'
 import { asAgentId } from '../../../../types/ids.js'
 import { cloneFileStateCache } from '../../../../utils/fileStateCache.js'
+import { withFileStatePathLock } from '../../../../utils/fileStateRegistry.js'
 import {
   allowToolUse,
   getHarnessCwd,
@@ -94,5 +95,46 @@ describe('BashTool simulated sed file harness behavior', () => {
       ),
     ).rejects.toThrow(FILE_UNEXPECTEDLY_MODIFIED_ERROR)
     expect(await readFile(path, 'utf8')).toBe('alpha\nchild\n')
+  })
+
+  test('simulated sed waits for the same-path file state lock before writing', async () => {
+    const path = join(getHarnessCwd(), 'locked-sed.txt')
+    await writeFile(path, 'alpha\nbeta\n', 'utf8')
+    const context = await readIntoContext(path)
+
+    let releaseLock!: () => void
+    const lockMayRelease = new Promise<void>(resolve => {
+      releaseLock = resolve
+    })
+    const lockHolder = withFileStatePathLock(path, async () => {
+      await lockMayRelease
+    })
+
+    let sedSettled = false
+    const sedAttempt = BashTool.call(
+      {
+        command: `sed -i 's/beta/BETA/' ${path}`,
+        _simulatedSedEdit: {
+          filePath: path,
+          newContent: 'alpha\nBETA\n',
+        },
+      },
+      context,
+      allowToolUse,
+      parentMessage,
+    ).finally(() => {
+      sedSettled = true
+    })
+
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(sedSettled).toBe(false)
+    expect(await readFile(path, 'utf8')).toBe('alpha\nbeta\n')
+
+    releaseLock()
+    await lockHolder
+    await sedAttempt
+
+    expect(await readFile(path, 'utf8')).toBe('alpha\nBETA\n')
   })
 })

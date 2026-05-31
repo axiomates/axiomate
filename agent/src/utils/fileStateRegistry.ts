@@ -15,6 +15,8 @@ const ownerIdsByReadFileState = new WeakMap<ToolUseContext['readFileState'], str
 let nextOwnerId = 0
 let sequence = 0
 const lastWriterByPath = new Map<string, WriteStamp>()
+const pathLockTails = new Map<string, Promise<void>>()
+const pathLockDepths = new Map<string, number>()
 
 function getOwnerId(context: FileStateContext): string {
   if (context.agentId) return `agent:${context.agentId}`
@@ -115,8 +117,54 @@ export function getPathsWrittenByOtherContextsSince(
   return stalePaths.sort()
 }
 
+export async function withFileStatePathLock<T>(
+  filePath: string,
+  callback: () => T | Promise<T>,
+): Promise<T> {
+  const normalizedPath = normalize(filePath)
+  const previousTail = pathLockTails.get(normalizedPath)
+  let release!: () => void
+  const currentGate = new Promise<void>(resolve => {
+    release = resolve
+  })
+  const currentTail = (previousTail ?? Promise.resolve()).then(
+    () => currentGate,
+    () => currentGate,
+  )
+
+  pathLockTails.set(normalizedPath, currentTail)
+  pathLockDepths.set(
+    normalizedPath,
+    (pathLockDepths.get(normalizedPath) ?? 0) + 1,
+  )
+
+  try {
+    if (previousTail) {
+      await previousTail.catch(() => {})
+    }
+    return await callback()
+  } finally {
+    release()
+    const nextDepth = (pathLockDepths.get(normalizedPath) ?? 1) - 1
+    if (nextDepth <= 0) {
+      pathLockDepths.delete(normalizedPath)
+    } else {
+      pathLockDepths.set(normalizedPath, nextDepth)
+    }
+    if (pathLockTails.get(normalizedPath) === currentTail) {
+      pathLockTails.delete(normalizedPath)
+    }
+  }
+}
+
+export function getFileStatePathLockDepthForTests(filePath: string): number {
+  return pathLockDepths.get(normalize(filePath)) ?? 0
+}
+
 export function clearFileStateRegistryForTests(): void {
   sequence = 0
   nextOwnerId = 0
   lastWriterByPath.clear()
+  pathLockTails.clear()
+  pathLockDepths.clear()
 }

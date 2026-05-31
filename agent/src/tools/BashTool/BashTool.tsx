@@ -17,7 +17,7 @@ import { extractAxiomateHints } from '../../utils/codeHints.js';
 import { isEnvTruthy } from '../../utils/envUtils.js';
 import { isENOENT, ShellError } from '../../utils/errors.js';
 import { detectFileEncoding, detectLineEndings, getFileModificationTime, writeTextContent } from '../../utils/file.js';
-import { noteFileWrite } from '../../utils/fileStateRegistry.js';
+import { noteFileWrite, withFileStatePathLock } from '../../utils/fileStateRegistry.js';
 import { truncate } from '../../utils/format.js';
 import { getFsImplementation } from '../../utils/fsOperations.js';
 import { lazySchema } from '../../utils/lazySchema.js';
@@ -363,35 +363,38 @@ async function applySedEdit(simulatedEdit: {
   const absoluteFilePath = expandPath(filePath);
   const fs = getFsImplementation();
 
-  // Confirm file exists before writing; matches sed's ENOENT error shape.
-  const encoding = detectFileEncoding(absoluteFilePath);
-  try {
-    await fs.readFile(absoluteFilePath, { encoding });
-  } catch (e) {
-    if (isENOENT(e)) {
-      return {
-        data: {
-          stdout: '',
-          stderr: `sed: ${filePath}: No such file or directory\nExit code 1`,
-          interrupted: false
-        }
-      };
+  const missingFileResult = await withFileStatePathLock(absoluteFilePath, async () => {
+    // Confirm file exists before writing; matches sed's ENOENT error shape.
+    const encoding = detectFileEncoding(absoluteFilePath);
+    try {
+      await fs.readFile(absoluteFilePath, { encoding });
+    } catch (e) {
+      if (isENOENT(e)) {
+        return {
+          data: {
+            stdout: '',
+            stderr: `sed: ${filePath}: No such file or directory\nExit code 1`,
+            interrupted: false
+          }
+        };
+      }
+      throw e;
     }
-    throw e;
-  }
 
-  // Detect line endings and write new content
-  const endings = detectLineEndings(absoluteFilePath);
-  writeTextContent(absoluteFilePath, newContent, encoding, endings);
+    // Detect line endings and write new content
+    const endings = detectLineEndings(absoluteFilePath);
+    writeTextContent(absoluteFilePath, newContent, encoding, endings);
 
-  // Update read timestamp to invalidate stale writes
-  toolUseContext.readFileState.set(absoluteFilePath, {
-    content: newContent,
-    timestamp: getFileModificationTime(absoluteFilePath),
-    offset: undefined,
-    limit: undefined
+    // Update read timestamp to invalidate stale writes
+    toolUseContext.readFileState.set(absoluteFilePath, {
+      content: newContent,
+      timestamp: getFileModificationTime(absoluteFilePath),
+      offset: undefined,
+      limit: undefined
+    });
+    noteFileWrite(toolUseContext, absoluteFilePath);
   });
-  noteFileWrite(toolUseContext, absoluteFilePath);
+  if (missingFileResult) return missingFileResult;
 
   // Return success result matching sed output format (sed produces no output on success)
   return {

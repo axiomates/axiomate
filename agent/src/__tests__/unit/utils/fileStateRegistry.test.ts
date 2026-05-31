@@ -5,10 +5,12 @@ import { createFileStateCacheWithSizeLimit } from '../../../utils/fileStateCache
 import {
   clearFileStateRegistryForTests,
   getFileStateRegistrySequence,
+  getFileStatePathLockDepthForTests,
   getKnownReadFilePaths,
   getPathsWrittenByOtherContextsSince,
   noteFileWrite,
   recordFileRead,
+  withFileStatePathLock,
 } from '../../../utils/fileStateRegistry.js'
 
 function makeContext(agentId?: ReturnType<typeof asAgentId>) {
@@ -93,5 +95,85 @@ describe('fileStateRegistry reminder queries', () => {
         getKnownReadFilePaths(parent),
       ),
     ).toEqual([])
+  })
+})
+
+describe('fileStateRegistry path locks', () => {
+  beforeEach(() => {
+    clearFileStateRegistryForTests()
+  })
+
+  test('serializes callbacks for the same normalized path', async () => {
+    const path = normalize('/tmp/lock.txt')
+    const events: string[] = []
+    let releaseFirst!: () => void
+    const firstMayFinish = new Promise<void>(resolve => {
+      releaseFirst = resolve
+    })
+
+    const first = withFileStatePathLock(path, async () => {
+      events.push('first:start')
+      await firstMayFinish
+      events.push('first:end')
+    })
+    const second = withFileStatePathLock(path, async () => {
+      events.push('second:start')
+    })
+
+    await Promise.resolve()
+    expect(events).toEqual(['first:start'])
+    expect(getFileStatePathLockDepthForTests(path)).toBe(2)
+
+    releaseFirst()
+    await Promise.all([first, second])
+
+    expect(events).toEqual(['first:start', 'first:end', 'second:start'])
+    expect(getFileStatePathLockDepthForTests(path)).toBe(0)
+  })
+
+  test('allows callbacks for different paths to overlap', async () => {
+    const firstPath = normalize('/tmp/lock-a.txt')
+    const secondPath = normalize('/tmp/lock-b.txt')
+    let releaseFirst!: () => void
+    const firstMayFinish = new Promise<void>(resolve => {
+      releaseFirst = resolve
+    })
+    const events: string[] = []
+
+    const first = withFileStatePathLock(firstPath, async () => {
+      events.push('first:start')
+      await firstMayFinish
+      events.push('first:end')
+    })
+
+    await Promise.resolve()
+    await withFileStatePathLock(secondPath, async () => {
+      events.push('second:start')
+    })
+
+    expect(events).toEqual(['first:start', 'second:start'])
+    releaseFirst()
+    await first
+    expect(events).toEqual(['first:start', 'second:start', 'first:end'])
+  })
+
+  test('releases the same-path queue after a rejected callback', async () => {
+    const path = normalize('/tmp/reject-lock.txt')
+    const error = new Error('boom')
+    const events: string[] = []
+
+    await expect(
+      withFileStatePathLock(path, async () => {
+        events.push('first:start')
+        throw error
+      }),
+    ).rejects.toBe(error)
+
+    await withFileStatePathLock(path, async () => {
+      events.push('second:start')
+    })
+
+    expect(events).toEqual(['first:start', 'second:start'])
+    expect(getFileStatePathLockDepthForTests(path)).toBe(0)
   })
 })

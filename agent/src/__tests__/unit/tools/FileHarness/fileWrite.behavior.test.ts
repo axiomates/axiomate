@@ -13,6 +13,7 @@ import {
   parentMessage,
   setupFileHarness,
 } from './helpers.js'
+import { withFileStatePathLock } from '../../../../utils/fileStateRegistry.js'
 
 mockFileHarnessRuntime()
 setupFileHarness()
@@ -410,6 +411,42 @@ describe('FileWriteTool file harness behavior', () => {
         parentMessage,
       ),
     ).rejects.toThrow(FILE_UNEXPECTEDLY_MODIFIED_ERROR)
+  })
+
+  test('call waits for the same-path file state lock before final stale check and write', async () => {
+    const { FileWriteTool } = await loadFileTools()
+    const path = join(getHarnessCwd(), 'locked-write.txt')
+    await writeFile(path, 'alpha\n', 'utf8')
+    const context = await readIntoContext(path)
+
+    let releaseLock!: () => void
+    const lockMayRelease = new Promise<void>(resolve => {
+      releaseLock = resolve
+    })
+    const lockHolder = withFileStatePathLock(path, async () => {
+      await lockMayRelease
+    })
+
+    let writeSettled = false
+    const writeAttempt = FileWriteTool.call(
+      { file_path: path, content: 'beta\n' },
+      context,
+      allowToolUse,
+      parentMessage,
+    ).finally(() => {
+      writeSettled = true
+    })
+
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(writeSettled).toBe(false)
+    expect(await readFile(path, 'utf8')).toBe('alpha\n')
+
+    releaseLock()
+    await lockHolder
+    await writeAttempt
+
+    expect(await readFile(path, 'utf8')).toBe('beta\n')
   })
 
   test('successful overwrite cleans up its atomic temp file', async () => {

@@ -32,6 +32,7 @@ small in-process registry, and this plan. The already-pushed commits are:
 - `c8f6b352 test: add file harness coverage`
 - `1b0bfaa7 feat: extend file harness stale-write guards`
 - `b713951a feat: extend file registry coverage`
+- `b8acd2a2 feat: add subagent file state reminders`
 
 ## Progress
 
@@ -193,7 +194,7 @@ Commit `b713951a` passed:
 - `pnpm run build:types`
 - `pnpm run test` with 151 files / 2102 tests passing
 
-Current local Stage 3B implementation has passed:
+Commit `b8acd2a2` passed:
 
 - `pnpm --filter ./agent exec vitest run src/__tests__/unit/utils/fileStateRegistry.test.ts src/__tests__/unit/tools/AgentTool/fileStateReminder.test.ts --hookTimeout 120000 --testTimeout 30000`
 - `pnpm --filter ./agent exec vitest run src/__tests__/unit/tools/AgentTool/fileStateReminder.test.ts src/__tests__/unit/utils/fileStateRegistry.test.ts src/__tests__/unit/tools/FileHarness --hookTimeout 120000 --testTimeout 30000`
@@ -203,10 +204,32 @@ Current local Stage 3B implementation has passed:
 
 ## Remaining Migration Work
 
+## Current Position
+
+We are at the boundary between Stage 3B and Stage 3C.
+
+Completed and pushed:
+
+- Stage 1: native Axiomate FileHarness tests.
+- Stage 2A/2B/2C: read/write/edit guard semantics, read-dedup write guard, and
+  minimal process-local registry.
+- Stage 3A: registry coverage for `NotebookEditTool` and structured
+  `_simulatedSedEdit`.
+- Stage 3B: parent/subagent completion reminders based on registry query APIs.
+
+Current local change:
+
+- This worktree contains the Stage 3C implementation and tests. Broad
+  verification has passed; it has not yet been committed or pushed.
+
+Next implementation target:
+
+- Commit and push Stage 3C.
+
 ### Stage 3: Complete Registry Coverage
 
-Status: Stage 3A complete and pushed in `b713951a`; Stage 3B implemented
-locally; broader registry coverage remains.
+Status: Stage 3A complete and pushed in `b713951a`; Stage 3B complete and
+pushed in `b8acd2a2`; broader registry coverage remains.
 
 Implemented in Stage 3A:
 
@@ -216,7 +239,7 @@ Implemented in Stage 3A:
   path, where the permission UI already supplied an exact `filePath` and
   `newContent`.
 
-Implemented locally in Stage 3B:
+Implemented in Stage 3B:
 
 - `fileStateRegistry` now exposes sequence-based reminder queries:
   `getFileStateRegistrySequence()`, `getKnownReadFilePaths()`, and
@@ -228,11 +251,19 @@ Implemented locally in Stage 3B:
 - The reminder is process-local and only sees structured write paths already
   attached to `noteFileWrite`.
 
+Implemented locally in Stage 3C:
+
+- Added a process-local path-keyed async mutex in `fileStateRegistry`.
+- Added lock primitive tests for same-path serialization, different-path
+  overlap, rejection release, and idle cleanup.
+- Wrapped `FileEditTool`, `FileWriteTool`, `NotebookEditTool`, and `BashTool`
+  `_simulatedSedEdit` around their final stale-check/current-read/write/
+  cache-update/`noteFileWrite` critical sections.
+- Added FileHarness behavior tests that hold the same-path lock and assert each
+  structured write waits before touching disk.
+
 Still to decide and implement:
 
-- Stage 3C: per-path locks around `Edit`/`Write`/`NotebookEdit` and structured
-  simulated writes, so stale-check-plus-write becomes a serialized critical
-  section within one process.
 - Stage 3D: decide whether cross-process state is worth adding for pane/tmux
   teammates. This likely needs IPC, a file-backed registry, SQLite, or
   checkpoint integration.
@@ -247,8 +278,9 @@ Risks:
   equivalent.
 - It only covers in-process teammates. Pane/tmux teammates are separate CLI
   processes and do not share the module-level registry.
-- It does not provide a per-path mutex. Two async structured writes in the same
-  process can still interleave between awaits until Stage 3C lands.
+- The new per-path mutex only serializes structured writes in this process.
+  It does not cover pane/tmux teammates, separate CLI processes, future Worker
+  tool runners, external editors, or arbitrary shell writes.
 - `cloneFileStateCache` currently clones LRU entries shallowly. Real write
   tools replace their own cache entry before `noteFileWrite`, so current guard
   and reminder tests are safe. Stage 3C should either deep-clone file state
@@ -263,6 +295,53 @@ Risks:
 - Axiomate should not try to recognize every PowerShell/Bash file write. For
   shell commands, only explicitly parsed, path-specific simulated edits should
   be considered for registry participation.
+
+Runtime lock boundary as of 2026-05-31:
+
+- Bun supports `Worker`. Official docs describe Workers as a new JavaScript
+  instance running on a separate thread while sharing I/O resources with the
+  main thread. A local Bun 1.3.14 probe also showed `Worker` exists and
+  `Bun.isMainThread` is false inside a worker.
+- Bun 1.3.14 in this repo environment does not expose `navigator.locks`; the
+  local probe returned `navigator.locks` as missing. Do not base Stage 3C on
+  Web Locks / `LockManager`.
+- `rg` found no `new Worker`, `worker_threads`, `SharedArrayBuffer`, or
+  `Atomics` usage in `agent/src`. Current in-process teammates use
+  `AsyncLocalStorage` in one JS process, so a module-level registry/lock is
+  visible to them.
+- If a future tool runner moves file tools into Workers, module-level `Map`
+  state will not be shared. The same is true for pane/tmux teammates because
+  they spawn separate CLI processes.
+- Therefore Stage 3C should implement a small in-process async per-path mutex
+  for current same-process structured writes. Cross-worker or cross-process
+  safety is a separate Stage 3D design requiring IPC, a file-backed registry,
+  SQLite, lockfiles, or checkpoint-based dirty detection.
+
+Stage 3C locking decision:
+
+- Implement a small process-local, path-keyed async mutex. This should mirror
+  existing Axiomate Promise-based serialization patterns such as pane creation
+  locks and MCP state update chaining, but use one queue per normalized file
+  path instead of one global queue.
+- Scope the lock to the structured write critical section only:
+  stale/read-before-write checks, current disk read, write, `readFileState`
+  update, and `noteFileWrite`.
+- Keep slower or unrelated work outside the lock: permission checks, skill
+  discovery/loading, parent directory creation, diagnostic pre-hooks, and LSP
+  notifications.
+- Same path must serialize; different paths should remain concurrent.
+- Do not use `proper-lockfile` in Stage 3C. Existing mailbox/tasks/history
+  lockfile usage is for cross-process shared files; Stage 3C is deliberately a
+  lighter same-process harness lock.
+- Do not use `navigator.locks`. Current Bun does not expose it.
+- Do not claim cross-process safety. Pane/tmux teammates, another CLI process,
+  arbitrary shell writes, and future Worker-based tool runners remain outside
+  this lock and belong to Stage 3D.
+- Re-check stale state inside the lock. Validation remains a preflight only;
+  waiting behind another writer can make an earlier validation result stale.
+
+Stage 3E candidate:
+
 - The one current candidate is `BashTool`'s internal `_simulatedSedEdit` path:
   permission UI precomputes a specific `filePath` and `newContent`, then
   `BashTool` applies that content directly instead of executing `sed`. That is
@@ -271,8 +350,7 @@ Risks:
 
 Estimated remaining work:
 
-- Commit/verify Stage 3B: 0.5 day.
-- Per-path lock design and non-flaky tests: 1-2 days.
+- Stage 3C commit/push: 0.25 day.
 - Cross-process registry/detection decision: 0.5-1 day for design; more if
   implemented.
 - Additional Bash write participation: research item; likely no broader
@@ -453,7 +531,21 @@ Estimated work:
     - It does not serialize read-modify-write critical sections.
     - Per-path locking is a separate Stage 3C item.
 
-12. Do not parse arbitrary shell writes into the registry.
+12. Do not rely on Bun Web Locks for Stage 3C.
+    - Local Bun 1.3.14 exposes `Worker` but not `navigator.locks`.
+    - Current Axiomate tool execution does not use Workers, so an in-process
+      per-path async mutex is enough for same-process structured writes.
+    - If tools move into Workers or pane/tmux CLI processes, module globals are
+      not shared and Stage 3D needs IPC/file-backed coordination.
+
+13. Stage 3C uses a path-keyed in-process mutex, not a global write lock.
+    - Same normalized path serializes.
+    - Different paths remain concurrent.
+    - The lock is for structured write critical sections only.
+    - Validation is still preflight; final stale checks must run inside the
+      lock.
+
+14. Do not parse arbitrary shell writes into the registry.
     - Hermes does not do this either.
     - Axiomate should only attach registry hooks to structured write paths
       where the tool already knows the exact path and content.
@@ -476,27 +568,23 @@ Estimated work:
 
 ## Recommended Next Slice
 
-The immediate next slice is to finish and land Stage 3B, then move to Stage 3C.
+The immediate next slice is to commit and push the local Stage 3C changes.
 
-Stage 3B close-out:
+Stage 3C verification completed locally:
 
-1. Commit the registry query API, AgentTool reminder helper, reminder wiring,
-   and tests.
-2. Push after focused tests, `build:types`, `git diff --check`, and full
-   `pnpm run test` remain green.
+1. Focused Stage 3C tests with `--no-file-parallelism` passed. This flag is
+   used because the existing FileHarness import mocks can be flaky when several
+   files import tool modules concurrently.
+2. Full `agent/src/__tests__/unit/tools/FileHarness` directory passed.
+3. `pnpm run build:types` passed.
+4. `git diff --check` passed.
+5. Full `pnpm run test` passed with 153 files / 2115 tests.
 
-Stage 3C implementation plan:
+Stage 3C verification note:
 
-1. Add tests that demonstrate two same-process structured writes cannot pass
-   stale-check-plus-write concurrently for the same path.
-2. Decide whether `cloneFileStateCache` should deep-clone entries before lock
-   work, or whether locking plus existing write-tool cache replacement is
-   enough.
-3. Add a small per-path lock API in `fileStateRegistry` or an adjacent helper.
-4. Wrap `FileEditTool`, `FileWriteTool`, `NotebookEditTool`, and
-   `_simulatedSedEdit` around the stale-check/write/cache-update block.
-5. Keep pane/tmux cross-process locking out of Stage 3C unless a lightweight
-   file-backed lock design is chosen first.
+- Use `--no-file-parallelism` for focused FileHarness slices because the
+   existing FileHarness import mocks can be flaky when several files import
+   tool modules concurrently.
 
 After Stage 3C, move to Stage 4 atomic write semantics, because it is the
 largest remaining reliability invariant from Hermes.

@@ -26,6 +26,7 @@ import { fileStateHasFullContent } from '../../utils/fileStateCache.js'
 import {
   noteFileWrite,
   wasFileModifiedAfterReadByAnotherContext,
+  withFileStatePathLock,
 } from '../../utils/fileStateRegistry.js'
 import {
   type LineEndingType,
@@ -426,67 +427,81 @@ export const FileEditTool = buildTool({
     // the staleness check and writeTextContent lets concurrent edits interleave.
     await fs.mkdir(dirname(absoluteFilePath))
 
-    // 2. Load current state and confirm no changes since last read
-    // Please avoid async operations between here and writing to disk to preserve atomicity
-    const {
-      content: originalFileContents,
-      fileExists,
-      encoding,
-      lineEndings: endings,
-    } = readFileForEdit(absoluteFilePath)
+    const { originalFileContents, actualOldString, patch, updatedFile } =
+      await withFileStatePathLock(absoluteFilePath, async () => {
+        // 2. Load current state and confirm no changes since last read.
+        // Keep the final stale check and write in this same critical section.
+        const {
+          content: originalFileContents,
+          fileExists,
+          encoding,
+          lineEndings: endings,
+        } = readFileForEdit(absoluteFilePath)
 
-    if (fileExists) {
-      const lastWriteTime = getFileModificationTime(absoluteFilePath)
-      const lastRead = readFileState.get(absoluteFilePath)
-      if (!lastRead) {
-        throw new Error(FILE_UNEXPECTEDLY_MODIFIED_ERROR)
-      }
-      if (
-        wasFileModifiedAfterReadByAnotherContext(
-          {
-            agentId,
-            readFileState,
-          },
-          absoluteFilePath,
-        )
-      ) {
-        throw new Error(FILE_UNEXPECTEDLY_MODIFIED_ERROR)
-      }
-      if (lastWriteTime > lastRead.timestamp) {
-        // Timestamp indicates modification, but on Windows timestamps can change
-        // without content changes (cloud sync, antivirus, etc.). For full reads,
-        // compare content as a fallback to avoid false positives.
-        const contentUnchanged =
-          fileStateHasFullContent(lastRead) &&
-          originalFileContents === lastRead.content
-        if (!contentUnchanged) {
-          throw new Error(FILE_UNEXPECTEDLY_MODIFIED_ERROR)
+        if (fileExists) {
+          const lastWriteTime = getFileModificationTime(absoluteFilePath)
+          const lastRead = readFileState.get(absoluteFilePath)
+          if (!lastRead) {
+            throw new Error(FILE_UNEXPECTEDLY_MODIFIED_ERROR)
+          }
+          if (
+            wasFileModifiedAfterReadByAnotherContext(
+              {
+                agentId,
+                readFileState,
+              },
+              absoluteFilePath,
+            )
+          ) {
+            throw new Error(FILE_UNEXPECTEDLY_MODIFIED_ERROR)
+          }
+          if (lastWriteTime > lastRead.timestamp) {
+            // Timestamp indicates modification, but on Windows timestamps can change
+            // without content changes (cloud sync, antivirus, etc.). For full reads,
+            // compare content as a fallback to avoid false positives.
+            const contentUnchanged =
+              fileStateHasFullContent(lastRead) &&
+              originalFileContents === lastRead.content
+            if (!contentUnchanged) {
+              throw new Error(FILE_UNEXPECTEDLY_MODIFIED_ERROR)
+            }
+          }
         }
-      }
-    }
 
-    // 3. Use findActualString to handle quote normalization
-    const actualOldString =
-      findActualString(originalFileContents, old_string) || old_string
+        // 3. Use findActualString to handle quote normalization
+        const actualOldString =
+          findActualString(originalFileContents, old_string) || old_string
 
-    // Preserve curly quotes in new_string when the file uses them
-    const actualNewString = preserveQuoteStyle(
-      old_string,
-      actualOldString,
-      new_string,
-    )
+        // Preserve curly quotes in new_string when the file uses them
+        const actualNewString = preserveQuoteStyle(
+          old_string,
+          actualOldString,
+          new_string,
+        )
 
-    // 4. Generate patch
-    const { patch, updatedFile } = getPatchForEdit({
-      filePath: absoluteFilePath,
-      fileContents: originalFileContents,
-      oldString: actualOldString,
-      newString: actualNewString,
-      replaceAll: replace_all,
-    })
+        // 4. Generate patch
+        const { patch, updatedFile } = getPatchForEdit({
+          filePath: absoluteFilePath,
+          fileContents: originalFileContents,
+          oldString: actualOldString,
+          newString: actualNewString,
+          replaceAll: replace_all,
+        })
 
-    // 5. Write to disk
-    writeTextContent(absoluteFilePath, updatedFile, encoding, endings)
+        // 5. Write to disk
+        writeTextContent(absoluteFilePath, updatedFile, encoding, endings)
+
+        // 6. Update read timestamp, to invalidate stale writes
+        readFileState.set(absoluteFilePath, {
+          content: updatedFile,
+          timestamp: getFileModificationTime(absoluteFilePath),
+          offset: undefined,
+          limit: undefined,
+        })
+        noteFileWrite({ agentId, readFileState }, absoluteFilePath)
+
+        return { originalFileContents, actualOldString, patch, updatedFile }
+      })
 
     // Notify LSP servers about file modification (didChange) and save (didSave)
     const lspManager = getLspServerManager()
@@ -510,15 +525,6 @@ export const FileEditTool = buildTool({
         logError(err)
       })
     }
-
-    // 6. Update read timestamp, to invalidate stale writes
-    readFileState.set(absoluteFilePath, {
-      content: updatedFile,
-      timestamp: getFileModificationTime(absoluteFilePath),
-      offset: undefined,
-      limit: undefined,
-    })
-    noteFileWrite({ agentId, readFileState }, absoluteFilePath)
 
     // 7. Log events
     if (absoluteFilePath.endsWith(`${sep}AXIOMATE.md`)) {

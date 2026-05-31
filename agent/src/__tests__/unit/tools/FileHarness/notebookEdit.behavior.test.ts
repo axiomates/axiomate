@@ -4,6 +4,7 @@ import { beforeAll, describe, expect, test } from 'vitest'
 import { FILE_UNEXPECTEDLY_MODIFIED_ERROR } from '../../../../tools/FileEditTool/constants.js'
 import { asAgentId } from '../../../../types/ids.js'
 import { cloneFileStateCache } from '../../../../utils/fileStateCache.js'
+import { withFileStatePathLock } from '../../../../utils/fileStateRegistry.js'
 import {
   allowToolUse,
   getHarnessCwd,
@@ -189,5 +190,39 @@ describe('NotebookEditTool file harness behavior', () => {
       editNotebookCell(path, 'print("parent")', parentContext),
     ).rejects.toThrow(FILE_UNEXPECTEDLY_MODIFIED_ERROR)
     expect(await readNotebookSource(path)).toBe('print("child")')
+  })
+
+  test('call waits for the same-path file state lock before final stale check and write', async () => {
+    const path = join(getHarnessCwd(), 'locked-notebook.ipynb')
+    await writeNotebook(path, 'print("one")')
+    const context = await readNotebookIntoContext(path)
+
+    let releaseLock!: () => void
+    const lockMayRelease = new Promise<void>(resolve => {
+      releaseLock = resolve
+    })
+    const lockHolder = withFileStatePathLock(path, async () => {
+      await lockMayRelease
+    })
+
+    let editSettled = false
+    const editAttempt = editNotebookCell(
+      path,
+      'print("two")',
+      context,
+    ).finally(() => {
+      editSettled = true
+    })
+
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(editSettled).toBe(false)
+    expect(await readNotebookSource(path)).toBe('print("one")')
+
+    releaseLock()
+    await lockHolder
+    await editAttempt
+
+    expect(await readNotebookSource(path)).toBe('print("two")')
   })
 })
