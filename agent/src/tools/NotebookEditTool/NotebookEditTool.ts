@@ -333,7 +333,7 @@ export const NotebookEditTool = buildTool({
         // one safeResolvePath + readFileSync pass, replacing the previous
         // detectFileEncoding + readFile + detectLineEndings chain (each of
         // which redid safeResolvePath and/or a 4KB readSync).
-        const { content, encoding, lineEndings } =
+        const { content, encoding, lineEndings, hadLeadingBom } =
           readFileSyncWithMetadata(fullPath)
         // Must use non-memoized jsonParse here: safeParseJSON caches by content
         // string and returns a shared object reference, but we mutate the
@@ -441,7 +441,9 @@ export const NotebookEditTool = buildTool({
         // Write back to file
         const IPYNB_INDENT = 1
         const updatedContent = jsonStringify(notebook, null, IPYNB_INDENT)
-        writeTextContent(fullPath, updatedContent, encoding, lineEndings)
+        writeTextContent(fullPath, updatedContent, encoding, lineEndings, {
+          preserveLeadingBom: hadLeadingBom,
+        })
         // Update readFileState with post-write mtime (matches FileEditTool/
         // FileWriteTool). offset:undefined breaks FileReadTool's dedup match —
         // without this, Read→NotebookEdit→Read in the same millisecond would

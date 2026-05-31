@@ -18,6 +18,7 @@ import { isENOENT, isFsInaccessible } from './errors.js'
 import {
   detectEncodingForResolvedPath,
   detectLineEndingsForString,
+  UTF8_BOM,
   type LineEndingType,
 } from './fileRead.js'
 import { fileReadCache } from './fileReadCache.js'
@@ -84,15 +85,26 @@ export function writeTextContent(
   content: string,
   encoding: BufferEncoding,
   endings: LineEndingType,
+  options: { preserveLeadingBom?: boolean } = {},
 ): void {
-  let toWrite = content
+  let toWrite = normalizeContentToLf(content)
   if (endings === 'CRLF') {
     // Normalize any existing CRLF to LF first so a new_string that already
     // contains \r\n (raw model output) doesn't become \r\r\n after the join.
-    toWrite = content.replaceAll('\r\n', '\n').split('\n').join('\r\n')
+    toWrite = toWrite.split('\n').join('\r\n')
+  }
+  if (options.preserveLeadingBom && !toWrite.startsWith(UTF8_BOM)) {
+    toWrite = UTF8_BOM + toWrite
   }
 
   writeFileSyncAndFlush_DEPRECATED(filePath, toWrite, { encoding })
+}
+
+export function normalizeContentToLf(content: string): string {
+  const withoutBom = content.startsWith(UTF8_BOM)
+    ? content.slice(UTF8_BOM.length)
+    : content
+  return withoutBom.replaceAll('\r\n', '\n').replaceAll('\r', '\n')
 }
 
 export function detectFileEncoding(filePath: string): BufferEncoding {

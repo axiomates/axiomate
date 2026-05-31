@@ -15,7 +15,11 @@ import { logForDebugging } from '../../utils/debug.js'
 import { countLinesChanged, getPatchForDisplay } from '../../utils/diff.js'
 import { isEnvTruthy } from '../../utils/envUtils.js'
 import { isENOENT } from '../../utils/errors.js'
-import { getFileModificationTime, writeTextContent } from '../../utils/file.js'
+import {
+  getFileModificationTime,
+  normalizeContentToLf,
+  writeTextContent,
+} from '../../utils/file.js'
 import { logFileOperation } from '../../utils/fileOperationAnalytics.js'
 import { fileStateHasFullContent } from '../../utils/fileStateCache.js'
 import {
@@ -280,72 +284,72 @@ export const FileWriteTool = buildTool({
     // inside writeFileSyncAndFlush_DEPRECATED before ENOENT propagates back).
     await getFsImplementation().mkdir(dir)
 
-    const oldContent = await withFileStatePathLock(fullFilePath, async () => {
-      // Load current state and confirm no changes since last read.
-      // Keep the final stale check and write in this same critical section.
-      let meta: ReturnType<typeof readFileSyncWithMetadata> | null
-      try {
-        meta = readFileSyncWithMetadata(fullFilePath)
-      } catch (e) {
-        if (isENOENT(e)) {
-          meta = null
-        } else {
-          throw e
+    const { oldContent, canonicalContent } = await withFileStatePathLock(
+      fullFilePath,
+      async () => {
+        // Load current state and confirm no changes since last read.
+        // Keep the final stale check and write in this same critical section.
+        let meta: ReturnType<typeof readFileSyncWithMetadata> | null
+        try {
+          meta = readFileSyncWithMetadata(fullFilePath)
+        } catch (e) {
+          if (isENOENT(e)) {
+            meta = null
+          } else {
+            throw e
+          }
         }
-      }
 
-      if (meta !== null) {
-        const lastWriteTime = getFileModificationTime(fullFilePath)
-        const lastRead = readFileState.get(fullFilePath)
-        if (!lastRead || lastRead.isPartialView) {
-          throw new Error(FILE_UNEXPECTEDLY_MODIFIED_ERROR)
-        }
-        if (
-          wasFileModifiedAfterReadByAnotherContext(
-            {
-              agentId,
-              readFileState,
-            },
-            fullFilePath,
-          )
-        ) {
-          throw new Error(FILE_UNEXPECTEDLY_MODIFIED_ERROR)
-        }
-        if (lastWriteTime > lastRead.timestamp) {
-          // Timestamp indicates modification, but on Windows timestamps can change
-          // without content changes (cloud sync, antivirus, etc.). For full reads,
-          // compare content as a fallback to avoid false positives.
-          // meta.content is CRLF-normalized — matches readFileState's normalized form.
+        if (meta !== null) {
+          const lastWriteTime = getFileModificationTime(fullFilePath)
+          const lastRead = readFileState.get(fullFilePath)
+          if (!lastRead || lastRead.isPartialView) {
+            throw new Error(FILE_UNEXPECTEDLY_MODIFIED_ERROR)
+          }
           if (
-            !fileStateHasFullContent(lastRead) ||
-            meta.content !== lastRead.content
+            wasFileModifiedAfterReadByAnotherContext(
+              {
+                agentId,
+                readFileState,
+              },
+              fullFilePath,
+            )
           ) {
             throw new Error(FILE_UNEXPECTEDLY_MODIFIED_ERROR)
           }
+          if (lastWriteTime > lastRead.timestamp) {
+            // Timestamp indicates modification, but on Windows timestamps can change
+            // without content changes (cloud sync, antivirus, etc.). For full reads,
+            // compare content as a fallback to avoid false positives.
+            // meta.content is CRLF-normalized and BOM-stripped — matches Read state.
+            if (
+              !fileStateHasFullContent(lastRead) ||
+              meta.content !== lastRead.content
+            ) {
+              throw new Error(FILE_UNEXPECTEDLY_MODIFIED_ERROR)
+            }
+          }
         }
-      }
 
-      const enc = meta?.encoding ?? 'utf8'
-      const oldContent = meta?.content ?? null
+        const oldContent = meta?.content ?? null
+        const canonicalContent = normalizeContentToLf(content)
 
-      // Write is a full content replacement — the model sent explicit line endings
-      // in `content` and meant them. Do not rewrite them. Previously we preserved
-      // the old file's line endings (or sampled the repo via ripgrep for new
-      // files), which silently corrupted e.g. bash scripts with \r on Linux when
-      // overwriting a CRLF file or when binaries in cwd poisoned the repo sample.
-      writeTextContent(fullFilePath, content, enc, 'LF')
+        // Write is full replacement, so it canonicalizes text instead of
+        // preserving the overwritten file's encoding, BOM, or line-ending style.
+        writeTextContent(fullFilePath, canonicalContent, 'utf8', 'LF')
 
-      // Update read timestamp, to invalidate stale writes
-      readFileState.set(fullFilePath, {
-        content,
-        timestamp: getFileModificationTime(fullFilePath),
-        offset: undefined,
-        limit: undefined,
-      })
-      noteFileWrite({ agentId, readFileState }, fullFilePath)
+        // Update read timestamp, to invalidate stale writes
+        readFileState.set(fullFilePath, {
+          content: canonicalContent,
+          timestamp: getFileModificationTime(fullFilePath),
+          offset: undefined,
+          limit: undefined,
+        })
+        noteFileWrite({ agentId, readFileState }, fullFilePath)
 
-      return oldContent
-    })
+        return { oldContent, canonicalContent }
+      },
+    )
 
     // Notify LSP servers about file modification (didChange) and save (didSave)
     const lspManager = getLspServerManager()
@@ -353,12 +357,14 @@ export const FileWriteTool = buildTool({
       // Clear previously delivered diagnostics so new ones will be shown
       clearDeliveredDiagnosticsForFile(`file://${fullFilePath}`)
       // didChange: Content has been modified
-      lspManager.changeFile(fullFilePath, content).catch((err: Error) => {
-        logForDebugging(
-          `LSP: Failed to notify server of file change for ${fullFilePath}: ${err.message}`,
-        )
-        logError(err)
-      })
+      lspManager
+        .changeFile(fullFilePath, canonicalContent)
+        .catch((err: Error) => {
+          logForDebugging(
+            `LSP: Failed to notify server of file change for ${fullFilePath}: ${err.message}`,
+          )
+          logError(err)
+        })
       // didSave: File has been saved to disk (triggers diagnostics in TypeScript server)
       lspManager.saveFile(fullFilePath).catch((err: Error) => {
         logForDebugging(
@@ -381,7 +387,7 @@ export const FileWriteTool = buildTool({
         edits: [
           {
             old_string: oldContent,
-            new_string: content,
+            new_string: canonicalContent,
             replace_all: false,
           },
         ],
@@ -390,7 +396,7 @@ export const FileWriteTool = buildTool({
       const data = {
         type: 'update' as const,
         filePath: file_path,
-        content,
+        content: canonicalContent,
         structuredPatch: patch,
         originalFile: oldContent,
         ...(gitDiff && { gitDiff }),
@@ -413,14 +419,14 @@ export const FileWriteTool = buildTool({
     const data = {
       type: 'create' as const,
       filePath: file_path,
-      content,
+      content: canonicalContent,
       structuredPatch: [],
       originalFile: null,
       ...(gitDiff && { gitDiff }),
     }
 
     // For creation of new files, count all lines as additions, right before yielding the result
-    countLinesChanged([], content)
+    countLinesChanged([], canonicalContent)
 
     logFileOperation({
       operation: 'write',

@@ -62,7 +62,9 @@ async function writeNotebook(path: string, source: string): Promise<void> {
 }
 
 async function readNotebookSource(path: string): Promise<string> {
-  const notebook = JSON.parse(await readFile(path, 'utf8')) as ReturnType<
+  const raw = await readFile(path, 'utf8')
+  const content = raw.startsWith('\ufeff') ? raw.slice(1) : raw
+  const notebook = JSON.parse(content) as ReturnType<
     typeof createNotebook
   >
   return String(notebook.cells[0]?.source ?? '')
@@ -223,6 +225,20 @@ describe('NotebookEditTool file harness behavior', () => {
     await lockHolder
     await editAttempt
 
+    expect(await readNotebookSource(path)).toBe('print("two")')
+  })
+
+  test('preserves an existing UTF-8 BOM when editing a notebook', async () => {
+    const path = join(getHarnessCwd(), 'bom-notebook.ipynb')
+    await writeFile(path, `\ufeff${JSON.stringify(createNotebook('print("one")'), null, 1)}`, 'utf8')
+    const context = await readNotebookIntoContext(path)
+
+    await editNotebookCell(path, 'print("two")', context)
+
+    const raw = await readFile(path)
+    expect(raw[0]).toBe(0xef)
+    expect(raw[1]).toBe(0xbb)
+    expect(raw[2]).toBe(0xbf)
     expect(await readNotebookSource(path)).toBe('print("two")')
   })
 })

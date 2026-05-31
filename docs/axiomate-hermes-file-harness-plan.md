@@ -219,11 +219,18 @@ Stage 4A local verification passed:
 - `git diff --check`
 - `pnpm run test` with 154 files / 2117 tests passing
 
+Stage 5 local verification passed:
+
+- `pnpm --filter ./agent exec vitest run src/__tests__/unit/tools/FileHarness src/__tests__/unit/utils/file.test.ts --no-file-parallelism --hookTimeout 120000 --testTimeout 30000`
+- `pnpm run build:types`
+- `git diff --check`
+- `pnpm run test` with 154 files / 2128 tests passing
+
 ## Remaining Migration Work
 
 ## Current Position
 
-We are in Stage 4.
+We are at the Stage 5 completion boundary.
 
 Completed and pushed:
 
@@ -234,16 +241,20 @@ Completed and pushed:
   `_simulatedSedEdit`.
 - Stage 3B: parent/subagent completion reminders based on registry query APIs.
 - Stage 3C: process-local per-path write serialization.
+- Stage 4A: strict atomic write failure semantics.
+- Stage 5: BOM and line-ending policy for structured file writes.
 
-Current Stage 4A slice:
+Current Stage 5 slice:
 
-- Remove the non-atomic direct-write fallback from
-  `writeFileSyncAndFlush_DEPRECATED` and add utility tests for atomic rename
-  failure semantics.
+- `Write` canonicalizes replacement content to UTF-8, LF, no leading BOM.
+- `Edit`, `NotebookEdit`, and `BashTool`'s structured simulated sed edit
+  preserve existing leading BOM and majority line-ending style.
+- Metadata reads now return BOM-stripped, LF-normalized content for
+  `readFileState` comparisons plus a separate `hadLeadingBom` format flag.
 
 Next implementation target:
 
-- Finish Stage 4 verification, update this plan, then commit and push.
+- Commit and push Stage 5.
 
 ### Stage 3: Complete Registry Coverage
 
@@ -376,7 +387,7 @@ Estimated remaining work:
 
 ### Stage 4: Atomic Write Semantics
 
-Status: Stage 4A implemented in this slice.
+Status: Stage 4A complete.
 
 Hermes invariant:
 
@@ -407,40 +418,53 @@ Local tests added:
 - The tests assert the original target remains intact, no new target is
   created, temp files are cleaned, and the atomic error is rethrown.
 
-Estimated work:
+Remaining follow-up:
 
-- Remaining Stage 4A verification and push: 0.25 day.
-- Optional follow-up: classify atomic write failures into a model-facing error
-  category during Stage 6.
+- Classify atomic write failures into a model-facing error category during
+  Stage 6.
 
 ### Stage 5: BOM and Line Ending Policy
 
-Status: partially tested, not fully decided.
+Status: complete locally.
 
-Current Axiomate decisions:
+Implemented decisions:
 
-- `FileEditTool` preserves existing CRLF line endings.
-- `FileWriteTool` treats `content` as full replacement and writes the model's
-  explicit line endings, currently through LF policy.
-- `readFileSyncWithMetadata` detects encoding and line endings for edit/write
-  paths.
+- `FileWriteTool` is full replacement and writes canonical text:
+  UTF-8, LF, no leading BOM. It does not preserve overwritten files'
+  encoding, BOM, CRLF, or mixed line endings.
+- `FileEditTool` preserves existing text format for precise edits:
+  original encoding, leading BOM, and detected majority line-ending style.
+- `NotebookEditTool` uses the same preservation policy as `FileEditTool`.
+- `BashTool`'s structured `_simulatedSedEdit` path uses the same preservation
+  policy because it is an exact-content edit, not arbitrary shell output.
+- New files are UTF-8, LF, no leading BOM.
+- Line-ending detection is majority-based: CRLF only wins when CRLF count is
+  greater than LF count; ties, no newlines, and LF-majority files use LF.
 
-Open decisions:
+Implementation details:
 
-- Should UTF-8 BOM be preserved by edit/write, stripped, or normalized?
-- Should `FileWriteTool` preserve old CRLF for existing files, or continue to
-  respect replacement content exactly?
+- `readFileSyncWithMetadata` strips a leading BOM from returned `content`,
+  normalizes CRLF/lone CR to LF, and returns `hadLeadingBom` separately.
+- `writeTextContent` normalizes incoming content to LF first, then expands to
+  CRLF only when the caller asks to preserve CRLF.
+- `FileWriteTool` calls `normalizeContentToLf` and writes with UTF-8/LF.
+- `FileEditTool`, `NotebookEditTool`, and simulated sed pass
+  `preserveLeadingBom` when the original file had a leading BOM.
+- `readNotebook` strips BOM before parsing so BOM-prefixed notebooks are
+  readable and can round-trip through `NotebookEditTool`.
 
-Recommended direction:
+Tests added:
 
-- Keep `Edit` preserving line endings.
-- Keep `Write` as full replacement unless there is a strong product reason to
-  preserve old line endings.
-- Add explicit BOM tests before changing implementation.
+- Metadata read tests for majority line-ending detection and BOM metadata.
+- `FileWriteTool` tests for canonical new/overwrite writes, existing BOM
+  removal, CRLF normalization, and UTF-16LE replacement to UTF-8.
+- `FileEditTool` tests for CRLF, mixed-majority CRLF, tied-mixed LF, BOM
+  preservation, and BOM mtime-only stale fallback.
+- `NotebookEditTool` and structured simulated sed tests for BOM preservation.
 
 Estimated work:
 
-- 1-2 days depending on BOM policy.
+- Complete after verification and push.
 
 ### Stage 6: Failure Taxonomy
 
@@ -586,6 +610,13 @@ Estimated work:
       helper, not only file tools.
     - This matches Hermes' "target unchanged unless rename succeeds" invariant.
 
+16. `Write` canonicalizes; precise edit paths preserve.
+    - `FileWriteTool` writes UTF-8, LF, no leading BOM for both new files and
+      overwrites.
+    - `FileEditTool`, `NotebookEditTool`, and structured simulated sed preserve
+      existing encoding, leading BOM, and majority line-ending style.
+    - Majority line-ending detection defaults to LF on ties or no line breaks.
+
 ## Open Questions
 
 1. Should registry warnings be hard errors everywhere, or should some agent
@@ -596,15 +627,13 @@ Estimated work:
    checkpoint/mtime/content detection enough?
 4. Should `FileStateCache` entries be deep-cloned, or is the current
    replace-entry write pattern enough?
-5. What is the final UTF-8 BOM policy for read/edit/write?
-6. Should `FileWriteTool` keep LF full replacement policy for existing CRLF
-   files?
+5. Should UTF-16BE or other non-UTF8/non-UTF16LE encodings be detected or
+   rejected explicitly?
 
 ## Recommended Next Slice
 
-The immediate next slice is to finish Stage 4A verification, commit, and push.
-After that, move to Stage 5 BOM and line-ending policy, because it is the next
-largest remaining correctness gap in Hermes' `file_operations.py` invariants.
+The immediate next slice is to commit and push Stage 5. After that, move to
+Stage 6 failure taxonomy.
 
 Focused verification note:
 

@@ -259,6 +259,59 @@ describe('FileEditTool file harness behavior', () => {
     expect(raw.toString('utf8').replaceAll('\r\n', '')).not.toContain('\n')
   })
 
+  test('preserves the majority line ending style when editing mixed line endings', async () => {
+    const { FileEditTool } = await loadFileTools()
+    const path = join(getHarnessCwd(), 'mixed-majority-crlf.txt')
+    await writeFile(path, 'alpha\r\nbeta\r\ngamma\n', 'utf8')
+    const context = await readIntoContext(path)
+
+    await FileEditTool.call(
+      { file_path: path, old_string: 'beta', new_string: 'BETA' },
+      context,
+      allowToolUse,
+      parentMessage,
+    )
+
+    expect(await readFile(path, 'utf8')).toBe('alpha\r\nBETA\r\ngamma\r\n')
+  })
+
+  test('defaults tied mixed line endings to LF when editing', async () => {
+    const { FileEditTool } = await loadFileTools()
+    const path = join(getHarnessCwd(), 'mixed-tie-lf.txt')
+    await writeFile(path, 'alpha\r\nbeta\n', 'utf8')
+    const context = await readIntoContext(path)
+
+    await FileEditTool.call(
+      { file_path: path, old_string: 'beta', new_string: 'BETA' },
+      context,
+      allowToolUse,
+      parentMessage,
+    )
+
+    expect(await readFile(path, 'utf8')).toBe('alpha\nBETA\n')
+  })
+
+  test('preserves existing UTF-8 BOM when editing', async () => {
+    const { FileEditTool } = await loadFileTools()
+    const path = join(getHarnessCwd(), 'bom-edit.txt')
+    await writeFile(path, '\ufeffalpha\nbeta\n', 'utf8')
+    const context = await readIntoContext(path)
+
+    await FileEditTool.call(
+      { file_path: path, old_string: 'beta', new_string: 'BETA' },
+      context,
+      allowToolUse,
+      parentMessage,
+    )
+
+    const raw = await readFile(path)
+    expect(raw[0]).toBe(0xef)
+    expect(raw[1]).toBe(0xbb)
+    expect(raw[2]).toBe(0xbf)
+    expect(raw.toString('utf8')).toBe('\ufeffalpha\nBETA\n')
+    expect(context.readFileState.get(path)?.content).toBe('alpha\nBETA\n')
+  })
+
   test('allows mtime-only drift when readFileState came from full Read', async () => {
     const { FileEditTool } = await loadFileTools()
     const path = join(getHarnessCwd(), 'mtime-only.txt')
@@ -273,6 +326,23 @@ describe('FileEditTool file harness behavior', () => {
     )
 
     expect(context.readFileState.get(path)?.offset).toBe(1)
+    expect(result.result).toBe(true)
+  })
+
+  test('allows mtime-only drift for a BOM file after full Read', async () => {
+    const { FileEditTool } = await loadFileTools()
+    const path = join(getHarnessCwd(), 'bom-mtime-only-edit.txt')
+    await writeFile(path, '\ufeffalpha\nbeta\n', 'utf8')
+    const context = await readIntoContext(path)
+    const future = new Date(Date.now() + 10_000)
+    await utimes(path, future, future)
+
+    const result = await FileEditTool.validateInput!(
+      { file_path: path, old_string: 'beta', new_string: 'BETA' },
+      context,
+    )
+
+    expect(context.readFileState.get(path)?.content).toBe('alpha\nbeta\n')
     expect(result.result).toBe(true)
   })
 

@@ -18,6 +18,7 @@ import {
   FILE_NOT_FOUND_CWD_NOTE,
   findSimilarFile,
   getFileModificationTime,
+  normalizeContentToLf,
   suggestPathUnderCwd,
   writeTextContent,
 } from '../../utils/file.js'
@@ -198,7 +199,7 @@ export const FileEditTool = buildTool({
         fileBuffer[1] === 0xfe
           ? 'utf16le'
           : 'utf8'
-      fileContent = fileBuffer.toString(encoding).replaceAll('\r\n', '\n')
+      fileContent = normalizeContentToLf(fileBuffer.toString(encoding))
     } catch (e) {
       if (isENOENT(e)) {
         fileContent = null
@@ -436,6 +437,7 @@ export const FileEditTool = buildTool({
           fileExists,
           encoding,
           lineEndings: endings,
+          hadLeadingBom,
         } = readFileForEdit(absoluteFilePath)
 
         if (fileExists) {
@@ -489,7 +491,9 @@ export const FileEditTool = buildTool({
         })
 
         // 5. Write to disk
-        writeTextContent(absoluteFilePath, updatedFile, encoding, endings)
+        writeTextContent(absoluteFilePath, updatedFile, encoding, endings, {
+          preserveLeadingBom: hadLeadingBom,
+        })
 
         // 6. Update read timestamp, to invalidate stale writes
         readFileState.set(absoluteFilePath, {
@@ -584,6 +588,7 @@ function readFileForEdit(absoluteFilePath: string): {
   fileExists: boolean
   encoding: BufferEncoding
   lineEndings: LineEndingType
+  hadLeadingBom: boolean
 } {
   try {
     // eslint-disable-next-line custom-rules/no-sync-fs
@@ -593,6 +598,7 @@ function readFileForEdit(absoluteFilePath: string): {
       fileExists: true,
       encoding: meta.encoding,
       lineEndings: meta.lineEndings,
+      hadLeadingBom: meta.hadLeadingBom,
     }
   } catch (e) {
     if (isENOENT(e)) {
@@ -601,6 +607,7 @@ function readFileForEdit(absoluteFilePath: string): {
         fileExists: false,
         encoding: 'utf8',
         lineEndings: 'LF',
+        hadLeadingBom: false,
       }
     }
     throw e

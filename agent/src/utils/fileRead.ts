@@ -16,6 +16,7 @@ import { logForDebugging } from './debug.js'
 import { getFsImplementation, safeResolvePath } from './fsOperations.js'
 
 export type LineEndingType = 'CRLF' | 'LF'
+export const UTF8_BOM = '\ufeff'
 
 export function detectEncodingForResolvedPath(
   resolvedPath: string,
@@ -76,6 +77,7 @@ export function readFileSyncWithMetadata(filePath: string): {
   content: string
   encoding: BufferEncoding
   lineEndings: LineEndingType
+  hadLeadingBom: boolean
 } {
   const fs = getFsImplementation()
   const { resolvedPath, isSymlink } = safeResolvePath(fs, filePath)
@@ -86,14 +88,17 @@ export function readFileSyncWithMetadata(filePath: string): {
 
   const encoding = detectEncodingForResolvedPath(resolvedPath)
   const raw = fs.readFileSync(resolvedPath, { encoding })
+  const hadLeadingBom = raw.charCodeAt(0) === 0xfeff
+  const bomless = hadLeadingBom ? raw.slice(1) : raw
   // Detect line endings from the raw head before CRLF normalization erases
   // the distinction. 4096 code units is ≥ detectLineEndings's 4096-byte
   // readSync sample (line endings are ASCII, so the unit mismatch is moot).
-  const lineEndings = detectLineEndingsForString(raw.slice(0, 4096))
+  const lineEndings = detectLineEndingsForString(bomless.slice(0, 4096))
   return {
-    content: raw.replaceAll('\r\n', '\n'),
+    content: bomless.replaceAll('\r\n', '\n').replaceAll('\r', '\n'),
     encoding,
     lineEndings,
+    hadLeadingBom,
   }
 }
 

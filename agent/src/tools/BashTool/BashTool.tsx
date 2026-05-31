@@ -16,10 +16,11 @@ import { splitCommand_DEPRECATED, splitCommandWithOperators } from '../../utils/
 import { extractAxiomateHints } from '../../utils/codeHints.js';
 import { isEnvTruthy } from '../../utils/envUtils.js';
 import { isENOENT, ShellError } from '../../utils/errors.js';
-import { detectFileEncoding, detectLineEndings, getFileModificationTime, writeTextContent } from '../../utils/file.js';
+import { getFileModificationTime, writeTextContent } from '../../utils/file.js';
 import { noteFileWrite, withFileStatePathLock } from '../../utils/fileStateRegistry.js';
 import { truncate } from '../../utils/format.js';
 import { getFsImplementation } from '../../utils/fsOperations.js';
+import { readFileSyncWithMetadata } from '../../utils/fileRead.js';
 import { lazySchema } from '../../utils/lazySchema.js';
 import { expandPath } from '../../utils/path.js';
 import type { PermissionResult } from '../../utils/permissions/PermissionResult.js';
@@ -365,9 +366,9 @@ async function applySedEdit(simulatedEdit: {
 
   const missingFileResult = await withFileStatePathLock(absoluteFilePath, async () => {
     // Confirm file exists before writing; matches sed's ENOENT error shape.
-    const encoding = detectFileEncoding(absoluteFilePath);
+    let metadata: ReturnType<typeof readFileSyncWithMetadata>;
     try {
-      await fs.readFile(absoluteFilePath, { encoding });
+      metadata = readFileSyncWithMetadata(absoluteFilePath);
     } catch (e) {
       if (isENOENT(e)) {
         return {
@@ -381,13 +382,18 @@ async function applySedEdit(simulatedEdit: {
       throw e;
     }
 
-    // Detect line endings and write new content
-    const endings = detectLineEndings(absoluteFilePath);
-    writeTextContent(absoluteFilePath, newContent, encoding, endings);
+    // Preserve the target file's text format for this structured edit path.
+    writeTextContent(
+      absoluteFilePath,
+      newContent,
+      metadata.encoding,
+      metadata.lineEndings,
+      { preserveLeadingBom: metadata.hadLeadingBom },
+    );
 
     // Update read timestamp to invalidate stale writes
     toolUseContext.readFileState.set(absoluteFilePath, {
-      content: newContent,
+      content: newContent.replaceAll('\r\n', '\n').replaceAll('\r', '\n'),
       timestamp: getFileModificationTime(absoluteFilePath),
       offset: undefined,
       limit: undefined

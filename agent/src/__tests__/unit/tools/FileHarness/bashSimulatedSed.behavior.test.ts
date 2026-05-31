@@ -137,4 +137,30 @@ describe('BashTool simulated sed file harness behavior', () => {
 
     expect(await readFile(path, 'utf8')).toBe('alpha\nBETA\n')
   })
+
+  test('simulated sed preserves existing UTF-8 BOM and CRLF line endings', async () => {
+    const path = join(getHarnessCwd(), 'bom-crlf-sed.txt')
+    await writeFile(path, '\ufeffalpha\r\nbeta\r\n', 'utf8')
+    const context = await readIntoContext(path)
+
+    await BashTool.call(
+      {
+        command: `sed -i 's/beta/BETA/' ${path}`,
+        _simulatedSedEdit: {
+          filePath: path,
+          newContent: 'alpha\nBETA\n',
+        },
+      },
+      context,
+      allowToolUse,
+      parentMessage,
+    )
+
+    const raw = await readFile(path)
+    expect(raw[0]).toBe(0xef)
+    expect(raw[1]).toBe(0xbb)
+    expect(raw[2]).toBe(0xbf)
+    expect(raw.toString('utf8')).toBe('\ufeffalpha\r\nBETA\r\n')
+    expect(context.readFileState.get(path)?.content).toBe('alpha\nBETA\n')
+  })
 })

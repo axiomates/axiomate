@@ -26,6 +26,11 @@ describe('file harness metadata reads', () => {
     expect(detectLineEndingsForString('a\r\nb\r\n')).toBe('CRLF')
   })
 
+  test('detectLineEndingsForString uses the majority style and defaults ties to LF', () => {
+    expect(detectLineEndingsForString('a\r\nb\n')).toBe('LF')
+    expect(detectLineEndingsForString('a\r\nb\r\nc\n')).toBe('CRLF')
+  })
+
   test('readFileSyncWithMetadata normalizes CRLF content but reports original line ending', async () => {
     const path = join(getHarnessCwd(), 'crlf.txt')
     await writeFile(path, 'a\r\nb\r\n', 'utf8')
@@ -37,15 +42,16 @@ describe('file harness metadata reads', () => {
     expect(meta.encoding).toBe('utf8')
   })
 
-  test('readFileSyncWithMetadata preserves current UTF-8 BOM visibility for edit/write metadata reads', async () => {
+  test('readFileSyncWithMetadata strips leading BOM from content and reports it in metadata', async () => {
     const path = join(getHarnessCwd(), 'bom.txt')
     await writeFile(path, '\ufeffhello\n', 'utf8')
 
     const meta = readFileSyncWithMetadata(path)
 
     expect(meta.encoding).toBe('utf8')
-    expect(meta.content.charCodeAt(0)).toBe(0xfeff)
-    expect(meta.content).toBe('\ufeffhello\n')
+    expect(meta.hadLeadingBom).toBe(true)
+    expect(meta.content.charCodeAt(0)).not.toBe(0xfeff)
+    expect(meta.content).toBe('hello\n')
   })
 
   test('readFileInRange-facing reads strip UTF-8 BOM for model-visible Read results', async () => {
@@ -78,6 +84,8 @@ describe('file harness metadata reads', () => {
     expect(raw[0]).toBe(0xff)
     expect(raw[1]).toBe(0xfe)
     expect(meta.encoding).toBe('utf16le')
+    expect(meta.hadLeadingBom).toBe(true)
     expect(meta.content).toContain('hello')
+    expect(meta.content.charCodeAt(0)).not.toBe(0xfeff)
   })
 })

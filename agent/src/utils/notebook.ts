@@ -14,6 +14,7 @@ import type {
   NotebookOutputImage,
 } from '../types/notebook.js'
 import { getFsImplementation } from './fsOperations.js'
+import { normalizeContentToLf } from './file.js'
 import { expandPath } from './path.js'
 import { jsonParse } from './slowOperations.js'
 
@@ -167,7 +168,7 @@ export async function readNotebook(
 ): Promise<NotebookCellSource[]> {
   const fullPath = expandPath(notebookPath)
   const buffer = await getFsImplementation().readFileBytes(fullPath)
-  const content = buffer.toString('utf-8')
+  const content = normalizeContentToLf(buffer.toString('utf-8'))
   const notebook = jsonParse(content) as NotebookContent
   const language = notebook.metadata.language_info?.name ?? 'python'
   if (cellId) {

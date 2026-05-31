@@ -168,6 +168,25 @@ describe('FileWriteTool file harness behavior', () => {
     expect(context.readFileState.get(path)?.limit).toBeUndefined()
   })
 
+  test('canonicalizes new file writes to LF without leading BOM', async () => {
+    const { FileWriteTool } = await loadFileTools()
+    const path = join(getHarnessCwd(), 'canonical-created.txt')
+    const context = makeToolContext()
+
+    await FileWriteTool.call(
+      { file_path: path, content: '\ufeffalpha\r\nbeta\r\n' },
+      context,
+      allowToolUse,
+      parentMessage,
+    )
+
+    const raw = await readFile(path)
+    expect(raw[0]).not.toBe(0xef)
+    expect(raw.toString('utf8')).toBe('alpha\nbeta\n')
+    expect(raw.includes(Buffer.from('\r\n'))).toBe(false)
+    expect(context.readFileState.get(path)?.content).toBe('alpha\nbeta\n')
+  })
+
   test('overwrites a fully read file and updates readFileState', async () => {
     const { FileWriteTool } = await loadFileTools()
     const path = join(getHarnessCwd(), 'write.txt')
@@ -244,7 +263,7 @@ describe('FileWriteTool file harness behavior', () => {
     expect(await readFile(path, 'utf8')).toBe('alpha\nbeta\ngamma\n')
   })
 
-  test('uses the provided LF line endings when overwriting a CRLF file', async () => {
+  test('canonicalizes overwrite writes to LF without preserving existing CRLF', async () => {
     const { FileWriteTool } = await loadFileTools()
     const path = join(getHarnessCwd(), 'crlf-write.txt')
     await writeFile(path, 'alpha\r\nbeta\r\n', 'utf8')
@@ -262,6 +281,45 @@ describe('FileWriteTool file harness behavior', () => {
     expect(raw.includes(Buffer.from('\r\n'))).toBe(false)
   })
 
+  test('canonicalizes overwrite writes to UTF-8 without preserving existing BOM', async () => {
+    const { FileWriteTool } = await loadFileTools()
+    const path = join(getHarnessCwd(), 'bom-write.txt')
+    await writeFile(path, '\ufeffalpha\n', 'utf8')
+    const context = await readIntoContext(path)
+
+    await FileWriteTool.call(
+      { file_path: path, content: '\ufeffbeta\r\n' },
+      context,
+      allowToolUse,
+      parentMessage,
+    )
+
+    const raw = await readFile(path)
+    expect(raw[0]).not.toBe(0xef)
+    expect(raw.toString('utf8')).toBe('beta\n')
+    expect(context.readFileState.get(path)?.content).toBe('beta\n')
+  })
+
+  test('canonicalizes overwrite writes to UTF-8 when replacing a UTF-16LE file', async () => {
+    const { FileWriteTool } = await loadFileTools()
+    const path = join(getHarnessCwd(), 'utf16-write.txt')
+    await writeFile(path, Buffer.from('\ufeffalpha\n', 'utf16le'))
+    const context = await readIntoContext(path)
+
+    await FileWriteTool.call(
+      { file_path: path, content: 'beta\r\n' },
+      context,
+      allowToolUse,
+      parentMessage,
+    )
+
+    const raw = await readFile(path)
+    expect(raw[0]).not.toBe(0xff)
+    expect(raw[1]).not.toBe(0xfe)
+    expect(raw.toString('utf8')).toBe('beta\n')
+    expect(context.readFileState.get(path)?.content).toBe('beta\n')
+  })
+
   test('validateInput allows mtime-only drift when readFileState came from full Read', async () => {
     const { FileWriteTool } = await loadFileTools()
     const path = join(getHarnessCwd(), 'mtime-only-write.txt')
@@ -275,6 +333,23 @@ describe('FileWriteTool file harness behavior', () => {
       context,
     )
     expect(context.readFileState.get(path)?.offset).toBe(1)
+    expect(validation.result).toBe(true)
+  })
+
+  test('validateInput allows mtime-only drift for a BOM file after full Read', async () => {
+    const { FileWriteTool } = await loadFileTools()
+    const path = join(getHarnessCwd(), 'bom-mtime-only-write.txt')
+    await writeFile(path, '\ufeffalpha\n', 'utf8')
+    const context = await readIntoContext(path)
+    const future = new Date(Date.now() + 10_000)
+    await utimes(path, future, future)
+
+    const validation = await FileWriteTool.validateInput!(
+      { file_path: path, content: 'beta\n' },
+      context,
+    )
+
+    expect(context.readFileState.get(path)?.content).toBe('alpha\n')
     expect(validation.result).toBe(true)
   })
 
