@@ -444,30 +444,7 @@ export function writeFileSyncAndFlush_DEPRECATED(
       logForDebugging(`Failed to clean up temp file: ${cleanupError}`)
     }
 
-    // Fallback to non-atomic write
-    logForDebugging(`Falling back to non-atomic write for ${targetPath}`)
-    try {
-      const fallbackOptions: {
-        encoding: BufferEncoding
-        flush: boolean
-        mode?: number
-      } = {
-        encoding: options.encoding,
-        flush: true,
-      }
-      // Only set mode for new files
-      if (!targetExists && options.mode !== undefined) {
-        fallbackOptions.mode = options.mode
-      }
-
-      fsWriteFileSync(targetPath, content, fallbackOptions)
-      logForDebugging(
-        `File ${targetPath} written successfully with non-atomic fallback`,
-      )
-    } catch (fallbackError) {
-      logForDebugging(`Non-atomic write also failed: ${fallbackError}`)
-      throw fallbackError
-    }
+    throw atomicError
   }
 }
 

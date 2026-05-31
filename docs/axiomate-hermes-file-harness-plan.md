@@ -33,6 +33,7 @@ small in-process registry, and this plan. The already-pushed commits are:
 - `1b0bfaa7 feat: extend file harness stale-write guards`
 - `b713951a feat: extend file registry coverage`
 - `b8acd2a2 feat: add subagent file state reminders`
+- `2c9d7553 feat: serialize file harness writes by path`
 
 ## Progress
 
@@ -202,11 +203,27 @@ Commit `b8acd2a2` passed:
 - `git diff --check`
 - `pnpm run test` with 153 files / 2108 tests passing
 
+Commit `2c9d7553` passed:
+
+- `pnpm --filter ./agent exec vitest run src/__tests__/unit/utils/fileStateRegistry.test.ts src/__tests__/unit/tools/FileHarness --no-file-parallelism --hookTimeout 120000 --testTimeout 30000`
+- `pnpm run build:types`
+- `git diff --check`
+- `pnpm run test` with 153 files / 2115 tests passing
+
+Stage 4A local verification passed:
+
+- `pnpm --filter ./agent exec vitest run src/__tests__/unit/utils/file.test.ts --hookTimeout 120000 --testTimeout 30000`
+- `pnpm --filter ./agent exec vitest run src/__tests__/unit/tools/FileHarness/fileWrite.behavior.test.ts --hookTimeout 120000 --testTimeout 30000`
+- `pnpm --filter ./agent exec vitest run src/__tests__/unit/utils/file.test.ts src/__tests__/unit/tools/FileHarness --no-file-parallelism --hookTimeout 120000 --testTimeout 30000`
+- `pnpm run build:types`
+- `git diff --check`
+- `pnpm run test` with 154 files / 2117 tests passing
+
 ## Remaining Migration Work
 
 ## Current Position
 
-We are at the boundary between Stage 3B and Stage 3C.
+We are in Stage 4.
 
 Completed and pushed:
 
@@ -216,20 +233,23 @@ Completed and pushed:
 - Stage 3A: registry coverage for `NotebookEditTool` and structured
   `_simulatedSedEdit`.
 - Stage 3B: parent/subagent completion reminders based on registry query APIs.
+- Stage 3C: process-local per-path write serialization.
 
-Current local change:
+Current Stage 4A slice:
 
-- This worktree contains the Stage 3C implementation and tests. Broad
-  verification has passed; it has not yet been committed or pushed.
+- Remove the non-atomic direct-write fallback from
+  `writeFileSyncAndFlush_DEPRECATED` and add utility tests for atomic rename
+  failure semantics.
 
 Next implementation target:
 
-- Commit and push Stage 3C.
+- Finish Stage 4 verification, update this plan, then commit and push.
 
 ### Stage 3: Complete Registry Coverage
 
 Status: Stage 3A complete and pushed in `b713951a`; Stage 3B complete and
-pushed in `b8acd2a2`; broader registry coverage remains.
+pushed in `b8acd2a2`; Stage 3C complete and pushed in `2c9d7553`; broader
+registry coverage remains.
 
 Implemented in Stage 3A:
 
@@ -251,7 +271,7 @@ Implemented in Stage 3B:
 - The reminder is process-local and only sees structured write paths already
   attached to `noteFileWrite`.
 
-Implemented locally in Stage 3C:
+Implemented in Stage 3C:
 
 - Added a process-local path-keyed async mutex in `fileStateRegistry`.
 - Added lock primitive tests for same-path serialization, different-path
@@ -283,9 +303,8 @@ Risks:
   tool runners, external editors, or arbitrary shell writes.
 - `cloneFileStateCache` currently clones LRU entries shallowly. Real write
   tools replace their own cache entry before `noteFileWrite`, so current guard
-  and reminder tests are safe. Stage 3C should either deep-clone file state
-  entries or explicitly defend against shared-entry mutation before adding
-  per-path locks.
+  and reminder tests are safe. A future stage can still deep-clone file state
+  entries if another path mutates entries in place.
 - Hermes does not try to parse arbitrary `terminal` shell writes into its
   `FileStateRegistry`. Its terminal prompt tells agents not to use `sed`/`awk`
   for edits or `echo`/heredoc for file creation, and to use `patch` or
@@ -312,16 +331,16 @@ Runtime lock boundary as of 2026-05-31:
 - If a future tool runner moves file tools into Workers, module-level `Map`
   state will not be shared. The same is true for pane/tmux teammates because
   they spawn separate CLI processes.
-- Therefore Stage 3C should implement a small in-process async per-path mutex
-  for current same-process structured writes. Cross-worker or cross-process
-  safety is a separate Stage 3D design requiring IPC, a file-backed registry,
-  SQLite, lockfiles, or checkpoint-based dirty detection.
+- Therefore Stage 3C implemented a small in-process async per-path mutex for
+  current same-process structured writes. Cross-worker or cross-process safety
+  is a separate Stage 3D design requiring IPC, a file-backed registry, SQLite,
+  lockfiles, or checkpoint-based dirty detection.
 
 Stage 3C locking decision:
 
-- Implement a small process-local, path-keyed async mutex. This should mirror
+- Implemented a small process-local, path-keyed async mutex. This mirrors
   existing Axiomate Promise-based serialization patterns such as pane creation
-  locks and MCP state update chaining, but use one queue per normalized file
+  locks and MCP state update chaining, but uses one queue per normalized file
   path instead of one global queue.
 - Scope the lock to the structured write critical section only:
   stale/read-before-write checks, current disk read, write, `readFileState`
@@ -350,7 +369,6 @@ Stage 3E candidate:
 
 Estimated remaining work:
 
-- Stage 3C commit/push: 0.25 day.
 - Cross-process registry/detection decision: 0.5-1 day for design; more if
   implemented.
 - Additional Bash write participation: research item; likely no broader
@@ -358,7 +376,7 @@ Estimated remaining work:
 
 ### Stage 4: Atomic Write Semantics
 
-Status: not started.
+Status: Stage 4A implemented in this slice.
 
 Hermes invariant:
 
@@ -366,25 +384,34 @@ Hermes invariant:
 - Temp files should be same-directory and cleaned.
 - Existing file mode should be preserved.
 
-Axiomate baseline:
+Previous Axiomate baseline:
 
 - `writeFileSyncAndFlush_DEPRECATED` attempts temp+rename.
 - If atomic write fails, it falls back to non-atomic direct write.
 
-Decision needed:
+Stage 4A decision:
 
-- Keep non-atomic fallback for compatibility, or remove/disable it to make
-  failure semantics stricter?
+- Remove the non-atomic fallback from the shared helper. A failed temp write,
+  chmod, or rename now cleans the temp file and rethrows the original atomic
+  error instead of directly overwriting the target path.
+- This applies to all current callers of `writeFileSyncAndFlush_DEPRECATED`,
+  including file tools, settings, and config writes.
+- Rationale: Hermes' atomic write invariant is stronger and easier to reason
+  about. Direct fallback can turn an atomic rename failure into a partial or
+  non-atomic target overwrite.
 
-Recommended direction:
+Local tests added:
 
-- Add tests first for atomic failure and temp cleanup.
-- Prefer removing the non-atomic fallback for file tools, or at least surface a
-  distinct "write state uncertain" error.
+- `agent/src/__tests__/unit/utils/file.test.ts` simulates `renameSync` failure
+  for existing and new files.
+- The tests assert the original target remains intact, no new target is
+  created, temp files are cleaned, and the atomic error is rethrown.
 
 Estimated work:
 
-- 1-2 days for tests and helper refactor.
+- Remaining Stage 4A verification and push: 0.25 day.
+- Optional follow-up: classify atomic write failures into a model-facing error
+  category during Stage 6.
 
 ### Stage 5: BOM and Line Ending Policy
 
@@ -526,10 +553,12 @@ Estimated work:
     - Cross-process detection must use mtime/content, checkpoint, IPC, or a
       file-backed registry.
 
-11. The current registry is not a concurrency lock.
-    - It detects stale sibling writes.
-    - It does not serialize read-modify-write critical sections.
-    - Per-path locking is a separate Stage 3C item.
+11. Registry stale detection and write serialization are separate layers.
+    - The registry detects sibling/subagent writes after a context's last read.
+    - Stage 3C added a process-local per-path mutex that serializes structured
+      write critical sections in the current JS process.
+    - The mutex does not cover pane/tmux teammates, separate CLI processes,
+      Workers, external editors, or arbitrary shell writes.
 
 12. Do not rely on Bun Web Locks for Stage 3C.
     - Local Bun 1.3.14 exposes `Worker` but not `navigator.locks`.
@@ -550,6 +579,13 @@ Estimated work:
     - Axiomate should only attach registry hooks to structured write paths
       where the tool already knows the exact path and content.
 
+15. Atomic write failure does not fall back to direct target writes.
+    - `writeFileSyncAndFlush_DEPRECATED` cleans its temp file and rethrows the
+      atomic error.
+    - The stricter behavior applies to all current callers of the shared
+      helper, not only file tools.
+    - This matches Hermes' "target unchanged unless rename succeeds" invariant.
+
 ## Open Questions
 
 1. Should registry warnings be hard errors everywhere, or should some agent
@@ -558,33 +594,20 @@ Estimated work:
    monitoring?
 3. Should pane/tmux teammates get a cross-process registry, or is
    checkpoint/mtime/content detection enough?
-4. Should Stage 3C deep-clone `FileStateCache` entries before adding per-path
-   locks, or keep shallow clone and only defend specific shared-entry mutation
-   cases?
-5. Should non-atomic fallback be removed globally, or only for FileEdit/FileWrite?
-6. What is the final UTF-8 BOM policy for read/edit/write?
-7. Should `FileWriteTool` keep LF full replacement policy for existing CRLF
+4. Should `FileStateCache` entries be deep-cloned, or is the current
+   replace-entry write pattern enough?
+5. What is the final UTF-8 BOM policy for read/edit/write?
+6. Should `FileWriteTool` keep LF full replacement policy for existing CRLF
    files?
 
 ## Recommended Next Slice
 
-The immediate next slice is to commit and push the local Stage 3C changes.
+The immediate next slice is to finish Stage 4A verification, commit, and push.
+After that, move to Stage 5 BOM and line-ending policy, because it is the next
+largest remaining correctness gap in Hermes' `file_operations.py` invariants.
 
-Stage 3C verification completed locally:
-
-1. Focused Stage 3C tests with `--no-file-parallelism` passed. This flag is
-   used because the existing FileHarness import mocks can be flaky when several
-   files import tool modules concurrently.
-2. Full `agent/src/__tests__/unit/tools/FileHarness` directory passed.
-3. `pnpm run build:types` passed.
-4. `git diff --check` passed.
-5. Full `pnpm run test` passed with 153 files / 2115 tests.
-
-Stage 3C verification note:
+Focused verification note:
 
 - Use `--no-file-parallelism` for focused FileHarness slices because the
    existing FileHarness import mocks can be flaky when several files import
    tool modules concurrently.
-
-After Stage 3C, move to Stage 4 atomic write semantics, because it is the
-largest remaining reliability invariant from Hermes.
