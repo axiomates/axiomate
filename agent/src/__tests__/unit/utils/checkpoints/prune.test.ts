@@ -23,7 +23,7 @@ import {
 import { randomBytes } from 'crypto'
 import { tmpdir } from 'os'
 import { join } from 'path'
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from 'vitest'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test as vitestTest } from 'vitest'
 import { _resetGitAvailableCacheForTesting, runCheckpointGit } from '../../../../utils/checkpoints/git.js'
 import {
   getLastPrunePath,
@@ -40,6 +40,15 @@ import { buildFixtureCommit } from './fixtures.js'
 
 let tmpRoot: string
 let baseEnvBefore: string | undefined
+const CHECKPOINT_TEST_TIMEOUT_MS = 30_000
+
+function test(
+  name: string,
+  fn: () => void | Promise<void>,
+  timeout = CHECKPOINT_TEST_TIMEOUT_MS,
+): void {
+  vitestTest(name, fn, timeout)
+}
 
 beforeAll(() => {
   tmpRoot = mkdtempSync(join(tmpdir(), 'axiomate-prune-skel-'))

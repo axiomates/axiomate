@@ -226,11 +226,19 @@ Stage 5 local verification passed:
 - `git diff --check`
 - `pnpm run test` with 154 files / 2128 tests passing
 
+Stage 6A local verification passed:
+
+- `pnpm --filter ./agent exec vitest run src/__tests__/unit/utils/fileHarnessFailures.test.ts --hookTimeout 120000 --testTimeout 30000`
+- `pnpm --filter ./agent exec vitest run src/__tests__/unit/utils/checkpoints/prune.test.ts --hookTimeout 120000 --testTimeout 30000`
+- `pnpm run build:types`
+- `git diff --check`
+- `pnpm run test` with 155 files / 2133 tests passing
+
 ## Remaining Migration Work
 
 ## Current Position
 
-We are at the Stage 5 completion boundary.
+We are past Stage 6A and ready to choose the next harness slice.
 
 Completed and pushed:
 
@@ -243,18 +251,20 @@ Completed and pushed:
 - Stage 3C: process-local per-path write serialization.
 - Stage 4A: strict atomic write failure semantics.
 - Stage 5: BOM and line-ending policy for structured file writes.
+- Stage 6A: internal file-harness failure taxonomy/catalog.
 
-Current Stage 5 slice:
+Current Stage 6A result:
 
-- `Write` canonicalizes replacement content to UTF-8, LF, no leading BOM.
-- `Edit`, `NotebookEdit`, and `BashTool`'s structured simulated sed edit
-  preserve existing leading BOM and majority line-ending style.
-- Metadata reads now return BOM-stripped, LF-normalized content for
-  `readFileState` comparisons plus a separate `hadLeadingBom` format flag.
+- Add an internal file-harness failure taxonomy/catalog without changing tool
+  behavior or user-visible wording.
+- Document current validation/call/helper signals for each reason.
+- Keep Stage 6B as the point where typed errors or UI mappings can attach to
+  the catalog.
 
 Next implementation target:
 
-- Commit and push Stage 5.
+- Start Stage 6B typed failure metadata or Stage 7 patch/edit failure
+  escalation.
 
 ### Stage 3: Complete Registry Coverage
 
@@ -468,28 +478,69 @@ Estimated work:
 
 ### Stage 6: Failure Taxonomy
 
-Status: not started.
+Status: Stage 6A complete; Stage 6B not started.
 
 Hermes has more explicit failure categories and model-facing escalation paths.
 Axiomate currently mixes validation `errorCode`s with thrown generic errors such
 as `FILE_UNEXPECTEDLY_MODIFIED_ERROR`.
 
-Needed categories:
+Stage 6A decision:
 
-- not-read
-- partial-view-insufficient-for-write
-- stale-mtime
-- stale-content
-- sibling-write-after-read
-- string-not-found
-- multiple-match
-- permission-denied
-- atomic-write-failed
-- encoding-unsupported
+- Do not replace existing `validateInput` error codes yet.
+- Do not change tool result text or thrown error text yet.
+- Introduce an internal catalog in
+  `agent/src/utils/fileHarnessFailures.ts`.
+- Treat the catalog as a stable naming/coverage matrix for tests, logging, and
+  future UI/error wrappers.
+- Separate phases:
+  - `validation`: preflight checks that can become stale before execution.
+  - `execution`: final checks inside the path lock.
+  - `helper`: shared lower-level helpers such as atomic writes.
+
+Catalog reasons:
+
+- `not_read`
+- `partial_read_for_write`
+- `stale_mtime`
+- `stale_content`
+- `sibling_write_after_read`
+- `string_not_found`
+- `multiple_match`
+- `permission_denied`
+- `atomic_write_failed`
+- `encoding_unsupported`
+
+Current Stage 6A mapping:
+
+- `not_read`: current FileEdit/FileWrite/Notebook validation codes and final
+  `FILE_UNEXPECTEDLY_MODIFIED_ERROR` branches.
+- `partial_read_for_write`: current FileWrite partial-view guard.
+- `stale_mtime`: current mtime drift branches.
+- `stale_content`: current mtime+content mismatch branch.
+- `sibling_write_after_read`: current `fileStateRegistry` sibling-write guard.
+- `string_not_found`: current FileEdit errorCode 8.
+- `multiple_match`: current FileEdit errorCode 9.
+- `permission_denied`: current file permission deny validation branches.
+- `atomic_write_failed`: current atomic helper rethrow path.
+- `encoding_unsupported`: planned only; current helpers explicitly detect
+  UTF-8 and UTF-16LE but do not have a dedicated unsupported-encoding failure.
+
+Stage 6B options:
+
+- Add a typed error wrapper that carries `reason`, `phase`, `path`, and
+  original `cause`.
+- Add reason metadata to validation results without changing message text.
+- Map execution-time stale failures to distinct reasons at their branch sites.
+- Wrap atomic helper failures with `atomic_write_failed` while preserving
+  errno/code/cause.
+- Decide whether unsupported encodings should be rejected or left as best-effort
+  UTF-8/UTF-16LE decoding.
 
 Estimated work:
 
-- 2-4 days, depending on UI/tool result integration.
+- Stage 6A: complete after verification and push.
+- Stage 6B: 1-3 days for typed errors and validation metadata; more if UI
+  rendering changes.
 
 ### Stage 7: Patch/Edit Failure Escalation
 
@@ -632,8 +683,8 @@ Estimated work:
 
 ## Recommended Next Slice
 
-The immediate next slice is to commit and push Stage 5. After that, move to
-Stage 6 failure taxonomy.
+The immediate next slice is Stage 6B typed failure metadata or Stage 7
+patch/edit failure escalation.
 
 Focused verification note:
 
