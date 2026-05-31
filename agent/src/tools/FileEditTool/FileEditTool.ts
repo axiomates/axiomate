@@ -24,12 +24,14 @@ import {
 } from '../../utils/file.js'
 import {
   clearFileEditMatchFailure,
+  fileEditFailureEscalationTelemetry,
   recordFileEditMatchFailure,
 } from '../../utils/fileEditFailureEscalation.js'
 import {
   fileHarnessFailure,
   throwFileHarnessFailure,
 } from '../../utils/fileHarnessFailures.js'
+import { getFileExtensionForAnalytics } from '../../services/analytics/metadata.js'
 import { logFileOperation } from '../../utils/fileOperationAnalytics.js'
 import { fileStateHasFullContent } from '../../utils/fileStateCache.js'
 import {
@@ -45,6 +47,7 @@ import { formatFileSize } from '../../utils/format.js'
 import { getFsImplementation } from '../../utils/fsOperations.js'
 import type { ToolUseDiff } from '../../utils/gitDiff.js'
 import { logError } from '../../utils/log.js'
+import { logOTelEvent } from '../../utils/telemetry/events.js'
 import { expandPath } from '../../utils/path.js'
 import {
   checkWritePermissionForTool,
@@ -351,6 +354,13 @@ export const FileEditTool = buildTool({
         fullFilePath,
         'string_not_found',
       )
+      void logOTelEvent(
+        'file_edit_failure_escalation',
+        fileEditFailureEscalationTelemetry(
+          escalation,
+          getFileExtensionForAnalytics(fullFilePath),
+        ),
+      )
       return {
         result: false,
         behavior: 'ask',
@@ -376,6 +386,13 @@ export const FileEditTool = buildTool({
         toolUseContext,
         fullFilePath,
         'multiple_match',
+      )
+      void logOTelEvent(
+        'file_edit_failure_escalation',
+        fileEditFailureEscalationTelemetry(
+          escalation,
+          getFileExtensionForAnalytics(fullFilePath),
+        ),
       )
       return {
         result: false,

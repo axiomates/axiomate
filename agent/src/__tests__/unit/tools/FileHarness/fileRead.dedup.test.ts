@@ -61,6 +61,74 @@ describe('FileReadTool file harness dedup behavior', () => {
     expect(second.data.type).toBe('file_unchanged')
     if (second.data.type !== 'file_unchanged') return
     expect(second.data.file.filePath).toBe(path)
+    expect(second.data.file.dedupCount).toBe(1)
+    expect(second.data.file.dedupLevel).toBe('none')
+  })
+
+  test('adds guidance after repeated unchanged reads of the same range', async () => {
+    const { FileReadTool } = await loadFileTools()
+    const path = join(getHarnessCwd(), 'same-range-loop.txt')
+    await writeFile(path, 'alpha\nbeta\n', 'utf8')
+    const context = makeToolContext()
+
+    await FileReadTool.call(
+      { file_path: path },
+      context,
+      allowToolUse,
+      parentMessage,
+    )
+    const firstDedup = await FileReadTool.call(
+      { file_path: path },
+      context,
+      allowToolUse,
+      parentMessage,
+    )
+    const secondDedup = await FileReadTool.call(
+      { file_path: path },
+      context,
+      allowToolUse,
+      parentMessage,
+    )
+    const thirdDedup = await FileReadTool.call(
+      { file_path: path },
+      context,
+      allowToolUse,
+      parentMessage,
+    )
+
+    expect(firstDedup.data.type).toBe('file_unchanged')
+    expect(secondDedup.data.type).toBe('file_unchanged')
+    expect(thirdDedup.data.type).toBe('file_unchanged')
+    if (
+      firstDedup.data.type !== 'file_unchanged' ||
+      secondDedup.data.type !== 'file_unchanged' ||
+      thirdDedup.data.type !== 'file_unchanged'
+    ) {
+      return
+    }
+
+    expect(firstDedup.data.file.dedupCount).toBe(1)
+    expect(firstDedup.data.file.dedupLevel).toBe('none')
+    expect(secondDedup.data.file.dedupCount).toBe(2)
+    expect(secondDedup.data.file.dedupLevel).toBe('reread-loop')
+    expect(thirdDedup.data.file.dedupCount).toBe(3)
+    expect(thirdDedup.data.file.dedupLevel).toBe('stop')
+
+    const firstBlock = FileReadTool.mapToolResultToToolResultBlockParam(
+      firstDedup.data,
+      'read-1',
+    )
+    const secondBlock = FileReadTool.mapToolResultToToolResultBlockParam(
+      secondDedup.data,
+      'read-2',
+    )
+    const thirdBlock = FileReadTool.mapToolResultToToolResultBlockParam(
+      thirdDedup.data,
+      'read-3',
+    )
+    expect(firstBlock.content).not.toContain('Repeated Read calls')
+    expect(secondBlock.content).toContain('Repeated Read calls')
+    expect(thirdBlock.content).toContain('STOP')
   })
 
   test('does not dedup a different offset or limit', async () => {

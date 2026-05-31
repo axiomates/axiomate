@@ -102,6 +102,18 @@ export function buildFileEditFailureEscalationHint(
   )
 }
 
+export function fileEditFailureEscalationTelemetry(
+  escalation: FileEditFailureEscalation,
+  fileExtension: string | undefined,
+): Record<string, string | undefined> {
+  return {
+    reason: escalation.reason,
+    count: String(escalation.count),
+    level: escalation.level,
+    ...(fileExtension !== undefined ? { file_extension: fileExtension } : {}),
+  }
+}
+
 export function recordFileEditMatchFailure(
   context: Pick<ToolUseContext, 'readFileState'>,
   filePath: string,

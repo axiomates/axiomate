@@ -26,14 +26,23 @@ implementation and targeted tests:
 
 Axiomate now has a native file harness test surface under
 `agent/src/__tests__/unit/tools/FileHarness/`. The current implementation adds
-or modifies about 1.2k lines around FileHarness tests, file guard logic, a
-small in-process registry, and this plan. The already-pushed commits are:
+or modifies about 5.6k inserted lines and 0.6k removed lines across
+FileHarness tests, file guard logic, registry/locking helpers, failure
+metadata, text-format handling, escalation utilities, and this plan. The
+earlier file-harness commits include:
 
 - `c8f6b352 test: add file harness coverage`
 - `1b0bfaa7 feat: extend file harness stale-write guards`
 - `b713951a feat: extend file registry coverage`
 - `b8acd2a2 feat: add subagent file state reminders`
 - `2c9d7553 feat: serialize file harness writes by path`
+- `119af9b9 feat: enforce atomic file write failures`
+- `d92d47e4 feat: define file harness text format policy`
+- `a1064188 test: catalog file harness failure reasons`
+- `35e1c892 feat: add file harness validation failure metadata`
+- `8cc0d3a1 feat: add file harness execution failure metadata`
+- `6465bf1a feat: wrap atomic write failures with file harness metadata`
+- `476a62c8 feat: escalate repeated file edit match failures`
 
 ## Progress
 
@@ -267,13 +276,32 @@ Stage 7A local verification passed:
 - `git diff --check`
 - `pnpm run test` with 158 files / 2152 tests passing
 
+Stage 7B and Stage 8 local verification passed:
+
+- `pnpm --filter ./agent exec vitest run src/__tests__/unit/tools/FileHarness/fileRead.dedup.test.ts src/__tests__/unit/tools/FileHarness/failureMetadata.test.ts --no-file-parallelism --hookTimeout 120000 --testTimeout 30000`
+- `pnpm --filter ./agent exec vitest run src/__tests__/unit/tools/FileHarness --no-file-parallelism --hookTimeout 120000 --testTimeout 30000` with 7 files / 76 tests passing
+- `pnpm --filter ./agent exec vitest run src/__tests__/unit/utils/fileEditFailureEscalation.test.ts src/__tests__/unit/utils/fileReadDedupEscalation.test.ts src/__tests__/unit/services/tools/toolExecutionValidation.test.ts --hookTimeout 120000 --testTimeout 30000` with 3 files / 9 tests passing
+- `pnpm run build:types`
+- `git diff --check`
+- `pnpm run test` with 159 files / 2157 tests passing
+
+Known test-system note:
+
+- FileHarness-focused test files use import mocks and can hang in Vitest's
+  parallel file mode when several tool modules are imported concurrently. Use
+  `--no-file-parallelism` for focused FileHarness runs. The full `pnpm run
+  test` suite passed after this slice.
+
 ## Remaining Migration Work
 
 ## Current Position
 
-Stage 7A is complete. Stage 6B is complete. Validation metadata,
-execution-time typed stale failures, shared atomic helper failure wrapping, and
-the first patch/edit failure escalation slice are implemented.
+Stage 8 is complete through read-dedup loop guidance. Stage 7B is complete
+through low-cardinality edit-failure escalation telemetry. The core
+same-process file harness is now implemented for Axiomate's structured file
+tools: read-before-write, stale detection, sibling-write detection,
+same-process path locking, atomic write semantics, format policy, typed failure
+metadata, edit-match escalation, and read-dedup loop guidance.
 
 Completed and pushed:
 
@@ -290,6 +318,8 @@ Completed and pushed:
 - Stage 6B: validation result metadata.
 - Stage 6B: execution-time typed failures and atomic helper wrapping.
 - Stage 7A: repeated FileEdit match-failure tracker and escalation hint.
+- Stage 7B: telemetry for repeated FileEdit match-failure escalation.
+- Stage 8: repeated `file_unchanged` read-dedup loop guidance.
 
 Completed Stage 6B slice:
 
@@ -310,10 +340,28 @@ Completed Stage 6B slice:
   `FileHarnessError` with `reason: atomic_write_failed`, `phase: helper`,
   `path`, errno `code`, and original filesystem error in `cause`.
 
+Completed Stage 7B/8 slice:
+
+- Added `file_edit_failure_escalation` telemetry on FileEdit
+  `string_not_found` and `multiple_match` validation failures.
+- Telemetry intentionally excludes full paths and records only reason, count,
+  escalation level, and file extension.
+- Added `fileReadDedupEscalation` tracking for repeated unchanged-content read
+  stubs.
+- `FileReadTool` now includes optional `dedupCount` and `dedupLevel` metadata
+  on `file_unchanged` outputs.
+- First dedup remains identical in spirit: it returns only the unchanged stub.
+- Second repeated unchanged read of the same path/range adds guidance to reuse
+  the earlier Read result.
+- Third and later repeated unchanged reads add STOP-level guidance.
+- A real text or notebook read clears the dedup loop tracker for that path.
+
 Next implementation target:
 
-- Continue Stage 7 with broader patch/edit recovery policy, or take a separate
-  encoding policy slice for `encoding_unsupported`.
+- Treat the remaining harness work as optional hardening/policy decisions, not
+  missing core Stage 1-8 behavior. The highest-value next choice is either
+  `encoding_unsupported` policy or a cross-process registry/checkpoint design
+  for pane/tmux teammates.
 
 ### Stage 3: Complete Registry Coverage
 
@@ -597,7 +645,7 @@ Estimated work:
 
 ### Stage 7: Patch/Edit Failure Escalation
 
-Status: Stage 7A complete.
+Status: Stage 7A and 7B complete.
 
 Hermes tracks repeated patch failures and escalates guidance after repeated
 old-string mismatches.
@@ -621,6 +669,16 @@ Implemented in Stage 7A:
   `reread` or `stop`.
 - The original validation message and errorCode remain unchanged.
 
+Implemented in Stage 7B:
+
+- Added telemetry for the same repeated match-failure tracker.
+- Event name: `file_edit_failure_escalation`.
+- Properties: `reason`, `count`, `level`, and optional `file_extension`.
+- Full paths are intentionally excluded to avoid sensitive or high-cardinality
+  telemetry.
+- This is observability only. It does not add fuzzy matching, automatic patch
+  guessing, or UI rendering changes.
+
 Recommended direction:
 
 - Keep Stage 7A's tracker conservative and per-session/process-local.
@@ -629,13 +687,14 @@ Recommended direction:
 
 Estimated work:
 
-- Stage 7A complete.
-- 0.5-2 days remains if we add richer recovery policy, telemetry, or UI
-  rendering; more if we add fuzzy patch matching.
+- Stage 7A and 7B complete.
+- 0.5-2 days remains only if we add richer recovery policy or UI rendering;
+  more if we add fuzzy patch matching. That work is deferred until telemetry
+  shows repeated edit-match failures are still a meaningful problem.
 
 ### Stage 8: Read Dedup Loop Guard
 
-Status: partially implemented.
+Status: complete for the Hermes-style loop-guidance slice.
 
 Done:
 
@@ -643,15 +702,17 @@ Done:
 - Write refuses to write that stub.
 - Read dedup is disabled after sibling writes so a requested re-read can recover
   real content.
-
-Remaining:
-
-- Track repeated `file_unchanged` loops and provide stronger guidance if the
-  model keeps asking for the same unchanged range.
+- Repeated unchanged stubs now track same path, same read-state object, same
+  offset, and same limit.
+- First unchanged stub is quiet.
+- Second repeated unchanged stub adds guidance to reuse the earlier Read result.
+- Third and later repeated unchanged stubs add STOP-level guidance and suggest
+  reading a different offset/range only if new context is needed.
+- Full real text/notebook reads clear the same-path dedup tracker.
 
 Estimated work:
 
-- 0.5-1 day.
+- Complete for current scope.
 
 ## Decision Log
 
@@ -766,6 +827,21 @@ Estimated work:
       adds a STOP-level warning.
     - This does not add fuzzy matching or automatic patch guessing.
 
+21. Stage 7B telemetry must avoid full paths.
+    - File paths can be sensitive and high-cardinality.
+    - Edit escalation telemetry records only reason, count, level, and file
+      extension.
+    - Telemetry is used to decide whether richer recovery policy is worth the
+      product risk.
+
+22. Stage 8 read-dedup guidance escalates only after repeated stubs.
+    - The first `file_unchanged` stub remains quiet to preserve existing dedup
+      behavior.
+    - The second same-path/same-range/same-read-state stub adds a reuse hint.
+    - The third and later stubs add STOP-level guidance.
+    - A real text/notebook Read clears the path's dedup tracker, so legitimate
+      rereads after a content change are not punished.
+
 ## Open Questions
 
 1. Should registry warnings be hard errors everywhere, or should some agent
@@ -781,9 +857,33 @@ Estimated work:
 
 ## Recommended Next Slice
 
-The immediate next slice is either Stage 7B telemetry/UI polish for edit
-failure escalation, Stage 8 read-dedup loop guidance, or a separate
-unsupported-encoding policy slice.
+The immediate next slice is no longer another core Stage 1-8 harness port. The
+remaining items are policy/hardening decisions:
+
+1. Unsupported encoding policy.
+   - Decide whether non-UTF8/non-UTF16LE files should be rejected with
+     `encoding_unsupported` instead of best-effort decoding.
+   - This needs tests first because it can block edits that previously
+     proceeded.
+
+2. Cross-process registry/checkpoint integration.
+   - Decide whether pane/tmux teammates need stronger stale-write detection
+     than mtime/content checks.
+   - Possible approaches: IPC, file-backed registry, SQLite, lockfiles, or
+     checkpoint dirty detection.
+   - This is heavier than the current same-process registry and should not be
+     added without a clear product need.
+
+3. Shell-write participation audit.
+   - Keep arbitrary PowerShell/Bash writes out of the registry.
+   - Only add structured shell paths if the tool already knows exact path and
+     final content before writing.
+
+4. Edit recovery policy after telemetry.
+   - Use `file_edit_failure_escalation` counts to decide whether UI rendering,
+     stronger model guidance, or fuzzy patch matching is worth implementing.
+   - Do not add fuzzy matching until there is evidence the conservative
+     reread/STOP guidance is insufficient.
 
 Focused verification note:
 

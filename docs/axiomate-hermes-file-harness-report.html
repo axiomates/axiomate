@@ -230,30 +230,30 @@
     <section class="hero">
       <div class="eyebrow">File Harness · Migration Feasibility · Risk Review</div>
       <h1>Axiomate vs Hermes Agent File Harness 专项报告</h1>
-      <p>本报告只讨论文件读写/编辑可靠性：原子落盘、BOM/CRLF、staleness guard、read dedup、patch failure taxonomy、权限/安全 guard、并发文件状态和测试夹具。结论是：Axiomate 不缺文件工具主线，但缺一层可测试、可解释、可收紧的 file harness；Hermes 的实现应按 invariant 迁移，不应逐行复制 Python 工具栈。</p>
-      <div class="meta">评估时间：2026-05-31 · Axiomate：C:\public\workspace\axiomate (main @ 0f3a3142) · Hermes Agent：C:\public\workspace\hermes-agent (main @ 02d1da49) · 评估口径：本地代码阅读、git 提交证据、测试覆盖审计</div>
+      <p>本报告只讨论文件读写/编辑可靠性：原子落盘、BOM/CRLF、staleness guard、read dedup、patch failure taxonomy、权限/安全 guard、并发文件状态和测试夹具。当前结论是：Axiomate 已经把 Hermes 最值得迁移的 file harness invariant 落入现有 TypeScript 工具体系；剩余工作主要是跨进程协调、unsupported encoding 和是否引入 fuzzy patch 的策略选择。</p>
+      <div class="meta">更新时间：2026-05-31 · Axiomate：C:\public\workspace\axiomate (main，已覆盖 Stage 1-8 file harness 实现) · Hermes Agent：C:\public\workspace\hermes-agent (main @ 02d1da49) · 口径：本地代码阅读、git 提交证据、Vitest/类型检查验证</div>
     </section>
 
     <section class="grid-4">
       <article class="card">
         <div class="stat-label">核心判断</div>
-        <div class="stat-value">中等工作量</div>
-        <p class="muted">不是从零做，也不是轻量抄一两个 helper。需要改公共写入原语、补测试矩阵、统一失败语义。</p>
+        <div class="stat-value">主体完成</div>
+        <p class="muted">Stage 1-8 的核心 file harness 已落地：测试矩阵、stale guard、registry、锁、原子写、BOM/CRLF、failure metadata、edit/read loop guidance。</p>
       </article>
       <article class="card">
-        <div class="stat-label">Axiomate 已有基础</div>
-        <div class="stat-value">读后写 Guard</div>
-        <p class="muted">FileEdit/FileWrite 已有 readFileState、mtime/content fallback、权限规则、symlink 路径检查、LSP 通知和 checkpoint/rewind。</p>
+        <div class="stat-label">本轮新增</div>
+        <div class="stat-value">7B + 8</div>
+        <p class="muted">FileEdit match-failure escalation 增加低敏 telemetry；FileRead repeated <code>file_unchanged</code> stub 增加二次提示和三次 STOP。</p>
       </article>
       <article class="card">
-        <div class="stat-label">Hermes 领先点</div>
-        <div class="stat-value">Invariant 更完整</div>
-        <p class="muted">atomic write、BOM、CRLF、fuzzy match reindent、per-file failure escalation、cross-agent file state 和回归测试更系统。</p>
+        <div class="stat-label">仍未照搬</div>
+        <div class="stat-value">Fuzzy / XProc</div>
+        <p class="muted">未引入 Hermes fuzzy patch 全套，也没有做跨进程 registry；这两项需要数据和产品决策，不应默认复制。</p>
       </article>
       <article class="card">
-        <div class="stat-label">迁移策略</div>
-        <div class="stat-value">按语义抄</div>
-        <p class="muted">Axiomate 是 TypeScript/Bun 本地工具栈，不能直接引入 Hermes 的 Python shell backend 或 V4A patch 表面。</p>
+        <div class="stat-label">测试状态</div>
+        <div class="stat-value">2157 通过</div>
+        <p class="muted"><code>pnpm run test</code> 通过 159 files / 2157 tests；Focused FileHarness 建议继续使用 <code>--no-file-parallelism</code>。</p>
       </article>
     </section>
 
@@ -266,20 +266,21 @@
       </div>
       <div class="grid-2">
         <div>
-          <p><strong>Axiomate 的 file harness 不是缺工具，而是缺“失败前边界”和“测试化语义”。</strong> 现在 <code>FileEditTool</code> 和 <code>FileWriteTool</code> 已经能做本地文件读写，且有读后写 staleness 检查、权限系统、LSP 通知、checkpoint/rewind。真正短板是：公共写入函数虽然尝试 temp+rename，但失败时会 fallback 到非原子写；BOM 语义不够清晰；FileEdit/FileWrite 专项回归测试明显薄；失败结果还不够机器可处理。</p>
+          <p><strong>Axiomate 的 file harness 主体已经从“缺测试化语义”推进到“核心 invariant 已落地”。</strong> 当前 <code>FileReadTool</code>、<code>FileEditTool</code>、<code>FileWriteTool</code>、<code>NotebookEditTool</code> 和结构化 simulated sed 路径已经覆盖 read-before-write、partial/full read 语义、mtime/content stale fallback、sibling-write detection、same-process per-path lock、strict atomic write、BOM/CRLF policy、typed failure metadata、edit failure escalation 和 read dedup loop guidance。</p>
           <p><strong>Hermes 的优势是把文件操作当成 long-running agent harness 来治理。</strong> 它不只实现 <code>write_file</code>/<code>patch</code>，还围绕 read loop、stale view、并发 subagent 写入、敏感路径、跨 profile、BOM/CRLF、fuzzy match、linter/LSP delta、失败提示和 temp cleanup 建了完整测试。</p>
         </div>
         <div class="callout">
-          <strong>建议优先级：</strong>
-          先做 Axiomate-native 的 file reliability harness：测试矩阵 + strict atomic write + BOM/CRLF 策略 + failure taxonomy。不要先引入 Hermes 的 Python <code>ShellFileOperations</code>、V4A patch parser 或跨后端 shell 抽象；它们解决的是 Hermes 的平台/容器 backend 问题，不是 Axiomate 当前最短路径。
+          <strong>当前优先级：</strong>
+          不再把 Stage 1-8 当成待迁移主线。下一步应只在三类问题里选：unsupported encoding 是否硬拒绝、pane/tmux teammates 是否需要跨进程 registry/checkpoint 级检测、以及 telemetry 证明 edit-match loop 仍严重后是否引入更强 UI/fuzzy patch recovery。
         </div>
       </div>
       <div class="pill-row">
-        <span class="pill good">可直接吸收：atomic invariant</span>
-        <span class="pill good">可直接吸收：BOM/CRLF tests</span>
-        <span class="pill good">可直接吸收：failure escalation</span>
+        <span class="pill good">已落地：atomic invariant</span>
+        <span class="pill good">已落地：BOM/CRLF policy</span>
+        <span class="pill good">已落地：failure escalation</span>
+        <span class="pill good">已落地：read dedup loop guard</span>
         <span class="pill warn">需改造：Hermes Python backend</span>
-        <span class="pill warn">需决策：Write 是否保留旧行尾</span>
+        <span class="pill warn">需决策：cross-process registry</span>
       </div>
     </section>
 
@@ -310,38 +311,38 @@
           </tr>
           <tr>
             <td>原子写入</td>
-            <td><span class="score s3">3/5</span></td>
             <td><span class="score s5">5/5</span></td>
-            <td>需要收紧</td>
-            <td>Axiomate 已有 temp+rename，但失败后 fallback 到非原子写；Hermes 的 invariant 是失败不落半文件、清理 temp、保留 mode。</td>
+            <td><span class="score s5">5/5</span></td>
+            <td>核心已对齐</td>
+            <td>Axiomate 已去掉 non-atomic fallback：temp write/chmod/rename 失败会清理 temp 并抛 typed <code>atomic_write_failed</code>，不再直接覆盖目标文件。</td>
           </tr>
           <tr>
             <td>BOM / CRLF</td>
-            <td><span class="score s3">3/5</span></td>
             <td><span class="score s5">5/5</span></td>
-            <td>有冲突点</td>
-            <td>Axiomate Edit 保留原行尾，Write 当前强制 LF；Hermes Write/Edit/Patch 都更偏保留既有 CRLF/BOM。Write 行尾语义需要产品决策。</td>
+            <td><span class="score s5">5/5</span></td>
+            <td>策略已定稿</td>
+            <td>Axiomate 明确区分 full replacement 和 precise edit：Write 统一 UTF-8/LF/no BOM；Edit/NotebookEdit/structured sed 保留既有 encoding、leading BOM 和多数行尾。</td>
           </tr>
           <tr>
             <td>Patch 匹配与失败提示</td>
-            <td><span class="score s3">3/5</span></td>
+            <td><span class="score s4">4/5</span></td>
             <td><span class="score s5">5/5</span></td>
-            <td>Hermes 更厚</td>
-            <td>Axiomate 有 quote normalization、exact string replacement、多重匹配错误；Hermes 有多策略 fuzzy、reindent、closest sections、三次失败 escalation。</td>
+            <td>Escalation 已有，fuzzy deferred</td>
+            <td>Axiomate 已有 repeated <code>string_not_found</code>/<code>multiple_match</code> tracker、model hint 和低敏 telemetry；Hermes 的 fuzzy/reindent/closest-section 全套仍未引入。</td>
           </tr>
           <tr>
             <td>Staleness / 并发写</td>
             <td><span class="score s4">4/5</span></td>
             <td><span class="score s5">5/5</span></td>
-            <td>方向一致</td>
-            <td>Axiomate 已基于 readFileState 做读后写保护；Hermes 额外有 process-wide FileStateRegistry 和 per-path lock，处理 sibling subagent 写入。</td>
+            <td>同进程已覆盖</td>
+            <td>Axiomate 有 process-local registry、parent/subagent reminders 和 per-path async mutex；跨进程 pane/tmux teammates 仍靠 mtime/content/checkpoint，未做 file-backed registry。</td>
           </tr>
           <tr>
             <td>读文件去重和 loop guard</td>
-            <td><span class="score s4">4/5</span></td>
             <td><span class="score s5">5/5</span></td>
-            <td>Axiomate 接近</td>
-            <td>Axiomate 有 <code>file_unchanged</code> stub；Hermes 多了 repeated stub block、写入 stub 文本防护、dedup invalidation 测试。</td>
+            <td><span class="score s5">5/5</span></td>
+            <td>当前范围已对齐</td>
+            <td>Axiomate 有 <code>file_unchanged</code> stub、防写回 guard、sibling-write invalidation，以及 repeated stub 的二次提示/三次 STOP guidance。</td>
           </tr>
           <tr>
             <td>权限与安全 guard</td>
@@ -352,10 +353,10 @@
           </tr>
           <tr>
             <td>回归测试</td>
-            <td><span class="score s2">2/5</span></td>
             <td><span class="score s5">5/5</span></td>
-            <td>最大短板</td>
-            <td>Axiomate checkpoint/fileHistory 测试厚，但 FileEdit/FileWrite 专项少；Hermes 对 atomic、BOM、CRLF、fuzzy、read guard、patch failure 都有专门 tests。</td>
+            <td><span class="score s5">5/5</span></td>
+            <td>FileHarness 测试面已建立</td>
+            <td>Axiomate 已有 <code>agent/src/__tests__/unit/tools/FileHarness/</code>，覆盖 read/write/edit/notebook/simulated sed/failure metadata；本轮完整测试 159 files / 2157 tests 通过。</td>
           </tr>
         </tbody>
       </table>
@@ -424,7 +425,7 @@
       <div class="section-title">
         <div>
           <div class="section-kicker">Axiomate Baseline</div>
-          <h2>Axiomate 当前已有的 File Harness 基线</h2>
+          <h2>Axiomate 当前 File Harness 状态</h2>
         </div>
       </div>
       <div class="grid-3">
@@ -433,31 +434,33 @@
           <ul>
             <li>支持 text/image/PDF/notebook，多种输出 schema。</li>
             <li>基于 <code>readFileState</code> 做同 range 读文件去重，返回 <code>file_unchanged</code>。</li>
+            <li>重复 unchanged stub 已有 loop guidance：首次静默、第二次提示复用旧 Read、第三次 STOP。</li>
             <li>已有 binary extension、UNC、device path、size/token guard。</li>
           </ul>
         </article>
         <article class="subcard">
           <h3>FileEditTool</h3>
           <ul>
-            <li>要求已读完整文件后才能 edit，防止 partial view 覆盖。</li>
+            <li>允许 partial Read 后的小范围精确 edit；Write 才要求已有文件必须 full Read。</li>
             <li>mtime 变更后会用内容对比降低 Windows/云同步误报。</li>
-            <li>通过 <code>readFileSyncWithMetadata</code> 保留 encoding 和 line ending，再用 <code>writeTextContent</code> 落盘。</li>
+            <li>通过 <code>readFileSyncWithMetadata</code> 保留 encoding、leading BOM 和 line ending，再用 <code>writeTextContent</code> 落盘。</li>
+            <li>连续 <code>old_string</code> 找不到或多匹配会升级提示，并记录不含路径的 telemetry。</li>
           </ul>
         </article>
         <article class="subcard">
           <h3>FileWriteTool</h3>
           <ul>
             <li>写已有文件前同样要求 read 后再 write，并做 stale 检查。</li>
-            <li>当前 full write 明确用模型给出的内容，并以 LF 写入，避免旧 CRLF 污染脚本。</li>
-            <li>调用公共 <code>writeTextContent</code>，底层已有 temp+rename 但语义还不够 strict。</li>
+            <li>Write 是 full replacement：输出 UTF-8、LF、no BOM，不保留旧文件 BOM/CRLF。</li>
+            <li>公共写入 helper 已收紧为 strict atomic write；失败不 fallback 到 direct write。</li>
           </ul>
         </article>
         <article class="subcard">
-          <h3>权限与路径安全</h3>
+          <h3>Registry / Lock</h3>
           <ul>
-            <li><code>utils/permissions/filesystem.ts</code> 包含 dangerous files、dangerous dirs、.axiomate 内部路径、scratchpad、memory、plan carve-out。</li>
-            <li><code>getPathsForPermissionCheck</code> 会检查原路径、symlink target 和最终 resolved path。</li>
-            <li>UNC、Windows ADS/short-name/trailing-dot 等风险已有专门处理。</li>
+            <li><code>fileStateRegistry</code> 记录同进程 context/subagent 的 read/write 顺序。</li>
+            <li>structured writes 有 same-path async mutex，最终 stale check 和 write 在锁内完成。</li>
+            <li>parent/subagent completion reminder 会提示子 agent 改过父 context 已读文件。</li>
           </ul>
         </article>
         <article class="subcard">
@@ -471,9 +474,9 @@
         <article class="subcard">
           <h3>测试现状</h3>
           <ul>
-            <li>checkpoint/fileHistory 测试较厚。</li>
-            <li>FileEdit/FileWrite/BOM/atomic/CRLF 专项测试偏少。</li>
-            <li>因此第一步不是大改功能，而是把现有语义和目标语义先锁成 tests。</li>
+            <li><code>FileHarness</code> 测试目录已覆盖 read/write/edit/notebook/simulated sed。</li>
+            <li>atomic、BOM、CRLF、failure metadata、dedup、registry/lock 都有 targeted tests。</li>
+            <li>Focused FileHarness 测试建议使用 <code>--no-file-parallelism</code> 避免 import mock 并行抖动。</li>
           </ul>
         </article>
       </div>
@@ -483,92 +486,95 @@
       <div class="section-title">
         <div>
           <div class="section-kicker">Migration Plan</div>
-          <h2>建议迁移路线</h2>
+          <h2>当前迁移进度</h2>
         </div>
       </div>
       <div class="list">
         <article class="item">
           <div class="item-head">
             <div>
-              <h3>阶段 1：建立 Axiomate-native file harness tests</h3>
-              <p class="muted">预计 1-2 天。先不要改太多行为，优先把当前语义和目标语义写成 Vitest。</p>
+              <h3>Stage 1：Axiomate-native FileHarness tests</h3>
+              <p class="muted">已完成并推送。</p>
             </div>
-            <span class="pill good">最高优先级</span>
+            <span class="pill good">complete</span>
           </div>
           <ul>
-            <li>新增 <code>agent/src/__tests__/unit/tools/FileWriteTool/...</code> 和 <code>FileEditTool</code> 专项目录。</li>
-            <li>覆盖：temp cleanup、mode preserve、atomic failure leaves original intact、BOM read/edit/write、CRLF edit、Write LF policy、read dedup after write。</li>
-            <li>把 Hermes 的测试用例转换成 TypeScript/Bun 语境，不复制 Python fixture。</li>
+            <li>新增 <code>agent/src/__tests__/unit/tools/FileHarness/</code>。</li>
+            <li>覆盖 FileRead/FileEdit/FileWrite/NotebookEdit/structured sed 的核心行为。</li>
+            <li>同时修复 checkpoint/fileHistory 里不合理的大测试和时序问题，让 <code>pnpm run test</code> 可作为 guardrail。</li>
           </ul>
         </article>
         <article class="item">
           <div class="item-head">
             <div>
-              <h3>阶段 2：收紧公共写入原语</h3>
-              <p class="muted">预计 1-2 天。这里是 file harness 的核心行为改变。</p>
+              <h3>Stage 2：Read/Write/Edit guard semantics</h3>
+              <p class="muted">已完成并推送。</p>
             </div>
-            <span class="pill good">可直接做</span>
+            <span class="pill good">complete</span>
           </div>
           <ul>
-            <li>把 <code>writeFileSyncAndFlush_DEPRECATED</code> 拆成明确的 <code>atomicWriteTextContent</code> 或等价函数。</li>
-            <li>同目录创建 temp，写入并 flush，保留已有 mode，rename 替换，失败清理 temp。</li>
-            <li>删除或默认禁用 non-atomic fallback；fallback 会削弱“失败不落半文件”的核心 invariant。</li>
+            <li><code>Write</code> 覆盖已有文件必须 full Read；partial Read 不够。</li>
+            <li><code>Edit</code> 恢复旧行为：允许 partial Read 后精确小范围 edit，只在 stale mtime/content 或 sibling write 时拒绝。</li>
+            <li>Full-read mtime drift 使用 content fallback，减少 timestamp churn 误报。</li>
+            <li>Read dedup stub 文本不能被 Write 写回真实文件。</li>
           </ul>
         </article>
         <article class="item">
           <div class="item-head">
             <div>
-              <h3>阶段 3：BOM / line ending 策略定稿</h3>
-              <p class="muted">预计 1-2 天。这里有产品语义，不应盲抄 Hermes。</p>
+              <h3>Stage 3：Registry、subagent reminder、path lock</h3>
+              <p class="muted">同进程范围已完成并推送。</p>
             </div>
-            <span class="pill warn">需决策</span>
+            <span class="pill good">complete</span>
           </div>
           <ul>
-            <li>建议：<code>FileEditTool</code> 保留原 BOM/CRLF；<code>FileWriteTool</code> 对新文件按模型内容写，对已有文件是否保留 CRLF 要明确。</li>
-            <li>如果维持 Axiomate 现在的 Write LF policy，测试要明确锁住原因：full replacement 是模型显式内容。</li>
-            <li>无论行尾策略如何，UTF-8 BOM 应有一致行为：模型读取时不见 phantom char，编辑后不要丢或重复 BOM。</li>
+            <li><code>fileStateRegistry</code> 增加同进程 read/write sequence 和 sibling-write stale 检测。</li>
+            <li>AgentTool 在 subagent 完成时提示子 agent 修改了父 context 已读文件。</li>
+            <li>structured writes 使用 per-path async mutex，最终 stale check 和 write 在锁内完成。</li>
+            <li>跨进程 pane/tmux teammates 尚未纳入 registry，这是 Stage 3D 策略项。</li>
           </ul>
         </article>
         <article class="item">
           <div class="item-head">
             <div>
-              <h3>阶段 4：失败 taxonomy 与可解释结果</h3>
-              <p class="muted">预计 2-4 天。把工具错误从字符串提升成稳定类别。</p>
+              <h3>Stage 4-6：Atomic write、format policy、failure taxonomy</h3>
+              <p class="muted">已完成并推送。</p>
             </div>
-            <span class="pill info">中高收益</span>
+            <span class="pill good">complete</span>
           </div>
           <ul>
-            <li>定义错误码：not-read、partial-view、stale-mtime、stale-content、string-not-found、multiple-match、permission-denied、atomic-write-failed、encoding-unsupported。</li>
-            <li>FileEdit/FileWrite 的 validation 和 call path 用同一套分类输出。</li>
-            <li>后续可接入 <code>/doctor</code>、ValidationErrorsList、tool result rendering、checkpoint delta。</li>
+            <li>严格 atomic write：失败清理 temp 并抛 <code>atomic_write_failed</code>，不做 direct fallback。</li>
+            <li>Write 作为 full replacement 输出 UTF-8/LF/no BOM；Edit/NotebookEdit/structured sed 保留原文件格式。</li>
+            <li>引入 <code>fileHarnessFailures</code> catalog 和 validation/execution/helper metadata。</li>
+            <li>当前保留 <code>encoding_unsupported</code> reason 名称，但是否硬拒绝仍是单独 policy decision。</li>
           </ul>
         </article>
         <article class="item">
           <div class="item-head">
             <div>
-              <h3>阶段 5：patch failure escalation 与 read dedup loop guard</h3>
-              <p class="muted">预计 2-3 天。属于模型自纠错效率优化。</p>
+              <h3>Stage 7：Edit failure escalation</h3>
+              <p class="muted">7A/7B 已完成，本轮补齐 telemetry。</p>
             </div>
-            <span class="pill info">可后置</span>
+            <span class="pill good">complete</span>
           </div>
           <ul>
-            <li>连续三次对同一文件 old_string 不匹配时，给强提示：停止微调旧字符串，重新 read，扩大上下文，必要时 full write。</li>
-            <li>read dedup stub 连续命中时升级为 BLOCKED，避免弱模型陷入 read→stub→read。</li>
-            <li>防止模型把 read dedup status 文本写回文件。</li>
+            <li>重复 <code>string_not_found</code>/<code>multiple_match</code> 以 path + reason + read snapshot 计数。</li>
+            <li>第二次给 reread hint，第三次给 STOP-level hint。</li>
+            <li>新增 <code>file_edit_failure_escalation</code> telemetry，只记录 reason/count/level/file_extension，不上传完整路径。</li>
           </ul>
         </article>
         <article class="item">
           <div class="item-head">
             <div>
-              <h3>阶段 6：并发 subagent file state registry</h3>
-              <p class="muted">预计 3-5 天。只有在多 agent 并发编辑变常见后才值得优先。</p>
+              <h3>Stage 8：Read dedup loop guard</h3>
+              <p class="muted">已完成，本轮补齐 repeated stub guidance。</p>
             </div>
-            <span class="pill warn">中期项</span>
+            <span class="pill good">complete</span>
           </div>
           <ul>
-            <li>借鉴 Hermes <code>FileStateRegistry</code>，记录每个 agent 的 read stamp 和 last writer。</li>
-            <li>同路径 read-modify-write 用 per-path lock 序列化。</li>
-            <li>和 Axiomate coordinator/workerAgent 的 agentId、ToolUseContext 合并，而不是新增 Hermes task_id 体系。</li>
+            <li><code>file_unchanged</code> 输出包含可选 <code>dedupCount</code> 和 <code>dedupLevel</code>。</li>
+            <li>首次 dedup 仍只返回 stub；第二次提示复用 earlier Read；第三次起 STOP。</li>
+            <li>真实 text/notebook Read 会清除该 path 的 dedup loop tracker。</li>
           </ul>
         </article>
       </div>
@@ -600,7 +606,7 @@
             <li>Hermes 的 <code>ShellFileOperations</code> 跨 terminal backend 抽象。Axiomate 的本地 TS/Bun 文件工具不需要 Python shell 中间层。</li>
             <li>V4A multi-file patch parser。Axiomate 当前模型表面是 Read/Edit/Write，不应先引入第二套 patch ABI。</li>
             <li>Hermes profile/cross-profile guard 的具体路径。Axiomate 应映射成 .axiomate/skills、agents、commands、memory、scratchpad、plans 的本地权限体系。</li>
-            <li>Hermes Write 默认保留旧 CRLF 的策略。Axiomate 已有 full write LF policy，是否改变需单独决策。</li>
+            <li>Hermes Write 默认保留旧 CRLF 的策略。Axiomate 已决策为 Write canonicalizes，precise edit preserves。</li>
           </ul>
         </article>
       </div>
@@ -615,20 +621,20 @@
       </div>
       <div class="list">
         <article class="item">
-          <h3>1. Write 行尾策略冲突</h3>
-          <p>Axiomate 现在 <code>FileWriteTool</code> 的注释明确：full content replacement 应尊重模型发来的内容，不保留旧文件行尾，并写成 LF。这和 Hermes 的 “覆盖 CRLF 文件时保留 CRLF” 不一致。这个不是简单 bug，必须先决定产品语义。</p>
+          <h3>1. 跨进程 registry 仍未覆盖</h3>
+          <p>当前 <code>fileStateRegistry</code> 和 per-path mutex 是 process-local。Axiomate 的 in-process subagent 能共享它，但 pane/tmux teammates 或另一个 CLI 进程不能共享 module-level Map。跨进程安全需要 IPC、file-backed registry、SQLite、lockfile 或 checkpoint dirty detection，成本明显高于当前 Stage 3C。</p>
         </article>
         <article class="item">
-          <h3>2. 非原子 fallback 会掩盖真实失败</h3>
-          <p>Axiomate 底层写入已尝试 atomic rename，但失败后 fallback 到 non-atomic write。对 file harness 来说，这会破坏最关键保证：失败要么不落盘，要么明确告知状态不确定。建议收紧。</p>
+          <h3>2. Unsupported encoding 是单独产品策略</h3>
+          <p>当前 helper 明确处理 UTF-8 和 UTF-16LE。是否对 UTF-16BE 或其他 encoding 直接返回 <code>encoding_unsupported</code>，会改变既有 best-effort 行为，必须先用测试钉住再改。</p>
         </article>
         <article class="item">
           <h3>3. Checkpoint 不能替代写前防护</h3>
-          <p>Axiomate 的 checkpoint/rewind 是优势，但它解决的是坏结果落盘后的恢复；Hermes file harness 解决的是落盘前减少坏结果。两者应该叠加，不应互相替代。</p>
+          <p>Axiomate 的 checkpoint/rewind 是优势，但它解决的是坏结果落盘后的恢复；file harness 解决的是落盘前减少坏结果。跨进程同路径写入如果要进一步收紧，checkpoint 可以成为检测层，但不能替代 structured tools 的读后写和 stale guard。</p>
         </article>
         <article class="item">
           <h3>4. 直接复制 Hermes fuzzy patch 可能扩大行为面</h3>
-          <p>Hermes 的 fuzzy match 很强，但也会让 old_string 不精确时仍能改文件。Axiomate 如果引入，应先从 reindent 和 failure hint 开始，而不是一次性引入所有 fuzzy 策略。</p>
+          <p>Hermes 的 fuzzy match 很强，但也会让 old_string 不精确时仍能改文件。Axiomate 目前选择 repeated failure hint + telemetry。是否引入 fuzzy patch 应看 <code>file_edit_failure_escalation</code> 数据，而不是默认照搬。</p>
         </article>
       </div>
     </section>
@@ -637,39 +643,35 @@
       <div class="section-title">
         <div>
           <div class="section-kicker">Recommended Scope</div>
-          <h2>建议下一步实施包</h2>
+          <h2>剩余可选实施包</h2>
         </div>
       </div>
       <div class="grid-3">
         <article class="subcard">
-          <h3>最小高价值包</h3>
-          <p class="muted">2-4 天</p>
+          <h3>Unsupported encoding policy</h3>
+          <p class="muted">0.5-1.5 天</p>
           <ul>
-            <li>FileEdit/FileWrite tests。</li>
-            <li>strict atomic write，无 non-atomic fallback。</li>
-            <li>BOM read/edit/write 回归。</li>
-            <li>CRLF Edit 保留与 Write LF policy 测试。</li>
+            <li>先加测试覆盖 UTF-16BE/未知编码当前行为。</li>
+            <li>决定是 best-effort 继续，还是返回 <code>encoding_unsupported</code>。</li>
+            <li>如果硬拒绝，需要保证模型提示清楚，并不误伤 UTF-8/UTF-16LE。</li>
           </ul>
         </article>
         <article class="subcard">
-          <h3>完整 file harness 包</h3>
-          <p class="muted">1-2 周</p>
+          <h3>Cross-process coordination</h3>
+          <p class="muted">设计 0.5-1 天；实现另估</p>
           <ul>
-            <li>最小包全部内容。</li>
-            <li>failure taxonomy。</li>
-            <li>patch failure escalation。</li>
-            <li>read dedup loop guard。</li>
-            <li>/doctor 或 validation surface。</li>
+            <li>确认 pane/tmux teammates 是否需要强一致 stale detection。</li>
+            <li>候选：IPC、file-backed registry、SQLite、lockfile、checkpoint dirty detection。</li>
+            <li>不要把当前轻量 process-local registry 直接扩成隐式跨进程协议。</li>
           </ul>
         </article>
         <article class="subcard">
-          <h3>不建议优先包</h3>
-          <p class="muted">额外 1-2 周</p>
+          <h3>Edit recovery after telemetry</h3>
+          <p class="muted">0.5-2 天；fuzzy 更久</p>
           <ul>
-            <li>完整 V4A patch parser。</li>
-            <li>Python ShellFileOperations backend。</li>
-            <li>跨 terminal/container backend 文件 API。</li>
-            <li>Hermes profile 系统路径照搬。</li>
+            <li>观察 <code>file_edit_failure_escalation</code> 的 reason/count/level。</li>
+            <li>必要时增加 UI rendering 或更强 model-facing recovery。</li>
+            <li>fuzzy patch matching 仍应后置，避免扩大误改风险。</li>
           </ul>
         </article>
       </div>
@@ -679,46 +681,46 @@
       <div class="section-title">
         <div>
           <div class="section-kicker">LOC Cost</div>
-          <h2>代码量成本估算</h2>
+          <h2>代码量成本与剩余估算</h2>
         </div>
       </div>
-      <p>以下是按净新增/修改行数估算的实施成本。因为 Axiomate 已有 FileRead/FileEdit/FileWrite、权限、readFileState 和 checkpoint/rewind 主线，合理路线不是新增一整套文件工具，而是在现有 TypeScript 工具链上补 harness invariant 和回归测试。</p>
+      <p>原始估算认为合理路线不是新增一整套文件工具，而是在现有 TypeScript 工具链上补 harness invariant 和回归测试。实际迁移结果验证了这个判断：大部分改动集中在测试、guard、metadata 和小型 registry/helper，而不是引入 Hermes 的 Python file stack。</p>
       <table>
         <thead>
           <tr>
             <th>范围</th>
-            <th>Prod LOC</th>
-            <th>Test LOC</th>
-            <th>总 LOC</th>
+            <th>状态</th>
+            <th>约计代码量</th>
+            <th>验证</th>
             <th>说明</th>
           </tr>
         </thead>
         <tbody>
           <tr>
-            <td>最小高价值包</td>
-            <td>250-450</td>
-            <td>500-800</td>
-            <td><strong>750-1,250</strong></td>
-            <td>strict atomic write、BOM、CRLF/Edit、Write LF policy、FileEdit/FileWrite 基础 fixtures。</td>
+            <td>Stage 1-8 core harness</td>
+            <td><span class="pill good">已完成</span></td>
+            <td><strong>约 5.6k insertions / 0.6k deletions</strong></td>
+            <td><code>pnpm run test</code> 159 files / 2157 tests</td>
+            <td>包含 FileHarness tests、registry/lock、atomic write、format policy、failure metadata、edit/read escalation 和文档。</td>
           </tr>
           <tr>
-            <td>推荐完整包</td>
-            <td>700-1,100</td>
-            <td>900-1,500</td>
-            <td><strong>1,600-2,600</strong></td>
-            <td>加 failure taxonomy、dedup loop guard、patch failure escalation、doctor/validation 挂点。</td>
+            <td>Stage 7B + Stage 8 本轮</td>
+            <td><span class="pill good">已完成</span></td>
+            <td><strong>约 0.3k net LOC</strong></td>
+            <td>Focused tests + full suite</td>
+            <td>新增 edit escalation telemetry、read dedup escalation utility/tests、FileRead unchanged-loop guidance，并更新计划/HTML 报告。</td>
           </tr>
           <tr>
-            <td>过度照搬 Hermes</td>
-            <td>1,500-2,500+</td>
-            <td>1,500-2,500+</td>
-            <td><strong>3,000-5,000+</strong></td>
-            <td>V4A parser、fuzzy match 全套、FileStateRegistry、跨 backend 抽象和 Hermes profile guard 照搬。</td>
+            <td>剩余 policy/hardening</td>
+            <td><span class="pill warn">可选</span></td>
+            <td><strong>0.2k-1.5k+ LOC</strong></td>
+            <td>需要按决策另跑</td>
+            <td>unsupported encoding 较小；cross-process registry/checkpoint integration 可能明显变大；fuzzy patch matching 风险最高。</td>
           </tr>
         </tbody>
       </table>
       <div class="callout warn" style="margin-top: 14px;">
-        <strong>建议：</strong>先做 750-1,250 LOC 的最小包。真正 runtime 代码不多，主要成本应该花在 tests；这能最快锁住原子写、BOM/CRLF 和失败边界，同时避免把 Hermes 的 Python file stack 整套搬入 Axiomate。
+        <strong>当前建议：</strong>不要继续为了“完整抄 Hermes”扩大范围。Axiomate 已经完成核心 file harness；下一步只应在 unsupported encoding、跨进程检测、或 telemetry 证明必要的 edit recovery 上做小步决策。
       </div>
     </section>
 
@@ -774,31 +776,49 @@ Recent file-harness commits:
         </article>
         <article class="subcard">
           <h3>Axiomate</h3>
-          <div class="code">Repo: C:\public\workspace\axiomate @ 0f3a3142
+          <div class="code">Repo: C:\public\workspace\axiomate @ main
 
 Core:
   agent/src/tools/FileReadTool/FileReadTool.ts
     readFileState dedup
     file_unchanged result
+    repeated dedup escalation metadata/guidance
     token/size/device/binary guards
   agent/src/tools/FileEditTool/FileEditTool.ts
     validateInput read-before-edit
+    partial Read allowed for precise edit
     stale mtime + content fallback
+    repeated string_not_found / multiple_match telemetry
     readFileSyncWithMetadata
     writeTextContent(..., endings)
   agent/src/tools/FileWriteTool/FileWriteTool.ts
     read-before-write
+    partial Read rejected for existing-file full replacement
     stale mtime + content fallback
     writeTextContent(..., 'LF')
   agent/src/utils/file.ts
     writeTextContent
     writeFileSyncAndFlush_DEPRECATED
     temp path + rename
-    non-atomic fallback
+    strict atomic failure, no direct fallback
   agent/src/utils/fileRead.ts
     detectEncodingForResolvedPath
     detectLineEndingsForString
     readFileSyncWithMetadata
+  agent/src/utils/fileStateRegistry.ts
+    process-local read/write sequence
+    sibling-write detection
+    per-path async mutex
+  agent/src/utils/fileEditFailureEscalation.ts
+    repeated match-failure tracker
+    model-facing hint
+    low-cardinality telemetry payload
+  agent/src/utils/fileReadDedupEscalation.ts
+    repeated file_unchanged tracker
+    reread-loop / STOP guidance
+  agent/src/utils/fileHarnessFailures.ts
+    stable file harness failure reasons
+    validation/execution/helper phases
   agent/src/utils/fsOperations.ts
     safeResolvePath
     getPathsForPermissionCheck
@@ -809,8 +829,37 @@ Core:
   agent/src/utils/fileHistory.ts
     checkpoint snapshot/rewind
 
-Known gap:
-  FileEdit/FileWrite/BOM/atomic/CRLF 专项 tests 尚未形成 Hermes 那样的回归矩阵。</div>
+Tests:
+  agent/src/__tests__/unit/tools/FileHarness/
+    fileRead.dedup.test.ts
+    fileWrite.behavior.test.ts
+    fileEdit.behavior.test.ts
+    notebookEdit.behavior.test.ts
+    bashSimulatedSed.behavior.test.ts
+    failureMetadata.test.ts
+    fileRead.metadata.test.ts
+  agent/src/__tests__/unit/utils/fileEditFailureEscalation.test.ts
+  agent/src/__tests__/unit/utils/fileReadDedupEscalation.test.ts
+  agent/src/__tests__/unit/utils/fileHarnessFailures.test.ts
+  agent/src/__tests__/unit/utils/fileStateRegistry.test.ts
+
+Recent file-harness commits:
+  c8f6b352 test: add file harness coverage
+  1b0bfaa7 feat: extend file harness stale-write guards
+  b713951a feat: extend file registry coverage
+  b8acd2a2 feat: add subagent file state reminders
+  2c9d7553 feat: serialize file harness writes by path
+  119af9b9 feat: enforce atomic file write failures
+  d92d47e4 feat: define file harness text format policy
+  a1064188 test: catalog file harness failure reasons
+  35e1c892 feat: add file harness validation failure metadata
+  8cc0d3a1 feat: add file harness execution failure metadata
+  6465bf1a feat: wrap atomic write failures with file harness metadata
+  476a62c8 feat: escalate repeated file edit match failures
+
+Verification:
+  pnpm run build:types
+  pnpm run test -> 159 files / 2157 tests passing</div>
         </article>
       </div>
     </section>
@@ -822,8 +871,8 @@ Known gap:
           <h2>最终判断</h2>
         </div>
       </div>
-      <p>Axiomate 下一步聚焦 file harness 是合理的，而且工作量可控。正确做法不是把 Hermes 的文件工具整套搬进来，而是把 Hermes 证明有效的工程约束迁入 Axiomate 现有 TypeScript 工具体系：先建测试，后收紧原子写，再定 BOM/CRLF 策略，最后扩展 failure taxonomy 和并发状态。</p>
-      <p>最值得马上做的是 750-1,250 LOC 的最小高价值包：“严格原子写 + BOM/CRLF 测试 + FileEdit/FileWrite 基础 failure boundary”。这会直接降低 coding agent 最常见的坏文件风险，并且不会和 Axiomate 的 API harness、checkpoint/rewind、本地权限系统冲突。</p>
+      <p>Axiomate file harness 的主体迁移已经完成。正确路线仍然不是把 Hermes 的文件工具整套搬进来，而是把 Hermes 证明有效的工程约束迁入 Axiomate 现有 TypeScript 工具体系；这条路线已经覆盖测试、读后写、stale guard、同进程 registry、path lock、strict atomic write、BOM/CRLF、failure taxonomy、edit failure escalation 和 read dedup loop guard。</p>
+      <p>剩余工作不应再按“继续抄 Hermes”推进，而应逐项决策：unsupported encoding 是否硬拒绝、pane/tmux teammates 是否需要跨进程 registry/checkpoint 级检测、以及 edit failure telemetry 是否证明需要更强 UI/fuzzy patch recovery。</p>
     </section>
   </main>
 </body>

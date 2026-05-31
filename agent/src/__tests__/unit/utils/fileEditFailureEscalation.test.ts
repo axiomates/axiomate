@@ -1,5 +1,8 @@
 import { describe, expect, test } from 'vitest'
-import { buildFileEditFailureEscalationHint } from '../../../utils/fileEditFailureEscalation.js'
+import {
+  buildFileEditFailureEscalationHint,
+  fileEditFailureEscalationTelemetry,
+} from '../../../utils/fileEditFailureEscalation.js'
 
 describe('file edit failure escalation hints', () => {
   test('does not render a hint for the first failure', () => {
@@ -44,5 +47,24 @@ describe('file edit failure escalation hints', () => {
     expect(hint).toContain('3rd consecutive FileEdit failure')
     expect(hint).toContain('matched multiple locations')
     expect(hint).toContain('longer unique `old_string`')
+  })
+
+  test('builds telemetry without file paths', () => {
+    expect(
+      fileEditFailureEscalationTelemetry(
+        {
+          reason: 'string_not_found',
+          path: '/tmp/secret/example.ts',
+          count: 2,
+          level: 'reread',
+        },
+        'ts',
+      ),
+    ).toEqual({
+      reason: 'string_not_found',
+      count: '2',
+      level: 'reread',
+      file_extension: 'ts',
+    })
   })
 })

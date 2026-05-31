@@ -39,6 +39,11 @@ import {
   recordFileRead,
   wasFileModifiedAfterReadByAnotherContext,
 } from '../../utils/fileStateRegistry.js'
+import {
+  buildFileReadDedupEscalationHint,
+  clearFileReadDedupHits,
+  recordFileReadDedupHit,
+} from '../../utils/fileReadDedupEscalation.js'
 import { formatFileSize } from '../../utils/format.js'
 import { getFsImplementation } from '../../utils/fsOperations.js'
 import {
@@ -326,6 +331,8 @@ const outputSchema = lazySchema(() => {
       type: z.literal('file_unchanged'),
       file: z.object({
         filePath: z.string().describe('The path to the file'),
+        dedupCount: z.number().optional(),
+        dedupLevel: z.enum(['none', 'reread-loop', 'stop']).optional(),
       }),
     }),
   ])
@@ -547,11 +554,21 @@ export const FileReadTool = buildTool({
         try {
           const mtimeMs = await getFileModificationTimeAsync(fullFilePath)
           if (mtimeMs === existingState.timestamp) {
-            const analyticsExt = getFileExtensionForAnalytics(fullFilePath)
+            const escalation = recordFileReadDedupHit(
+              context,
+              fullFilePath,
+              existingState,
+              offset,
+              limit,
+            )
             return {
               data: {
                 type: 'file_unchanged' as const,
-                file: { filePath: file_path },
+                file: {
+                  filePath: file_path,
+                  dedupCount: escalation.count,
+                  dedupLevel: escalation.level,
+                },
               },
             }
           }
@@ -676,7 +693,12 @@ export const FileReadTool = buildTool({
         return {
           tool_use_id: toolUseID,
           type: 'tool_result',
-          content: FILE_UNCHANGED_STUB,
+          content:
+            FILE_UNCHANGED_STUB +
+            buildFileReadDedupEscalationHint({
+              count: data.file.dedupCount ?? 1,
+              level: data.file.dedupLevel ?? 'none',
+            }),
         }
       case 'text': {
         let content: string
@@ -841,6 +863,7 @@ async function callInner(
       offset,
       limit,
     })
+    clearFileReadDedupHits(context, fullFilePath)
     recordFileRead(context, fullFilePath)
     context.nestedMemoryAttachmentTriggers?.add(fullFilePath)
 
@@ -1018,6 +1041,7 @@ async function callInner(
     limit,
     ...(partial ? { isPartialView: true } : {}),
   })
+  clearFileReadDedupHits(context, fullFilePath)
   recordFileRead(context, fullFilePath)
   context.nestedMemoryAttachmentTriggers?.add(fullFilePath)
 
