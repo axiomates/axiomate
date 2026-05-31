@@ -104,6 +104,22 @@ async function expectFileHarnessRejection(
   throw new Error('Expected FileHarness call to reject')
 }
 
+type FailedValidationResult = {
+  result: false
+  meta?: Record<string, unknown>
+}
+
+function expectEditEscalation(
+  result: FailedValidationResult,
+  expected: {
+    reason: string
+    count: number
+    level: string
+  },
+): void {
+  expect(result.meta?.fileEditFailureEscalation).toMatchObject(expected)
+}
+
 describe('FileHarness failure metadata', () => {
   test('marks unread existing FileWrite validation as not_read without changing message or error code', async () => {
     const path = join(getHarnessCwd(), 'write-unread.txt')
@@ -237,6 +253,102 @@ describe('FileHarness failure metadata', () => {
     expectValidationFailure(ambiguous)
     expect(ambiguous.errorCode).toBe(9)
     expect(ambiguous.fileHarnessFailure?.reason).toBe('multiple_match')
+  })
+
+  test('escalates repeated FileEdit string_not_found failures on the same read snapshot', async () => {
+    const path = join(getHarnessCwd(), 'edit-escalate-missing.txt')
+    await writeFile(path, 'alpha\nbeta\n', 'utf8')
+    const context = await readIntoContext(path)
+
+    const first = await FileEditTool.validateInput!(
+      { file_path: path, old_string: 'gamma', new_string: 'GAMMA' },
+      context,
+    )
+    expectValidationFailure(first)
+    expect(first.errorCode).toBe(8)
+    expect(first.message).toBe('String to replace not found in file.\nString: gamma')
+    expectEditEscalation(first, {
+      reason: 'string_not_found',
+      count: 1,
+      level: 'none',
+    })
+
+    const second = await FileEditTool.validateInput!(
+      { file_path: path, old_string: 'delta', new_string: 'DELTA' },
+      context,
+    )
+    expectValidationFailure(second)
+    expect(second.errorCode).toBe(8)
+    expect(second.message).toBe('String to replace not found in file.\nString: delta')
+    expectEditEscalation(second, {
+      reason: 'string_not_found',
+      count: 2,
+      level: 'reread',
+    })
+  })
+
+  test('resets FileEdit match failure escalation after a valid edit validation', async () => {
+    const path = join(getHarnessCwd(), 'edit-escalate-reset.txt')
+    await writeFile(path, 'alpha\nbeta\n', 'utf8')
+    const context = await readIntoContext(path)
+
+    const first = await FileEditTool.validateInput!(
+      { file_path: path, old_string: 'gamma', new_string: 'GAMMA' },
+      context,
+    )
+    expectValidationFailure(first)
+    expectEditEscalation(first, {
+      reason: 'string_not_found',
+      count: 1,
+      level: 'none',
+    })
+
+    const valid = await FileEditTool.validateInput!(
+      { file_path: path, old_string: 'beta', new_string: 'BETA' },
+      context,
+    )
+    expect(valid.result).toBe(true)
+
+    const afterReset = await FileEditTool.validateInput!(
+      { file_path: path, old_string: 'delta', new_string: 'DELTA' },
+      context,
+    )
+    expectValidationFailure(afterReset)
+    expectEditEscalation(afterReset, {
+      reason: 'string_not_found',
+      count: 1,
+      level: 'none',
+    })
+  })
+
+  test('escalates repeated FileEdit multiple_match failures independently', async () => {
+    const path = join(getHarnessCwd(), 'edit-escalate-multiple.txt')
+    await writeFile(path, 'alpha\nbeta\nbeta\n', 'utf8')
+    const context = await readIntoContext(path)
+
+    const first = await FileEditTool.validateInput!(
+      { file_path: path, old_string: 'beta', new_string: 'BETA' },
+      context,
+    )
+    expectValidationFailure(first)
+    expect(first.errorCode).toBe(9)
+    expectEditEscalation(first, {
+      reason: 'multiple_match',
+      count: 1,
+      level: 'none',
+    })
+
+    const second = await FileEditTool.validateInput!(
+      { file_path: path, old_string: 'beta', new_string: 'BETA' },
+      context,
+    )
+    expectValidationFailure(second)
+    expect(second.errorCode).toBe(9)
+    expectEditEscalation(second, {
+      reason: 'multiple_match',
+      count: 2,
+      level: 'reread',
+    })
   })
 
   test('marks unread NotebookEdit validation as not_read', async () => {

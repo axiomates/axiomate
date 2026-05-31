@@ -23,6 +23,10 @@ import {
   writeTextContent,
 } from '../../utils/file.js'
 import {
+  clearFileEditMatchFailure,
+  recordFileEditMatchFailure,
+} from '../../utils/fileEditFailureEscalation.js'
+import {
   fileHarnessFailure,
   throwFileHarnessFailure,
 } from '../../utils/fileHarnessFailures.js'
@@ -342,12 +346,18 @@ export const FileEditTool = buildTool({
     // Use findActualString to handle quote normalization
     const actualOldString = findActualString(file, old_string)
     if (!actualOldString) {
+      const escalation = recordFileEditMatchFailure(
+        toolUseContext,
+        fullFilePath,
+        'string_not_found',
+      )
       return {
         result: false,
         behavior: 'ask',
         message: `String to replace not found in file.\nString: ${old_string}`,
         meta: {
           isFilePathAbsolute: String(isAbsolute(file_path)),
+          fileEditFailureEscalation: escalation,
         },
         errorCode: 8,
         fileHarnessFailure: fileHarnessFailure(
@@ -362,6 +372,11 @@ export const FileEditTool = buildTool({
 
     // Check if we have multiple matches but replace_all is false
     if (matches > 1 && !replace_all) {
+      const escalation = recordFileEditMatchFailure(
+        toolUseContext,
+        fullFilePath,
+        'multiple_match',
+      )
       return {
         result: false,
         behavior: 'ask',
@@ -369,6 +384,7 @@ export const FileEditTool = buildTool({
         meta: {
           isFilePathAbsolute: String(isAbsolute(file_path)),
           actualOldString,
+          fileEditFailureEscalation: escalation,
         },
         errorCode: 9,
         fileHarnessFailure: fileHarnessFailure(
@@ -395,6 +411,7 @@ export const FileEditTool = buildTool({
       return settingsValidationResult
     }
 
+    clearFileEditMatchFailure(toolUseContext, fullFilePath)
     return { result: true, meta: { actualOldString } }
   },
   inputsEquivalent(input1, input2) {

@@ -33,6 +33,7 @@ import {
   type ToolProgress,
   type ToolProgressData,
   type ToolUseContext,
+  type ValidationResult,
 } from '../../Tool.js'
 import type { BashToolInput } from '../../tools/BashTool/BashTool.js'
 import { BASH_TOOL_NAME } from '../../tools/BashTool/toolName.js'
@@ -63,6 +64,7 @@ import {
   fileHistoryMakeSnapshot,
   type FileHistoryState,
 } from '../../utils/fileHistory.js'
+import { buildFileEditFailureEscalationHint } from '../../utils/fileEditFailureEscalation.js'
 import { selectableUserMessagesFilter } from '../../components/MessageSelector.js'
 import type { UUID } from 'crypto'
 import {
@@ -698,6 +700,15 @@ function buildConsecutiveFailureHint(totalFailures: number): string | null {
   return null
 }
 
+export function buildToolValidationErrorContent(
+  validation: Extract<ValidationResult, { result: false }>,
+): string {
+  return (
+    validation.message +
+    (buildFileEditFailureEscalationHint(validation.meta) ?? '')
+  )
+}
+
 /**
  * Appended when a deferred tool call fails and wasn't in the discovered-tool
  * set. The raw error ("expected array, got string" or "Either coordinate
@@ -826,8 +837,9 @@ async function checkPermissionsAndCallTool(
     toolUseContext,
   )
   if (isValidCall?.result === false) {
+    const errorContent = buildToolValidationErrorContent(isValidCall)
     logForDebugging(
-      `${tool.name} tool validation error: ${isValidCall.message?.slice(0, 200)}`,
+      `${tool.name} tool validation error: ${errorContent.slice(0, 200)}`,
     )
     return [
       {
@@ -835,12 +847,12 @@ async function checkPermissionsAndCallTool(
           content: [
             {
               type: 'tool_result',
-              content: `<tool_use_error>${isValidCall.message}</tool_use_error>`,
+              content: `<tool_use_error>${errorContent}</tool_use_error>`,
               is_error: true,
               tool_use_id: toolUseID,
             },
           ],
-          toolUseResult: `Error: ${isValidCall.message}`,
+          toolUseResult: `Error: ${errorContent}`,
           sourceToolAssistantUUID: assistantMessage.uuid,
         }),
       },

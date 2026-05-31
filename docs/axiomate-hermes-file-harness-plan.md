@@ -259,12 +259,21 @@ Stage 6B atomic-helper local verification passed:
 - `git diff --check`
 - `pnpm run test` with 156 files / 2144 tests passing
 
+Stage 7A local verification passed:
+
+- `pnpm --filter ./agent exec vitest run src/__tests__/unit/services/tools/toolExecutionValidation.test.ts src/__tests__/unit/utils/fileEditFailureEscalation.test.ts src/__tests__/unit/tools/FileHarness/failureMetadata.test.ts --hookTimeout 120000 --testTimeout 30000`
+- `pnpm --filter ./agent exec vitest run src/__tests__/unit/tools/FileHarness --no-file-parallelism --hookTimeout 120000 --testTimeout 30000`
+- `pnpm run build:types`
+- `git diff --check`
+- `pnpm run test` with 158 files / 2152 tests passing
+
 ## Remaining Migration Work
 
 ## Current Position
 
-Stage 6B is complete. Validation metadata, execution-time typed stale failures,
-and shared atomic helper failure wrapping are implemented.
+Stage 7A is complete. Stage 6B is complete. Validation metadata,
+execution-time typed stale failures, shared atomic helper failure wrapping, and
+the first patch/edit failure escalation slice are implemented.
 
 Completed and pushed:
 
@@ -280,6 +289,7 @@ Completed and pushed:
 - Stage 6A: internal file-harness failure taxonomy/catalog.
 - Stage 6B: validation result metadata.
 - Stage 6B: execution-time typed failures and atomic helper wrapping.
+- Stage 7A: repeated FileEdit match-failure tracker and escalation hint.
 
 Completed Stage 6B slice:
 
@@ -302,8 +312,8 @@ Completed Stage 6B slice:
 
 Next implementation target:
 
-- Move to Stage 7 patch/edit failure escalation, or take a separate encoding
-  policy slice for `encoding_unsupported`.
+- Continue Stage 7 with broader patch/edit recovery policy, or take a separate
+  encoding policy slice for `encoding_unsupported`.
 
 ### Stage 3: Complete Registry Coverage
 
@@ -587,26 +597,41 @@ Estimated work:
 
 ### Stage 7: Patch/Edit Failure Escalation
 
-Status: not started.
+Status: Stage 7A complete.
 
 Hermes tracks repeated patch failures and escalates guidance after repeated
 old-string mismatches.
 
-Axiomate baseline:
+Previous Axiomate baseline:
 
 - `FileEditTool` reports string-not-found and multiple-match.
-- It does not yet maintain per-file repeated failure escalation comparable to
-  Hermes.
+- It did not maintain per-file repeated failure escalation comparable to Hermes.
+
+Implemented in Stage 7A:
+
+- Added a process-local `WeakMap` tracker keyed by `readFileState`.
+- Tracks repeated `FileEditTool.validateInput` match failures for
+  `string_not_found` and `multiple_match`.
+- Counts only consecutive failures for the same normalized path, same reason,
+  and same read-state object.
+- A successful FileEdit validation clears the same-path tracker.
+- Validation result `meta.fileEditFailureEscalation` carries
+  `reason/path/count/level`.
+- `toolExecution` appends model-facing guidance when escalation level reaches
+  `reread` or `stop`.
+- The original validation message and errorCode remain unchanged.
 
 Recommended direction:
 
-- Add a small per-session failure tracker.
-- Escalate after repeated `old_string` failures on the same file.
+- Keep Stage 7A's tracker conservative and per-session/process-local.
+- Expand only after observing whether the new guidance breaks old-string loops.
 - Do not import Hermes fuzzy patch matching wholesale yet.
 
 Estimated work:
 
-- 1-3 days.
+- Stage 7A complete.
+- 0.5-2 days remains if we add richer recovery policy, telemetry, or UI
+  rendering; more if we add fuzzy patch matching.
 
 ### Stage 8: Read Dedup Loop Guard
 
@@ -733,6 +758,14 @@ Estimated work:
     - Adding rejection for other encodings would be a behavior change and needs
       its own tests/decision.
 
+20. Stage 7A tracks repeated edit-match failures by read snapshot.
+    - Repeated `string_not_found` or `multiple_match` failures count only while
+      path, reason, and cached read-state object stay the same.
+    - A successful FileEdit validation clears the same-path tracker.
+    - The first failure stays quiet; the second asks for a reread; the third
+      adds a STOP-level warning.
+    - This does not add fuzzy matching or automatic patch guessing.
+
 ## Open Questions
 
 1. Should registry warnings be hard errors everywhere, or should some agent
@@ -748,8 +781,9 @@ Estimated work:
 
 ## Recommended Next Slice
 
-The immediate next slice is Stage 7 patch/edit failure escalation, unless
-encoding policy is more urgent.
+The immediate next slice is either Stage 7B telemetry/UI polish for edit
+failure escalation, Stage 8 read-dedup loop guidance, or a separate
+unsupported-encoding policy slice.
 
 Focused verification note:
 
