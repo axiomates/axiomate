@@ -230,7 +230,7 @@
     <section class="hero">
       <div class="eyebrow">File Harness · Migration Feasibility · Risk Review</div>
       <h1>Axiomate vs Hermes Agent File Harness 专项报告</h1>
-      <p>本报告只讨论文件读写/编辑可靠性：原子落盘、BOM/CRLF、staleness guard、read dedup、patch failure taxonomy、权限/安全 guard、并发文件状态和测试夹具。当前结论是：Axiomate 已经把 Hermes 最值得迁移的 file harness invariant 落入现有 TypeScript 工具体系；剩余工作主要是跨进程协调、unsupported encoding 和是否引入 fuzzy patch 的策略选择。</p>
+      <p>本报告只讨论文件读写/编辑可靠性：原子落盘、BOM/CRLF、staleness guard、read dedup、patch failure taxonomy、权限/安全 guard、并发文件状态和测试夹具。当前结论是：Axiomate 已经把 Hermes 最值得迁移的 file harness invariant 落入现有 TypeScript 工具体系；核心迁移完成，剩余工作主要是 UI 展示、数据统计和 telemetry 驱动的可选 recovery 打磨。</p>
       <div class="meta">更新时间：2026-05-31 · Axiomate：C:\public\workspace\axiomate (main，已覆盖 Stage 1-8 file harness 实现) · Hermes Agent：C:\public\workspace\hermes-agent (main @ 02d1da49) · 口径：本地代码阅读、git 提交证据、Vitest/类型检查验证</div>
     </section>
 
@@ -248,7 +248,7 @@
       <article class="card">
         <div class="stat-label">仍未照搬</div>
         <div class="stat-value">Fuzzy / XProc</div>
-        <p class="muted">未引入 Hermes fuzzy patch 全套，也没有做跨进程 registry；这两项需要数据和产品决策，不应默认复制。</p>
+        <p class="muted">未引入 Hermes fuzzy patch 全套，也不做跨进程 registry；这两项当前不属于核心迁移缺口。</p>
       </article>
       <article class="card">
         <div class="stat-label">测试状态</div>
@@ -271,7 +271,7 @@
         </div>
         <div class="callout">
           <strong>当前优先级：</strong>
-          不再把 Stage 1-8 当成待迁移主线。下一步应只在三类问题里选：unsupported encoding 是否硬拒绝、pane/tmux teammates 是否需要跨进程 registry/checkpoint 级检测、以及 telemetry 证明 edit-match loop 仍严重后是否引入更强 UI/fuzzy patch recovery。
+          不再把 Stage 1-8 当成待迁移主线。<code>encoding_unsupported</code> 保留 reason 但不启用拒绝，cross-process registry/locking 不做；下一步只剩 UI surfacing、统计看板和 telemetry 证明必要后的可选 edit recovery。
         </div>
       </div>
       <div class="pill-row">
@@ -279,8 +279,8 @@
         <span class="pill good">已落地：BOM/CRLF policy</span>
         <span class="pill good">已落地：failure escalation</span>
         <span class="pill good">已落地：read dedup loop guard</span>
-        <span class="pill warn">需改造：Hermes Python backend</span>
-        <span class="pill warn">需决策：cross-process registry</span>
+        <span class="pill info">保留现状：encoding best-effort</span>
+        <span class="pill info">不做：cross-process registry</span>
       </div>
     </section>
 
@@ -531,7 +531,7 @@
             <li><code>fileStateRegistry</code> 增加同进程 read/write sequence 和 sibling-write stale 检测。</li>
             <li>AgentTool 在 subagent 完成时提示子 agent 修改了父 context 已读文件。</li>
             <li>structured writes 使用 per-path async mutex，最终 stale check 和 write 在锁内完成。</li>
-            <li>跨进程 pane/tmux teammates 尚未纳入 registry，这是 Stage 3D 策略项。</li>
+            <li>跨进程 pane/tmux teammates 不纳入 registry；mtime/content stale checks + checkpoint/rewind 是接受的跨 session 防线。</li>
           </ul>
         </article>
         <article class="item">
@@ -546,7 +546,7 @@
             <li>严格 atomic write：失败清理 temp 并抛 <code>atomic_write_failed</code>，不做 direct fallback。</li>
             <li>Write 作为 full replacement 输出 UTF-8/LF/no BOM；Edit/NotebookEdit/structured sed 保留原文件格式。</li>
             <li>引入 <code>fileHarnessFailures</code> catalog 和 validation/execution/helper metadata。</li>
-            <li>当前保留 <code>encoding_unsupported</code> reason 名称，但是否硬拒绝仍是单独 policy decision。</li>
+            <li>当前保留 <code>encoding_unsupported</code> reason 名称，但不启用硬拒绝；Edit 保持 best-effort 兼容行为。</li>
           </ul>
         </article>
         <article class="item">
@@ -621,19 +621,19 @@
       </div>
       <div class="list">
         <article class="item">
-          <h3>1. 跨进程 registry 仍未覆盖</h3>
-          <p>当前 <code>fileStateRegistry</code> 和 per-path mutex 是 process-local。Axiomate 的 in-process subagent 能共享它，但 pane/tmux teammates 或另一个 CLI 进程不能共享 module-level Map。跨进程安全需要 IPC、file-backed registry、SQLite、lockfile 或 checkpoint dirty detection，成本明显高于当前 Stage 3C。</p>
+          <h3>1. UI 展示可能还偏弱</h3>
+          <p>当前 failure metadata 已经进入 validation/execution/helper 路径，但 UI、<code>/doctor</code>、recovery trace 是否要展示这些结构化原因尚未展开。这里应先看真实调试需要，避免把模型已经能理解的错误文案重复包装。</p>
         </article>
         <article class="item">
-          <h3>2. Unsupported encoding 是单独产品策略</h3>
-          <p>当前 helper 明确处理 UTF-8 和 UTF-16LE。是否对 UTF-16BE 或其他 encoding 直接返回 <code>encoding_unsupported</code>，会改变既有 best-effort 行为，必须先用测试钉住再改。</p>
+          <h3>2. 数据统计要继续低敏</h3>
+          <p>Stage 7B 已经增加 <code>file_edit_failure_escalation</code> telemetry，但只记录 reason、count、level 和 file extension。后续如果统计 stale guard、partial-read reject、atomic failure 或 read-dedup STOP，也应继续避免完整路径和代码内容。</p>
         </article>
         <article class="item">
-          <h3>3. Checkpoint 不能替代写前防护</h3>
-          <p>Axiomate 的 checkpoint/rewind 是优势，但它解决的是坏结果落盘后的恢复；file harness 解决的是落盘前减少坏结果。跨进程同路径写入如果要进一步收紧，checkpoint 可以成为检测层，但不能替代 structured tools 的读后写和 stale guard。</p>
+          <h3>3. 跨进程 registry 不做</h3>
+          <p>当前 <code>fileStateRegistry</code> 和 per-path mutex 是 process-local。Pane/tmux teammates 或另一个 CLI 进程继续依赖 mtime/content stale checks 和 checkpoint/rewind。完整 file-backed registry/lock 协议会引入 stale lock、crash cleanup、路径规范化和性能问题，当前不值得。</p>
         </article>
         <article class="item">
-          <h3>4. 直接复制 Hermes fuzzy patch 可能扩大行为面</h3>
+          <h3>4. Fuzzy patch 仍不应默认复制</h3>
           <p>Hermes 的 fuzzy match 很强，但也会让 old_string 不精确时仍能改文件。Axiomate 目前选择 repeated failure hint + telemetry。是否引入 fuzzy patch 应看 <code>file_edit_failure_escalation</code> 数据，而不是默认照搬。</p>
         </article>
       </div>
@@ -648,21 +648,21 @@
       </div>
       <div class="grid-3">
         <article class="subcard">
-          <h3>Unsupported encoding policy</h3>
-          <p class="muted">0.5-1.5 天</p>
+          <h3>UI surfacing</h3>
+          <p class="muted">0.5-1 天，可选</p>
           <ul>
-            <li>先加测试覆盖 UTF-16BE/未知编码当前行为。</li>
-            <li>决定是 best-effort 继续，还是返回 <code>encoding_unsupported</code>。</li>
-            <li>如果硬拒绝，需要保证模型提示清楚，并不误伤 UTF-8/UTF-16LE。</li>
+            <li>把 <code>fileHarnessFailure.reason</code> 显示到 debug UI、<code>/doctor</code> 或 recovery trace。</li>
+            <li>保持用户/模型文案稳定，先做结构化展示而不是改错误语义。</li>
+            <li>优先展示 stale、partial-read reject、atomic failure、edit escalation。</li>
           </ul>
         </article>
         <article class="subcard">
-          <h3>Cross-process coordination</h3>
-          <p class="muted">设计 0.5-1 天；实现另估</p>
+          <h3>Telemetry dashboard</h3>
+          <p class="muted">0.5-1.5 天，可选</p>
           <ul>
-            <li>确认 pane/tmux teammates 是否需要强一致 stale detection。</li>
-            <li>候选：IPC、file-backed registry、SQLite、lockfile、checkpoint dirty detection。</li>
-            <li>不要把当前轻量 process-local registry 直接扩成隐式跨进程协议。</li>
+            <li>聚合 <code>file_edit_failure_escalation</code> 的 reason/count/level。</li>
+            <li>按需增加 stale guard、partial-read write reject、read-dedup STOP、atomic failure 计数。</li>
+            <li>继续只上报低基数、低敏字段，不上传路径或内容。</li>
           </ul>
         </article>
         <article class="subcard">
@@ -711,16 +711,16 @@
             <td>新增 edit escalation telemetry、read dedup escalation utility/tests、FileRead unchanged-loop guidance，并更新计划/HTML 报告。</td>
           </tr>
           <tr>
-            <td>剩余 policy/hardening</td>
-            <td><span class="pill warn">可选</span></td>
-            <td><strong>0.2k-1.5k+ LOC</strong></td>
-            <td>需要按决策另跑</td>
-            <td>unsupported encoding 较小；cross-process registry/checkpoint integration 可能明显变大；fuzzy patch matching 风险最高。</td>
+            <td>剩余 UI/统计/观察</td>
+            <td><span class="pill info">可选</span></td>
+            <td><strong>0.2k-1.0k LOC</strong></td>
+            <td>按具体 UI/telemetry slice 验证</td>
+            <td>包括 failure metadata 展示、低敏 telemetry 聚合、必要时增强 edit recovery；不包含 cross-process registry 或 encoding hard reject。</td>
           </tr>
         </tbody>
       </table>
       <div class="callout warn" style="margin-top: 14px;">
-        <strong>当前建议：</strong>不要继续为了“完整抄 Hermes”扩大范围。Axiomate 已经完成核心 file harness；下一步只应在 unsupported encoding、跨进程检测、或 telemetry 证明必要的 edit recovery 上做小步决策。
+        <strong>当前建议：</strong>不要继续为了“完整抄 Hermes”扩大范围。Axiomate 已经完成核心 file harness；下一步只做 UI/统计/观察类打磨，或等 telemetry 证明必要后再增强 edit recovery。
       </div>
     </section>
 
@@ -872,7 +872,7 @@ Verification:
         </div>
       </div>
       <p>Axiomate file harness 的主体迁移已经完成。正确路线仍然不是把 Hermes 的文件工具整套搬进来，而是把 Hermes 证明有效的工程约束迁入 Axiomate 现有 TypeScript 工具体系；这条路线已经覆盖测试、读后写、stale guard、同进程 registry、path lock、strict atomic write、BOM/CRLF、failure taxonomy、edit failure escalation 和 read dedup loop guard。</p>
-      <p>剩余工作不应再按“继续抄 Hermes”推进，而应逐项决策：unsupported encoding 是否硬拒绝、pane/tmux teammates 是否需要跨进程 registry/checkpoint 级检测、以及 edit failure telemetry 是否证明需要更强 UI/fuzzy patch recovery。</p>
+      <p>已收敛的边界是：<code>encoding_unsupported</code> 保留 taxonomy reason 但不启用硬拒绝，跨进程 registry/locking 不做。剩余工作不应再按“继续抄 Hermes”推进，而是 UI 展示、低敏数据统计，以及 telemetry 证明必要后的 edit recovery 打磨。</p>
     </section>
   </main>
 </body>

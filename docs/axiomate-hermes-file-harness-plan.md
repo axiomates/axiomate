@@ -358,10 +358,13 @@ Completed Stage 7B/8 slice:
 
 Next implementation target:
 
-- Treat the remaining harness work as optional hardening/policy decisions, not
-  missing core Stage 1-8 behavior. The highest-value next choice is either
-  `encoding_unsupported` policy or a cross-process registry/checkpoint design
-  for pane/tmux teammates.
+- Treat the remaining harness work as optional observability/UI/recovery
+  polish, not missing core Stage 1-8 behavior. Two candidate policy branches
+  are explicitly closed for now:
+  - `encoding_unsupported` stays reserved in the taxonomy but is not enforced;
+    `Edit` keeps current best-effort behavior for compatibility.
+  - Cross-process registry/locking is not implemented; mtime/content stale
+    checks plus checkpoint/rewind are the accepted cross-session safety layer.
 
 ### Stage 3: Complete Registry Coverage
 
@@ -400,13 +403,13 @@ Implemented in Stage 3C:
 - Added FileHarness behavior tests that hold the same-path lock and assert each
   structured write waits before touching disk.
 
-Still to decide and implement:
+Decided boundaries:
 
-- Stage 3D: decide whether cross-process state is worth adding for pane/tmux
-  teammates. This likely needs IPC, a file-backed registry, SQLite, or
-  checkpoint integration.
-- Stage 3E: audit whether any additional structured shell-write paths exist.
-  Arbitrary PowerShell/Bash writes remain intentionally out of scope.
+- Stage 3D cross-process registry/locking is not planned now. Pane/tmux
+  teammates and separate CLI processes remain outside the in-process registry;
+  mtime/content checks and checkpoint/rewind are the cross-session backstop.
+- Stage 3E broader shell-write participation is also closed for now. Arbitrary
+  PowerShell/Bash writes remain intentionally out of scope.
 
 Risks:
 
@@ -451,8 +454,9 @@ Runtime lock boundary as of 2026-05-31:
   they spawn separate CLI processes.
 - Therefore Stage 3C implemented a small in-process async per-path mutex for
   current same-process structured writes. Cross-worker or cross-process safety
-  is a separate Stage 3D design requiring IPC, a file-backed registry, SQLite,
-  lockfiles, or checkpoint-based dirty detection.
+  is intentionally not implemented now because mtime/content stale checks and
+  checkpoint/rewind cover the common practical risk without a new live
+  coordination protocol.
 
 Stage 3C locking decision:
 
@@ -473,7 +477,7 @@ Stage 3C locking decision:
 - Do not use `navigator.locks`. Current Bun does not expose it.
 - Do not claim cross-process safety. Pane/tmux teammates, another CLI process,
   arbitrary shell writes, and future Worker-based tool runners remain outside
-  this lock and belong to Stage 3D.
+  this lock.
 - Re-check stale state inside the lock. Validation remains a preflight only;
   waiting behind another writer can make an earlier validation result stale.
 
@@ -487,10 +491,9 @@ Stage 3E candidate:
 
 Estimated remaining work:
 
-- Cross-process registry/detection decision: 0.5-1 day for design; more if
-  implemented.
-- Additional Bash write participation: research item; likely no broader
-  coverage without shell instrumentation.
+- Cross-process registry/detection: no implementation planned.
+- Additional Bash write participation: no broader implementation planned
+  without a future structured path+content signal.
 
 ### Stage 4: Atomic Write Semantics
 
@@ -576,7 +579,7 @@ Estimated work:
 ### Stage 6: Failure Taxonomy
 
 Status: Stage 6A and Stage 6B complete. `encoding_unsupported` remains a
-planned future encoding-policy slice, not unfinished Stage 6B work.
+reserved taxonomy reason only; it is not enforced in current behavior.
 
 Hermes has more explicit failure categories and model-facing escalation paths.
 Axiomate currently mixes validation `errorCode`s with thrown generic errors such
@@ -621,8 +624,9 @@ Current Stage 6A mapping:
 - `permission_denied`: current file permission deny validation branches.
 - `atomic_write_failed`: atomic helper throws `FileHarnessError` with original
   filesystem error as `cause`.
-- `encoding_unsupported`: planned only; current helpers explicitly detect
-  UTF-8 and UTF-16LE but do not have a dedicated unsupported-encoding failure.
+- `encoding_unsupported`: reserved only; current helpers explicitly detect
+  UTF-8 and UTF-16LE but `Edit` keeps existing best-effort behavior for other
+  encodings instead of rejecting.
 
 Stage 6B options:
 
@@ -634,14 +638,13 @@ Stage 6B options:
   sites.
 - Done: wrap atomic helper failures with `atomic_write_failed` while preserving
   errno `code`, original message, and original `cause`.
-- Deferred: decide whether unsupported encodings should be rejected or left as
-  best-effort UTF-8/UTF-16LE decoding.
+- Decided: unsupported/unknown encodings are not rejected for now. The catalog
+  keeps `encoding_unsupported` for future optional strict-mode work.
 
 Estimated work:
 
 - Stage 6A: complete.
-- Stage 6B: complete. UI/error rendering changes and unsupported-encoding
-  policy remain separate optional follow-ups.
+- Stage 6B: complete. UI/error rendering changes remain optional follow-ups.
 
 ### Stage 7: Patch/Edit Failure Escalation
 
@@ -754,8 +757,9 @@ Estimated work:
 10. The current registry is process-local, not cross-process.
     - In-process teammates share it.
     - Pane/tmux teammates and separate CLI processes do not.
-    - Cross-process detection must use mtime/content, checkpoint, IPC, or a
-      file-backed registry.
+    - Current decision: do not add cross-process registry/locking. Use
+      mtime/content stale checks before writes and checkpoint/rewind after
+      writes as the cross-session safety layer.
 
 11. Registry stale detection and write serialization are separate layers.
     - The registry detects sibling/subagent writes after a context's last read.
@@ -769,7 +773,8 @@ Estimated work:
     - Current Axiomate tool execution does not use Workers, so an in-process
       per-path async mutex is enough for same-process structured writes.
     - If tools move into Workers or pane/tmux CLI processes, module globals are
-      not shared and Stage 3D needs IPC/file-backed coordination.
+      not shared; this is accepted for now rather than adding IPC/file-backed
+      coordination.
 
 13. Stage 3C uses a path-keyed in-process mutex, not a global write lock.
     - Same normalized path serializes.
@@ -812,12 +817,14 @@ Estimated work:
       notebook in `call()`, so execution-time mtime drift remains
       `stale_mtime`.
 
-19. Unsupported encoding is a policy decision, not Stage 6B cleanup.
+19. Unsupported encoding is reserved but not enforced.
     - The catalog keeps `encoding_unsupported` so future code has a stable
       reason name.
     - Current helpers still explicitly handle UTF-8 and UTF-16LE only.
-    - Adding rejection for other encodings would be a behavior change and needs
-      its own tests/decision.
+    - `Edit` keeps current best-effort behavior for unsupported/unknown
+      encodings for compatibility.
+    - Adding rejection for other encodings would be a future strict-mode
+      behavior change, not part of the current harness scope.
 
 20. Stage 7A tracks repeated edit-match failures by read snapshot.
     - Repeated `string_not_found` or `multiple_match` failures count only while
@@ -842,48 +849,46 @@ Estimated work:
     - A real text/notebook Read clears the path's dedup tracker, so legitimate
       rereads after a content change are not punished.
 
-## Open Questions
+23. Cross-process registry is intentionally not implemented.
+    - Checkpoint is already cross-session, but it is a recovery/audit layer,
+      not a live read/write registry.
+    - mtime/content checks catch most practical cross-process stale writes
+      before structured file tools write.
+    - Checkpoint/rewind handles recovery after a bad write lands.
+    - A file-backed registry, SQLite state, IPC, or lockfile protocol would add
+      crash cleanup, stale lock, path normalization, and performance concerns
+      without current evidence that the extra complexity is justified.
 
-1. Should registry warnings be hard errors everywhere, or should some agent
-   contexts receive warnings/reminders instead?
-2. How much can Bash writes realistically participate without shell-level file
-   monitoring?
-3. Should pane/tmux teammates get a cross-process registry, or is
-   checkpoint/mtime/content detection enough?
-4. Should `FileStateCache` entries be deep-cloned, or is the current
-   replace-entry write pattern enough?
-5. Should UTF-16BE or other non-UTF8/non-UTF16LE encodings be detected or
-   rejected explicitly?
+## Remaining Work
 
-## Recommended Next Slice
+There is no remaining core Hermes file-harness port planned. Remaining work is
+observability and product polish:
 
-The immediate next slice is no longer another core Stage 1-8 harness port. The
-remaining items are policy/hardening decisions:
+1. UI surfacing for file-harness failures.
+   - Decide whether validation/execution `fileHarnessFailure` metadata should
+     appear in tool error UI, `/doctor`, or recovery traces.
+   - Keep model-facing text stable unless there is evidence that additional
+     UI text improves recovery.
 
-1. Unsupported encoding policy.
-   - Decide whether non-UTF8/non-UTF16LE files should be rejected with
-     `encoding_unsupported` instead of best-effort decoding.
-   - This needs tests first because it can block edits that previously
-     proceeded.
+2. Telemetry and dashboard follow-up.
+   - Use `file_edit_failure_escalation` telemetry to measure repeated
+     `string_not_found` / `multiple_match` loops.
+   - Add aggregate counters for stale guards, partial-read write rejects,
+     read-dedup STOP hits, and atomic write failures only if product or
+     debugging needs justify them.
+   - Continue avoiding full paths and code content in telemetry.
 
-2. Cross-process registry/checkpoint integration.
-   - Decide whether pane/tmux teammates need stronger stale-write detection
-     than mtime/content checks.
-   - Possible approaches: IPC, file-backed registry, SQLite, lockfiles, or
-     checkpoint dirty detection.
-   - This is heavier than the current same-process registry and should not be
-     added without a clear product need.
-
-3. Shell-write participation audit.
-   - Keep arbitrary PowerShell/Bash writes out of the registry.
-   - Only add structured shell paths if the tool already knows exact path and
-     final content before writing.
-
-4. Edit recovery policy after telemetry.
-   - Use `file_edit_failure_escalation` counts to decide whether UI rendering,
-     stronger model guidance, or fuzzy patch matching is worth implementing.
-   - Do not add fuzzy matching until there is evidence the conservative
+3. Optional edit recovery after telemetry.
+   - Consider stronger UI/model guidance only if repeated edit-match failures
+     remain common after Stage 7A/7B.
+   - Do not add fuzzy patch matching until data shows the conservative
      reread/STOP guidance is insufficient.
+
+4. Regression maintenance.
+   - Keep FileHarness focused tests under `--no-file-parallelism` when running
+     narrow slices because import mocks can be flaky in parallel file mode.
+   - Add tests for any future structured shell path only if that tool knows
+     exact path and final content before writing.
 
 Focused verification note:
 
