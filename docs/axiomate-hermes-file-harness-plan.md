@@ -25,11 +25,12 @@ implementation and targeted tests:
 | Staleness tests | `tests/tools/test_file_staleness.py` | 236 LOC | Convert behavior to Vitest |
 
 Axiomate now has a native file harness test surface under
-`agent/src/__tests__/unit/tools/FileHarness/`. The current local branch adds or
-modifies about 1k lines around FileHarness tests and file guard logic, plus a
-small 70-line in-process registry. The already-pushed stage 1 commit was:
+`agent/src/__tests__/unit/tools/FileHarness/`. The current implementation adds
+or modifies about 1.2k lines around FileHarness tests, file guard logic, a
+small in-process registry, and this plan. The already-pushed commits are:
 
 - `c8f6b352 test: add file harness coverage`
+- `1b0bfaa7 feat: extend file harness stale-write guards`
 
 ## Progress
 
@@ -52,7 +53,7 @@ Approximate committed size:
 
 ### Stage 2A: Read/Write/Edit Guard Semantics
 
-Status: implemented locally, not committed.
+Status: complete and pushed in `1b0bfaa7`.
 
 Implemented decisions:
 
@@ -77,7 +78,7 @@ Important product decision:
 
 ### Stage 2B: Read Dedup Status Guard
 
-Status: implemented locally, not committed.
+Status: complete and pushed in `1b0bfaa7`.
 
 Implemented decisions:
 
@@ -93,7 +94,7 @@ Why:
 
 ### Stage 2C: Minimal Cross-Context File State Registry
 
-Status: implemented locally, not committed.
+Status: complete and pushed in `1b0bfaa7`.
 
 New file:
 
@@ -154,12 +155,30 @@ Design boundary:
 - `registrySequence` is process-local and is stripped by `cacheToObject`.
 - `cloneFileStateCache` intentionally preserves it so subagents inherit the
   parent's read ordering.
-- It does not solve external editors or separate OS processes. Those remain
-  covered by mtime/content stale checks.
+- In-process teammates run in the same JS process with `AsyncLocalStorage`
+  context isolation, so they share the module-level registry.
+- Pane/tmux teammates start another CLI process, so they do not share this
+  in-memory registry. Their writes are only caught by mtime/content checks,
+  checkpoint-style dirty detection, or future IPC/file-backed state.
+- The registry is not a lock. Synchronous `Map` updates are not interrupted
+  inside one JS turn, but async tool calls can interleave between awaits.
+- It does not solve external editors, arbitrary shell writes, separate OS
+  processes, or future Worker-thread tool execution.
 
-## Current Local Verification
+Concurrency implication:
 
-The current local uncommitted implementation has passed:
+- Current registry state is a stale-write detector for structured, same-process
+  file tools.
+- It does not serialize the full "check stale, then write" critical section.
+- Hermes has per-path locking in addition to the registry. Axiomate has not
+  ported that yet.
+- If Axiomate wants real concurrent write safety, add per-path locks after the
+  parent/subagent reminder surface or pull that stage forward if race safety is
+  more urgent than user-facing reminders.
+
+## Current Verification
+
+Commit `1b0bfaa7` passed:
 
 - `pnpm --filter ./agent exec vitest run src/__tests__/unit/tools/FileHarness --hookTimeout 120000`
 - `pnpm --filter ./agent exec vitest run src/__tests__/unit/utils/fileStateCache.test.ts --hookTimeout 120000`
@@ -171,31 +190,71 @@ The current local uncommitted implementation has passed:
 
 ### Stage 3: Complete Registry Coverage
 
-Status: not started.
+Status: Stage 3A implemented locally; broader registry coverage remains.
 
-Need to decide and implement:
+Implemented locally in Stage 3A:
 
-- Whether `NotebookEditTool` should call `noteFileWrite`.
-- Whether Bash-driven file writes can or should participate. Axiomate currently
-  has simulated sed edit tracking, but arbitrary shell writes cannot be fully
-  observed without shell instrumentation.
-- Whether AgentTool/subagent completion should surface a Hermes-like reminder:
-  "subagent modified files the parent previously read."
-- Whether to add per-path locks around `Edit`/`Write` critical sections.
+- `NotebookEditTool` checks sibling writes before validation/call writes and
+  calls `noteFileWrite` after a successful notebook write.
+- `BashTool` calls `noteFileWrite` only for its internal `_simulatedSedEdit`
+  path, where the permission UI already supplied an exact `filePath` and
+  `newContent`.
+
+Current local files:
+
+- `agent/src/tools/NotebookEditTool/NotebookEditTool.ts`
+- `agent/src/tools/BashTool/BashTool.tsx`
+- `agent/src/__tests__/unit/tools/FileHarness/notebookEdit.behavior.test.ts`
+- `agent/src/__tests__/unit/tools/FileHarness/bashSimulatedSed.behavior.test.ts`
+- `agent/src/__tests__/unit/tools/FileHarness/helpers.ts`
+
+Still to decide and implement:
+
+- Stage 3B: AgentTool/subagent completion should surface a Hermes-like
+  reminder: "subagent modified files the parent previously read."
+- Stage 3C: per-path locks around `Edit`/`Write`/`NotebookEdit` and structured
+  simulated writes, so stale-check-plus-write becomes a serialized critical
+  section within one process.
+- Stage 3D: decide whether cross-process state is worth adding for pane/tmux
+  teammates. This likely needs IPC, a file-backed registry, SQLite, or
+  checkpoint integration.
+- Stage 3E: audit whether any additional structured shell-write paths exist.
+  Arbitrary PowerShell/Bash writes remain intentionally out of scope.
 
 Risks:
 
-- Current registry only sees `FileReadTool`, `FileEditTool`, and
-  `FileWriteTool`.
+- Current registry sees `FileReadTool`, `FileEditTool`, `FileWriteTool`,
+  `NotebookEditTool`, and `BashTool`'s `_simulatedSedEdit`.
 - This is enough for the current file tool guard, but not a complete Hermes
   equivalent.
+- It only covers in-process teammates. Pane/tmux teammates are separate CLI
+  processes and do not share the module-level registry.
+- It does not provide a per-path mutex. Two async structured writes in the same
+  process can still interleave between awaits until Stage 3C lands.
+- Hermes does not try to parse arbitrary `terminal` shell writes into its
+  `FileStateRegistry`. Its terminal prompt tells agents not to use `sed`/`awk`
+  for edits or `echo`/heredoc for file creation, and to use `patch` or
+  `write_file` instead. Registry hooks attach to `read_file`, `write_file`,
+  and `patch`; checkpointing is a heavier safety layer around destructive tool
+  calls, not a lightweight path-level stale-write signal.
+- Axiomate should not try to recognize every PowerShell/Bash file write. For
+  shell commands, only explicitly parsed, path-specific simulated edits should
+  be considered for registry participation.
+- The one current candidate is `BashTool`'s internal `_simulatedSedEdit` path:
+  permission UI precomputes a specific `filePath` and `newContent`, then
+  `BashTool` applies that content directly instead of executing `sed`. That is
+  a structured file write, unlike arbitrary shell redirection or PowerShell
+  `Set-Content`, so it can safely call `noteFileWrite` after success.
 
 Estimated remaining work:
 
-- Narrow registry coverage for `NotebookEditTool`: 0.5-1 day.
+- Commit/verify Stage 3A: 0.5 day.
 - Parent/subagent completion reminder: 1-2 days.
 - Per-path lock design and non-flaky tests: 1-2 days.
-- Bash write participation: research item; likely partial coverage only.
+- Cross-process registry/detection decision: 0.5-1 day for design; more if
+  implemented.
+- Additional Bash write participation: research item; likely no broader
+  coverage without shell instrumentation.
 
 ### Stage 4: Atomic Write Semantics
 
@@ -361,28 +420,63 @@ Estimated work:
    - `readFileState` still handles same-context read-before-write.
    - Registry handles sibling/subagent writes after a context's last read.
 
+10. The current registry is process-local, not cross-process.
+    - In-process teammates share it.
+    - Pane/tmux teammates and separate CLI processes do not.
+    - Cross-process detection must use mtime/content, checkpoint, IPC, or a
+      file-backed registry.
+
+11. The current registry is not a concurrency lock.
+    - It detects stale sibling writes.
+    - It does not serialize read-modify-write critical sections.
+    - Per-path locking is a separate Stage 3C item.
+
+12. Do not parse arbitrary shell writes into the registry.
+    - Hermes does not do this either.
+    - Axiomate should only attach registry hooks to structured write paths
+      where the tool already knows the exact path and content.
+
 ## Open Questions
 
 1. Should registry warnings be hard errors everywhere, or should some agent
    contexts receive warnings/reminders instead?
-2. Should `NotebookEditTool` be brought into the same registry immediately?
-3. How much can Bash writes realistically participate without shell-level file
+2. How much can Bash writes realistically participate without shell-level file
    monitoring?
-4. Should non-atomic fallback be removed globally, or only for FileEdit/FileWrite?
-5. What is the final UTF-8 BOM policy for read/edit/write?
-6. Should `FileWriteTool` keep LF full replacement policy for existing CRLF
+3. Should pane/tmux teammates get a cross-process registry, or is
+   checkpoint/mtime/content detection enough?
+4. Should per-path locks happen immediately after Stage 3A, or after the
+   parent/subagent completion reminder?
+5. Should non-atomic fallback be removed globally, or only for FileEdit/FileWrite?
+6. What is the final UTF-8 BOM policy for read/edit/write?
+7. Should `FileWriteTool` keep LF full replacement policy for existing CRLF
    files?
 
 ## Recommended Next Slice
 
-The safest next implementation slice is Stage 3, narrowed to official Axiomate
-write tools:
+The immediate next slice is to finish and land Stage 3A, then move to Stage 3B.
 
-1. Add tests showing `NotebookEditTool` writes are visible to the registry.
-2. Add `noteFileWrite` to `NotebookEditTool` successful write path.
-3. Audit BashTool's simulated sed edit path and decide whether it should call
-   `noteFileWrite`.
-4. Do not attempt broad shell write detection yet.
+Stage 3A close-out:
 
-After that, move to Stage 4 atomic write semantics, because it is the largest
-remaining reliability invariant from Hermes.
+1. Re-run the focused FileHarness tests for `NotebookEditTool` and
+   `_simulatedSedEdit`.
+2. Run `pnpm run build:types`.
+3. Run the full `pnpm run test` only after focused tests are stable.
+4. Commit the Stage 3A code plus this plan update.
+
+Stage 3B implementation plan:
+
+1. Add a registry API equivalent to Hermes `known_reads()` / `writes_since()`
+   for Axiomate contexts.
+2. Find the AgentTool/subagent completion path and add a model-facing reminder
+   only when a child wrote a file the parent had previously read.
+3. Add tests for the parent/subagent completion reminder: child modifies a file
+   the parent previously read, and the parent gets the reminder.
+4. Keep arbitrary shell writes out of the reminder unless they pass through a
+   structured Axiomate write path.
+5. Keep the first implementation process-local. Document that pane/tmux
+   teammates are not covered until cross-process state is designed.
+
+Stage 3C should add per-path locks, because that is the missing piece behind
+the user's thread-safety question. After Stage 3C, move to Stage 4 atomic write
+semantics, because it is the largest remaining reliability invariant from
+Hermes.

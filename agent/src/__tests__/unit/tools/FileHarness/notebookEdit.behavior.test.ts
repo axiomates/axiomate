@@ -1,0 +1,193 @@
+import { readFile, stat, utimes, writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
+import { beforeAll, describe, expect, test } from 'vitest'
+import { FILE_UNEXPECTEDLY_MODIFIED_ERROR } from '../../../../tools/FileEditTool/constants.js'
+import { asAgentId } from '../../../../types/ids.js'
+import { cloneFileStateCache } from '../../../../utils/fileStateCache.js'
+import {
+  allowToolUse,
+  getHarnessCwd,
+  makeToolContext,
+  mockFileHarnessRuntime,
+  parentMessage,
+  setupFileHarness,
+} from './helpers.js'
+
+mockFileHarnessRuntime()
+setupFileHarness()
+
+let FileReadTool: Awaited<
+  typeof import('../../../../tools/FileReadTool/FileReadTool.js')
+>['FileReadTool']
+let FileWriteTool: Awaited<
+  typeof import('../../../../tools/FileWriteTool/FileWriteTool.js')
+>['FileWriteTool']
+let NotebookEditTool: Awaited<
+  typeof import('../../../../tools/NotebookEditTool/NotebookEditTool.js')
+>['NotebookEditTool']
+
+beforeAll(async () => {
+  ;({ FileReadTool } = await import(
+    '../../../../tools/FileReadTool/FileReadTool.js'
+  ))
+  ;({ FileWriteTool } = await import(
+    '../../../../tools/FileWriteTool/FileWriteTool.js'
+  ))
+  ;({ NotebookEditTool } = await import(
+    '../../../../tools/NotebookEditTool/NotebookEditTool.js'
+  ))
+}, 120_000)
+
+function createNotebook(source: string) {
+  return {
+    cells: [
+      {
+        cell_type: 'code',
+        execution_count: 1,
+        id: 'cell-a',
+        metadata: {},
+        outputs: [{ output_type: 'stream', name: 'stdout', text: 'old\n' }],
+        source,
+      },
+    ],
+    metadata: { language_info: { name: 'python' } },
+    nbformat: 4,
+    nbformat_minor: 5,
+  }
+}
+
+async function writeNotebook(path: string, source: string): Promise<void> {
+  await writeFile(path, JSON.stringify(createNotebook(source), null, 1), 'utf8')
+}
+
+async function readNotebookSource(path: string): Promise<string> {
+  const notebook = JSON.parse(await readFile(path, 'utf8')) as ReturnType<
+    typeof createNotebook
+  >
+  return String(notebook.cells[0]?.source ?? '')
+}
+
+async function readNotebookIntoContext(path: string) {
+  const context = makeToolContext()
+  await FileReadTool.call(
+    { file_path: path },
+    context,
+    allowToolUse,
+    parentMessage,
+  )
+  return context
+}
+
+async function editNotebookCell(
+  path: string,
+  source: string,
+  context: ReturnType<typeof makeToolContext>,
+) {
+  return NotebookEditTool.call(
+    {
+      notebook_path: path,
+      cell_id: 'cell-a',
+      new_source: source,
+      edit_mode: 'replace',
+    },
+    context,
+    allowToolUse,
+    parentMessage,
+  )
+}
+
+describe('NotebookEditTool file harness behavior', () => {
+  test('rejects editing a notebook that was not read first', async () => {
+    const path = join(getHarnessCwd(), 'unread.ipynb')
+    await writeNotebook(path, 'print("one")')
+
+    const validation = await NotebookEditTool.validateInput!(
+      {
+        notebook_path: path,
+        cell_id: 'cell-a',
+        new_source: 'print("two")',
+        edit_mode: 'replace',
+      },
+      makeToolContext(),
+    )
+
+    expect(validation.result).toBe(false)
+    if (validation.result) return
+    expect(validation.errorCode).toBe(9)
+    expect(validation.message).toContain('File has not been read yet')
+  })
+
+  test('records notebook writes so later stale parent writes are blocked even if mtime is restored', async () => {
+    const path = join(getHarnessCwd(), 'sibling-notebook.ipynb')
+    await writeNotebook(path, 'print("one")')
+    const parentContext = await readNotebookIntoContext(path)
+    const originalTimestamp = parentContext.readFileState.get(path)?.timestamp
+    expect(originalTimestamp).toBeDefined()
+
+    const childContext = makeToolContext({
+      agentId: asAgentId('achild000000000101'),
+      readFileState: cloneFileStateCache(parentContext.readFileState),
+    })
+    await editNotebookCell(path, 'print("child")', childContext)
+    const originalDate = new Date(originalTimestamp!)
+    await utimes(path, originalDate, originalDate)
+    expect(Math.floor((await stat(path)).mtimeMs)).toBe(originalTimestamp)
+
+    const validation = await FileWriteTool.validateInput!(
+      { file_path: path, content: JSON.stringify(createNotebook('parent')) },
+      parentContext,
+    )
+    expect(validation.result).toBe(false)
+    if (!validation.result) {
+      expect(validation.errorCode).toBe(3)
+      expect(validation.message).toContain('modified since read')
+    }
+
+    await expect(
+      FileWriteTool.call(
+        { file_path: path, content: JSON.stringify(createNotebook('parent')) },
+        parentContext,
+        allowToolUse,
+        parentMessage,
+      ),
+    ).rejects.toThrow(FILE_UNEXPECTEDLY_MODIFIED_ERROR)
+    expect(await readNotebookSource(path)).toBe('print("child")')
+  })
+
+  test('rejects stale notebook edits after a sibling write even if mtime is restored', async () => {
+    const path = join(getHarnessCwd(), 'stale-notebook-edit.ipynb')
+    await writeNotebook(path, 'print("one")')
+    const parentContext = await readNotebookIntoContext(path)
+    const originalTimestamp = parentContext.readFileState.get(path)?.timestamp
+    expect(originalTimestamp).toBeDefined()
+
+    const childContext = makeToolContext({
+      agentId: asAgentId('achild000000000102'),
+      readFileState: cloneFileStateCache(parentContext.readFileState),
+    })
+    await editNotebookCell(path, 'print("child")', childContext)
+    const originalDate = new Date(originalTimestamp!)
+    await utimes(path, originalDate, originalDate)
+    expect(Math.floor((await stat(path)).mtimeMs)).toBe(originalTimestamp)
+
+    const validation = await NotebookEditTool.validateInput!(
+      {
+        notebook_path: path,
+        cell_id: 'cell-a',
+        new_source: 'print("parent")',
+        edit_mode: 'replace',
+      },
+      parentContext,
+    )
+    expect(validation.result).toBe(false)
+    if (!validation.result) {
+      expect(validation.errorCode).toBe(10)
+      expect(validation.message).toContain('modified since read')
+    }
+
+    await expect(
+      editNotebookCell(path, 'print("parent")', parentContext),
+    ).rejects.toThrow(FILE_UNEXPECTEDLY_MODIFIED_ERROR)
+    expect(await readNotebookSource(path)).toBe('print("child")')
+  })
+})

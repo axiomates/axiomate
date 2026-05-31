@@ -6,6 +6,10 @@ import type { NotebookCell, NotebookContent } from '../../types/notebook.js'
 import { getCwd } from '../../utils/cwd.js'
 import { isENOENT } from '../../utils/errors.js'
 import { getFileModificationTime, writeTextContent } from '../../utils/file.js'
+import {
+  noteFileWrite,
+  wasFileModifiedAfterReadByAnotherContext,
+} from '../../utils/fileStateRegistry.js'
 import { readFileSyncWithMetadata } from '../../utils/fileRead.js'
 import { safeParseJSON } from '../../utils/json.js'
 import { lazySchema } from '../../utils/lazySchema.js'
@@ -13,6 +17,7 @@ import { parseCellId } from '../../utils/notebook.js'
 import { checkWritePermissionForTool } from '../../utils/permissions/filesystem.js'
 import type { PermissionDecision } from '../../utils/permissions/PermissionResult.js'
 import { jsonParse, jsonStringify } from '../../utils/slowOperations.js'
+import { FILE_UNEXPECTEDLY_MODIFIED_ERROR } from '../FileEditTool/constants.js'
 import { NOTEBOOK_EDIT_TOOL_NAME } from './constants.js'
 import { DESCRIPTION, PROMPT } from './prompt.js'
 import {
@@ -216,6 +221,14 @@ export const NotebookEditTool = buildTool({
         errorCode: 9,
       }
     }
+    if (wasFileModifiedAfterReadByAnotherContext(toolUseContext, fullPath)) {
+      return {
+        result: false,
+        message:
+          'File has been modified since read, either by the user or by a linter. Read it again before attempting to write it.',
+        errorCode: 10,
+      }
+    }
     if (getFileModificationTime(fullPath) > readTimestamp.timestamp) {
       return {
         result: false,
@@ -289,7 +302,7 @@ export const NotebookEditTool = buildTool({
       cell_type,
       edit_mode: originalEditMode,
     },
-    { readFileState, updateFileHistoryState },
+    { readFileState, agentId, updateFileHistoryState },
     _,
     parentMessage,
   ) {
@@ -297,6 +310,21 @@ export const NotebookEditTool = buildTool({
       ? notebook_path
       : resolve(getCwd(), notebook_path)
 
+    const lastRead = readFileState.get(fullPath)
+    if (!lastRead) {
+      throw new Error(FILE_UNEXPECTEDLY_MODIFIED_ERROR)
+    }
+    if (
+      wasFileModifiedAfterReadByAnotherContext(
+        { agentId, readFileState },
+        fullPath,
+      )
+    ) {
+      throw new Error(FILE_UNEXPECTEDLY_MODIFIED_ERROR)
+    }
+    if (getFileModificationTime(fullPath) > lastRead.timestamp) {
+      throw new Error(FILE_UNEXPECTEDLY_MODIFIED_ERROR)
+    }
     try {
       // readFileSyncWithMetadata gives content + encoding + line endings in
       // one safeResolvePath + readFileSync pass, replacing the previous
@@ -421,6 +449,7 @@ export const NotebookEditTool = buildTool({
         offset: undefined,
         limit: undefined,
       })
+      noteFileWrite({ agentId, readFileState }, fullPath)
       const data = {
         new_source,
         cell_type: cell_type ?? 'code',

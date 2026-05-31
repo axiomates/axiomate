@@ -17,6 +17,7 @@ import { extractAxiomateHints } from '../../utils/codeHints.js';
 import { isEnvTruthy } from '../../utils/envUtils.js';
 import { isENOENT, ShellError } from '../../utils/errors.js';
 import { detectFileEncoding, detectLineEndings, getFileModificationTime, writeTextContent } from '../../utils/file.js';
+import { noteFileWrite } from '../../utils/fileStateRegistry.js';
 import { truncate } from '../../utils/format.js';
 import { getFsImplementation } from '../../utils/fsOperations.js';
 import { lazySchema } from '../../utils/lazySchema.js';
@@ -344,7 +345,7 @@ export function detectBlockedSleepPattern(command: string): string | null {
 type SimulatedSedEditResult = {
   data: Out;
 };
-type SimulatedSedEditContext = Pick<ToolUseContext, 'readFileState' | 'updateFileHistoryState'>;
+type SimulatedSedEditContext = Pick<ToolUseContext, 'agentId' | 'readFileState' | 'updateFileHistoryState'>;
 
 /**
  * Applies a simulated sed edit directly instead of running sed.
@@ -390,6 +391,7 @@ async function applySedEdit(simulatedEdit: {
     offset: undefined,
     limit: undefined
   });
+  noteFileWrite(toolUseContext, absoluteFilePath);
 
   // Return success result matching sed output format (sed produces no output on success)
   return {

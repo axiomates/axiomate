@@ -124,6 +124,7 @@ export function mockFileHarnessRuntime(): void {
   vi.doMock('../../../../tools/FileReadTool/UI.js', () => toolUiMock)
   vi.doMock('../../../../tools/FileEditTool/UI.js', () => toolUiMock)
   vi.doMock('../../../../tools/FileWriteTool/UI.js', () => toolUiMock)
+  vi.doMock('../../../../tools/NotebookEditTool/UI.js', () => toolUiMock)
 }
 
 export function setupFileHarness(): void {
