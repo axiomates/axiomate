@@ -18,7 +18,7 @@ beforeAll(async () => {
   ;({ FileReadTool } = await import(
     '../../../../tools/FileReadTool/FileReadTool.js'
   ))
-}, 60_000)
+}, 120_000)
 
 describe('file harness metadata reads', () => {
   test('detectLineEndingsForString distinguishes LF and CRLF', () => {

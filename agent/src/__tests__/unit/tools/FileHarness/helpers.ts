@@ -10,6 +10,7 @@ import {
   createFileStateCacheWithSizeLimit,
   type FileStateCache,
 } from '../../../../utils/fileStateCache.js'
+import { clearFileStateRegistryForTests } from '../../../../utils/fileStateRegistry.js'
 
 const harnessState = vi.hoisted(() => ({
   tempDir: '',
@@ -127,6 +128,7 @@ export function mockFileHarnessRuntime(): void {
 
 export function setupFileHarness(): void {
   beforeEach(async () => {
+    clearFileStateRegistryForTests()
     harnessState.testCounter++
     harnessState.tempDir = await mkdtemp(
       join(tmpdir(), 'axiomate-file-harness-'),

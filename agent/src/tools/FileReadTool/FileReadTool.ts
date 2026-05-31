@@ -35,6 +35,10 @@ import {
   suggestPathUnderCwd,
 } from '../../utils/file.js'
 import { logFileOperation } from '../../utils/fileOperationAnalytics.js'
+import {
+  recordFileRead,
+  wasFileModifiedAfterReadByAnotherContext,
+} from '../../utils/fileStateRegistry.js'
 import { formatFileSize } from '../../utils/format.js'
 import { getFsImplementation } from '../../utils/fsOperations.js'
 import {
@@ -533,7 +537,10 @@ export const FileReadTool = buildTool({
     ) {
       const rangeMatch =
         existingState.offset === offset && existingState.limit === limit
-      if (rangeMatch) {
+      if (
+        rangeMatch &&
+        !wasFileModifiedAfterReadByAnotherContext(context, fullFilePath)
+      ) {
         try {
           const mtimeMs = await getFileModificationTimeAsync(fullFilePath)
           if (mtimeMs === existingState.timestamp) {
@@ -831,6 +838,7 @@ async function callInner(
       offset,
       limit,
     })
+    recordFileRead(context, fullFilePath)
     context.nestedMemoryAttachmentTriggers?.add(fullFilePath)
 
     const data = {
@@ -999,12 +1007,15 @@ async function callInner(
 
   await validateContentTokens(content, ext, maxTokens, context.onRecoveryTrace)
 
+  const partial = isPartialRead(offset, limit)
   readFileState.set(fullFilePath, {
     content,
     timestamp: Math.floor(mtimeMs),
     offset,
     limit,
+    ...(partial ? { isPartialView: true } : {}),
   })
+  recordFileRead(context, fullFilePath)
   context.nestedMemoryAttachmentTriggers?.add(fullFilePath)
 
   // Snapshot before iterating — a listener that unsubscribes mid-callback
@@ -1038,6 +1049,13 @@ async function callInner(
   const analyticsExt = getFileExtensionForAnalytics(fullFilePath)
 
   return { data }
+}
+
+function isPartialRead(
+  offset: number,
+  limit: number | undefined,
+): boolean {
+  return offset !== 1 || limit !== undefined
 }
 
 /**

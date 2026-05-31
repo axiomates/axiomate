@@ -22,6 +22,11 @@ import {
   writeTextContent,
 } from '../../utils/file.js'
 import { logFileOperation } from '../../utils/fileOperationAnalytics.js'
+import { fileStateHasFullContent } from '../../utils/fileStateCache.js'
+import {
+  noteFileWrite,
+  wasFileModifiedAfterReadByAnotherContext,
+} from '../../utils/fileStateRegistry.js'
 import {
   type LineEndingType,
   readFileSyncWithMetadata,
@@ -254,7 +259,7 @@ export const FileEditTool = buildTool({
     }
 
     const readTimestamp = toolUseContext.readFileState.get(fullFilePath)
-    if (!readTimestamp || readTimestamp.isPartialView) {
+    if (!readTimestamp) {
       return {
         result: false,
         behavior: 'ask',
@@ -267,6 +272,16 @@ export const FileEditTool = buildTool({
       }
     }
 
+    if (wasFileModifiedAfterReadByAnotherContext(toolUseContext, fullFilePath)) {
+      return {
+        result: false,
+        behavior: 'ask',
+        message:
+          'File has been modified since read, either by the user or by a linter. Read it again before attempting to write it.',
+        errorCode: 7,
+      }
+    }
+
     // Check if file exists and get its last modified time
     if (readTimestamp) {
       const lastWriteTime = getFileModificationTime(fullFilePath)
@@ -274,10 +289,10 @@ export const FileEditTool = buildTool({
         // Timestamp indicates modification, but on Windows timestamps can change
         // without content changes (cloud sync, antivirus, etc.). For full reads,
         // compare content as a fallback to avoid false positives.
-        const isFullRead =
-          readTimestamp.offset === undefined &&
-          readTimestamp.limit === undefined
-        if (isFullRead && fileContent === readTimestamp.content) {
+        if (
+          fileStateHasFullContent(readTimestamp) &&
+          fileContent === readTimestamp.content
+        ) {
           // Content unchanged, safe to proceed
         } else {
           return {
@@ -369,6 +384,7 @@ export const FileEditTool = buildTool({
     input: FileEditInput,
     {
       readFileState,
+      agentId,
       userModified,
       updateFileHistoryState,
       dynamicSkillDirTriggers,
@@ -422,16 +438,27 @@ export const FileEditTool = buildTool({
     if (fileExists) {
       const lastWriteTime = getFileModificationTime(absoluteFilePath)
       const lastRead = readFileState.get(absoluteFilePath)
-      if (!lastRead || lastWriteTime > lastRead.timestamp) {
+      if (!lastRead) {
+        throw new Error(FILE_UNEXPECTEDLY_MODIFIED_ERROR)
+      }
+      if (
+        wasFileModifiedAfterReadByAnotherContext(
+          {
+            agentId,
+            readFileState,
+          },
+          absoluteFilePath,
+        )
+      ) {
+        throw new Error(FILE_UNEXPECTEDLY_MODIFIED_ERROR)
+      }
+      if (lastWriteTime > lastRead.timestamp) {
         // Timestamp indicates modification, but on Windows timestamps can change
         // without content changes (cloud sync, antivirus, etc.). For full reads,
         // compare content as a fallback to avoid false positives.
-        const isFullRead =
-          lastRead &&
-          lastRead.offset === undefined &&
-          lastRead.limit === undefined
         const contentUnchanged =
-          isFullRead && originalFileContents === lastRead.content
+          fileStateHasFullContent(lastRead) &&
+          originalFileContents === lastRead.content
         if (!contentUnchanged) {
           throw new Error(FILE_UNEXPECTEDLY_MODIFIED_ERROR)
         }
@@ -491,6 +518,7 @@ export const FileEditTool = buildTool({
       offset: undefined,
       limit: undefined,
     })
+    noteFileWrite({ agentId, readFileState }, absoluteFilePath)
 
     // 7. Log events
     if (absoluteFilePath.endsWith(`${sep}AXIOMATE.md`)) {

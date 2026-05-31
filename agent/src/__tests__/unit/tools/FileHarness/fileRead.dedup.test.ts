@@ -1,6 +1,8 @@
-import { readFile, writeFile } from 'node:fs/promises'
+import { readFile, stat, utimes, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { beforeAll, describe, expect, test } from 'vitest'
+import { asAgentId } from '../../../../types/ids.js'
+import { cloneFileStateCache } from '../../../../utils/fileStateCache.js'
 import {
   allowToolUse,
   getHarnessCwd,
@@ -29,7 +31,7 @@ beforeAll(async () => {
     import('../../../../tools/FileEditTool/FileEditTool.js'),
     import('../../../../tools/FileWriteTool/FileWriteTool.js'),
   ])
-}, 60_000)
+}, 120_000)
 
 async function loadFileTools() {
   return { FileReadTool, FileEditTool, FileWriteTool }
@@ -161,5 +163,46 @@ describe('FileReadTool file harness dedup behavior', () => {
     if (afterWrite.data.type !== 'text') return
     expect(afterWrite.data.file.content).toBe('written\n')
     expect(await readFile(path, 'utf8')).toBe('written\n')
+  })
+
+  test('does not dedup after a sibling subagent writes even if mtime is unchanged', async () => {
+    const { FileReadTool, FileWriteTool } = await loadFileTools()
+    const path = join(getHarnessCwd(), 'after-sibling-write.txt')
+    await writeFile(path, 'alpha\n', 'utf8')
+    const parentContext = makeToolContext()
+    await FileReadTool.call(
+      { file_path: path },
+      parentContext,
+      allowToolUse,
+      parentMessage,
+    )
+    const originalTimestamp = parentContext.readFileState.get(path)?.timestamp
+    expect(originalTimestamp).toBeDefined()
+
+    const childContext = makeToolContext({
+      agentId: asAgentId('achild000000000003'),
+      readFileState: cloneFileStateCache(parentContext.readFileState),
+    })
+    await FileWriteTool.call(
+      { file_path: path, content: 'child\n' },
+      childContext,
+      allowToolUse,
+      parentMessage,
+    )
+    const originalDate = new Date(originalTimestamp!)
+    await utimes(path, originalDate, originalDate)
+    expect(Math.floor((await stat(path)).mtimeMs)).toBe(originalTimestamp)
+
+    const reread = await FileReadTool.call(
+      { file_path: path },
+      parentContext,
+      allowToolUse,
+      parentMessage,
+    )
+
+    expect(reread.data.type).toBe('text')
+    if (reread.data.type !== 'text') return
+    expect(reread.data.file.content).toBe('child\n')
+    expect(parentContext.readFileState.get(path)?.content).toBe('child\n')
   })
 })

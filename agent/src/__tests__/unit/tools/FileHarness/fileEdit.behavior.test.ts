@@ -1,7 +1,12 @@
 import { readFile, stat, utimes, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { beforeAll, describe, expect, test } from 'vitest'
-import { createFileStateCacheWithSizeLimit } from '../../../../utils/fileStateCache.js'
+import { FILE_UNEXPECTEDLY_MODIFIED_ERROR } from '../../../../tools/FileEditTool/constants.js'
+import { asAgentId } from '../../../../types/ids.js'
+import {
+  cloneFileStateCache,
+  createFileStateCacheWithSizeLimit,
+} from '../../../../utils/fileStateCache.js'
 import {
   allowToolUse,
   getHarnessCwd,
@@ -26,7 +31,7 @@ beforeAll(async () => {
     import('../../../../tools/FileReadTool/FileReadTool.js'),
     import('../../../../tools/FileEditTool/FileEditTool.js'),
   ])
-}, 60_000)
+}, 120_000)
 
 async function loadFileTools() {
   return { FileReadTool, FileEditTool }
@@ -61,7 +66,7 @@ describe('FileEditTool file harness behavior', () => {
     expect(result.message).toContain('File has not been read yet')
   })
 
-  test('rejects manually marked partial-view read state before edit', async () => {
+  test('allows manually marked partial-view read state before precise edit when file is unchanged', async () => {
     const { FileEditTool } = await loadFileTools()
     const path = join(getHarnessCwd(), 'partial.txt')
     await writeFile(path, 'alpha\nbeta\n', 'utf8')
@@ -80,15 +85,12 @@ describe('FileEditTool file harness behavior', () => {
       makeToolContext({ readFileState }),
     )
 
-    expect(result.result).toBe(false)
-    if (result.result) return
-    expect(result.errorCode).toBe(6)
-    expect(result.message).toContain('File has not been read yet')
+    expect(result.result).toBe(true)
   })
 
-  test('range Read currently seeds readFileState without isPartialView', async () => {
+  test('allows editing after a range Read because Edit applies a precise replacement to current disk content', async () => {
     const { FileReadTool, FileEditTool } = await loadFileTools()
-    const path = join(getHarnessCwd(), 'range-current.txt')
+    const path = join(getHarnessCwd(), 'range-edit.txt')
     await writeFile(path, 'alpha\nbeta\ngamma\n', 'utf8')
     const context = makeToolContext()
 
@@ -104,8 +106,111 @@ describe('FileEditTool file harness behavior', () => {
       context,
     )
 
-    expect(context.readFileState.get(path)?.isPartialView).toBeUndefined()
+    expect(context.readFileState.get(path)?.isPartialView).toBe(true)
     expect(result.result).toBe(true)
+  })
+
+  test('call allows editing after a range Read and updates readFileState to full post-edit content', async () => {
+    const { FileReadTool, FileEditTool } = await loadFileTools()
+    const path = join(getHarnessCwd(), 'range-edit-call.txt')
+    await writeFile(path, 'alpha\nbeta\ngamma\n', 'utf8')
+    const context = makeToolContext()
+
+    await FileReadTool.call(
+      { file_path: path, offset: 2, limit: 1 },
+      context,
+      allowToolUse,
+      parentMessage,
+    )
+
+    await FileEditTool.call(
+      { file_path: path, old_string: 'beta', new_string: 'BETA' },
+      context,
+      allowToolUse,
+      parentMessage,
+    )
+
+    expect(await readFile(path, 'utf8')).toBe('alpha\nBETA\ngamma\n')
+    expect(context.readFileState.get(path)?.content).toBe(
+      'alpha\nBETA\ngamma\n',
+    )
+    expect(context.readFileState.get(path)?.offset).toBeUndefined()
+  })
+
+  test('rejects editing after a range Read when the file mtime changed', async () => {
+    const { FileReadTool, FileEditTool } = await loadFileTools()
+    const path = join(getHarnessCwd(), 'range-edit-stale.txt')
+    await writeFile(path, 'alpha\nbeta\ngamma\n', 'utf8')
+    const context = makeToolContext()
+
+    await FileReadTool.call(
+      { file_path: path, offset: 2, limit: 1 },
+      context,
+      allowToolUse,
+      parentMessage,
+    )
+    await writeFile(path, 'alpha\nchanged\ngamma\n', 'utf8')
+    const future = new Date(Date.now() + 10_000)
+    await utimes(path, future, future)
+
+    const result = await FileEditTool.validateInput!(
+      { file_path: path, old_string: 'changed', new_string: 'CHANGED' },
+      context,
+    )
+    expect(result.result).toBe(false)
+    if (!result.result) {
+      expect(result.errorCode).toBe(7)
+      expect(result.message).toContain('modified since read')
+    }
+
+    await expect(
+      FileEditTool.call(
+        { file_path: path, old_string: 'changed', new_string: 'CHANGED' },
+        context,
+        allowToolUse,
+        parentMessage,
+      ),
+    ).rejects.toThrow(FILE_UNEXPECTEDLY_MODIFIED_ERROR)
+    expect(await readFile(path, 'utf8')).toBe('alpha\nchanged\ngamma\n')
+  })
+
+  test('allows partial-read edit after a sibling write that happened before the partial Read', async () => {
+    const { FileReadTool, FileEditTool } = await loadFileTools()
+    const path = join(getHarnessCwd(), 'sibling-before-partial.txt')
+    await writeFile(path, 'alpha\nbeta\n', 'utf8')
+    const seedContext = await readIntoContext(path)
+    const childContext = makeToolContext({
+      agentId: asAgentId('achild000000000004'),
+      readFileState: cloneFileStateCache(seedContext.readFileState),
+    })
+    await FileEditTool.call(
+      { file_path: path, old_string: 'beta', new_string: 'child' },
+      childContext,
+      allowToolUse,
+      parentMessage,
+    )
+
+    const parentContext = makeToolContext()
+    await FileReadTool.call(
+      { file_path: path, offset: 2, limit: 1 },
+      parentContext,
+      allowToolUse,
+      parentMessage,
+    )
+
+    const validation = await FileEditTool.validateInput!(
+      { file_path: path, old_string: 'child', new_string: 'CHILD' },
+      parentContext,
+    )
+    expect(validation.result).toBe(true)
+
+    await FileEditTool.call(
+      { file_path: path, old_string: 'child', new_string: 'CHILD' },
+      parentContext,
+      allowToolUse,
+      parentMessage,
+    )
+    expect(await readFile(path, 'utf8')).toBe('alpha\nCHILD\n')
   })
 
   test('edits a fully read file and updates readFileState', async () => {
@@ -153,7 +258,7 @@ describe('FileEditTool file harness behavior', () => {
     expect(raw.toString('utf8').replaceAll('\r\n', '')).not.toContain('\n')
   })
 
-  test('rejects mtime-only drift when readFileState came from Read', async () => {
+  test('allows mtime-only drift when readFileState came from full Read', async () => {
     const { FileEditTool } = await loadFileTools()
     const path = join(getHarnessCwd(), 'mtime-only.txt')
     await writeFile(path, 'alpha\nbeta\n', 'utf8')
@@ -166,10 +271,70 @@ describe('FileEditTool file harness behavior', () => {
       context,
     )
 
-    expect(result.result).toBe(false)
-    if (result.result) return
-    expect(result.errorCode).toBe(7)
-    expect(result.message).toContain('modified since read')
+    expect(context.readFileState.get(path)?.offset).toBe(1)
+    expect(result.result).toBe(true)
+  })
+
+  test('call allows mtime-only drift when readFileState came from full Read', async () => {
+    const { FileEditTool } = await loadFileTools()
+    const path = join(getHarnessCwd(), 'mtime-only-call.txt')
+    await writeFile(path, 'alpha\nbeta\n', 'utf8')
+    const context = await readIntoContext(path)
+    const future = new Date(Date.now() + 10_000)
+    await utimes(path, future, future)
+
+    await FileEditTool.call(
+      { file_path: path, old_string: 'beta', new_string: 'BETA' },
+      context,
+      allowToolUse,
+      parentMessage,
+    )
+
+    expect(context.readFileState.get(path)?.offset).toBeUndefined()
+    expect(await readFile(path, 'utf8')).toBe('alpha\nBETA\n')
+  })
+
+  test('rejects editing after a sibling subagent writes even if mtime is unchanged', async () => {
+    const { FileEditTool } = await loadFileTools()
+    const path = join(getHarnessCwd(), 'sibling-edit.txt')
+    await writeFile(path, 'alpha\nbeta\n', 'utf8')
+    const parentContext = await readIntoContext(path)
+    const originalTimestamp = parentContext.readFileState.get(path)?.timestamp
+    expect(originalTimestamp).toBeDefined()
+
+    const childContext = makeToolContext({
+      agentId: asAgentId('achild000000000001'),
+      readFileState: cloneFileStateCache(parentContext.readFileState),
+    })
+    await FileEditTool.call(
+      { file_path: path, old_string: 'beta', new_string: 'child' },
+      childContext,
+      allowToolUse,
+      parentMessage,
+    )
+    const originalDate = new Date(originalTimestamp!)
+    await utimes(path, originalDate, originalDate)
+    expect(Math.floor((await stat(path)).mtimeMs)).toBe(originalTimestamp)
+
+    const validation = await FileEditTool.validateInput!(
+      { file_path: path, old_string: 'alpha', new_string: 'ALPHA' },
+      parentContext,
+    )
+    expect(validation.result).toBe(false)
+    if (!validation.result) {
+      expect(validation.errorCode).toBe(7)
+      expect(validation.message).toContain('modified since read')
+    }
+
+    await expect(
+      FileEditTool.call(
+        { file_path: path, old_string: 'alpha', new_string: 'ALPHA' },
+        parentContext,
+        allowToolUse,
+        parentMessage,
+      ),
+    ).rejects.toThrow(FILE_UNEXPECTEDLY_MODIFIED_ERROR)
+    expect(await readFile(path, 'utf8')).toBe('alpha\nchild\n')
   })
 
   test('allows mtime-only drift after edit-updated full-file state', async () => {

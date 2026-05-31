@@ -12,6 +12,18 @@ export type FileState = {
   // Edit/Write must require an explicit Read first. `content` here holds the
   // RAW disk bytes (for getChangedFiles diffing), not what the model saw.
   isPartialView?: boolean
+  // Internal process-local ordering stamp used by fileStateRegistry. This is
+  // intentionally carried by cloneFileStateCache so subagents inherit the
+  // parent's known-read ordering for stale sibling-write checks.
+  registrySequence?: number
+}
+
+export function fileStateHasFullContent(fileState: FileState): boolean {
+  return (
+    !fileState.isPartialView &&
+    fileState.limit === undefined &&
+    (fileState.offset === undefined || fileState.offset === 1)
+  )
 }
 
 // Default max entries for read file state caches
@@ -109,7 +121,13 @@ export function createFileStateCacheWithSizeLimit(
 export function cacheToObject(
   cache: FileStateCache,
 ): Record<string, FileState> {
-  return Object.fromEntries(cache.entries())
+  return Object.fromEntries(
+    Array.from(cache.entries(), ([filePath, fileState]) => {
+      const { registrySequence: _registrySequence, ...persistableState } =
+        fileState
+      return [filePath, persistableState]
+    }),
+  )
 }
 
 // Helper function to get all keys from cache (used by several components)

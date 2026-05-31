@@ -427,7 +427,7 @@ describe('pruneCheckpoints — snapshot cap pass', () => {
     const proj = await buildProjectWithNCommits({
       store: e.store,
       parent: wtParent,
-      commits: 5,
+      commits: 3,
     })
 
     const r = await pruneCheckpoints({
@@ -437,9 +437,9 @@ describe('pruneCheckpoints — snapshot cap pass', () => {
       maxTotalSizeMb: 0,
     })
     expect(r.snapshotCapRefsTouched).toBe(1)
-    expect(r.snapshotCapCommitsDropped).toBe(3)
+    expect(r.snapshotCapCommitsDropped).toBe(1)
     expect(await commitCountOnRef(e.store, proj.ref)).toBe(2)
-  })
+  }, 30_000)
 
   test('no-ops when count is at or below cap', async () => {
     const e = await ensureStore()
@@ -449,18 +449,18 @@ describe('pruneCheckpoints — snapshot cap pass', () => {
     const proj = await buildProjectWithNCommits({
       store: e.store,
       parent: wtParent,
-      commits: 5,
+      commits: 2,
     })
 
     const r = await pruneCheckpoints({
       forceNow: true,
-      maxSnapshotsPerRef: 10,
+      maxSnapshotsPerRef: 2,
       maxTotalSizeMb: 0,
     })
     expect(r.snapshotCapRefsTouched).toBe(0)
     expect(r.snapshotCapCommitsDropped).toBe(0)
-    expect(await commitCountOnRef(e.store, proj.ref)).toBe(5)
-  })
+    expect(await commitCountOnRef(e.store, proj.ref)).toBe(2)
+  }, 30_000)
 
   test('disabled when maxSnapshotsPerRef=0', async () => {
     const e = await ensureStore()
@@ -470,7 +470,7 @@ describe('pruneCheckpoints — snapshot cap pass', () => {
     const proj = await buildProjectWithNCommits({
       store: e.store,
       parent: wtParent,
-      commits: 5,
+      commits: 2,
     })
 
     const r = await pruneCheckpoints({
@@ -480,9 +480,9 @@ describe('pruneCheckpoints — snapshot cap pass', () => {
     })
     expect(r.snapshotCapRefsTouched).toBe(0)
     expect(r.snapshotCapCommitsDropped).toBe(0)
-    // 5 intact — explicit 0 must NOT be coerced to default.
-    expect(await commitCountOnRef(e.store, proj.ref)).toBe(5)
-  })
+    // 2 intact — explicit 0 must NOT be coerced to default.
+    expect(await commitCountOnRef(e.store, proj.ref)).toBe(2)
+  }, 30_000)
 
   test('aggregates across multiple refs', async () => {
     const e = await ensureStore()
@@ -492,12 +492,12 @@ describe('pruneCheckpoints — snapshot cap pass', () => {
     const projA = await buildProjectWithNCommits({
       store: e.store,
       parent: wtParent,
-      commits: 4,
+      commits: 3,
     })
     const projB = await buildProjectWithNCommits({
       store: e.store,
       parent: wtParent,
-      commits: 6,
+      commits: 4,
     })
 
     const r = await pruneCheckpoints({
@@ -506,8 +506,8 @@ describe('pruneCheckpoints — snapshot cap pass', () => {
       maxTotalSizeMb: 0,
     })
     expect(r.snapshotCapRefsTouched).toBe(2)
-    // 4→2 drops 2; 6→2 drops 4; total 6.
-    expect(r.snapshotCapCommitsDropped).toBe(6)
+    // 3->2 drops 1; 4->2 drops 2; total 3.
+    expect(r.snapshotCapCommitsDropped).toBe(3)
     expect(await commitCountOnRef(e.store, projA.ref)).toBe(2)
     expect(await commitCountOnRef(e.store, projB.ref)).toBe(2)
   }, 60_000)

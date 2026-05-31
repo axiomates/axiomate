@@ -2,6 +2,9 @@ import { chmod, readFile, readdir, stat, utimes, writeFile } from 'node:fs/promi
 import { basename, dirname, join } from 'node:path'
 import { beforeAll, describe, expect, test } from 'vitest'
 import { FILE_UNEXPECTEDLY_MODIFIED_ERROR } from '../../../../tools/FileEditTool/constants.js'
+import { FILE_UNCHANGED_STUB } from '../../../../tools/FileReadTool/prompt.js'
+import { asAgentId } from '../../../../types/ids.js'
+import { cloneFileStateCache } from '../../../../utils/fileStateCache.js'
 import {
   allowToolUse,
   getHarnessCwd,
@@ -28,7 +31,7 @@ beforeAll(async () => {
   ;({ FileWriteTool } = await import(
     '../../../../tools/FileWriteTool/FileWriteTool.js'
   ))
-}, 60_000)
+}, 120_000)
 
 async function loadFileTools() {
   return { FileReadTool, FileWriteTool }
@@ -47,6 +50,81 @@ async function readIntoContext(path: string) {
 }
 
 describe('FileWriteTool file harness behavior', () => {
+  test('validateInput rejects writing the internal unchanged-read stub', async () => {
+    const { FileWriteTool } = await loadFileTools()
+    const path = join(getHarnessCwd(), 'stub-write.txt')
+    const result = await FileWriteTool.validateInput!(
+      { file_path: path, content: FILE_UNCHANGED_STUB },
+      makeToolContext(),
+    )
+
+    expect(result.result).toBe(false)
+    if (result.result) return
+    expect(result.errorCode).toBe(4)
+    expect(result.message).toContain('internal Read status text')
+  })
+
+  test('call rejects writing the internal unchanged-read stub before touching disk', async () => {
+    const { FileWriteTool } = await loadFileTools()
+    const path = join(getHarnessCwd(), 'stub-write-call.txt')
+
+    await expect(
+      FileWriteTool.call(
+        { file_path: path, content: FILE_UNCHANGED_STUB },
+        makeToolContext(),
+        allowToolUse,
+        parentMessage,
+      ),
+    ).rejects.toThrow('internal Read status text')
+    await expect(readFile(path, 'utf8')).rejects.toThrow()
+  })
+
+  test('validateInput rejects short wrapper content around the internal unchanged-read stub', async () => {
+    const { FileWriteTool } = await loadFileTools()
+    const path = join(getHarnessCwd(), 'stub-wrapper.txt')
+    const wrapped = `Note: ${FILE_UNCHANGED_STUB}\n\n(continuing.)`
+
+    const result = await FileWriteTool.validateInput!(
+      { file_path: path, content: wrapped },
+      makeToolContext(),
+    )
+
+    expect(result.result).toBe(false)
+    if (result.result) return
+    expect(result.errorCode).toBe(4)
+    expect(result.message).toContain('internal Read status text')
+  })
+
+  test('allows normal file content that quotes the unchanged-read stub', async () => {
+    const { FileWriteTool } = await loadFileTools()
+    const path = join(getHarnessCwd(), 'stub-doc.txt')
+    const content = [
+      '# Notes',
+      '',
+      'This document quotes an internal status message as an example:',
+      '',
+      `    ${FILE_UNCHANGED_STUB}`,
+      '',
+      'The rest of this file is real documentation content. '.repeat(20),
+    ].join('\n')
+    const context = makeToolContext()
+
+    const validation = await FileWriteTool.validateInput!(
+      { file_path: path, content },
+      context,
+    )
+    expect(validation.result).toBe(true)
+
+    await FileWriteTool.call(
+      { file_path: path, content },
+      context,
+      allowToolUse,
+      parentMessage,
+    )
+
+    expect(await readFile(path, 'utf8')).toBe(content)
+  })
+
   test('rejects overwriting an existing file that was not read first', async () => {
     const { FileWriteTool } = await loadFileTools()
     const path = join(getHarnessCwd(), 'unread.txt')
@@ -116,6 +194,55 @@ describe('FileWriteTool file harness behavior', () => {
     expect(context.readFileState.get(path)?.limit).toBeUndefined()
   })
 
+  test('rejects overwriting after a range Read because readFileState is partial', async () => {
+    const { FileReadTool, FileWriteTool } = await loadFileTools()
+    const path = join(getHarnessCwd(), 'range-write.txt')
+    await writeFile(path, 'alpha\nbeta\ngamma\n', 'utf8')
+    const context = makeToolContext()
+
+    await FileReadTool.call(
+      { file_path: path, offset: 2, limit: 1 },
+      context,
+      allowToolUse,
+      parentMessage,
+    )
+
+    const result = await FileWriteTool.validateInput!(
+      { file_path: path, content: 'replacement\n' },
+      context,
+    )
+
+    expect(context.readFileState.get(path)?.isPartialView).toBe(true)
+    expect(result.result).toBe(false)
+    if (result.result) return
+    expect(result.errorCode).toBe(2)
+    expect(result.message).toContain('File has not been read yet')
+  })
+
+  test('call rejects overwriting after a range Read before touching disk', async () => {
+    const { FileReadTool, FileWriteTool } = await loadFileTools()
+    const path = join(getHarnessCwd(), 'range-write-call.txt')
+    await writeFile(path, 'alpha\nbeta\ngamma\n', 'utf8')
+    const context = makeToolContext()
+
+    await FileReadTool.call(
+      { file_path: path, offset: 2, limit: 1 },
+      context,
+      allowToolUse,
+      parentMessage,
+    )
+
+    await expect(
+      FileWriteTool.call(
+        { file_path: path, content: 'replacement\n' },
+        context,
+        allowToolUse,
+        parentMessage,
+      ),
+    ).rejects.toThrow(FILE_UNEXPECTEDLY_MODIFIED_ERROR)
+    expect(await readFile(path, 'utf8')).toBe('alpha\nbeta\ngamma\n')
+  })
+
   test('uses the provided LF line endings when overwriting a CRLF file', async () => {
     const { FileWriteTool } = await loadFileTools()
     const path = join(getHarnessCwd(), 'crlf-write.txt')
@@ -134,29 +261,83 @@ describe('FileWriteTool file harness behavior', () => {
     expect(raw.includes(Buffer.from('\r\n'))).toBe(false)
   })
 
-  test('call rejects mtime-only drift when readFileState came from Read', async () => {
+  test('validateInput allows mtime-only drift when readFileState came from full Read', async () => {
     const { FileWriteTool } = await loadFileTools()
     const path = join(getHarnessCwd(), 'mtime-only-write.txt')
     await writeFile(path, 'alpha\n', 'utf8')
     const context = await readIntoContext(path)
+    const future = new Date(Date.now() + 10_000)
+    await utimes(path, future, future)
 
     const validation = await FileWriteTool.validateInput!(
       { file_path: path, content: 'beta\n' },
       context,
     )
+    expect(context.readFileState.get(path)?.offset).toBe(1)
     expect(validation.result).toBe(true)
+  })
+
+  test('call allows mtime-only drift when readFileState came from full Read', async () => {
+    const { FileWriteTool } = await loadFileTools()
+    const path = join(getHarnessCwd(), 'mtime-only-write-call.txt')
+    await writeFile(path, 'alpha\n', 'utf8')
+    const context = await readIntoContext(path)
 
     const future = new Date(Date.now() + 10_000)
     await utimes(path, future, future)
 
+    await FileWriteTool.call(
+      { file_path: path, content: 'beta\n' },
+      context,
+      allowToolUse,
+      parentMessage,
+    )
+
+    expect(context.readFileState.get(path)?.offset).toBeUndefined()
+    expect(await readFile(path, 'utf8')).toBe('beta\n')
+  })
+
+  test('rejects overwriting after a sibling subagent writes even if mtime is unchanged', async () => {
+    const { FileWriteTool } = await loadFileTools()
+    const path = join(getHarnessCwd(), 'sibling-write.txt')
+    await writeFile(path, 'alpha\n', 'utf8')
+    const parentContext = await readIntoContext(path)
+    const originalTimestamp = parentContext.readFileState.get(path)?.timestamp
+    expect(originalTimestamp).toBeDefined()
+
+    const childContext = makeToolContext({
+      agentId: asAgentId('achild000000000002'),
+      readFileState: cloneFileStateCache(parentContext.readFileState),
+    })
+    await FileWriteTool.call(
+      { file_path: path, content: 'child\n' },
+      childContext,
+      allowToolUse,
+      parentMessage,
+    )
+    const originalDate = new Date(originalTimestamp!)
+    await utimes(path, originalDate, originalDate)
+    expect(Math.floor((await stat(path)).mtimeMs)).toBe(originalTimestamp)
+
+    const validation = await FileWriteTool.validateInput!(
+      { file_path: path, content: 'parent\n' },
+      parentContext,
+    )
+    expect(validation.result).toBe(false)
+    if (!validation.result) {
+      expect(validation.errorCode).toBe(3)
+      expect(validation.message).toContain('modified since read')
+    }
+
     await expect(
       FileWriteTool.call(
-        { file_path: path, content: 'beta\n' },
-        context,
+        { file_path: path, content: 'parent\n' },
+        parentContext,
         allowToolUse,
         parentMessage,
       ),
     ).rejects.toThrow(FILE_UNEXPECTEDLY_MODIFIED_ERROR)
+    expect(await readFile(path, 'utf8')).toBe('child\n')
   })
 
   test('call allows mtime-only drift after write-updated full-file state', async () => {

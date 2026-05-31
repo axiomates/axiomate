@@ -17,6 +17,11 @@ import { isEnvTruthy } from '../../utils/envUtils.js'
 import { isENOENT } from '../../utils/errors.js'
 import { getFileModificationTime, writeTextContent } from '../../utils/file.js'
 import { logFileOperation } from '../../utils/fileOperationAnalytics.js'
+import { fileStateHasFullContent } from '../../utils/fileStateCache.js'
+import {
+  noteFileWrite,
+  wasFileModifiedAfterReadByAnotherContext,
+} from '../../utils/fileStateRegistry.js'
 import { readFileSyncWithMetadata } from '../../utils/fileRead.js'
 import { getFsImplementation } from '../../utils/fsOperations.js'
 import type { ToolUseDiff } from '../../utils/gitDiff.js'
@@ -30,6 +35,7 @@ import {
 import type { PermissionDecision } from '../../utils/permissions/PermissionResult.js'
 import { matchWildcardPattern } from '../../utils/permissions/shellRuleMatching.js'
 import { FILE_UNEXPECTEDLY_MODIFIED_ERROR } from '../FileEditTool/constants.js'
+import { FILE_UNCHANGED_STUB } from '../FileReadTool/prompt.js'
 import { gitDiffSchema, hunkSchema } from '../FileEditTool/types.js'
 import { FILE_WRITE_TOOL_NAME, getWriteToolDescription } from './prompt.js'
 import {
@@ -79,6 +85,16 @@ type OutputSchema = ReturnType<typeof outputSchema>
 
 export type Output = z.infer<OutputSchema>
 export type FileWriteToolInput = InputSchema
+
+function isInternalFileStatusText(content: string): boolean {
+  const stripped = content.trim()
+  if (!stripped) return false
+  if (stripped === FILE_UNCHANGED_STUB) return true
+  return (
+    stripped.includes(FILE_UNCHANGED_STUB) &&
+    stripped.length <= 2 * FILE_UNCHANGED_STUB.length
+  )
+}
 
 export const FileWriteTool = buildTool({
   name: FILE_WRITE_TOOL_NAME,
@@ -136,8 +152,17 @@ export const FileWriteTool = buildTool({
     // shown — phantom. Under-count: tool_use already indexes file_path.
     return ''
   },
-  async validateInput({ file_path }, toolUseContext: ToolUseContext) {
+  async validateInput({ file_path, content }, toolUseContext: ToolUseContext) {
     const fullFilePath = expandPath(file_path)
+
+    if (isInternalFileStatusText(content)) {
+      return {
+        result: false,
+        message:
+          'Refusing to write internal Read status text as file content. Re-read the file or reconstruct the intended file contents before writing.',
+        errorCode: 4,
+      }
+    }
 
     // Check if path should be ignored based on permission settings
     const appState = toolUseContext.getAppState()
@@ -185,11 +210,7 @@ export const FileWriteTool = buildTool({
       }
     }
 
-    // Reuse mtime from the stat above — avoids a redundant statSync via
-    // getFileModificationTime. The readTimestamp guard above ensures this
-    // block is always reached when the file exists.
-    const lastWriteTime = Math.floor(fileMtimeMs)
-    if (lastWriteTime > readTimestamp.timestamp) {
+    if (wasFileModifiedAfterReadByAnotherContext(toolUseContext, fullFilePath)) {
       return {
         result: false,
         message:
@@ -198,14 +219,39 @@ export const FileWriteTool = buildTool({
       }
     }
 
+    // Reuse mtime from the stat above — avoids a redundant statSync via
+    // getFileModificationTime. The readTimestamp guard above ensures this
+    // block is always reached when the file exists.
+    const lastWriteTime = Math.floor(fileMtimeMs)
+    if (lastWriteTime > readTimestamp.timestamp) {
+      const meta = readFileSyncWithMetadata(fullFilePath)
+      if (
+        !fileStateHasFullContent(readTimestamp) ||
+        meta.content !== readTimestamp.content
+      ) {
+        return {
+          result: false,
+          message:
+            'File has been modified since read, either by the user or by a linter. Read it again before attempting to write it.',
+          errorCode: 3,
+        }
+      }
+    }
+
     return { result: true }
   },
   async call(
     { file_path, content },
-    { readFileState, updateFileHistoryState, dynamicSkillDirTriggers },
+    { readFileState, agentId, updateFileHistoryState, dynamicSkillDirTriggers },
     _,
     parentMessage,
   ) {
+    if (isInternalFileStatusText(content)) {
+      throw new Error(
+        'Refusing to write internal Read status text as file content. Re-read the file or reconstruct the intended file contents before writing.',
+      )
+    }
+
     const fullFilePath = expandPath(file_path)
     const dir = dirname(fullFilePath)
 
@@ -249,16 +295,29 @@ export const FileWriteTool = buildTool({
     if (meta !== null) {
       const lastWriteTime = getFileModificationTime(fullFilePath)
       const lastRead = readFileState.get(fullFilePath)
-      if (!lastRead || lastWriteTime > lastRead.timestamp) {
+      if (!lastRead || lastRead.isPartialView) {
+        throw new Error(FILE_UNEXPECTEDLY_MODIFIED_ERROR)
+      }
+      if (
+        wasFileModifiedAfterReadByAnotherContext(
+          {
+            agentId,
+            readFileState,
+          },
+          fullFilePath,
+        )
+      ) {
+        throw new Error(FILE_UNEXPECTEDLY_MODIFIED_ERROR)
+      }
+      if (lastWriteTime > lastRead.timestamp) {
         // Timestamp indicates modification, but on Windows timestamps can change
         // without content changes (cloud sync, antivirus, etc.). For full reads,
         // compare content as a fallback to avoid false positives.
-        const isFullRead =
-          lastRead &&
-          lastRead.offset === undefined &&
-          lastRead.limit === undefined
         // meta.content is CRLF-normalized — matches readFileState's normalized form.
-        if (!isFullRead || meta.content !== lastRead.content) {
+        if (
+          !fileStateHasFullContent(lastRead) ||
+          meta.content !== lastRead.content
+        ) {
           throw new Error(FILE_UNEXPECTEDLY_MODIFIED_ERROR)
         }
       }
@@ -302,6 +361,7 @@ export const FileWriteTool = buildTool({
       offset: undefined,
       limit: undefined,
     })
+    noteFileWrite({ agentId, readFileState }, fullFilePath)
 
     // Log when writing to AXIOMATE.md
     if (fullFilePath.endsWith(`${sep}AXIOMATE.md`)) {
