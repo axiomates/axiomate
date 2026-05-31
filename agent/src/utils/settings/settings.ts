@@ -482,13 +482,16 @@ export function updateSettingsForSource(
       },
     )
 
-    // Mark this as an internal write before writing the file
-    markInternalWrite(filePath)
-
     writeFileSyncAndFlush_DEPRECATED(
       filePath,
       jsonStringify(updatedSettings, null, 2) + '\n',
+      {
+        encoding: 'utf-8',
+        allowDirectFallbackOnRenameError: true,
+      },
     )
+
+    markInternalWrite(filePath)
 
     // Invalidate the session cache since settings have been updated
     resetSettingsCache()

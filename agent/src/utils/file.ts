@@ -14,7 +14,12 @@ import {
 } from 'path'
 import { getCwd } from '../utils/cwd.js'
 import { logForDebugging } from './debug.js'
-import { errorMessage, isENOENT, isFsInaccessible } from './errors.js'
+import {
+  errorMessage,
+  getErrnoCode,
+  isENOENT,
+  isFsInaccessible,
+} from './errors.js'
 import {
   detectEncodingForResolvedPath,
   detectLineEndingsForString,
@@ -32,6 +37,18 @@ export type File = {
   filename: string
   content: string
 }
+
+type WriteFileSyncAndFlushOptions = {
+  encoding: BufferEncoding
+  mode?: number
+  allowDirectFallbackOnRenameError?: boolean
+}
+
+const RENAME_DIRECT_FALLBACK_ERRNO_CODES = new Set([
+  'EACCES',
+  'EBUSY',
+  'EPERM',
+])
 
 /**
  * Check if a path exists asynchronously.
@@ -393,7 +410,7 @@ export function readFileSyncCached(filePath: string): string {
 export function writeFileSyncAndFlush_DEPRECATED(
   filePath: string,
   content: string,
-  options: { encoding: BufferEncoding; mode?: number } = { encoding: 'utf-8' },
+  options: WriteFileSyncAndFlushOptions = { encoding: 'utf-8' },
 ): void {
   const fs = getFsImplementation()
 
@@ -462,11 +479,6 @@ export function writeFileSyncAndFlush_DEPRECATED(
       logForDebugging(`Applied original permissions to temp file`)
     }
 
-    // Atomic rename (on POSIX systems, this is atomic)
-    // On Windows, this will overwrite the destination if it exists
-    logForDebugging(`Renaming ${tempPath} to ${targetPath}`)
-    fs.renameSync(tempPath, targetPath)
-    logForDebugging(`File ${targetPath} written atomically`)
   } catch (atomicError) {
     logForDebugging(`Failed to write file atomically: ${atomicError}`, {
       level: 'error',
@@ -486,6 +498,79 @@ export function writeFileSyncAndFlush_DEPRECATED(
       'helper',
       filePath,
       { cause: atomicError },
+    )
+  }
+
+  try {
+    // Atomic rename (on POSIX systems, this is atomic)
+    // On Windows, this will overwrite the destination if it exists
+    logForDebugging(`Renaming ${tempPath} to ${targetPath}`)
+    fs.renameSync(tempPath, targetPath)
+    logForDebugging(`File ${targetPath} written atomically`)
+  } catch (renameError) {
+    logForDebugging(`Failed to rename temp file atomically: ${renameError}`, {
+      level: 'error',
+    })
+
+    try {
+      logForDebugging(`Cleaning up temp file: ${tempPath}`)
+      fs.unlinkSync(tempPath)
+    } catch (cleanupError) {
+      logForDebugging(`Failed to clean up temp file: ${cleanupError}`)
+    }
+
+    const errno = getErrnoCode(renameError)
+    if (
+      options.allowDirectFallbackOnRenameError === true &&
+      errno !== undefined &&
+      RENAME_DIRECT_FALLBACK_ERRNO_CODES.has(errno)
+    ) {
+      logForDebugging(
+        `Falling back to non-atomic write for ${targetPath} after rename ${errno}`,
+      )
+      try {
+        const fallbackOptions: {
+          encoding: BufferEncoding
+          flush: boolean
+          mode?: number
+        } = {
+          encoding: options.encoding,
+          flush: true,
+        }
+        if (!targetExists && options.mode !== undefined) {
+          fallbackOptions.mode = options.mode
+        }
+
+        fsWriteFileSync(targetPath, content, fallbackOptions)
+        logForDebugging(
+          `File ${targetPath} written successfully with non-atomic fallback`,
+        )
+        return
+      } catch (fallbackError) {
+        logForDebugging(`Non-atomic write also failed: ${fallbackError}`)
+        const fallbackErrno = getErrnoCode(fallbackError)
+        throwFileHarnessFailure(
+          errorMessage(fallbackError),
+          'atomic_write_failed',
+          'helper',
+          filePath,
+          {
+            cause: new AggregateError(
+              [renameError, fallbackError],
+              'Atomic rename and direct fallback both failed',
+            ),
+            code: fallbackErrno ?? errno,
+          },
+        )
+      }
+    }
+
+    throwFileHarnessFailure(
+      errorMessage(renameError),
+      'atomic_write_failed',
+      'helper',
+      filePath,
+      { cause: renameError },
     )
   }
 }

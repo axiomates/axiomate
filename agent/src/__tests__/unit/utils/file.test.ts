@@ -1,4 +1,11 @@
-import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  readdir,
+  rm,
+  writeFile,
+} from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, dirname, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
@@ -106,5 +113,106 @@ describe('writeFileSyncAndFlush_DEPRECATED', () => {
     expect(
       entries.filter(name => name.startsWith(`${basename(path)}.tmp.`)),
     ).toEqual([])
+  })
+
+  test('falls back to direct write for opt-in rename lock failures', async () => {
+    const path = join(tempDir, 'settings.json')
+    await writeFile(path, '{"old":true}\n', 'utf8')
+    const renameError = Object.assign(new Error('simulated lock failure'), {
+      code: 'EPERM',
+    })
+
+    setFsImplementation({
+      ...NodeFsOperations,
+      renameSync: () => {
+        throw renameError
+      },
+    })
+
+    writeFileSyncAndFlush_DEPRECATED(path, '{"new":true}\n', {
+      encoding: 'utf8',
+      allowDirectFallbackOnRenameError: true,
+    })
+
+    expect(await readFile(path, 'utf8')).toBe('{"new":true}\n')
+
+    const entries = await readdir(dirname(path))
+    expect(
+      entries.filter(name => name.startsWith(`${basename(path)}.tmp.`)),
+    ).toEqual([])
+  })
+
+  test('does not fall back for opt-in non-lock rename failures', async () => {
+    const path = join(tempDir, 'settings.json')
+    await writeFile(path, '{"old":true}\n', 'utf8')
+    const renameError = Object.assign(new Error('simulated io failure'), {
+      code: 'EIO',
+    })
+
+    setFsImplementation({
+      ...NodeFsOperations,
+      renameSync: () => {
+        throw renameError
+      },
+    })
+
+    let thrown: unknown
+    try {
+      writeFileSyncAndFlush_DEPRECATED(path, '{"new":true}\n', {
+        encoding: 'utf8',
+        allowDirectFallbackOnRenameError: true,
+      })
+    } catch (error) {
+      thrown = error
+    }
+
+    expect(thrown).toBeInstanceOf(FileHarnessError)
+    expect((thrown as { code?: string }).code).toBe('EIO')
+    expect(await readFile(path, 'utf8')).toBe('{"old":true}\n')
+
+    const entries = await readdir(dirname(path))
+    expect(
+      entries.filter(name => name.startsWith(`${basename(path)}.tmp.`)),
+    ).toEqual([])
+  })
+
+  test('reports both rename and direct-write errors when opt-in fallback fails', async () => {
+    const path = join(tempDir, 'settings-dir')
+    await mkdir(path)
+    const renameError = Object.assign(new Error('simulated lock failure'), {
+      code: 'EPERM',
+    })
+
+    setFsImplementation({
+      ...NodeFsOperations,
+      renameSync: () => {
+        throw renameError
+      },
+    })
+
+    let thrown: unknown
+    try {
+      writeFileSyncAndFlush_DEPRECATED(path, '{"new":true}\n', {
+        encoding: 'utf8',
+        allowDirectFallbackOnRenameError: true,
+      })
+    } catch (error) {
+      thrown = error
+    }
+
+    expect(thrown).toBeInstanceOf(FileHarnessError)
+    expect((thrown as { code?: string }).code).toBeDefined()
+    expect((thrown as { cause?: unknown }).cause).toBeInstanceOf(
+      AggregateError,
+    )
+    expect(
+      ((thrown as { cause: AggregateError }).cause.errors as unknown[]).includes(
+        renameError,
+      ),
+    ).toBe(true)
+    expect(
+      ((thrown as { cause: AggregateError }).cause.errors as unknown[])[1],
+    ).toBeInstanceOf(Error)
+    await expect(readFile(path, 'utf8')).rejects.toThrow()
   })
 })

@@ -1160,6 +1160,7 @@ function saveConfig<A extends object>(
     {
       encoding: 'utf-8',
       mode: 0o600,
+      allowDirectFallbackOnRenameError: true,
     },
   )
   if (file === getGlobalConfigFile()) {
@@ -1319,6 +1320,7 @@ function saveConfigWithLock<A extends object>(
       {
         encoding: 'utf-8',
         mode: 0o600,
+        allowDirectFallbackOnRenameError: true,
       },
     )
     if (file === getGlobalConfigFile()) {

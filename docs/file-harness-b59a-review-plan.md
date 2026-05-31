@@ -502,22 +502,28 @@ Missing tests:
 - Explicit non-reentrancy behavior is not tested. It may be better documented
   than tested, since testing deadlock is awkward.
 
-### B09: Atomic write fallback was removed
+### B09: Atomic write fallback was narrowed
 
 Old behavior at `b59a`:
 
 - `writeFileSyncAndFlush_DEPRECATED` tried temp-file atomic write first.
-- On atomic failure, it cleaned temp and fell back to direct non-atomic write.
+- On any atomic failure, it cleaned temp and fell back to direct non-atomic
+  write.
 
 New behavior:
 
-- Atomic failure cleans temp and throws `FileHarnessError` with reason
-  `atomic_write_failed`.
-- No direct-write fallback occurs.
+- Temp write, flush, chmod, and non-lock rename failures clean temp and throw
+  `FileHarnessError` with reason `atomic_write_failed`.
+- Structured file tools remain strict: they do not opt into direct fallback.
+- Config/settings writes explicitly opt into direct fallback, but only for
+  rename-stage lock-style errors (`EPERM`, `EACCES`, `EBUSY`) after the temp
+  file has already been written and flushed.
 
 Decision status:
 
-- Intended as a harness safety hardening.
+- Resolved on 2026-06-01: fallback is accepted as a constrained reliability
+  harness for application-owned config/settings, not as a global escape hatch
+  for user-file writes.
 
 Current tests:
 
@@ -526,10 +532,16 @@ Current tests:
   - new target is not created on rename failure
   - temp file cleanup
   - metadata/cause/code preservation
+  - opt-in fallback succeeds for rename lock failures
+  - opt-in fallback does not run for non-lock rename failures
+- `settingsWriteFallback.test.ts`
+  - `updateSettingsForSource` uses opt-in fallback on settings rename lock
+  - failed settings writes do not mark the write as internal
 
 Review result:
 
 - Keep behavior for structured file tools.
+- Keep constrained fallback for config/settings.
 
 Compatibility risk:
 
@@ -537,14 +549,11 @@ Compatibility risk:
   - `agent/src/utils/config.ts`
   - `agent/src/utils/settings/settings.ts`
   - indirect calls through `writeTextContent`
-- Config/settings writes that previously succeeded through fallback can now
-  fail hard.
-
-Required follow-up:
-
-- Audit non-file-tool callers and decide whether `atomic_write_failed` should
-  apply globally or whether config/settings need a different fallback/error
-  strategy.
+- Config/settings writes no longer fallback on temp write, flush, chmod, or
+  non-lock rename failures. This intentionally rejects the highest-risk
+  fallback cases while preserving the useful Windows/editor/AV/sync lock case.
+- Settings internal-write marks are now recorded only after a successful write,
+  so a failed save cannot briefly suppress a real external watcher event.
 
 ### B10: Failure taxonomy and metadata were added
 
@@ -929,7 +938,7 @@ Required caution:
 | ID | Area | Risk | Current conclusion | Action |
 | --- | --- | --- | --- | --- |
 | HR1 | `Write` canonicalization + transcript resume | Resumed `readFileState` used to risk raw tool input while disk contained canonical content | Fixed and tested | Keep no JSONL mutation; monitor focused resume tests |
-| HR2 | Atomic helper shared callers | Config/settings writes now fail instead of fallback | Needs decision | Audit non-file-tool callers |
+| HR2 | Atomic helper shared callers | Global strict atomic would break config/settings fallback semantics | Fixed and tested | Keep file tools strict; allow config/settings constrained rename-lock fallback |
 | HR3 | NotebookEdit mtime-only drift | False stale rejection unlike FileEdit/FileWrite | Needs decision | Add test and decide alignment |
 | HR4 | NotebookEdit stale throw behavior | Tool result error payload changed to thrown error | Needs decision | Decide consistency vs compatibility |
 | HR5 | Bash simulated sed stale/read-before-write | Internal shell edit can write without read guard | Needs decision | Decide if simulated sed is structured harness writer |
@@ -1035,16 +1044,15 @@ Important:
 
 ### Phase E: Decision review
 
-Status: HR1 resolved; 6 user/product decisions remain.
+Status: HR1 and HR2 resolved; 5 user/product decisions remain.
 
 Decisions to review before runtime changes:
 
-1. Should atomic fallback removal apply to config/settings writes?
-2. Should NotebookEdit use content fallback like FileEdit/FileWrite?
-3. Should NotebookEdit execution stale failures throw or return tool data error?
-4. Should Bash simulated sed enforce read-before-write/stale guards?
-5. Should registry path identity move from `normalize` to `realpath`/casefold?
-6. Should killed/failed subagents append file-state reminders?
+1. Should NotebookEdit use content fallback like FileEdit/FileWrite?
+2. Should NotebookEdit execution stale failures throw or return tool data error?
+3. Should Bash simulated sed enforce read-before-write/stale guards?
+4. Should registry path identity move from `normalize` to `realpath`/casefold?
+5. Should killed/failed subagents append file-state reminders?
 
 ## Decision Checklist
 
@@ -1061,7 +1069,7 @@ Decisions to review before runtime changes:
 | Shell write parsing | No | Keep no arbitrary shell parsing |
 | Bash simulated sed stale guard | No | Needs explicit decision |
 | Notebook mtime content fallback | No | Needs explicit decision |
-| Atomic fallback removal globally | Yes | Needs explicit decision for config/settings |
+| Atomic fallback removal globally | No | Resolved: file tools strict; config/settings constrained fallback for rename lock |
 | Registry realpath/case aliasing | No | Needs explicit decision |
 | Subagent killed/failed reminder | Probably no | Needs explicit decision |
 
@@ -1078,11 +1086,11 @@ well tested:
 - FileEdit/FileWrite format policy matches the decided split.
 
 The static behavior review is complete, and the highest-risk resume
-reconstruction issue has been fixed. The series should still not be treated as
-fully signed off until the remaining 6 decision items are resolved. The serious
+reconstruction issue plus atomic-helper scope have been fixed. The series
+should still not be treated as fully signed off until the remaining 5 decision
+items are resolved. The serious
 unresolved items are outside the narrow happy path:
 
-- global effect of removing atomic fallback from shared write helper;
 - NotebookEdit behavior consistency with FileEdit/FileWrite;
 - Bash simulated sed's guard level;
 - registry alias limitations;

@@ -528,16 +528,18 @@ Previous Axiomate baseline:
 - `writeFileSyncAndFlush_DEPRECATED` attempts temp+rename.
 - If atomic write fails, it falls back to non-atomic direct write.
 
-Stage 4A decision:
+Stage 4A / HR2 decision:
 
-- Remove the non-atomic fallback from the shared helper. A failed temp write,
-  chmod, or rename now cleans the temp file and rethrows the original atomic
-  error instead of directly overwriting the target path.
-- This applies to all current callers of `writeFileSyncAndFlush_DEPRECATED`,
-  including file tools, settings, and config writes.
-- Rationale: Hermes' atomic write invariant is stronger and easier to reason
-  about. Direct fallback can turn an atomic rename failure into a partial or
-  non-atomic target overwrite.
+- Structured file tools do not use the non-atomic fallback. A failed temp
+  write, chmod, or rename cleans the temp file and throws `atomic_write_failed`
+  instead of directly overwriting the target path.
+- Config/settings writes are explicit opt-in exceptions. They may fall back to
+  direct write only after the temp file has already been written/flushed and
+  the failure is a rename-stage lock-style errno (`EPERM`, `EACCES`, `EBUSY`).
+- Rationale: Hermes' atomic write invariant remains the right default for user
+  files, but config/settings are small application-owned JSON files where
+  rename-lock fallback is a useful reliability harness. The fallback is not
+  allowed for temp-write, flush, chmod, or non-lock rename failures.
 
 Local tests added:
 
@@ -545,6 +547,11 @@ Local tests added:
   for existing and new files.
 - The tests assert the original target remains intact, no new target is
   created, temp files are cleaned, and the atomic error is rethrown.
+- The tests also assert opt-in fallback succeeds for rename lock errors and
+  does not run for non-lock rename errors.
+- `agent/src/__tests__/unit/utils/settingsWriteFallback.test.ts` pins
+  settings-level opt-in fallback and verifies failed settings writes do not
+  leave an internal-write watcher mark.
 
 Remaining follow-up:
 
@@ -806,12 +813,13 @@ Estimated work:
     - Axiomate should only attach registry hooks to structured write paths
       where the tool already knows the exact path and content.
 
-15. Atomic write failure does not fall back to direct target writes.
+15. Atomic write failure does not fall back to direct target writes for
+    structured file tools.
     - `writeFileSyncAndFlush_DEPRECATED` cleans its temp file and throws
       `FileHarnessError` with the original atomic error as `cause`.
     - The wrapper preserves the original error message and errno `code`.
-    - The stricter behavior applies to all current callers of the shared
-      helper, not only file tools.
+    - Config/settings explicitly opt into a constrained rename-lock fallback;
+      this is application config reliability, not user-file harness behavior.
     - This matches Hermes' "target unchanged unless rename succeeds" invariant.
 
 16. `Write` canonicalizes; precise edit paths preserve.
@@ -887,8 +895,7 @@ Estimated work:
 There is no remaining core Hermes file-harness port planned. Remaining work is
 behavior sign-off plus observability and product polish:
 
-0. Close the remaining 6 b59a behavior decisions.
-   - Atomic helper scope for config/settings callers.
+0. Close the remaining 5 b59a behavior decisions.
    - NotebookEdit mtime-only content fallback.
    - NotebookEdit execution stale throw vs tool error payload.
    - Bash simulated sed read-before-write/stale guard.
