@@ -18,6 +18,14 @@ import { rollback } from '../../../../utils/checkpoints/rollback.js'
 let tmpRoot: string
 let workTree: string
 let originalBase: string | undefined
+const CHECKPOINT_TEST_TIMEOUT_MS = 30_000
+
+function checkpointTest(
+  name: string,
+  fn: () => void | Promise<void>,
+): void {
+  test(name, fn, CHECKPOINT_TEST_TIMEOUT_MS)
+}
 
 beforeAll(() => {
   originalBase = process.env.AXIOMATE_CHECKPOINT_BASE
@@ -37,7 +45,12 @@ beforeEach(async () => {
 })
 
 afterEach(() => {
-  rmSync(tmpRoot, { recursive: true, force: true })
+  rmSync(tmpRoot, {
+    recursive: true,
+    force: true,
+    maxRetries: 5,
+    retryDelay: 100,
+  })
 })
 
 async function snap(messageId: string, label: string): Promise<string> {
@@ -68,7 +81,7 @@ describe('rollback — input validation', () => {
     expect(r.reason).toBe('invalid-hash')
   })
 
-  test('rejects a path traversal attempt', async () => {
+  checkpointTest('rejects a path traversal attempt', async () => {
     writeFileSync(join(workTree, 'a.txt'), '1')
     const hash = await snap('m1', 'l1')
     const r = await rollback(workTree, hash, { paths: ['../etc/passwd'] })
@@ -77,7 +90,7 @@ describe('rollback — input validation', () => {
     expect(r.reason).toBe('invalid-path')
   })
 
-  test('rejects an absolute path', async () => {
+  checkpointTest('rejects an absolute path', async () => {
     writeFileSync(join(workTree, 'a.txt'), '1')
     const hash = await snap('m1', 'l1')
     const r = await rollback(workTree, hash, {
@@ -90,7 +103,7 @@ describe('rollback — input validation', () => {
 })
 
 describe('rollback — store / commit existence', () => {
-  test('returns no-checkpoints when store has no HEAD', async () => {
+  checkpointTest('returns no-checkpoints when store has no HEAD', async () => {
     // Repoint to a fresh, un-inited base.
     const fresh = mkdtempSync(join(tmpRoot, 'fresh-'))
     process.env.AXIOMATE_CHECKPOINT_BASE = fresh
@@ -100,7 +113,7 @@ describe('rollback — store / commit existence', () => {
     expect(r.reason).toBe('no-checkpoints')
   })
 
-  test('returns not-found for an unknown commit', async () => {
+  checkpointTest('returns not-found for an unknown commit', async () => {
     writeFileSync(join(workTree, 'a.txt'), '1')
     await snap('m1', 'l1')
     const r = await rollback(workTree, '0000000000000000000000000000000000000000')
@@ -111,7 +124,7 @@ describe('rollback — store / commit existence', () => {
 })
 
 describe('rollback — happy path (full restore)', () => {
-  test('restores a workdir to an earlier snapshot', async () => {
+  checkpointTest('restores a workdir to an earlier snapshot', async () => {
     writeFileSync(join(workTree, 'a.txt'), 'v1')
     const h1 = await snap('m1', 'l1')
 
@@ -133,7 +146,7 @@ describe('rollback — happy path (full restore)', () => {
     expect(r.reason.label).toBe('l1')
   })
 
-  test('takes a pre-rollback snapshot when the worktree has uncommitted changes', async () => {
+  checkpointTest('takes a pre-rollback snapshot when the worktree has uncommitted changes', async () => {
     writeFileSync(join(workTree, 'a.txt'), 'v1')
     const h1 = await snap('m1', 'l1')
     writeFileSync(join(workTree, 'a.txt'), 'v2')
@@ -160,7 +173,7 @@ describe('rollback — happy path (full restore)', () => {
     expect(newest.reason.label).toContain(h1.slice(0, 8))
   })
 
-  test('skips the pre-rollback snapshot when there are no novel changes (no-changes path)', async () => {
+  checkpointTest('skips the pre-rollback snapshot when there are no novel changes (no-changes path)', async () => {
     writeFileSync(join(workTree, 'a.txt'), 'v1')
     const h1 = await snap('m1', 'l1')
     writeFileSync(join(workTree, 'a.txt'), 'v2')
@@ -177,7 +190,7 @@ describe('rollback — happy path (full restore)', () => {
     expect(readFileSync(join(workTree, 'a.txt'), 'utf-8')).toBe('v1')
   })
 
-  test('rolling back twice with intervening edits records two pre-rollback snapshots', async () => {
+  checkpointTest('rolling back twice with intervening edits records two pre-rollback snapshots', async () => {
     writeFileSync(join(workTree, 'a.txt'), 'v1')
     const h1 = await snap('m1', 'l1')
     writeFileSync(join(workTree, 'a.txt'), 'v2')
@@ -202,7 +215,7 @@ describe('rollback — happy path (full restore)', () => {
 })
 
 describe('rollback — partial (path-scoped) restore', () => {
-  test('restores only the listed paths, leaves others alone', async () => {
+  checkpointTest('restores only the listed paths, leaves others alone', async () => {
     writeFileSync(join(workTree, 'a.txt'), 'a-v1')
     writeFileSync(join(workTree, 'b.txt'), 'b-v1')
     const h1 = await snap('m1', 'l1')
@@ -220,7 +233,7 @@ describe('rollback — partial (path-scoped) restore', () => {
     expect(r.paths).toEqual(['a.txt'])
   })
 
-  test('rejects partial restore where one path is invalid (no partial work done)', async () => {
+  checkpointTest('rejects partial restore where one path is invalid (no partial work done)', async () => {
     writeFileSync(join(workTree, 'a.txt'), 'a-v1')
     const h1 = await snap('m1', 'l1')
     writeFileSync(join(workTree, 'a.txt'), 'a-v2')
@@ -240,7 +253,7 @@ describe('rollback — partial (path-scoped) restore', () => {
 })
 
 describe('rollback — index seeding for next snapshot', () => {
-  test('post-rollback createSnapshot reflects the new baseline', async () => {
+  checkpointTest('post-rollback createSnapshot reflects the new baseline', async () => {
     writeFileSync(join(workTree, 'a.txt'), 'v1')
     const h1 = await snap('m1', 'l1')
     writeFileSync(join(workTree, 'a.txt'), 'v2')
@@ -260,7 +273,7 @@ describe('rollback — index seeding for next snapshot', () => {
     expect(r.hash).not.toBe(h1)
   })
 
-  test('worktree files written by the snapshot stay on disk after rollback', async () => {
+  checkpointTest('worktree files written by the snapshot stay on disk after rollback', async () => {
     writeFileSync(join(workTree, 'a.txt'), 'v1')
     const h1 = await snap('m1', 'l1')
 

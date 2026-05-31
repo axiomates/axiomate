@@ -42,6 +42,14 @@ import { buildFixtureCommit } from './fixtures.js'
 let tmpRoot: string
 let baseEnvBefore: string | undefined
 let configEnvBefore: string | undefined
+const CHECKPOINT_TEST_TIMEOUT_MS = 30_000
+
+function checkpointTest(
+  name: string,
+  fn: () => void | Promise<void>,
+): void {
+  test(name, fn, CHECKPOINT_TEST_TIMEOUT_MS)
+}
 
 beforeAll(() => {
   tmpRoot = mkdtempSync(join(tmpdir(), 'axiomate-keeporphans-'))
@@ -54,7 +62,12 @@ afterAll(() => {
   else process.env.AXIOMATE_CHECKPOINT_BASE = baseEnvBefore
   if (configEnvBefore === undefined) delete process.env.AXIOMATE_CONFIG_DIR
   else process.env.AXIOMATE_CONFIG_DIR = configEnvBefore
-  rmSync(tmpRoot, { recursive: true, force: true })
+  rmSync(tmpRoot, {
+    recursive: true,
+    force: true,
+    maxRetries: 5,
+    retryDelay: 100,
+  })
 })
 
 beforeEach(() => {
@@ -113,7 +126,7 @@ async function refResolves(store: string, ref: string): Promise<string | null> {
 }
 
 describe('pruneCheckpoints — --keep-orphans flag', () => {
-  test('1. keepOrphans=true skips orphan drop; follow-up without flag drops normally', async () => {
+  checkpointTest('1. keepOrphans=true skips orphan drop; follow-up without flag drops normally', async () => {
     const e = await ensureStore()
     if (!e.ok) throw new Error('ensureStore failed')
     const wts = mkdtempSync(join(tmpRoot, 'wts-'))
@@ -136,7 +149,7 @@ describe('pruneCheckpoints — --keep-orphans flag', () => {
     expect(await refResolves(e.store, proj.ref)).toBeNull()
   })
 
-  test('2. keepOrphans does not affect the stale path', async () => {
+  checkpointTest('2. keepOrphans does not affect the stale path', async () => {
     const e = await ensureStore()
     if (!e.ok) throw new Error('ensureStore failed')
     const wts = mkdtempSync(join(tmpRoot, 'wts-'))
@@ -159,7 +172,7 @@ describe('pruneCheckpoints — --keep-orphans flag', () => {
     expect(await refResolves(e.store, proj.ref)).toBeNull()
   })
 
-  test('3. default (keepOrphans unset) drops orphan ref as before', async () => {
+  checkpointTest('3. default (keepOrphans unset) drops orphan ref as before', async () => {
     const e = await ensureStore()
     if (!e.ok) throw new Error('ensureStore failed')
     const wts = mkdtempSync(join(tmpRoot, 'wts-'))

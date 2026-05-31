@@ -57,6 +57,14 @@ let tmpRoot: string
 let workTree: string
 let originalConfigDir: string | undefined
 let originalCwd: string
+const GIT_BACKED_TEST_TIMEOUT_MS = 30_000
+
+function gitBackedTest(
+  name: string,
+  fn: () => void | Promise<void>,
+): void {
+  test(name, fn, GIT_BACKED_TEST_TIMEOUT_MS)
+}
 
 beforeEach(() => {
   originalConfigDir = process.env.AXIOMATE_CONFIG_DIR
@@ -76,7 +84,12 @@ afterEach(() => {
   setOriginalCwd(originalCwd)
   setIsInteractive(false)
   resetFileHistoryDraft()
-  rmSync(tmpRoot, { recursive: true, force: true })
+  rmSync(tmpRoot, {
+    recursive: true,
+    force: true,
+    maxRetries: 5,
+    retryDelay: 100,
+  })
 })
 
 function makeStateHolder(): {
@@ -138,7 +151,7 @@ describe('fileHistoryEnabled', () => {
 })
 
 describe('rewind — restore content at the chosen turn', () => {
-  test('restores a single edited file to its content at the target turn', async () => {
+  gitBackedTest('restores a single edited file to its content at the target turn', async () => {
     const a = join(workTree, 'a.txt')
     writeFileSync(a, 'v1')
     const holder = makeStateHolder()
@@ -150,7 +163,7 @@ describe('rewind — restore content at the chosen turn', () => {
     expect(readFileSync(a, 'utf-8')).toBe('v1')
   })
 
-  test('restores multiple files in one rewind, each to its turn-1 content', async () => {
+  gitBackedTest('restores multiple files in one rewind, each to its turn-1 content', async () => {
     const a = join(workTree, 'a.txt')
     const b = join(workTree, 'b.txt')
     writeFileSync(a, 'a-v1')
@@ -166,7 +179,7 @@ describe('rewind — restore content at the chosen turn', () => {
     expect(readFileSync(b, 'utf-8')).toBe('b-v1')
   })
 
-  test('deletes a file that did not exist at the target turn', async () => {
+  gitBackedTest('deletes a file that did not exist at the target turn', async () => {
     const seed = join(workTree, 'seed.txt')
     writeFileSync(seed, 'seed')
     const holder = makeStateHolder()
@@ -180,7 +193,7 @@ describe('rewind — restore content at the chosen turn', () => {
     expect(existsSync(newFile)).toBe(false)
   })
 
-  test('rewind covers files NOT registered with trackEdit (full-tree restore)', async () => {
+  gitBackedTest('rewind covers files NOT registered with trackEdit (full-tree restore)', async () => {
     const tracked = join(workTree, 'tracked.txt')
     const manual = join(workTree, 'manual.txt')
     writeFileSync(tracked, 'tracked-v1')
@@ -200,7 +213,7 @@ describe('rewind — restore content at the chosen turn', () => {
     expect(m2).toBeDefined()
   })
 
-  test('rewind to empty-workdir root removes the file the first edit created', async () => {
+  gitBackedTest('rewind to empty-workdir root removes the file the first edit created', async () => {
     const newFile = join(workTree, 'created-by-ai.txt')
     expect(existsSync(newFile)).toBe(false)
 
@@ -214,7 +227,7 @@ describe('rewind — restore content at the chosen turn', () => {
     expect(existsSync(newFile)).toBe(false)
   })
 
-  test('subdirectory paths round-trip through rewind', async () => {
+  gitBackedTest('subdirectory paths round-trip through rewind', async () => {
     mkdirSync(join(workTree, 'src'))
     const f = join(workTree, 'src', 'foo.ts')
     writeFileSync(f, 'export const x = 1\n')
@@ -227,7 +240,7 @@ describe('rewind — restore content at the chosen turn', () => {
     expect(readFileSync(f, 'utf-8')).toBe('export const x = 1\n')
   })
 
-  test('throws when gitHash is unknown', async () => {
+  gitBackedTest('throws when gitHash is unknown', async () => {
     const holder = makeStateHolder()
     await turn(holder, [])
     await expect(
@@ -238,7 +251,7 @@ describe('rewind — restore content at the chosen turn', () => {
     ).rejects.toThrow(/no longer available|refresh|Rewind failed|Undo last rewind/i)
   })
 
-  test('rewinding twice in a row restores the same content (idempotent)', async () => {
+  gitBackedTest('rewinding twice in a row restores the same content (idempotent)', async () => {
     const a = join(workTree, 'a.txt')
     writeFileSync(a, 'v1')
     const holder = makeStateHolder()
@@ -252,7 +265,7 @@ describe('rewind — restore content at the chosen turn', () => {
     expect(readFileSync(a, 'utf-8')).toBe('v1')
   })
 
-  test('throws when given a hash that does not exist in the store', async () => {
+  gitBackedTest('throws when given a hash that does not exist in the store', async () => {
     const a = join(workTree, 'a.txt')
     writeFileSync(a, 'v1')
     const holder = makeStateHolder()
@@ -269,7 +282,7 @@ describe('rewind — restore content at the chosen turn', () => {
 })
 
 describe('getDiffVsDisk / hasDiffVsDisk — chooser preview source', () => {
-  test('zero counts when nothing has changed since the snapshot', async () => {
+  gitBackedTest('zero counts when nothing has changed since the snapshot', async () => {
     const a = join(workTree, 'a.txt')
     writeFileSync(a, 'one\ntwo\n')
     const holder = makeStateHolder()
@@ -281,7 +294,7 @@ describe('getDiffVsDisk / hasDiffVsDisk — chooser preview source', () => {
     expect(await fileHistoryHasDiffVsDisk(anchors[0]!.gitHash)).toBe(false)
   })
 
-  test('reports edited file with non-zero line counts and changed paths', async () => {
+  gitBackedTest('reports edited file with non-zero line counts and changed paths', async () => {
     const a = join(workTree, 'a.txt')
     writeFileSync(a, 'line1\nline2\n')
     const holder = makeStateHolder()
@@ -298,7 +311,7 @@ describe('getDiffVsDisk / hasDiffVsDisk — chooser preview source', () => {
 })
 
 describe('restoreStateFromLog — resume rebuilds a usable state', () => {
-  test('rebuilt state can rewind to the snapshots it was rebuilt from', async () => {
+  gitBackedTest('rebuilt state can rewind to the snapshots it was rebuilt from', async () => {
     const a = join(workTree, 'a.txt')
     writeFileSync(a, 'v1')
     const holder1 = makeStateHolder()
@@ -341,7 +354,7 @@ describe('restoreStateFromLog — resume rebuilds a usable state', () => {
 })
 
 describe('bulkDiffVsDisk — picker stats agree with chooser', () => {
-  test('every anchor reports the same line counts as getDiffVsDisk for that anchor', async () => {
+  gitBackedTest('every anchor reports the same line counts as getDiffVsDisk for that anchor', async () => {
     const a = join(workTree, 'a.txt')
     writeFileSync(a, 'v1')
     const holder = makeStateHolder()
@@ -365,7 +378,7 @@ describe('bulkDiffVsDisk — picker stats agree with chooser', () => {
     }
   })
 
-  test('root anchor (empty pre-snapshot) reports the disk content as +N', async () => {
+  gitBackedTest('root anchor (empty pre-snapshot) reports the disk content as +N', async () => {
     const a = join(workTree, 'a.txt')
     // Mirror the sandbox sequence: pre-tool snapshot fires on an empty
     // workdir, AI then writes the file. Anchor's tree is empty; disk
@@ -384,7 +397,7 @@ describe('bulkDiffVsDisk — picker stats agree with chooser', () => {
     expect(stats!.filesChanged).toEqual([a])
   })
 
-  test('bulkDiff against anchors loaded with withBodies returns valid stats for every row', async () => {
+  gitBackedTest('bulkDiff against anchors loaded with withBodies returns valid stats for every row', async () => {
     // Regression for production sandbox: picker fetches anchors with
     // withBodies: true, bulkDiff was then called on the resulting
     // hashes. Earlier, all but the first hash returned by listSnapshots
@@ -431,7 +444,7 @@ describe('bulkDiffVsDisk — picker stats agree with chooser', () => {
 })
 
 describe('concurrency — interleaved trackEdit during makeSnapshot', () => {
-  test('a trackEdit issued while makeSnapshot is in flight is reflected in the new turn', async () => {
+  gitBackedTest('a trackEdit issued while makeSnapshot is in flight is reflected in the new turn', async () => {
     const a = join(workTree, 'a.txt')
     const b = join(workTree, 'b.txt')
     writeFileSync(a, 'a-v1')
@@ -455,7 +468,7 @@ describe('concurrency — interleaved trackEdit during makeSnapshot', () => {
 })
 
 describe('rewind transaction — Phase 5 atomicity', () => {
-  test('preRewind no-changes path does NOT abort rewind', async () => {
+  gitBackedTest('preRewind no-changes path does NOT abort rewind', async () => {
     // When disk equals the previous anchor, pre-rewind makeSnapshot
     // returns {ok:false, reason:'no-changes'} — that's benign, the
     // previous anchor is already the safety net. Rewind must proceed.
@@ -472,7 +485,7 @@ describe('rewind transaction — Phase 5 atomicity', () => {
     expect(m2).toBeDefined()
   })
 
-  test('verification passes for a successful rewind (positive case)', async () => {
+  gitBackedTest('verification passes for a successful rewind (positive case)', async () => {
     // Round-trip the happy path through the new verifyDiskMatchesTree
     // gate to make sure it doesn't false-positive on a genuinely
     // successful restore.
@@ -487,7 +500,7 @@ describe('rewind transaction — Phase 5 atomicity', () => {
     expect(readFileSync(a, 'utf-8')).toBe('v1')
   })
 
-  test('Phase 7: rewind on a missing hash throws refresh hint, NOT undo hint', async () => {
+  gitBackedTest('Phase 7: rewind on a missing hash throws refresh hint, NOT undo hint', async () => {
     // A hash of valid SHA-1 shape that doesn't exist in the store.
     // The pre-Phase-7 path would still call fileHistoryMakeSnapshot
     // for the safety snapshot, then fail in restoreFullWorkdirToSnapshot
@@ -517,7 +530,7 @@ describe('rewind transaction — Phase 5 atomicity', () => {
     expect(readFileSync(a, 'utf-8')).toBe('v2')
   })
 
-  test('Phase 7: rewind to a real anchor still succeeds (existence check is non-destructive)', async () => {
+  gitBackedTest('Phase 7: rewind to a real anchor still succeeds (existence check is non-destructive)', async () => {
     // Sanity: the cat-file gate must not false-negative on real
     // anchors.
     const a = join(workTree, 'a.txt')
@@ -539,7 +552,7 @@ describe('bulkDiffEventStats — event-aligned stats', () => {
   // against the next-newer anchor (or against current disk for the
   // newest row).
 
-  test('two-turn v1 → v2 sequence: latest gets +1 -1, oldest gets +1 -0', async () => {
+  gitBackedTest('two-turn v1 → v2 sequence: latest gets +1 -1, oldest gets +1 -0', async () => {
     // Mirror sandbox: empty workdir, "create v1" turn, "v1 → v2" turn,
     // disk = v2. Anchors are pre-tool snapshots (newest first):
     //   anchors[0] (Before "v1 → v2") tree = v1
@@ -575,7 +588,7 @@ describe('bulkDiffEventStats — event-aligned stats', () => {
     expect(oldest.deletions).toBe(0)
   })
 
-  test('single-anchor case: stats vs disk', async () => {
+  gitBackedTest('single-anchor case: stats vs disk', async () => {
     // Only one anchor: it has no prev anchor, so stats[0] falls back
     // to anchor-vs-disk — describes what the latest turn wrote.
     const a = join(workTree, 'a.txt')

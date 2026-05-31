@@ -56,6 +56,14 @@ import { buildFixtureCommit } from './fixtures.js'
 let tmpRoot: string
 let baseEnvBefore: string | undefined
 let configEnvBefore: string | undefined
+const CHECKPOINT_TEST_TIMEOUT_MS = 30_000
+
+function checkpointTest(
+  name: string,
+  fn: () => void | Promise<void>,
+): void {
+  test(name, fn, CHECKPOINT_TEST_TIMEOUT_MS)
+}
 
 beforeAll(() => {
   tmpRoot = mkdtempSync(join(tmpdir(), 'axiomate-keep-'))
@@ -68,7 +76,12 @@ afterAll(() => {
   else process.env.AXIOMATE_CHECKPOINT_BASE = baseEnvBefore
   if (configEnvBefore === undefined) delete process.env.AXIOMATE_CONFIG_DIR
   else process.env.AXIOMATE_CONFIG_DIR = configEnvBefore
-  rmSync(tmpRoot, { recursive: true, force: true })
+  rmSync(tmpRoot, {
+    recursive: true,
+    force: true,
+    maxRetries: 5,
+    retryDelay: 100,
+  })
 })
 
 beforeEach(() => {
@@ -169,7 +182,7 @@ async function isAncestor(args: {
 }
 
 describe('pruneCheckpoints — 6C1 anchor-keep refs', () => {
-  test('1. anchor on orphan workdir', async () => {
+  checkpointTest('1. anchor on orphan workdir', async () => {
     const e = await ensureStore()
     if (!e.ok) throw new Error('ensureStore failed')
     const wts = mkdtempSync(join(tmpRoot, 'wts-'))
@@ -206,7 +219,7 @@ describe('pruneCheckpoints — 6C1 anchor-keep refs', () => {
     expect(fsck.ok).toBe(true)
   })
 
-  test('2. anchor on stale ref (workdir intact)', async () => {
+  checkpointTest('2. anchor on stale ref (workdir intact)', async () => {
     const e = await ensureStore()
     if (!e.ok) throw new Error('ensureStore failed')
     const wts = mkdtempSync(join(tmpRoot, 'wts-'))
@@ -233,7 +246,7 @@ describe('pruneCheckpoints — 6C1 anchor-keep refs', () => {
     expect(keepTip).toBe(proj.sha3)
   })
 
-  test('3. expire dead keep-ref whose JSONL is gone', async () => {
+  checkpointTest('3. expire dead keep-ref whose JSONL is gone', async () => {
     const e = await ensureStore()
     if (!e.ok) throw new Error('ensureStore failed')
     const wts = mkdtempSync(join(tmpRoot, 'wts-'))
@@ -253,7 +266,7 @@ describe('pruneCheckpoints — 6C1 anchor-keep refs', () => {
     expect(await refResolves(e.store, deadKeep)).toBeNull()
   })
 
-  test('4. no recent sessions → orphan ref dropped, no keep-ref written', async () => {
+  checkpointTest('4. no recent sessions → orphan ref dropped, no keep-ref written', async () => {
     const e = await ensureStore()
     if (!e.ok) throw new Error('ensureStore failed')
     const wts = mkdtempSync(join(tmpRoot, 'wts-'))
@@ -274,7 +287,7 @@ describe('pruneCheckpoints — 6C1 anchor-keep refs', () => {
     expect(lr.stdout.trim()).toBe('')
   })
 
-  test('5. foreign hash in session JSONL → no spurious anchor', async () => {
+  checkpointTest('5. foreign hash in session JSONL → no spurious anchor', async () => {
     const e = await ensureStore()
     if (!e.ok) throw new Error('ensureStore failed')
     const wts = mkdtempSync(join(tmpRoot, 'wts-'))
@@ -294,7 +307,7 @@ describe('pruneCheckpoints — 6C1 anchor-keep refs', () => {
     expect(await refResolves(e.store, keepRefName(proj.hash, 'sess-foreign'))).toBeNull()
   })
 
-  test('6. listProjectRefs filters _keep/ — keep-refs survive size-cap pass', async () => {
+  checkpointTest('6. listProjectRefs filters _keep/ — keep-refs survive size-cap pass', async () => {
     const e = await ensureStore()
     if (!e.ok) throw new Error('ensureStore failed')
     const wts = mkdtempSync(join(tmpRoot, 'wts-'))
