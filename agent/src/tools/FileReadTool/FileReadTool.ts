@@ -22,7 +22,7 @@ import {
   addSkillDirectories,
   discoverSkillDirsForPaths,
 } from '../../skills/loadSkillsDir.js'
-import type { ToolUseContext } from '../../Tool.js'
+import type { ToolUseContext, ValidationResult } from '../../Tool.js'
 import { buildTool, type ToolDef } from '../../Tool.js'
 import { getCwd } from '../../utils/cwd.js'
 import { getConfigHomeDir, isEnvTruthy } from '../../utils/envUtils.js'
@@ -412,7 +412,10 @@ export const FileReadTool = buildTool({
     return ''
   },
   renderToolUseErrorMessage,
-  async validateInput({ file_path, pages }, toolUseContext: ToolUseContext) {
+  async validateInput(
+    { file_path, pages },
+    toolUseContext: ToolUseContext,
+  ): Promise<ValidationResult> {
     // Validate pages parameter (pure string parsing, no I/O)
     if (pages !== undefined) {
       const parsed = parsePDFPageRange(pages)

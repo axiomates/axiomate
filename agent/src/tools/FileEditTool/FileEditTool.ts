@@ -7,7 +7,7 @@ import {
   addSkillDirectories,
   discoverSkillDirsForPaths,
 } from '../../skills/loadSkillsDir.js'
-import type { ToolUseContext } from '../../Tool.js'
+import type { ToolUseContext, ValidationResult } from '../../Tool.js'
 import { buildTool, type ToolDef } from '../../Tool.js'
 import { getCwd } from '../../utils/cwd.js'
 import { logForDebugging } from '../../utils/debug.js'
@@ -22,6 +22,7 @@ import {
   suggestPathUnderCwd,
   writeTextContent,
 } from '../../utils/file.js'
+import { fileHarnessFailure } from '../../utils/fileHarnessFailures.js'
 import { logFileOperation } from '../../utils/fileOperationAnalytics.js'
 import { fileStateHasFullContent } from '../../utils/fileStateCache.js'
 import {
@@ -127,7 +128,10 @@ export const FileEditTool = buildTool({
   renderToolResultMessage,
   renderToolUseRejectedMessage,
   renderToolUseErrorMessage,
-  async validateInput(input: FileEditInput, toolUseContext: ToolUseContext) {
+  async validateInput(
+    input: FileEditInput,
+    toolUseContext: ToolUseContext,
+  ): Promise<ValidationResult> {
     const { file_path, old_string, new_string, replace_all = false } = input
     // Use expandPath for consistent path normalization (especially on Windows
     // where "/" vs "\" can cause readFileState lookup mismatches)
@@ -158,6 +162,11 @@ export const FileEditTool = buildTool({
         message:
           'File is in a directory that is denied by your permission settings.',
         errorCode: 2,
+        fileHarnessFailure: fileHarnessFailure(
+          'permission_denied',
+          'validation',
+          fullFilePath,
+        ),
       }
     }
 
@@ -271,6 +280,11 @@ export const FileEditTool = buildTool({
           isFilePathAbsolute: String(isAbsolute(file_path)),
         },
         errorCode: 6,
+        fileHarnessFailure: fileHarnessFailure(
+          'not_read',
+          'validation',
+          fullFilePath,
+        ),
       }
     }
 
@@ -281,6 +295,11 @@ export const FileEditTool = buildTool({
         message:
           'File has been modified since read, either by the user or by a linter. Read it again before attempting to write it.',
         errorCode: 7,
+        fileHarnessFailure: fileHarnessFailure(
+          'sibling_write_after_read',
+          'validation',
+          fullFilePath,
+        ),
       }
     }
 
@@ -303,6 +322,13 @@ export const FileEditTool = buildTool({
             message:
               'File has been modified since read, either by the user or by a linter. Read it again before attempting to write it.',
             errorCode: 7,
+            fileHarnessFailure: fileHarnessFailure(
+              fileStateHasFullContent(readTimestamp)
+                ? 'stale_content'
+                : 'stale_mtime',
+              'validation',
+              fullFilePath,
+            ),
           }
         }
       }
@@ -321,6 +347,11 @@ export const FileEditTool = buildTool({
           isFilePathAbsolute: String(isAbsolute(file_path)),
         },
         errorCode: 8,
+        fileHarnessFailure: fileHarnessFailure(
+          'string_not_found',
+          'validation',
+          fullFilePath,
+        ),
       }
     }
 
@@ -337,6 +368,11 @@ export const FileEditTool = buildTool({
           actualOldString,
         },
         errorCode: 9,
+        fileHarnessFailure: fileHarnessFailure(
+          'multiple_match',
+          'validation',
+          fullFilePath,
+        ),
       }
     }
 

@@ -7,6 +7,7 @@ import { cloneFileStateCache } from '../../../../utils/fileStateCache.js'
 import { withFileStatePathLock } from '../../../../utils/fileStateRegistry.js'
 import {
   allowToolUse,
+  expectValidationFailure,
   getHarnessCwd,
   makeToolContext,
   mockFileHarnessRuntime,
@@ -114,8 +115,7 @@ describe('NotebookEditTool file harness behavior', () => {
       makeToolContext(),
     )
 
-    expect(validation.result).toBe(false)
-    if (validation.result) return
+    expectValidationFailure(validation)
     expect(validation.errorCode).toBe(9)
     expect(validation.message).toContain('File has not been read yet')
   })
@@ -140,11 +140,9 @@ describe('NotebookEditTool file harness behavior', () => {
       { file_path: path, content: JSON.stringify(createNotebook('parent')) },
       parentContext,
     )
-    expect(validation.result).toBe(false)
-    if (!validation.result) {
-      expect(validation.errorCode).toBe(3)
-      expect(validation.message).toContain('modified since read')
-    }
+    expectValidationFailure(validation)
+    expect(validation.errorCode).toBe(3)
+    expect(validation.message).toContain('modified since read')
 
     await expect(
       FileWriteTool.call(
@@ -182,11 +180,9 @@ describe('NotebookEditTool file harness behavior', () => {
       },
       parentContext,
     )
-    expect(validation.result).toBe(false)
-    if (!validation.result) {
-      expect(validation.errorCode).toBe(10)
-      expect(validation.message).toContain('modified since read')
-    }
+    expectValidationFailure(validation)
+    expect(validation.errorCode).toBe(10)
+    expect(validation.message).toContain('modified since read')
 
     await expect(
       editNotebookCell(path, 'print("parent")', parentContext),

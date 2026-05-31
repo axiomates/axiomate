@@ -1,11 +1,17 @@
 import { feature } from 'bun:bundle'
 import { extname, isAbsolute, resolve } from 'path'
 import { z } from 'zod/v4'
-import { buildTool, type ToolDef, type ToolUseContext } from '../../Tool.js'
+import {
+  buildTool,
+  type ToolDef,
+  type ToolUseContext,
+  type ValidationResult,
+} from '../../Tool.js'
 import type { NotebookCell, NotebookContent } from '../../types/notebook.js'
 import { getCwd } from '../../utils/cwd.js'
 import { isENOENT } from '../../utils/errors.js'
 import { getFileModificationTime, writeTextContent } from '../../utils/file.js'
+import { fileHarnessFailure } from '../../utils/fileHarnessFailures.js'
 import {
   noteFileWrite,
   wasFileModifiedAfterReadByAnotherContext,
@@ -171,7 +177,7 @@ export const NotebookEditTool = buildTool({
   async validateInput(
     { notebook_path, cell_type, cell_id, edit_mode = 'replace' },
     toolUseContext: ToolUseContext,
-  ) {
+  ): Promise<ValidationResult> {
     const fullPath = isAbsolute(notebook_path)
       ? notebook_path
       : resolve(getCwd(), notebook_path)
@@ -220,6 +226,11 @@ export const NotebookEditTool = buildTool({
         message:
           'File has not been read yet. Read it first before writing to it.',
         errorCode: 9,
+        fileHarnessFailure: fileHarnessFailure(
+          'not_read',
+          'validation',
+          fullPath,
+        ),
       }
     }
     if (wasFileModifiedAfterReadByAnotherContext(toolUseContext, fullPath)) {
@@ -228,6 +239,11 @@ export const NotebookEditTool = buildTool({
         message:
           'File has been modified since read, either by the user or by a linter. Read it again before attempting to write it.',
         errorCode: 10,
+        fileHarnessFailure: fileHarnessFailure(
+          'sibling_write_after_read',
+          'validation',
+          fullPath,
+        ),
       }
     }
     if (getFileModificationTime(fullPath) > readTimestamp.timestamp) {
@@ -236,6 +252,11 @@ export const NotebookEditTool = buildTool({
         message:
           'File has been modified since read, either by the user or by a linter. Read it again before attempting to write it.',
         errorCode: 10,
+        fileHarnessFailure: fileHarnessFailure(
+          'stale_mtime',
+          'validation',
+          fullPath,
+        ),
       }
     }
 

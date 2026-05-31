@@ -84,6 +84,10 @@ import type { AgentId } from './types/ids.js'
 import type { DeepImmutable } from './types/utils.js'
 import type { AttributionState } from './utils/commitAttribution.js'
 import type { FileHistoryState } from './utils/fileHistory.js'
+import type {
+  FileHarnessFailurePhase,
+  FileHarnessFailureReason,
+} from './utils/fileHarnessFailures.js'
 import type { Theme, ThemeName } from './utils/theme.js'
 import type { RecoveryTraceSink } from './services/api/recoveryTrace.js'
 
@@ -93,11 +97,18 @@ export type QueryChainTracking = {
 }
 
 export type ValidationResult =
-  | { result: true }
+  | { result: true; meta?: Record<string, unknown> }
   | {
       result: false
       message: string
       errorCode: number
+      behavior?: 'ask' | 'deny'
+      meta?: Record<string, unknown>
+      fileHarnessFailure?: {
+        reason: FileHarnessFailureReason
+        phase: FileHarnessFailurePhase
+        path?: string
+      }
     }
 
 export type SetToolJSXFn = (

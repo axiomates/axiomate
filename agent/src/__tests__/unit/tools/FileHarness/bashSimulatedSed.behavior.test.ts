@@ -7,6 +7,7 @@ import { cloneFileStateCache } from '../../../../utils/fileStateCache.js'
 import { withFileStatePathLock } from '../../../../utils/fileStateRegistry.js'
 import {
   allowToolUse,
+  expectValidationFailure,
   getHarnessCwd,
   makeToolContext,
   mockFileHarnessRuntime,
@@ -80,11 +81,9 @@ describe('BashTool simulated sed file harness behavior', () => {
       { file_path: path, content: 'parent\n' },
       parentContext,
     )
-    expect(validation.result).toBe(false)
-    if (!validation.result) {
-      expect(validation.errorCode).toBe(3)
-      expect(validation.message).toContain('modified since read')
-    }
+    expectValidationFailure(validation)
+    expect(validation.errorCode).toBe(3)
+    expect(validation.message).toContain('modified since read')
 
     await expect(
       FileWriteTool.call(

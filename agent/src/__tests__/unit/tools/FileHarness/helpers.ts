@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, vi } from 'vitest'
 import {
   getEmptyToolPermissionContext,
+  type ValidationResult,
   type ToolUseContext,
 } from '../../../../Tool.js'
 import {
@@ -203,3 +204,11 @@ export const allowToolUse = (async () => ({
 })) as any
 
 export const parentMessage = { message: { id: 'assistant-message' } } as any
+
+export function expectValidationFailure(
+  result: ValidationResult,
+): asserts result is Extract<ValidationResult, { result: false }> {
+  if (result.result !== false) {
+    throw new Error('Expected validation to fail')
+  }
+}

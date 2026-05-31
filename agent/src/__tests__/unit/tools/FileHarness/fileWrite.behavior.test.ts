@@ -7,6 +7,7 @@ import { asAgentId } from '../../../../types/ids.js'
 import { cloneFileStateCache } from '../../../../utils/fileStateCache.js'
 import {
   allowToolUse,
+  expectValidationFailure,
   getHarnessCwd,
   makeToolContext,
   mockFileHarnessRuntime,
@@ -59,8 +60,7 @@ describe('FileWriteTool file harness behavior', () => {
       makeToolContext(),
     )
 
-    expect(result.result).toBe(false)
-    if (result.result) return
+    expectValidationFailure(result)
     expect(result.errorCode).toBe(4)
     expect(result.message).toContain('internal Read status text')
   })
@@ -90,8 +90,7 @@ describe('FileWriteTool file harness behavior', () => {
       makeToolContext(),
     )
 
-    expect(result.result).toBe(false)
-    if (result.result) return
+    expectValidationFailure(result)
     expect(result.errorCode).toBe(4)
     expect(result.message).toContain('internal Read status text')
   })
@@ -136,8 +135,7 @@ describe('FileWriteTool file harness behavior', () => {
       makeToolContext(),
     )
 
-    expect(result.result).toBe(false)
-    if (result.result) return
+    expectValidationFailure(result)
     expect(result.errorCode).toBe(2)
     expect(result.message).toContain('File has not been read yet')
   })
@@ -233,8 +231,7 @@ describe('FileWriteTool file harness behavior', () => {
     )
 
     expect(context.readFileState.get(path)?.isPartialView).toBe(true)
-    expect(result.result).toBe(false)
-    if (result.result) return
+    expectValidationFailure(result)
     expect(result.errorCode).toBe(2)
     expect(result.message).toContain('File has not been read yet')
   })
@@ -399,11 +396,9 @@ describe('FileWriteTool file harness behavior', () => {
       { file_path: path, content: 'parent\n' },
       parentContext,
     )
-    expect(validation.result).toBe(false)
-    if (!validation.result) {
-      expect(validation.errorCode).toBe(3)
-      expect(validation.message).toContain('modified since read')
-    }
+    expectValidationFailure(validation)
+    expect(validation.errorCode).toBe(3)
+    expect(validation.message).toContain('modified since read')
 
     await expect(
       FileWriteTool.call(
@@ -456,8 +451,7 @@ describe('FileWriteTool file harness behavior', () => {
       context,
     )
 
-    expect(result.result).toBe(false)
-    if (result.result) return
+    expectValidationFailure(result)
     expect(result.errorCode).toBe(3)
     expect(result.message).toContain('modified since read')
   })

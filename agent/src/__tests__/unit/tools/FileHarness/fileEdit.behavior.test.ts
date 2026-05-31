@@ -10,6 +10,7 @@ import {
 import { withFileStatePathLock } from '../../../../utils/fileStateRegistry.js'
 import {
   allowToolUse,
+  expectValidationFailure,
   getHarnessCwd,
   makeToolContext,
   mockFileHarnessRuntime,
@@ -61,8 +62,7 @@ describe('FileEditTool file harness behavior', () => {
       makeToolContext(),
     )
 
-    expect(result.result).toBe(false)
-    if (result.result) return
+    expectValidationFailure(result)
     expect(result.errorCode).toBe(6)
     expect(result.message).toContain('File has not been read yet')
   })
@@ -158,11 +158,9 @@ describe('FileEditTool file harness behavior', () => {
       { file_path: path, old_string: 'changed', new_string: 'CHANGED' },
       context,
     )
-    expect(result.result).toBe(false)
-    if (!result.result) {
-      expect(result.errorCode).toBe(7)
-      expect(result.message).toContain('modified since read')
-    }
+    expectValidationFailure(result)
+    expect(result.errorCode).toBe(7)
+    expect(result.message).toContain('modified since read')
 
     await expect(
       FileEditTool.call(
@@ -391,11 +389,9 @@ describe('FileEditTool file harness behavior', () => {
       { file_path: path, old_string: 'alpha', new_string: 'ALPHA' },
       parentContext,
     )
-    expect(validation.result).toBe(false)
-    if (!validation.result) {
-      expect(validation.errorCode).toBe(7)
-      expect(validation.message).toContain('modified since read')
-    }
+    expectValidationFailure(validation)
+    expect(validation.errorCode).toBe(7)
+    expect(validation.message).toContain('modified since read')
 
     await expect(
       FileEditTool.call(
@@ -482,8 +478,7 @@ describe('FileEditTool file harness behavior', () => {
       context,
     )
 
-    expect(result.result).toBe(false)
-    if (result.result) return
+    expectValidationFailure(result)
     expect(result.errorCode).toBe(7)
     expect(result.message).toContain('modified since read')
   })
@@ -498,14 +493,14 @@ describe('FileEditTool file harness behavior', () => {
       { file_path: path, old_string: 'gamma', new_string: 'GAMMA' },
       context,
     )
-    expect(missing.result).toBe(false)
-    if (!missing.result) expect(missing.errorCode).toBe(8)
+    expectValidationFailure(missing)
+    expect(missing.errorCode).toBe(8)
 
     const ambiguous = await FileEditTool.validateInput!(
       { file_path: path, old_string: 'beta', new_string: 'BETA' },
       context,
     )
-    expect(ambiguous.result).toBe(false)
-    if (!ambiguous.result) expect(ambiguous.errorCode).toBe(9)
+    expectValidationFailure(ambiguous)
+    expect(ambiguous.errorCode).toBe(9)
   })
 })

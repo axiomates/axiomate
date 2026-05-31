@@ -30,6 +30,12 @@ export type FileHarnessFailureCatalogEntry = {
   stage6bAction: string
 }
 
+export type FileHarnessFailureMetadata = {
+  reason: FileHarnessFailureReason
+  phase: FileHarnessFailurePhase
+  path?: string
+}
+
 export const FILE_HARNESS_FAILURE_CATALOG = [
   {
     reason: 'not_read',
@@ -167,4 +173,12 @@ export function getFileHarnessFailureCatalogEntry(
   reason: FileHarnessFailureReason,
 ): FileHarnessFailureCatalogEntry {
   return FILE_HARNESS_FAILURE_CATALOG.find(entry => entry.reason === reason)!
+}
+
+export function fileHarnessFailure(
+  reason: FileHarnessFailureReason,
+  phase: FileHarnessFailurePhase,
+  path?: string,
+): FileHarnessFailureMetadata {
+  return path === undefined ? { reason, phase } : { reason, phase, path }
 }

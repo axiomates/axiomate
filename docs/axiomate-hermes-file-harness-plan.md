@@ -234,11 +234,19 @@ Stage 6A local verification passed:
 - `git diff --check`
 - `pnpm run test` with 155 files / 2133 tests passing
 
+Stage 6B validation-metadata local verification passed:
+
+- `pnpm --filter ./agent exec vitest run src/__tests__/unit/tools/FileHarness/failureMetadata.test.ts --hookTimeout 120000 --testTimeout 30000`
+- `pnpm --filter ./agent exec vitest run src/__tests__/unit/tools/FileHarness --no-file-parallelism --hookTimeout 120000 --testTimeout 30000`
+- `pnpm run build:types`
+- `git diff --check`
+- `pnpm run test` with 156 files / 2140 tests passing
+
 ## Remaining Migration Work
 
 ## Current Position
 
-We are past Stage 6A and ready to choose the next harness slice.
+We are in Stage 6B.
 
 Completed and pushed:
 
@@ -253,18 +261,19 @@ Completed and pushed:
 - Stage 5: BOM and line-ending policy for structured file writes.
 - Stage 6A: internal file-harness failure taxonomy/catalog.
 
-Current Stage 6A result:
+Current Stage 6B slice:
 
-- Add an internal file-harness failure taxonomy/catalog without changing tool
-  behavior or user-visible wording.
-- Document current validation/call/helper signals for each reason.
-- Keep Stage 6B as the point where typed errors or UI mappings can attach to
-  the catalog.
+- Add optional `fileHarnessFailure` metadata to validation failures without
+  changing `message`, `errorCode`, or model-facing tool result text.
+- Map current FileRead/FileEdit/FileWrite/Notebook validation branches to the
+  internal failure reasons where the branch already has enough information.
+- Keep execution-time typed errors and atomic helper wrapping as remaining
+  Stage 6B work.
 
 Next implementation target:
 
-- Start Stage 6B typed failure metadata or Stage 7 patch/edit failure
-  escalation.
+- Finish Stage 6B execution-time typed failures and atomic helper wrapping, or
+  defer that explicitly before moving to Stage 7.
 
 ### Stage 3: Complete Registry Coverage
 
@@ -478,7 +487,7 @@ Estimated work:
 
 ### Stage 6: Failure Taxonomy
 
-Status: Stage 6A complete; Stage 6B not started.
+Status: Stage 6A complete; Stage 6B validation metadata in progress.
 
 Hermes has more explicit failure categories and model-facing escalation paths.
 Axiomate currently mixes validation `errorCode`s with thrown generic errors such
@@ -527,12 +536,14 @@ Current Stage 6A mapping:
 
 Stage 6B options:
 
-- Add a typed error wrapper that carries `reason`, `phase`, `path`, and
-  original `cause`.
-- Add reason metadata to validation results without changing message text.
-- Map execution-time stale failures to distinct reasons at their branch sites.
-- Wrap atomic helper failures with `atomic_write_failed` while preserving
-  errno/code/cause.
+- Done in the current Stage 6B slice: add reason metadata to validation results
+  without changing message text or error codes.
+- Remaining: add a typed error wrapper that carries `reason`, `phase`, `path`,
+  and original `cause`.
+- Remaining: map execution-time stale failures to distinct reasons at their
+  branch sites.
+- Remaining: wrap atomic helper failures with `atomic_write_failed` while
+  preserving errno/code/cause.
 - Decide whether unsupported encodings should be rejected or left as best-effort
   UTF-8/UTF-16LE decoding.
 

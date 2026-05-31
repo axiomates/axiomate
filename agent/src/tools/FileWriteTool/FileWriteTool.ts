@@ -8,7 +8,7 @@ import {
   addSkillDirectories,
   discoverSkillDirsForPaths,
 } from '../../skills/loadSkillsDir.js'
-import type { ToolUseContext } from '../../Tool.js'
+import type { ToolUseContext, ValidationResult } from '../../Tool.js'
 import { buildTool, type ToolDef } from '../../Tool.js'
 import { getCwd } from '../../utils/cwd.js'
 import { logForDebugging } from '../../utils/debug.js'
@@ -20,6 +20,7 @@ import {
   normalizeContentToLf,
   writeTextContent,
 } from '../../utils/file.js'
+import { fileHarnessFailure } from '../../utils/fileHarnessFailures.js'
 import { logFileOperation } from '../../utils/fileOperationAnalytics.js'
 import { fileStateHasFullContent } from '../../utils/fileStateCache.js'
 import {
@@ -157,7 +158,10 @@ export const FileWriteTool = buildTool({
     // shown — phantom. Under-count: tool_use already indexes file_path.
     return ''
   },
-  async validateInput({ file_path, content }, toolUseContext: ToolUseContext) {
+  async validateInput(
+    { file_path, content },
+    toolUseContext: ToolUseContext,
+  ): Promise<ValidationResult> {
     const fullFilePath = expandPath(file_path)
 
     if (isInternalFileStatusText(content)) {
@@ -183,6 +187,11 @@ export const FileWriteTool = buildTool({
         message:
           'File is in a directory that is denied by your permission settings.',
         errorCode: 1,
+        fileHarnessFailure: fileHarnessFailure(
+          'permission_denied',
+          'validation',
+          fullFilePath,
+        ),
       }
     }
 
@@ -212,6 +221,13 @@ export const FileWriteTool = buildTool({
         message:
           'File has not been read yet. Read it first before writing to it.',
         errorCode: 2,
+        fileHarnessFailure: fileHarnessFailure(
+          readTimestamp?.isPartialView
+            ? 'partial_read_for_write'
+            : 'not_read',
+          'validation',
+          fullFilePath,
+        ),
       }
     }
 
@@ -221,6 +237,11 @@ export const FileWriteTool = buildTool({
         message:
           'File has been modified since read, either by the user or by a linter. Read it again before attempting to write it.',
         errorCode: 3,
+        fileHarnessFailure: fileHarnessFailure(
+          'sibling_write_after_read',
+          'validation',
+          fullFilePath,
+        ),
       }
     }
 
@@ -239,6 +260,13 @@ export const FileWriteTool = buildTool({
           message:
             'File has been modified since read, either by the user or by a linter. Read it again before attempting to write it.',
           errorCode: 3,
+          fileHarnessFailure: fileHarnessFailure(
+            fileStateHasFullContent(readTimestamp)
+              ? 'stale_content'
+              : 'stale_mtime',
+            'validation',
+            fullFilePath,
+          ),
         }
       }
     }
