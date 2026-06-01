@@ -50,6 +50,98 @@ async function readIntoContext(path: string) {
 }
 
 describe('BashTool simulated sed file harness behavior', () => {
+  test('rejects simulated sed when the target file was not read first', async () => {
+    const path = join(getHarnessCwd(), 'sed-unread.txt')
+    await writeFile(path, 'alpha\nbeta\n', 'utf8')
+    const context = makeToolContext()
+
+    await expect(
+      BashTool.call(
+        {
+          command: `sed -i 's/beta/BETA/' ${path}`,
+          _simulatedSedEdit: {
+            filePath: path,
+            newContent: 'alpha\nBETA\n',
+          },
+        },
+        context,
+        allowToolUse,
+        parentMessage,
+      ),
+    ).rejects.toThrow(FILE_UNEXPECTEDLY_MODIFIED_ERROR)
+    expect(await readFile(path, 'utf8')).toBe('alpha\nbeta\n')
+  })
+
+  test('rejects simulated sed after stale content changed', async () => {
+    const path = join(getHarnessCwd(), 'sed-stale-content.txt')
+    await writeFile(path, 'alpha\nbeta\n', 'utf8')
+    const context = await readIntoContext(path)
+
+    await writeFile(path, 'alpha\nchanged\n', 'utf8')
+    const future = new Date(Date.now() + 10_000)
+    await utimes(path, future, future)
+
+    await expect(
+      BashTool.call(
+        {
+          command: `sed -i 's/changed/BETA/' ${path}`,
+          _simulatedSedEdit: {
+            filePath: path,
+            newContent: 'alpha\nBETA\n',
+          },
+        },
+        context,
+        allowToolUse,
+        parentMessage,
+      ),
+    ).rejects.toThrow(FILE_UNEXPECTEDLY_MODIFIED_ERROR)
+    expect(await readFile(path, 'utf8')).toBe('alpha\nchanged\n')
+  })
+
+  test('rejects simulated sed after a sibling write even if mtime is restored', async () => {
+    const path = join(getHarnessCwd(), 'sed-stale-sibling.txt')
+    await writeFile(path, 'alpha\nbeta\n', 'utf8')
+    const parentContext = await readIntoContext(path)
+    const originalTimestamp = parentContext.readFileState.get(path)?.timestamp
+    expect(originalTimestamp).toBeDefined()
+
+    const childContext = makeToolContext({
+      agentId: asAgentId('achild000000000202'),
+      readFileState: cloneFileStateCache(parentContext.readFileState),
+    })
+    await BashTool.call(
+      {
+        command: `sed -i 's/beta/child/' ${path}`,
+        _simulatedSedEdit: {
+          filePath: path,
+          newContent: 'alpha\nchild\n',
+        },
+      },
+      childContext,
+      allowToolUse,
+      parentMessage,
+    )
+
+    const originalDate = new Date(originalTimestamp!)
+    await utimes(path, originalDate, originalDate)
+
+    await expect(
+      BashTool.call(
+        {
+          command: `sed -i 's/child/parent/' ${path}`,
+          _simulatedSedEdit: {
+            filePath: path,
+            newContent: 'alpha\nparent\n',
+          },
+        },
+        parentContext,
+        allowToolUse,
+        parentMessage,
+      ),
+    ).rejects.toThrow(FILE_UNEXPECTEDLY_MODIFIED_ERROR)
+    expect(await readFile(path, 'utf8')).toBe('alpha\nchild\n')
+  })
+
   test('records simulated sed writes so stale parent writes are blocked even if mtime is restored', async () => {
     const path = join(getHarnessCwd(), 'sed-sibling.txt')
     await writeFile(path, 'alpha\nbeta\n', 'utf8')

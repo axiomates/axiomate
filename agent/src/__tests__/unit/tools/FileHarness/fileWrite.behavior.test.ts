@@ -290,7 +290,7 @@ describe('FileWriteTool file harness behavior', () => {
     expect(await readFile(path, 'utf8')).toBe('alpha\nbeta\ngamma\n')
   })
 
-  test('canonicalizes overwrite writes to LF without preserving existing CRLF', async () => {
+  test('preserves existing CRLF line endings when overwriting a CRLF file', async () => {
     const { FileWriteTool } = await loadFileTools()
     const path = join(getHarnessCwd(), 'crlf-write.txt')
     await writeFile(path, 'alpha\r\nbeta\r\n', 'utf8')
@@ -304,11 +304,11 @@ describe('FileWriteTool file harness behavior', () => {
     )
 
     const raw = await readFile(path)
-    expect(raw.toString('utf8')).toBe('one\nTWO\n')
-    expect(raw.includes(Buffer.from('\r\n'))).toBe(false)
+    expect(raw.toString('utf8')).toBe('one\r\nTWO\r\n')
+    expect(context.readFileState.get(path)?.content).toBe('one\nTWO\n')
   })
 
-  test('canonicalizes overwrite writes to UTF-8 without preserving existing BOM', async () => {
+  test('preserves existing UTF-8 BOM when overwriting a BOM file', async () => {
     const { FileWriteTool } = await loadFileTools()
     const path = join(getHarnessCwd(), 'bom-write.txt')
     await writeFile(path, '\ufeffalpha\n', 'utf8')
@@ -322,12 +322,12 @@ describe('FileWriteTool file harness behavior', () => {
     )
 
     const raw = await readFile(path)
-    expect(raw[0]).not.toBe(0xef)
-    expect(raw.toString('utf8')).toBe('beta\n')
+    expect(raw.subarray(0, 3)).toEqual(Buffer.from([0xef, 0xbb, 0xbf]))
+    expect(raw.toString('utf8')).toBe('\ufeffbeta\n')
     expect(context.readFileState.get(path)?.content).toBe('beta\n')
   })
 
-  test('canonicalizes overwrite writes to UTF-8 when replacing a UTF-16LE file', async () => {
+  test('preserves existing UTF-16LE BOM encoding when overwriting a UTF-16LE file', async () => {
     const { FileWriteTool } = await loadFileTools()
     const path = join(getHarnessCwd(), 'utf16-write.txt')
     await writeFile(path, Buffer.from('\ufeffalpha\n', 'utf16le'))
@@ -341,10 +341,44 @@ describe('FileWriteTool file harness behavior', () => {
     )
 
     const raw = await readFile(path)
-    expect(raw[0]).not.toBe(0xff)
-    expect(raw[1]).not.toBe(0xfe)
-    expect(raw.toString('utf8')).toBe('beta\n')
+    expect(raw.subarray(0, 2)).toEqual(Buffer.from([0xff, 0xfe]))
+    expect(raw.toString('utf16le')).toBe('\ufeffbeta\n')
     expect(context.readFileState.get(path)?.content).toBe('beta\n')
+  })
+
+  test('preserves majority line ending style and defaults mixed ties to LF on overwrite', async () => {
+    const { FileWriteTool } = await loadFileTools()
+    const crlfMajority = join(getHarnessCwd(), 'crlf-majority-write.txt')
+    await writeFile(crlfMajority, 'a\r\nb\r\nc\n', 'utf8')
+    const crlfContext = await readIntoContext(crlfMajority)
+
+    await FileWriteTool.call(
+      { file_path: crlfMajority, content: 'one\ntwo\n' },
+      crlfContext,
+      allowToolUse,
+      parentMessage,
+    )
+
+    expect((await readFile(crlfMajority)).toString('utf8')).toBe(
+      'one\r\ntwo\r\n',
+    )
+    expect(crlfContext.readFileState.get(crlfMajority)?.content).toBe(
+      'one\ntwo\n',
+    )
+
+    const mixedTie = join(getHarnessCwd(), 'mixed-tie-write.txt')
+    await writeFile(mixedTie, 'a\r\nb\n', 'utf8')
+    const tieContext = await readIntoContext(mixedTie)
+
+    await FileWriteTool.call(
+      { file_path: mixedTie, content: 'one\ntwo\n' },
+      tieContext,
+      allowToolUse,
+      parentMessage,
+    )
+
+    expect((await readFile(mixedTie)).toString('utf8')).toBe('one\ntwo\n')
+    expect(tieContext.readFileState.get(mixedTie)?.content).toBe('one\ntwo\n')
   })
 
   test('validateInput allows mtime-only drift when readFileState came from full Read', async () => {

@@ -310,6 +310,25 @@ describe('FileEditTool file harness behavior', () => {
     expect(context.readFileState.get(path)?.content).toBe('alpha\nBETA\n')
   })
 
+  test('preserves existing UTF-16LE BOM encoding when editing', async () => {
+    const { FileEditTool } = await loadFileTools()
+    const path = join(getHarnessCwd(), 'utf16-bom-edit.txt')
+    await writeFile(path, Buffer.from('\ufeffalpha\nbeta\n', 'utf16le'))
+    const context = await readIntoContext(path)
+
+    await FileEditTool.call(
+      { file_path: path, old_string: 'beta', new_string: 'BETA' },
+      context,
+      allowToolUse,
+      parentMessage,
+    )
+
+    const raw = await readFile(path)
+    expect(raw.subarray(0, 2)).toEqual(Buffer.from([0xff, 0xfe]))
+    expect(raw.toString('utf16le')).toBe('\ufeffalpha\nBETA\n')
+    expect(context.readFileState.get(path)?.content).toBe('alpha\nBETA\n')
+  })
+
   test('allows mtime-only drift when readFileState came from full Read', async () => {
     const { FileEditTool } = await loadFileTools()
     const path = join(getHarnessCwd(), 'mtime-only.txt')

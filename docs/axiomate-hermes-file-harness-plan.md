@@ -306,10 +306,11 @@ metadata, edit-match escalation, and read-dedup loop guidance.
 2026-06-01 review follow-up:
 
 - The highest-risk b59a review item is now resolved: resume/cold-start
-  reconstruction for `Write` canonicalization and historical `Edit` replay.
-- `Write` history reconstruction canonicalizes historical tool input and
-  records runtime-only `toolNormalization` only when the tool actually removed a
-  leading UTF-8 BOM or normalized CR/CRLF.
+  reconstruction for `Write` semantic canonicalization and historical `Edit`
+  replay.
+- `Write` history reconstruction canonicalizes historical tool input into
+  semantic content and records runtime-only `toolNormalization` only when the
+  tool input actually contained a leading UTF-8 BOM or CR/CRLF.
 - `Edit` history reconstruction replays against full-known transcript content
   only; it does not read current disk and does not seed state from stale human
   edits made after the historical tool call.
@@ -320,9 +321,11 @@ metadata, edit-match escalation, and read-dedup loop guidance.
   mtime content fallback, and NotebookEdit/file-harness stale throws are caught
   by the tool runner and surfaced as `is_error` tool results rather than
   exiting the program.
-- There are 3 remaining b59a behavior decisions before UI/statistics work:
-  simulated sed stale guard, registry realpath/case aliasing, and killed/failed
-  subagent reminders.
+- HR5 is resolved: Bash `_simulatedSedEdit` is a structured harness writer and
+  now enforces read-before-write, sibling-write, and mtime/content stale guards.
+  Arbitrary Bash/PowerShell writes remain outside this scope.
+- There are 2 remaining b59a behavior decisions before UI/statistics work:
+  registry realpath/case aliasing and killed/failed subagent reminders.
 
 Completed and pushed:
 
@@ -388,7 +391,7 @@ Completed HR4 follow-up:
 
 Next implementation target:
 
-- Close the remaining 3 b59a behavior decisions, then treat the remaining
+- Close the remaining 2 b59a behavior decisions, then treat the remaining
   harness work as optional observability/UI/recovery polish, not missing core
   Stage 1-8 behavior. Two candidate policy branches are explicitly closed for
   now:
@@ -577,9 +580,10 @@ Status: complete locally.
 
 Implemented decisions:
 
-- `FileWriteTool` is full replacement and writes canonical text:
-  UTF-8, LF, no leading BOM. It does not preserve overwritten files'
-  encoding, BOM, CRLF, or mixed line endings.
+- `FileWriteTool` is full semantic replacement. New files use the project
+  default envelope: UTF-8, LF, no leading BOM.
+- `FileWriteTool` overwrites preserve the existing file envelope: original
+  encoding, leading BOM, and detected majority line-ending style.
 - `FileEditTool` preserves existing text format for precise edits:
   original encoding, leading BOM, and detected majority line-ending style.
 - `NotebookEditTool` uses the same preservation policy as `FileEditTool`.
@@ -595,7 +599,8 @@ Implementation details:
   normalizes CRLF/lone CR to LF, and returns `hadLeadingBom` separately.
 - `writeTextContent` normalizes incoming content to LF first, then expands to
   CRLF only when the caller asks to preserve CRLF.
-- `FileWriteTool` calls `normalizeContentToLf` and writes with UTF-8/LF.
+- `FileWriteTool` calls `normalizeContentToLf`; new files write UTF-8/LF, while
+  overwrites pass the original file metadata to `writeTextContent`.
 - `FileEditTool`, `NotebookEditTool`, and simulated sed pass
   `preserveLeadingBom` when the original file had a leading BOM.
 - `readNotebook` strips BOM before parsing so BOM-prefixed notebooks are
@@ -604,10 +609,10 @@ Implementation details:
 Tests added:
 
 - Metadata read tests for majority line-ending detection and BOM metadata.
-- `FileWriteTool` tests for canonical new/overwrite writes, existing BOM
-  removal, CRLF normalization, and UTF-16LE replacement to UTF-8.
-- `FileEditTool` tests for CRLF, mixed-majority CRLF, tied-mixed LF, BOM
-  preservation, and BOM mtime-only stale fallback.
+- `FileWriteTool` tests for canonical new writes and overwrite preservation of
+  CRLF, UTF-8 BOM, UTF-16LE BOM, majority CRLF, and mixed-tie LF.
+- `FileEditTool` tests for CRLF, mixed-majority CRLF, tied-mixed LF, UTF-8 BOM
+  preservation, UTF-16LE BOM preservation, and BOM mtime-only stale fallback.
 - `NotebookEditTool` and structured simulated sed tests for BOM preservation.
 
 Estimated work:
@@ -835,15 +840,17 @@ Estimated work:
       this is application config reliability, not user-file harness behavior.
     - This matches Hermes' "target unchanged unless rename succeeds" invariant.
 
-16. `Write` canonicalizes; precise edit paths preserve.
-    - `FileWriteTool` writes UTF-8, LF, no leading BOM for both new files and
-      overwrites.
-    - `FileEditTool`, `NotebookEditTool`, and structured simulated sed preserve
-      existing encoding, leading BOM, and majority line-ending style.
+16. `Write` canonicalizes semantic content; overwrites preserve envelope.
+    - `FileWriteTool` writes new files as UTF-8, LF, no leading BOM.
+    - `FileWriteTool` overwrites preserve existing encoding, leading BOM, and
+      majority line-ending style.
+    - `FileEditTool`, `NotebookEditTool`, and structured simulated sed also
+      preserve existing encoding, leading BOM, and majority line-ending style.
     - Majority line-ending detection defaults to LF on ties or no line breaks.
     - Resume reconstruction follows the same semantic policy: historical
-      `Write` input is canonicalized, while historical `Edit` is replayed
-      against full-known transcript content rather than current disk.
+      `Write` input is canonicalized as semantic content only, while historical
+      `Edit` is replayed against full-known transcript content rather than
+      current disk.
     - `toolNormalization` is recorded only when format correction actually
       happened and remains runtime/reconstructable metadata, not JSONL history.
 
@@ -887,7 +894,17 @@ Estimated work:
     - Telemetry is used to decide whether richer recovery policy is worth the
       product risk.
 
-22. Stage 8 read-dedup guidance escalates only after repeated stubs.
+22. Bash `_simulatedSedEdit` is a structured harness writer.
+    - The scope is only the internal permission-preview path where BashTool
+      applies the previewed sed edit directly.
+    - It must have current read state before writing.
+    - It rejects sibling writes after read.
+    - It rejects mtime/content stale changes, using full-read content fallback
+      like `FileEditTool`.
+    - Arbitrary Bash and PowerShell writes remain outside registry/lock/stale
+      parsing.
+
+23. Stage 8 read-dedup guidance escalates only after repeated stubs.
     - The first `file_unchanged` stub remains quiet to preserve existing dedup
       behavior.
     - The second same-path/same-range/same-read-state stub adds a reuse hint.
@@ -895,7 +912,7 @@ Estimated work:
     - A real text/notebook Read clears the path's dedup tracker, so legitimate
       rereads after a content change are not punished.
 
-23. Cross-process registry is intentionally not implemented.
+24. Cross-process registry is intentionally not implemented.
     - Checkpoint is already cross-session, but it is a recovery/audit layer,
       not a live read/write registry.
     - mtime/content checks catch most practical cross-process stale writes
@@ -910,8 +927,7 @@ Estimated work:
 There is no remaining core Hermes file-harness port planned. Remaining work is
 behavior sign-off plus observability and product polish:
 
-0. Close the remaining 3 b59a behavior decisions.
-   - Bash simulated sed read-before-write/stale guard.
+0. Close the remaining 2 b59a behavior decisions.
    - Registry path identity for symlink/realpath/case aliases.
    - Killed/failed subagent file-state reminders.
 

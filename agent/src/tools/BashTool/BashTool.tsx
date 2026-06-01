@@ -17,7 +17,13 @@ import { extractAxiomateHints } from '../../utils/codeHints.js';
 import { isEnvTruthy } from '../../utils/envUtils.js';
 import { isENOENT, ShellError } from '../../utils/errors.js';
 import { getFileModificationTime, writeTextContent } from '../../utils/file.js';
-import { noteFileWrite, withFileStatePathLock } from '../../utils/fileStateRegistry.js';
+import { fileStateHasFullContent } from '../../utils/fileStateCache.js';
+import {
+  noteFileWrite,
+  wasFileModifiedAfterReadByAnotherContext,
+  withFileStatePathLock,
+} from '../../utils/fileStateRegistry.js';
+import { throwFileHarnessFailure } from '../../utils/fileHarnessFailures.js';
 import { truncate } from '../../utils/format.js';
 import { getFsImplementation } from '../../utils/fsOperations.js';
 import { readFileSyncWithMetadata } from '../../utils/fileRead.js';
@@ -50,6 +56,7 @@ import { shouldUseSandbox } from './shouldUseSandbox.js';
 import { BASH_TOOL_NAME } from './toolName.js';
 import { BackgroundHint, renderToolResultMessage, renderToolUseErrorMessage, renderToolUseMessage, renderToolUseProgressMessage, renderToolUseQueuedMessage } from './UI.js';
 import { buildImageToolResult, isImageOutput, resetCwdIfOutsideProject, resizeShellImageOutput, stdErrAppendShellResetMessage, stripEmptyLines } from './utils.js';
+import { FILE_UNEXPECTEDLY_MODIFIED_ERROR } from '../FileEditTool/constants.js';
 const EOL = '\n';
 
 // Progress display constants
@@ -380,6 +387,42 @@ async function applySedEdit(simulatedEdit: {
         };
       }
       throw e;
+    }
+
+    const lastRead = toolUseContext.readFileState.get(absoluteFilePath);
+    if (!lastRead) {
+      throwFileHarnessFailure(
+        FILE_UNEXPECTEDLY_MODIFIED_ERROR,
+        'not_read',
+        'execution',
+        absoluteFilePath,
+      );
+    }
+    if (
+      wasFileModifiedAfterReadByAnotherContext(
+        toolUseContext,
+        absoluteFilePath,
+      )
+    ) {
+      throwFileHarnessFailure(
+        FILE_UNEXPECTEDLY_MODIFIED_ERROR,
+        'sibling_write_after_read',
+        'execution',
+        absoluteFilePath,
+      );
+    }
+    if (getFileModificationTime(absoluteFilePath) > lastRead.timestamp) {
+      const contentUnchanged =
+        fileStateHasFullContent(lastRead) &&
+        metadata.content === lastRead.content;
+      if (!contentUnchanged) {
+        throwFileHarnessFailure(
+          FILE_UNEXPECTEDLY_MODIFIED_ERROR,
+          fileStateHasFullContent(lastRead) ? 'stale_content' : 'stale_mtime',
+          'execution',
+          absoluteFilePath,
+        );
+      }
     }
 
     // Preserve the target file's text format for this structured edit path.

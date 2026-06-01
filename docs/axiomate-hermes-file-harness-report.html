@@ -230,7 +230,7 @@
     <section class="hero">
       <div class="eyebrow">File Harness · Migration Feasibility · Risk Review</div>
       <h1>Axiomate vs Hermes Agent File Harness 专项报告</h1>
-      <p>本报告只讨论文件读写/编辑可靠性：原子落盘、BOM/CRLF、staleness guard、read dedup、patch failure taxonomy、权限/安全 guard、并发文件状态和测试夹具。当前结论是：Axiomate 已经把 Hermes 最值得迁移的 file harness invariant 落入现有 TypeScript 工具体系；核心迁移完成。2026-06-01 已补上 resume/cold-start reconstruction 的格式语义缺口、明确 atomic helper scope，补齐 NotebookEdit mtime-only content fallback，并确认 file harness throw 由 tool runner 捕获为 <code>is_error</code> tool result；剩余是 3 个行为决策和之后的 UI/统计打磨。</p>
+      <p>本报告只讨论文件读写/编辑可靠性：原子落盘、BOM/CRLF、staleness guard、read dedup、patch failure taxonomy、权限/安全 guard、并发文件状态和测试夹具。当前结论是：Axiomate 已经把 Hermes 最值得迁移的 file harness invariant 落入现有 TypeScript 工具体系；核心迁移完成。2026-06-01 已补上 resume/cold-start reconstruction 的格式语义缺口、明确 atomic helper scope，补齐 NotebookEdit mtime-only content fallback，确认 file harness throw 由 tool runner 捕获为 <code>is_error</code> tool result，并把 Bash <code>_simulatedSedEdit</code> 纳入 structured stale guard；剩余是 2 个行为决策和之后的 UI/统计打磨。</p>
       <div class="meta">更新时间：2026-06-01 · Axiomate：C:\public\workspace\axiomate (main，已覆盖 Stage 1-8 file harness 实现 + HR1 resume reconstruction 修复) · Hermes Agent：C:\public\workspace\hermes-agent (main @ 02d1da49) · 口径：本地代码阅读、git 提交证据、Vitest/类型检查验证</div>
     </section>
 
@@ -243,7 +243,7 @@
       <article class="card">
         <div class="stat-label">本轮补齐</div>
         <div class="stat-value">HR1 fixed</div>
-        <p class="muted">Write resume canonicalization 已钉住；Edit resume 只 replay 已知 full content，不读当前磁盘，也不改 JSONL。</p>
+        <p class="muted">Write resume semantic canonicalization 已钉住；真实覆盖已有文件保留 envelope；Edit resume 只 replay 已知 full content，不读当前磁盘，也不改 JSONL。</p>
       </article>
       <article class="card">
         <div class="stat-label">仍未照搬</div>
@@ -271,7 +271,7 @@
         </div>
         <div class="callout">
           <strong>当前优先级：</strong>
-          不再把 Stage 1-8 当成待迁移主线。<code>encoding_unsupported</code> 保留 reason 但不启用拒绝，cross-process registry/locking 不做；HR1/HR2/HR3/HR4 已修复。下一步先关闭剩余 3 个行为决策，再做 UI surfacing、统计看板和 telemetry 证明必要后的可选 edit recovery。
+          不再把 Stage 1-8 当成待迁移主线。<code>encoding_unsupported</code> 保留 reason 但不启用拒绝，cross-process registry/locking 不做；HR1/HR2/HR3/HR4/HR5 已修复。下一步先关闭剩余 2 个行为决策，再做 UI surfacing、统计看板和 telemetry 证明必要后的可选 edit recovery。
         </div>
       </div>
       <div class="pill-row">
@@ -280,7 +280,7 @@
         <span class="pill good">已落地：resume canonicalization</span>
         <span class="pill good">已落地：failure escalation</span>
         <span class="pill good">已落地：read dedup loop guard</span>
-        <span class="pill warn">剩余：3 个行为决策</span>
+        <span class="pill warn">剩余：2 个行为决策</span>
         <span class="pill info">保留现状：encoding best-effort</span>
         <span class="pill info">不做：cross-process registry</span>
       </div>
@@ -461,7 +461,7 @@
         <article class="subcard">
           <h3>Resume Reconstruction</h3>
           <ul>
-            <li><code>queryHelpers.ts</code> 对历史 <code>Write</code> input 按工具真实语义 canonicalize，不读当前磁盘。</li>
+            <li><code>queryHelpers.ts</code> 对历史 <code>Write</code> input 只按语义内容 canonicalize，不读当前磁盘，也不重建 disk envelope。</li>
             <li>历史 <code>Edit</code> 只在已有 full-known transcript content 时 replay；失败或缺上下文就不 seed state。</li>
             <li>不改 JSONL、不改历史 tool call，避免破坏 KV-cache-sensitive transcript。</li>
           </ul>
@@ -487,7 +487,7 @@
           <ul>
             <li><code>FileHarness</code> 测试目录已覆盖 read/write/edit/notebook/simulated sed。</li>
             <li>atomic、BOM、CRLF、failure metadata、dedup、registry/lock 都有 targeted tests。</li>
-            <li><code>queryHelpers.fileStateResume.test.ts</code> 覆盖 Write canonical resume、Edit replay、不从当前磁盘 seed state。</li>
+            <li><code>queryHelpers.fileStateResume.test.ts</code> 覆盖 Write semantic resume、Edit replay、不从当前磁盘 seed state。</li>
             <li>Focused FileHarness 测试建议使用 <code>--no-file-parallelism</code> 避免 import mock 并行抖动。</li>
           </ul>
         </article>
@@ -618,7 +618,7 @@
             <li>Hermes 的 <code>ShellFileOperations</code> 跨 terminal backend 抽象。Axiomate 的本地 TS/Bun 文件工具不需要 Python shell 中间层。</li>
             <li>V4A multi-file patch parser。Axiomate 当前模型表面是 Read/Edit/Write，不应先引入第二套 patch ABI。</li>
             <li>Hermes profile/cross-profile guard 的具体路径。Axiomate 应映射成 .axiomate/skills、agents、commands、memory、scratchpad、plans 的本地权限体系。</li>
-            <li>Hermes Write 默认保留旧 CRLF 的策略。Axiomate 已决策为 Write canonicalizes，precise edit preserves。</li>
+            <li>Hermes Write 默认保留旧 CRLF 的策略。Axiomate 当前已对齐为：Write 新建 canonicalizes，覆盖已有文件保留 encoding/BOM/line-ending envelope；precise edit 继续 preserves。</li>
           </ul>
         </article>
       </div>
@@ -660,11 +660,11 @@
       </div>
       <div class="grid-3">
         <article class="subcard">
-          <h3>3 behavior decisions</h3>
+          <h3>2 behavior decisions</h3>
           <p class="muted">先做，非可选</p>
           <ul>
-            <li>simulated sed guard。</li>
-            <li>registry alias、killed/failed subagent reminder。</li>
+            <li>registry alias。</li>
+            <li>killed/failed subagent reminder。</li>
           </ul>
         </article>
         <article class="subcard">
@@ -735,14 +735,14 @@
             <td><span class="pill good">已完成</span></td>
             <td><strong>约 0.2k net LOC</strong></td>
             <td><code>queryHelpers.fileStateResume</code> + focused FileWrite/FileEdit/FileStateCache tests</td>
-            <td>Write history canonicalize；Edit history replay full-known transcript state；<code>toolNormalization</code> runtime-only，不改 JSONL。</td>
+            <td>Write history semantic canonicalize；真实覆盖时保留现有文件 envelope；Edit history replay full-known transcript state；<code>toolNormalization</code> runtime-only，不改 JSONL。</td>
           </tr>
           <tr>
-            <td>剩余 3 个行为决策</td>
+            <td>剩余 2 个行为决策</td>
             <td><span class="pill warn">待签字</span></td>
             <td><strong>未知，取决于决策</strong></td>
             <td>每项先补/确认测试，再改逻辑</td>
-            <td>simulated sed、registry alias、subagent killed/failed reminder；这些应先于 UI/统计。</td>
+            <td>registry alias、subagent killed/failed reminder；这些应先于 UI/统计。</td>
           </tr>
           <tr>
             <td>剩余 UI/统计/观察</td>
@@ -754,7 +754,7 @@
         </tbody>
       </table>
       <div class="callout warn" style="margin-top: 14px;">
-        <strong>当前建议：</strong>不要继续为了“完整抄 Hermes”扩大范围。Axiomate 已经完成核心 file harness；下一步先关闭 3 个行为决策，再做 UI/统计/观察类打磨，或等 telemetry 证明必要后再增强 edit recovery。
+        <strong>当前建议：</strong>不要继续为了“完整抄 Hermes”扩大范围。Axiomate 已经完成核心 file harness；下一步先关闭 2 个行为决策，再做 UI/统计/观察类打磨，或等 telemetry 证明必要后再增强 edit recovery。
       </div>
     </section>
 
@@ -832,7 +832,7 @@ Core:
     writeTextContent(..., 'LF')
     runtime-only toolNormalization when BOM/CR normalization happens
   agent/src/utils/queryHelpers.ts
-    Write resume canonicalization
+    Write resume semantic canonicalization
     Edit resume replay against full-known transcript content
   agent/src/utils/file.ts
     writeTextContent

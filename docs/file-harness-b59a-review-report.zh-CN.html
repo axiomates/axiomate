@@ -265,7 +265,7 @@
         这份报告把 <code>b59ac433254fb311cada9fa70963045fd772e17b..9bc40e1e</code> 的 file harness 改动翻译成人类可读的中文审查材料，并追加记录 2026-06-01 已实现的 resume/cold-start 修复。重点不是证明测试通过，而是把行为和旧版 Axiomate 不一样的地方全部列出，并标明哪些设计决策还需要重新确认。
       </p>
       <div class="meta">
-        更新日期：2026-06-01 · 静态审查 Head：<code>9bc40e1e</code> · HR1/HR2/HR3/HR4 已实现并测试，剩余 3 个决策点。
+        更新日期：2026-06-01 · 静态审查 Head：<code>9bc40e1e</code> · HR1/HR2/HR3/HR4/HR5 已实现并测试，剩余 2 个决策点。
       </div>
     </section>
 
@@ -288,7 +288,7 @@
       <div class="card">
         <div class="stat-label">行为项</div>
         <div class="stat-value">19 项</div>
-        <p class="muted">原 7 个需确认决策；HR1/HR2/HR3/HR4 已处理，剩余 3 个</p>
+        <p class="muted">原 7 个需确认决策；HR1/HR2/HR3/HR4/HR5 已处理，剩余 2 个</p>
       </div>
     </section>
 
@@ -309,7 +309,7 @@
         <div class="callout warn">
           <h3>但还不能签字说整轮 harness 已完全无风险</h3>
           <p>
-            HR1 的 resume/cold-start 重建问题已按“不改 JSONL、不读当前盘、解释历史工具语义”的方案修复；HR2 的 atomic fallback 范围已收窄为“file tool strict，config/settings 受控 fallback”；HR3 已让 NotebookEdit 对齐 FileEdit/FileWrite 的 full-read mtime-only content fallback；HR4 已确认 file harness 内部保持 throw，但由 tool runner 捕获并转成 <code>is_error</code> tool result，不退出程序。未决项现在主要集中在 Bash simulated sed、registry alias、subagent killed/failed reminder。
+            HR1 的 resume/cold-start 重建问题已按“不改 JSONL、不读当前盘、解释历史工具语义”的方案修复；HR2 的 atomic fallback 范围已收窄为“file tool strict，config/settings 受控 fallback”；HR3 已让 NotebookEdit 对齐 FileEdit/FileWrite 的 full-read mtime-only content fallback；HR4 已确认 file harness 内部保持 throw，但由 tool runner 捕获并转成 <code>is_error</code> tool result，不退出程序；HR5 已把 Bash <code>_simulatedSedEdit</code> 收进 structured harness guard。未决项现在主要集中在 registry alias、subagent killed/failed reminder。
           </p>
         </div>
       </div>
@@ -319,7 +319,7 @@
         <span class="pill good">已修复：Write/Edit resume reconstruction</span>
         <span class="pill good">建议保留：same-process sibling guard</span>
         <span class="pill good">已修复：NotebookEdit mtime fallback</span>
-        <span class="pill warn">需决策：Bash simulated sed guard</span>
+        <span class="pill good">已修复：Bash simulated sed guard</span>
       </div>
     </section>
 
@@ -327,13 +327,13 @@
       <div class="section-title">
         <div>
           <div class="kicker">Decisions</div>
-          <h2>已处理 4 个，剩余 3 个设计决策</h2>
+          <h2>已处理 5 个，剩余 2 个设计决策</h2>
         </div>
       </div>
       <div class="grid-2">
         <div class="subcard decision keep">
-          <h3>已处理：Write canonicalization 与 resume/cold-start</h3>
-          <p><code>Write</code> 重建现在 canonicalize 历史输入；只有实际去掉 BOM 或归一 CR/CRLF 时才记录 runtime-only <code>toolNormalization</code>。<code>Edit</code> 重建只 replay 已知 full content，不读当前磁盘，也不改 JSONL。</p>
+          <h3>已处理：Write semantic canonicalization 与 resume/cold-start</h3>
+          <p><code>Write</code> 重建现在 canonicalize 历史输入的语义内容；真实覆盖已有文件时保留原文件 encoding/BOM/line ending envelope。<code>Edit</code> 重建只 replay 已知 full content，不读当前磁盘，也不改 JSONL。</p>
         </div>
         <div class="subcard decision keep">
           <h3>已处理：atomic fallback 只给 config/settings 受控开启</h3>
@@ -347,16 +347,16 @@
           <h3>已处理：NotebookEdit / file harness throw 边界</h3>
           <p>file harness safety failure 在工具内部继续 throw typed <code>FileHarnessError</code>；共享 tool runner 捕获后返回 <code>is_error: true</code> 的 <code>tool_result</code>，主循环不退出。该行为由 <code>toolExecutionFileHarnessError.test.ts</code> 钉住。</p>
         </div>
-        <div class="subcard decision review">
-          <h3>1. Bash simulated sed 是否属于 structured harness writer</h3>
-          <p>它现在会 lock、preserve format、noteFileWrite，但不强制 read-before-write/stale guard。需要决定这是 permission-approved shell edit，还是严格 file harness edit。</p>
+        <div class="subcard decision keep">
+          <h3>已处理：Bash <code>_simulatedSedEdit</code> 按 structured writer 处理</h3>
+          <p><code>_simulatedSedEdit</code> 是 permission preview 后由 BashTool 直接写文件的内部路径；现在和 <code>Edit</code> 一样要求已读，并在 sibling write、mtime/content stale 时拒绝。任意 Bash/PowerShell 写文件仍不纳入这个 guard。</p>
         </div>
         <div class="subcard decision review">
-          <h3>2. registry 是否处理 realpath/case alias</h3>
+          <h3>1. registry 是否处理 realpath/case alias</h3>
           <p>当前 registry 用 <code>path.normalize</code>。symlink、Windows 大小写、路径 alias 可能绕过 sibling 检测。</p>
         </div>
         <div class="subcard decision review">
-          <h3>3. killed/failed subagent 是否提醒父 context</h3>
+          <h3>2. killed/failed subagent 是否提醒父 context</h3>
           <p>完成路径会 append reminder，但 killed/failed subagent 可能已经改过文件。是否提醒需要确认。</p>
         </div>
       </div>
@@ -381,12 +381,12 @@
             </tr>
           </thead>
           <tbody>
-            <tr><td>HR1</td><td><code>Write</code> canonicalization + transcript resume</td><td>旧风险：恢复出的 <code>readFileState</code> 可能用原始 input，而 disk 是 canonical 内容</td><td><span class="tag keep">已修复</span></td><td>保留不改 JSONL；继续跑 focused resume tests</td></tr>
+            <tr><td>HR1</td><td><code>Write</code> semantic canonicalization + transcript resume</td><td>旧风险：恢复出的 <code>readFileState</code> 可能用原始 input；新决策下 disk envelope 不进 JSONL</td><td><span class="tag keep">已修复</span></td><td>保留不改 JSONL；继续跑 focused resume tests</td></tr>
             <tr><td>HR2</td><td>atomic helper shared callers</td><td>如果一刀切 strict，会把 config/settings 的可用性 fallback 也删掉</td><td><span class="tag keep">已修复</span></td><td>保留 file tool strict；config/settings 只对 rename lock 受控 fallback</td></tr>
             <tr><td>HR3</td><td>NotebookEdit mtime-only drift</td><td>比 FileEdit/FileWrite 更容易 false stale</td><td><span class="tag keep">已修复</span></td><td>使用 FileReadTool cell-view content fallback；partial read 仍拒绝</td></tr>
             <tr><td>HR4</td><td>NotebookEdit / file harness throw boundary</td><td>工具内部 throw 不能让程序退出</td><td><span class="tag keep">已修复</span></td><td>runner 捕获并返回 <code>is_error</code></td></tr>
-            <tr><td>HR5</td><td>Bash simulated sed stale/read guard</td><td>internal sed edit 可在未读或 stale 状态写入</td><td><span class="tag review">需决策</span></td><td>决定它是不是 structured writer</td></tr>
-            <tr><td>HR6</td><td>UTF-16LE BOM preservation</td><td>实现可能正确，但未被测试钉住</td><td><span class="tag review">需测试</span></td><td>加 UTF-16LE edit test</td></tr>
+            <tr><td>HR5</td><td>Bash simulated sed stale/read guard</td><td>internal sed edit 曾可在未读或 stale 状态写入</td><td><span class="tag keep">已修复</span></td><td>仅限 <code>_simulatedSedEdit</code>；任意 shell 写仍不纳入</td></tr>
+            <tr><td>HR6</td><td>UTF-16LE BOM preservation</td><td>原风险是实现可能正确但未被测试钉住</td><td><span class="tag keep">已测试</span></td><td>保留 FileEdit UTF-16LE BOM focused test</td></tr>
             <tr><td>HR7</td><td>registry path identity</td><td><code>normalize</code> 不能覆盖 symlink/case alias</td><td><span class="tag review">需决策</span></td><td>决定接受限制还是升级 realpath/casefold</td></tr>
             <tr><td>HR8</td><td>lock non-reentrancy</td><td>同路径嵌套 lock 会死锁</td><td><span class="tag keep">接受 invariant</span></td><td>文档约束未来 writer</td></tr>
             <tr><td>HR9</td><td>subagent killed/failed reminders</td><td>可能已经写文件但父 context 没提醒</td><td><span class="tag review">需审查</span></td><td>检查 lifecycle</td></tr>
@@ -412,10 +412,10 @@
           </div>
         </details>
         <details>
-          <summary>B02 · <code>Write</code> 统一写 UTF-8 / LF / no BOM<span class="tag keep">保留，resume 已修</span></summary>
+          <summary>B02 · <code>Write</code> 新建 canonical，覆盖保留原格式 envelope<span class="tag keep">已修订</span></summary>
           <div class="details-body split">
             <div><h4>旧行为</h4><p>工具输出和 readFileState 主要使用模型传入的原始 content。</p></div>
-            <div><h4>新行为</h4><p>写盘、工具输出、LSP change、readFileState 都使用 canonical content。resume 重建也 canonicalize 历史 Write input；只有实际格式矫正时才加 runtime-only <code>toolNormalization</code>。</p></div>
+            <div><h4>新行为</h4><p>新建文件写 UTF-8/LF/no BOM；覆盖已有文件保留原 encoding、BOM 和 majority line ending（平票 LF）。工具输出、LSP change、readFileState 仍使用 LF/无 BOM 的语义内容；resume 重建只恢复语义内容，不恢复 disk envelope。</p></div>
           </div>
         </details>
         <details>
@@ -489,10 +489,10 @@
           </div>
         </details>
         <details>
-          <summary>B13 · Bash simulated sed 参与 registry/lock<span class="tag review">guard 需决策</span></summary>
+          <summary>B13 · Bash simulated sed 参与 structured harness guard<span class="tag keep">已修复</span></summary>
           <div class="details-body split">
             <div><h4>旧行为</h4><p>格式检测分散，不记录 sibling write，不加 path lock。</p></div>
-            <div><h4>新行为</h4><p>保留格式、加锁、noteFileWrite；但仍不强制 read-before-write/stale guard。</p></div>
+            <div><h4>新行为</h4><p>保留格式、加锁、noteFileWrite，并和 <code>Edit</code> 一样强制 read-before-write、sibling write、mtime/content stale guard。范围只限内部 <code>_simulatedSedEdit</code>。</p></div>
           </div>
         </details>
         <details>
@@ -559,15 +559,15 @@
           </thead>
           <tbody>
             <tr><td>Write unread/full-read guard</td><td><code>fileWrite.behavior</code>, <code>failureMetadata</code>, <code>queryHelpers.fileStateResume</code></td><td><span class="tag keep">强</span></td><td>无明显缺口</td></tr>
-            <tr><td>Write canonical LF/no BOM</td><td><code>fileWrite.behavior</code>, <code>queryHelpers.fileStateResume</code>, <code>fileStateCache</code></td><td><span class="tag keep">强</span></td><td>无明显缺口</td></tr>
+            <tr><td>Write create canonical / overwrite envelope preservation</td><td><code>fileWrite.behavior</code>, <code>queryHelpers.fileStateResume</code>, <code>fileStateCache</code></td><td><span class="tag keep">强</span></td><td>无明显缺口</td></tr>
             <tr><td>Edit resume reconstruction</td><td><code>queryHelpers.fileStateResume</code></td><td><span class="tag keep">好</span></td><td>后续只在 quote-style replay 出现 bug 时补边缘 case</td></tr>
             <tr><td>Edit partial-read allow</td><td><code>fileEdit.behavior</code></td><td><span class="tag keep">好</span></td><td>partial + mtime-only same-content</td></tr>
-            <tr><td>Edit format preservation</td><td><code>fileEdit.behavior</code>, <code>fileRead.metadata</code></td><td><span class="tag keep">好</span></td><td>UTF-16LE edit</td></tr>
+            <tr><td>Edit format preservation</td><td><code>fileEdit.behavior</code>, <code>fileRead.metadata</code></td><td><span class="tag keep">强</span></td><td>无明显缺口</td></tr>
             <tr><td>Read dedup escalation</td><td><code>fileRead.dedup</code>, utility tests</td><td><span class="tag keep">好</span></td><td>reset after reread; offset=0</td></tr>
             <tr><td>Registry sibling writes</td><td>FileHarness tests + <code>fileStateRegistry</code></td><td><span class="tag keep">好</span></td><td>symlink/case alias</td></tr>
             <tr><td>Atomic failure / fallback</td><td><code>file.test</code>, <code>settingsWriteFallback</code></td><td><span class="tag keep">好</span></td><td>config 因 test-mode 内存分支，主要由 helper opt-in 覆盖</td></tr>
             <tr><td>NotebookEdit</td><td><code>notebookEdit.behavior</code>, <code>failureMetadata</code>, <code>toolExecutionFileHarnessError</code></td><td><span class="tag keep">好</span></td><td>UTF-16LE</td></tr>
-            <tr><td>Bash simulated sed</td><td><code>bashSimulatedSed.behavior</code></td><td><span class="tag review">部分</span></td><td>read-before-write/stale decision</td></tr>
+            <tr><td>Bash simulated sed</td><td><code>bashSimulatedSed.behavior</code></td><td><span class="tag keep">好</span></td><td>无明显缺口</td></tr>
             <tr><td>Subagent reminders</td><td><code>fileStateReminder</code>, registry tests</td><td><span class="tag review">部分</span></td><td>killed/failed/resume integration</td></tr>
           </tbody>
         </table>
@@ -588,7 +588,7 @@
         </div>
         <div class="subcard">
           <h3>Phase C：adversarial probes</h3>
-          <p>Write canonical resume 与 Notebook mtime-only 已有 focused test；后续重点跑 simulated sed stale、symlink alias、UTF-16LE edit。</p>
+          <p>Write semantic resume、overwrite envelope preservation、Notebook mtime-only、simulated sed stale guard 与 UTF-16LE edit 已有 focused test；后续重点跑 symlink alias。</p>
         </div>
         <div class="subcard">
           <h3>Phase D：测试稳定性</h3>
@@ -597,7 +597,7 @@
       </div>
       <div class="callout warn" style="margin-top: 15px;">
         <h3>审查顺序建议</h3>
-        <p>先处理剩余 3 个决策项，再做 UI/统计。否则 UI 和 telemetry 会把可能不正确的行为固化为产品事实。</p>
+        <p>先处理剩余 2 个决策项，再做 UI/统计。否则 UI 和 telemetry 会把可能不正确的行为固化为产品事实。</p>
       </div>
     </section>
 
@@ -622,7 +622,7 @@
     </section>
 
     <div class="footer">
-      静态审查报告 + 2026-06-01 HR1/HR2/HR3/HR4 修复记录。剩余 3 个决策点。
+      静态审查报告 + 2026-06-01 HR1/HR2/HR3/HR4/HR5 修复记录。剩余 2 个决策点。
     </div>
   </main>
 </body>

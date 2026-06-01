@@ -11,7 +11,7 @@ Baseline under review:
 This document is a serious review plan and static behavior review record for
 the file harness work since `b59a`. The original review pass was docs-only.
 The 2026-06-01 follow-up implements the first approved fix: transcript/resume
-reconstruction for `Write` canonicalization and `Edit` replay.
+reconstruction for `Write` semantic canonicalization and `Edit` replay.
 
 Review status:
 
@@ -64,8 +64,8 @@ The `b59a..HEAD` range contains 14 commits:
 Post-review implementation delta on 2026-06-01:
 
 - `agent/src/utils/queryHelpers.ts`
-  - `Write` resume reconstruction canonicalizes historical input and records
-    `toolNormalization` only for actual BOM/CR normalization.
+  - `Write` resume reconstruction canonicalizes historical semantic content
+    and records `toolNormalization` only for actual BOM/CR normalization.
   - `Edit` resume reconstruction replays against full-known transcript content
     and no longer reads current disk.
 - `agent/src/tools/FileWriteTool/FileWriteTool.ts`
@@ -161,13 +161,14 @@ Review result:
   insufficient only for `Write`, not for `Edit`.
 - `Write` reconstruction canonicalizes historical tool input through
   `normalizeContentToLf` so reconstructed `readFileState.content` matches the
-  semantic content written by the tool.
+  semantic content written by the tool. It does not attempt to persist or
+  reconstruct the disk envelope.
 - If historical `Write` input actually needed BOM removal or CR/CRLF
   normalization, reconstructed state records runtime-only `toolNormalization`.
 - `toolNormalization` is not persisted by `cacheToObject`; it is reconstructable
   metadata and does not alter JSONL history or model transcript content.
 
-### B02: `Write` canonicalizes all output to UTF-8, LF, no BOM
+### B02: `Write` canonicalizes semantic content; overwrites preserve file envelope
 
 Old behavior at `b59a`:
 
@@ -179,28 +180,34 @@ Old behavior at `b59a`:
 New behavior:
 
 - `FileWriteTool` computes `canonicalContent = normalizeContentToLf(content)`.
-- Existing and new files are written as UTF-8, LF, no BOM.
+- New files are written as UTF-8, LF, no BOM.
+- Existing files preserve their prior encoding, leading BOM, and detected
+  majority line-ending style. CRLF wins only when CRLF count is greater than LF
+  count; ties, no newlines, and LF-majority files use LF.
 - Tool output `content`, `structuredPatch`, `originalFile`, `readFileState`,
   and LSP change notification use the canonical content.
 
 Decision status:
 
-- Intended and previously approved.
-- Rationale: `Write` is full replacement, not format-preserving edit.
+- Revised on 2026-06-01.
+- Rationale: `Write` is a full semantic replacement, but an overwrite should
+  not silently change the existing file's encoding/BOM/line-ending envelope.
+  New files still use the project default envelope.
 
 Current tests:
 
 - `fileWrite.behavior.test.ts`
   - canonicalizes new writes to LF/no BOM
-  - canonicalizes overwrite of CRLF file
-  - canonicalizes overwrite of UTF-8 BOM file
-  - canonicalizes overwrite of UTF-16LE file to UTF-8
+  - preserves overwrite of CRLF file
+  - preserves overwrite of UTF-8 BOM file
+  - preserves overwrite of UTF-16LE BOM file
+  - preserves majority CRLF and defaults mixed ties to LF
 
 Review result:
 
-- Keep behavior; HR1 follow-up fixed the resume/cold-start reconstruction gap.
-- This changes both disk bytes and model-visible tool output for CRLF, BOM, and
-  lone-CR input.
+- Keep revised behavior.
+- This preserves disk bytes for existing CRLF/BOM/UTF-16LE envelopes while
+  keeping model-visible content, readFileState, and LSP change text canonical.
 
 2026-06-01 follow-up:
 
@@ -308,6 +315,7 @@ Current tests:
   - preserves majority CRLF
   - defaults mixed tie to LF
   - preserves UTF-8 BOM
+  - preserves UTF-16LE BOM
 - `fileRead.metadata.test.ts`
   - verifies line-ending detection
   - verifies BOM stripping/reporting
@@ -317,15 +325,15 @@ Review result:
 
 - Keep behavior.
 
-Potential concern:
+2026-06-01 follow-up:
 
 - `writeTextContent` prepends `UTF8_BOM` even when writing with `utf16le`
-  encoding. Node may encode that character as the UTF-16LE BOM bytes, but this
-  edge should be explicitly tested for UTF-16LE edit preservation.
+  encoding. This is now pinned by a focused `FileEditTool` UTF-16LE BOM edit
+  test.
 
 Missing tests:
 
-- Editing UTF-16LE with BOM should preserve UTF-16LE BOM and content.
+- No obvious missing tests for HR6.
 - Editing a file with lone CR should normalize according to policy and not
   produce double CR.
 
@@ -725,29 +733,29 @@ Decision status:
 Current tests:
 
 - `bashSimulatedSed.behavior.test.ts`
+  - unread simulated sed rejects before write
+  - stale content rejects before write
+  - sibling write rejects even when mtime is restored
   - sibling parent write blocked after simulated sed
   - lock wait
   - UTF-8 BOM and CRLF preservation
 
 Review result:
 
-- Keep implemented improvements.
+- Keep implemented improvements and the new guard behavior.
 
-Decision needed:
+Decision result:
 
-- Simulated sed still does not enforce read-before-write or stale-read checks
-  before writing. This is different from `FileEditTool`, but it may be
-  acceptable because `_simulatedSedEdit` is internal-only and permission-preview
-  generated.
-- Need decide whether simulated sed is part of the structured file harness
-  guard surface or remains a permission-approved shell edit that only reports
-  writes after the fact.
+- HR5 resolved on 2026-06-01: `_simulatedSedEdit` is treated as a structured
+  file harness writer because BashTool applies the previewed write directly.
+- It now enforces the same execution-time read-before-write, sibling-write, and
+  mtime/content stale guards as `FileEditTool`.
+- This decision does not cover arbitrary Bash or PowerShell writes; those remain
+  under B14.
 
 Missing tests:
 
-- Simulated sed on a file not read in current context.
-- Simulated sed after stale parent read.
-- Simulated sed after sibling write.
+- No obvious missing tests for HR5.
 
 ### B14: Arbitrary shell writes remain outside the registry
 
@@ -950,12 +958,12 @@ Required caution:
 
 | ID | Area | Risk | Current conclusion | Action |
 | --- | --- | --- | --- | --- |
-| HR1 | `Write` canonicalization + transcript resume | Resumed `readFileState` used to risk raw tool input while disk contained canonical content | Fixed and tested | Keep no JSONL mutation; monitor focused resume tests |
+| HR1 | `Write` semantic canonicalization + transcript resume | Resumed `readFileState` used to risk raw tool input; disk envelope is intentionally not reconstructed | Fixed and tested | Keep no JSONL mutation; monitor focused resume tests |
 | HR2 | Atomic helper shared callers | Global strict atomic would break config/settings fallback semantics | Fixed and tested | Keep file tools strict; allow config/settings constrained rename-lock fallback |
 | HR3 | NotebookEdit mtime-only drift | False stale rejection unlike FileEdit/FileWrite | Fixed and tested | Keep FileReadTool cell-view comparison |
 | HR4 | NotebookEdit stale throw behavior | Tool-internal throw could be mistaken for process failure | Fixed and tested | Keep shared tool-runner catch returning `is_error` |
-| HR5 | Bash simulated sed stale/read-before-write | Internal shell edit can write without read guard | Needs decision | Decide if simulated sed is structured harness writer |
-| HR6 | UTF-16LE BOM preservation | `UTF8_BOM` char with `utf16le` encoding likely works but unpinned | Needs test | Add UTF-16LE edit test |
+| HR5 | Bash simulated sed stale/read-before-write | Internal shell edit could write without read guard | Fixed and tested | Keep scoped to `_simulatedSedEdit`; arbitrary shell writes stay outside |
+| HR6 | UTF-16LE BOM preservation | `UTF8_BOM` char with `utf16le` encoding needed pinning | Fixed and tested | Keep focused FileEdit UTF-16LE BOM test |
 | HR7 | Registry path identity | `path.normalize` misses realpath/symlink/case aliases | Accepted or fix | Decide before adding complexity |
 | HR8 | Lock non-reentrancy | Nested same-path lock would deadlock | Accepted invariant | Document for future writers |
 | HR9 | Subagent killed/failed reminders | File changes may happen but no completion reminder | Needs review | Inspect lifecycle and decide |
@@ -967,10 +975,10 @@ Required caution:
 | --- | --- | --- | --- |
 | Write unread/full-read guard | `fileWrite.behavior`, `failureMetadata`, `queryHelpers.fileStateResume` | Strong | None obvious |
 | Write partial-read reject | `fileWrite.behavior`, `failureMetadata` | Strong | None obvious |
-| Write canonical LF/no BOM | `fileWrite.behavior`, `queryHelpers.fileStateResume`, `fileStateCache` | Strong | None obvious |
+| Write create canonical / overwrite envelope preservation | `fileWrite.behavior`, `queryHelpers.fileStateResume`, `fileStateCache` | Strong | None obvious |
 | Edit partial-read allow | `fileEdit.behavior` | Good | mtime-only same-content partial case |
 | Edit stale reject | `fileEdit.behavior`, `failureMetadata` | Strong | None obvious |
-| Edit format preservation | `fileEdit.behavior`, `fileRead.metadata` | Good | UTF-16LE edit |
+| Edit format preservation | `fileEdit.behavior`, `fileRead.metadata` | Strong | None obvious |
 | Edit resume reconstruction | `queryHelpers.fileStateResume` | Good | More quote-style replay edge cases only if bugs appear |
 | Read dedup escalation | `fileRead.dedup`, `fileReadDedupEscalation` | Good | reset after reread; offset=0 |
 | Registry sibling writes | FileHarness tests + `fileStateRegistry` | Good | symlink/case alias |
@@ -979,7 +987,7 @@ Required caution:
 | Failure metadata | `failureMetadata`, `fileHarnessFailures` | Strong | telemetry export audit |
 | FileEdit escalation | `failureMetadata`, utility tests, toolExecution test | Good | reset after reread |
 | NotebookEdit | `notebookEdit.behavior`, `failureMetadata`, `toolExecutionFileHarnessError` | Good | UTF-16LE |
-| Bash simulated sed | `bashSimulatedSed.behavior` | Partial | read-before-write/stale decision |
+| Bash simulated sed | `bashSimulatedSed.behavior` | Good | None obvious for `_simulatedSedEdit` |
 | Subagent reminders | `fileStateReminder`, registry tests | Partial | killed/failed/resume integration |
 | Checkpoint test stability | Changed tests | Adequate | full-suite soak over time |
 
@@ -998,7 +1006,7 @@ Actions:
 Remaining:
 
 - Inspect all telemetry/log sinks that might consume `fileHarnessFailure.path`.
-- Transcript/resume path for Write canonicalization is fixed and covered by
+- Transcript/resume path for Write semantic canonicalization is fixed and covered by
   `queryHelpers.fileStateResume.test.ts`.
 
 ### Phase B: Behavior contract review against tests
@@ -1023,9 +1031,9 @@ Candidate probes:
 - Re-run Write CRLF+BOM resume/cold-start extraction if future query history
   parsing changes.
 - Notebook mtime-only drift with identical content.
-- Bash simulated sed after stale read.
+- Registry symlink/case alias.
 - Symlink path read via symlink, write via realpath.
-- UTF-16LE edit with BOM.
+- Registry symlink/case alias.
 
 ### Phase D: Full-suite stability check
 
@@ -1057,28 +1065,28 @@ Important:
 
 ### Phase E: Decision review
 
-Status: HR1, HR2, HR3, and HR4 resolved; 3 user/product decisions remain.
+Status: HR1, HR2, HR3, HR4, and HR5 resolved; 2 user/product decisions remain.
 
 Decisions to review before runtime changes:
 
-1. Should Bash simulated sed enforce read-before-write/stale guards?
-2. Should registry path identity move from `normalize` to `realpath`/casefold?
-3. Should killed/failed subagents append file-state reminders?
+1. Should registry path identity move from `normalize` to `realpath`/casefold?
+2. Should killed/failed subagents append file-state reminders?
 
 ## Decision Checklist
 
 | Decision | Current implementation | Recommended review stance |
 | --- | --- | --- |
 | `Write` requires full read | Yes | Keep |
-| `Write` canonicalizes UTF-8/LF/no BOM | Yes | Keep; resume reconstruction now canonicalizes without reading disk |
+| `Write` create canonicalizes UTF-8/LF/no BOM | Yes | Keep |
+| `Write` overwrite preserves existing envelope | Yes | Keep; semantic content stays canonical |
 | `Write` normalization metadata | Runtime only when BOM/CR existed | Keep out of JSONL/persisted cache |
 | `Edit` resume reconstruction | Replays against full-known transcript state only | Keep; no current-disk seeding |
 | `Edit` allows partial read | Yes | Keep |
-| `Edit` preserves source format | Yes | Keep, add UTF-16LE test |
+| `Edit` preserves source format | Yes | Keep; UTF-16LE BOM edit now covered |
 | Unsupported encoding hard reject | No | Keep no-reject for now |
 | Cross-process registry | No | Keep no cross-process registry |
 | Shell write parsing | No | Keep no arbitrary shell parsing |
-| Bash simulated sed stale guard | No | Needs explicit decision |
+| Bash simulated sed stale guard | Yes for `_simulatedSedEdit` only | Resolved: same guard level as `Edit`; arbitrary shell writes remain outside |
 | Notebook mtime content fallback | Yes | Resolved: compare FileReadTool cell-view content |
 | Notebook/file harness execution failure boundary | Tool throws; runner returns `is_error` | Resolved: keep throw semantics inside tools, catch in runner |
 | Atomic fallback removal globally | No | Resolved: file tools strict; config/settings constrained fallback for rename lock |
@@ -1100,12 +1108,12 @@ well tested:
 
 The static behavior review is complete, and the highest-risk resume
 reconstruction issue, atomic-helper scope, NotebookEdit mtime fallback, and
-Notebook/file-harness throw boundary have been fixed. The series should still
-not be treated as fully signed off until the remaining 3 decision items are
+Notebook/file-harness throw boundary, and `_simulatedSedEdit` guard level have
+been fixed. The series should still not be treated as fully signed off until
+the remaining 2 decision items are
 resolved. The serious
 unresolved items are outside the narrow happy path:
 
-- Bash simulated sed's guard level;
 - registry alias limitations;
 - reminder behavior for killed/failed subagents.
 

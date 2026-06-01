@@ -383,9 +383,17 @@ export const FileWriteTool = buildTool({
         const oldContent = meta?.content ?? null
         const canonicalContent = normalizeContentToLf(content)
 
-        // Write is full replacement, so it canonicalizes text instead of
-        // preserving the overwritten file's encoding, BOM, or line-ending style.
-        writeTextContent(fullFilePath, canonicalContent, 'utf8', 'LF')
+        // New files use the project default envelope. Overwrites are full
+        // semantic replacements, but should preserve the existing file's text
+        // envelope so Write does not silently change language/tooling format
+        // assumptions.
+        writeTextContent(
+          fullFilePath,
+          canonicalContent,
+          meta?.encoding ?? 'utf8',
+          meta?.lineEndings ?? 'LF',
+          { preserveLeadingBom: meta?.hadLeadingBom ?? false },
+        )
         const toolNormalization = getToolNormalizationForWrite(content)
 
         // Update read timestamp, to invalidate stale writes
