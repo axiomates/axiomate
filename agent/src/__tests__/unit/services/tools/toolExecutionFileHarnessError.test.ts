@@ -1,5 +1,5 @@
 import { z } from 'zod/v4'
-import { describe, expect, test, vi } from 'vitest'
+import { beforeEach, describe, expect, test, vi } from 'vitest'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { runToolUse } from '../../../../services/tools/toolExecution.js'
@@ -10,18 +10,35 @@ import type { AssistantMessage } from '../../../../types/message.js'
 import { throwFileHarnessFailure } from '../../../../utils/fileHarnessFailures.js'
 import { withFileStatePathLock } from '../../../../utils/fileStateRegistry.js'
 
+const hookMockState = vi.hoisted(() => ({
+  preHookUpdatedInput: undefined as Record<string, unknown> | undefined,
+  permissionUpdatedInput: undefined as Record<string, unknown> | undefined,
+}))
+
 vi.mock('../../../../services/tools/toolHooks.js', () => ({
   resolveHookPermissionDecision: async (
     _hookPermissionResult: unknown,
     _tool: unknown,
     input: Record<string, unknown>,
   ) => ({
-    decision: { behavior: 'allow' },
+    decision: hookMockState.permissionUpdatedInput
+      ? {
+          behavior: 'allow',
+          updatedInput: hookMockState.permissionUpdatedInput,
+        }
+      : { behavior: 'allow' },
     input,
   }),
   runPostToolUseFailureHooks: async function* () {},
   runPostToolUseHooks: async function* () {},
-  runPreToolUseHooks: async function* () {},
+  runPreToolUseHooks: async function* () {
+    if (hookMockState.preHookUpdatedInput) {
+      yield {
+        type: 'hookUpdatedInput',
+        updatedInput: hookMockState.preHookUpdatedInput,
+      }
+    }
+  },
 }))
 
 function makeThrowingTool(): Tool {
@@ -74,6 +91,37 @@ function makeReentrantPathLockTool(): Tool {
   } as unknown as Tool
 }
 
+function makeValidatingTool(callSpy: ReturnType<typeof vi.fn>): Tool {
+  return {
+    name: 'FakeValidatingTool',
+    inputSchema: z.strictObject({ mode: z.string() }),
+    isReadOnly: () => true,
+    isEnabled: () => true,
+    isConcurrencySafe: () => true,
+    description: async () => 'fake',
+    prompt: async () => 'fake',
+    userFacingName: () => 'Fake',
+    validateInput: async input =>
+      input.mode === 'bad'
+        ? {
+            result: false,
+            behavior: 'ask',
+            message: 'bad mode rejected',
+            errorCode: 99,
+          }
+        : { result: true },
+    call: async input => {
+      callSpy(input)
+      return { data: `called:${input.mode}` }
+    },
+    mapToolResultToToolResultBlockParam: (content, toolUseID) => ({
+      type: 'tool_result',
+      content: String(content),
+      tool_use_id: toolUseID,
+    }),
+  } as unknown as Tool
+}
+
 function makeContext(tool: Tool): ToolUseContext {
   return {
     options: {
@@ -121,6 +169,38 @@ const assistantMessage = {
     model: 'test-model',
   },
 } as unknown as AssistantMessage
+
+async function collectRunToolUse(
+  tool: Tool,
+  input: Record<string, unknown>,
+) {
+  const updates = []
+  for await (const update of runToolUse(
+    {
+      type: 'tool_use',
+      id: 'toolu_fake',
+      name: tool.name,
+      input,
+    },
+    assistantMessage,
+    allowToolUse,
+    makeContext(tool),
+  )) {
+    updates.push(update)
+  }
+  return updates
+}
+
+function firstToolResultContent(updates: Awaited<ReturnType<typeof collectRunToolUse>>): string {
+  const message = updates[0]?.message.message
+  const result = Array.isArray(message?.content) ? message.content[0] : null
+  return result && 'content' in result ? String(result.content) : ''
+}
+
+beforeEach(() => {
+  hookMockState.preHookUpdatedInput = undefined
+  hookMockState.permissionUpdatedInput = undefined
+})
 
 describe('runToolUse file harness failures', () => {
   test('catches thrown FileHarnessError and returns an error tool_result', async () => {
@@ -196,5 +276,43 @@ describe('runToolUse file harness failures', () => {
     expect(result && 'content' in result ? result.content : '').toContain(
       'File state path lock is not reentrant',
     )
+  })
+
+  test('revalidates PreToolUse updatedInput before calling the tool', async () => {
+    const callSpy = vi.fn()
+    const tool = makeValidatingTool(callSpy)
+    hookMockState.preHookUpdatedInput = { mode: 'bad' }
+
+    const updates = await collectRunToolUse(tool, { mode: 'good' })
+
+    expect(callSpy).not.toHaveBeenCalled()
+    expect(updates).toHaveLength(1)
+    expect(firstToolResultContent(updates)).toContain('bad mode rejected')
+    const message = updates[0]!.message.message
+    const result = Array.isArray(message.content) ? message.content[0] : null
+    expect(result).toMatchObject({
+      type: 'tool_result',
+      is_error: true,
+      tool_use_id: 'toolu_fake',
+    })
+  })
+
+  test('revalidates permission updatedInput before calling the tool', async () => {
+    const callSpy = vi.fn()
+    const tool = makeValidatingTool(callSpy)
+    hookMockState.permissionUpdatedInput = { mode: 'bad' }
+
+    const updates = await collectRunToolUse(tool, { mode: 'good' })
+
+    expect(callSpy).not.toHaveBeenCalled()
+    expect(updates).toHaveLength(1)
+    expect(firstToolResultContent(updates)).toContain('bad mode rejected')
+    const message = updates[0]!.message.message
+    const result = Array.isArray(message.content) ? message.content[0] : null
+    expect(result).toMatchObject({
+      type: 'tool_result',
+      is_error: true,
+      tool_use_id: 'toolu_fake',
+    })
   })
 })

@@ -1,6 +1,7 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { isAbsolute, normalize, resolve } from 'node:path'
 import type { ToolUseContext } from '../Tool.js'
+import type { FileState } from './fileStateCache.js'
 import {
   getFsImplementation,
   resolveDeepestExistingAncestorSync,
@@ -110,6 +111,15 @@ export function recordFileRead(
   }
 }
 
+export function setObservedFileState(
+  context: FileStateContext,
+  filePath: string,
+  fileState: FileState,
+): void {
+  context.readFileState.set(filePath, fileState)
+  recordFileRead(context, filePath)
+}
+
 export function noteFileWrite(
   context: FileStateContext,
   filePath: string,
@@ -118,6 +128,7 @@ export function noteFileWrite(
   const writeSequence = ++sequence
   const normalizedPath = normalize(filePath)
   const registryKey = registryPathKey(filePath)
+  lastWriterByPath.delete(registryKey)
   lastWriterByPath.set(registryKey, {
     ownerId,
     sequence: writeSequence,

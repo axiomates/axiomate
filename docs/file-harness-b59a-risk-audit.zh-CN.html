@@ -266,41 +266,44 @@
       </div>
       <div class="verdict">
         <div class="callout danger">
-          <h3>R1/R2 已修复；仍不建议直接进入 UI/统计阶段</h3>
+          <h3>R1/R2/R3/R4/R5 已修复；UI/统计前还剩边界决策</h3>
           <p>
             当前 path lock 本身已经能在单进程内按路径串行，并且 reentry 会 fail-fast，不再是主要问题。
             本轮已经修复 Write 覆盖路径的 full-read 判定，以及 resume 对 failed Read/Write 和 empty Write 的重建问题。
-            剩余最大风险是 hook/permission 改写输入后没有二次验证，其次是 writer registry 容量、side-channel registrySequence、telemetry 内容边界。
+            随后又修复了 hook/permission 改写 input 后没有二次 schema/validate 的问题。
+            之后继续补上 writer registry true LRU，以及 side-channel read state 的 registrySequence 统一登记。
+            剩余风险主要是 macOS case-insensitive path alias 边界，以及 telemetry 内容字段默认边界。
           </p>
         </div>
         <div class="callout warn">
           <h3>优先级建议</h3>
           <p>
-            下一波先做 R3：给 hook/permission updatedInput 二次验证补失败测试，再改执行框架。
-            R3 过后再处理 R4/R5 的 registry 鲁棒性，最后才进入 telemetry/UI/统计。
+            下一波先处理 R6/R7：确认 macOS 大小写不敏感卷是否要做目录级探测，
+            并把 file harness 统计默认字段限制在 reason/code/path extension/size/boolean。
+            这两个决策落定后，再进入 file harness UI/统计。
           </p>
         </div>
       </div>
       <div class="grid-4" style="margin-top: 15px;">
         <div class="subcard">
           <div class="stat-label">Range</div>
-          <div class="stat-value">22 commits</div>
-          <p class="muted">从 b59a 后到 <code>da5bf966</code>。</p>
+          <div class="stat-value">23 commits+</div>
+          <p class="muted">从 b59a 后到 <code>HEAD</code>，并包含当前工作树未提交修复。</p>
         </div>
         <div class="subcard">
           <div class="stat-label">Changed Surface</div>
-          <div class="stat-value">52 files</div>
-          <p class="muted">约 10k insertions，主要在 file tools、registry、tests、docs。</p>
+          <div class="stat-value">53 files+</div>
+          <p class="muted">已提交范围约 10.9k insertions；当前工作树继续修改 file harness、registry、tests、docs。</p>
         </div>
         <div class="subcard">
           <div class="stat-label">Confirmed Findings</div>
           <div class="stat-value">7</div>
-          <p class="muted">2 项已修复，5 项仍需后续处理。</p>
+          <p class="muted">5 项已修复，2 项仍需后续处理或决策。</p>
         </div>
         <div class="subcard">
           <div class="stat-label">Tests Run</div>
-          <div class="stat-value">7 suites</div>
-          <p class="muted">Write/resume/edit/notebook/sed/registry/failure metadata 相关测试通过。</p>
+          <div class="stat-value">13 files</div>
+          <p class="muted">Write/Read/Edit/Notebook/sed/resume/registry/attachments/toolExecution/failure metadata 相关测试通过。</p>
         </div>
       </div>
     </section>
@@ -403,13 +406,14 @@
       <article class="finding">
         <div class="finding-head">
           <h3>R3. hook/permission updatedInput 发生在 validate 之后，没有二次验证</h3>
-          <span class="sev high">高</span>
+          <span class="sev ok">已修复</span>
         </div>
         <p>
-          工具执行流程先跑 schema/validation，然后 PreToolUse hook 和 permission 可以替换 <code>processedInput</code>，
-          最后直接进入 <code>tool.call</code>。file harness 的 stale/not-read/sibling 关键防线多数在 <code>call</code> 里重复了，
+          工具执行流程先跑 schema/validation，然后 PreToolUse hook 和 permission 可以替换 <code>processedInput</code>。
+          审计时发现替换后的 input 会直接进入 <code>tool.call</code>。file harness 的 stale/not-read/sibling 关键防线多数在 <code>call</code> 里重复了，
           但并非所有 validation-only 规则都有执行期等价物。对 FileEdit 来说，<code>multiple_match</code>、settings 文件编辑校验、
           notebook 必须用 NotebookEdit、空 old_string 语义等都主要在 validate 阶段。
+          本轮已在两个 updatedInput 入口后重跑 schema + validateInput；失败时返回普通 error tool_result，不进入 <code>tool.call</code>。
         </p>
         <div class="evidence">
           <h4>证据</h4>
@@ -417,56 +421,59 @@
             <li><code>agent/src/services/tools/toolExecution.ts:834-860</code> validation 在 hook 之前执行。</li>
             <li><code>agent/src/services/tools/toolExecution.ts:941-945</code> PreToolUse hook 可替换 input。</li>
             <li><code>agent/src/services/tools/toolExecution.ts:1145-1147</code> permission decision 可再次替换 input。</li>
-            <li><code>agent/src/services/tools/toolExecution.ts:1228-1234</code> 替换后的 <code>callInput</code> 直接进入 <code>tool.call</code>。</li>
-            <li><code>agent/src/tools/FileEditTool/FileEditTool.ts:383-428</code> multiple-match 和 settings 校验在 validate 中；<code>FileEditTool.call</code> 不重跑这些检查。</li>
-            <li><code>agent/src/tools/FileEditTool/utils.ts:313-327</code> patch 生成能挡住 string-not-found，但不会挡住 multiple-match 的单次 replace。</li>
+            <li><code>agent/src/services/tools/toolExecution.ts</code> 新增 <code>validateUpdatedToolInput()</code>，对 hook/permission updatedInput 重跑 schema + validateInput。</li>
+            <li><code>agent/src/__tests__/unit/services/tools/toolExecutionFileHarnessError.test.ts</code> 新增 PreToolUse updatedInput 和 permission updatedInput 两个测试，确认 bad updatedInput 不会进入 call。</li>
           </ul>
         </div>
-        <p><strong>建议：</strong>对 hook/permission 替换后的 input 重新跑 schema + validate；或至少对 file mutating tools 添加统一的 post-update validation。此项应有覆盖 hookUpdatedInput 和 permission.updatedInput 的测试。</p>
+        <p><strong>状态：</strong>已修复。后续如发现某些 hook 依赖 intentionally-invalid intermediate input，应改 hook 输出，而不是绕过执行层二次验证。</p>
       </article>
 
       <article class="finding">
         <div class="finding-head">
           <h3>R4. sibling writer registry 的容量淘汰不是真正 LRU</h3>
-          <span class="sev med">中</span>
+          <span class="sev ok">已修复</span>
         </div>
         <p>
           <code>lastWriterByPath</code> capped at 4096，淘汰时删除 Map insertion order 的最老 key。
           但同一路径重复写入时直接 <code>set</code> 已存在 key 不会刷新插入顺序，所以一个刚被写过的老 key 仍可能被后续第 4097 个不同路径淘汰。
           淘汰后 sibling 检测会退化为 mtime/content 检查；如果 mtime 被恢复或文件系统时间粒度不足，就可能漏报。
+          本轮已在写入已有 registry key 前先 <code>delete</code> 再 <code>set</code>，让 Map insertion order 符合 true LRU 语义。
         </p>
         <div class="evidence">
           <h4>证据</h4>
           <ul class="mono-list">
             <li><code>agent/src/utils/fileStateRegistry.ts:47-52</code> <code>capMap</code> 删除 <code>map.keys().next()</code>。</li>
-            <li><code>agent/src/utils/fileStateRegistry.ts:113-125</code> <code>noteFileWrite</code> 对已有 key 直接 <code>lastWriterByPath.set</code>。</li>
+            <li><code>agent/src/utils/fileStateRegistry.ts</code> <code>noteFileWrite</code> 现在先删除旧 key 再写入新 stamp，刷新 writer registry 顺序。</li>
             <li><code>agent/src/utils/fileStateRegistry.ts:139-151</code> stale sibling 判断依赖该 Map 中的 last writer。</li>
+            <li><code>agent/src/__tests__/unit/utils/fileStateRegistry.test.ts</code> 新增 “recently rewritten paths are kept when the writer registry reaches its cap” 测试，覆盖旧实现会淘汰刚重写老 key 的场景。</li>
           </ul>
         </div>
-        <p><strong>建议：</strong>写入已有 registry key 前先 delete 再 set，或换成明确的 LRU 结构；补“老 key 被重写后不应被 cap 淘汰”的测试。</p>
+        <p><strong>状态：</strong>已修复。仍承认 4096 cap 本身是 bounded registry 设计；超出容量的非常老路径会退回 mtime/content/checkpoint 边界。</p>
       </article>
 
       <article class="finding">
         <div class="finding-head">
           <h3>R5. side-channel read state 没有统一记录 registrySequence</h3>
-          <span class="sev med">中</span>
+          <span class="sev ok">已修复</span>
         </div>
         <p>
           <code>FileReadTool</code> 写入 read state 后会调用 <code>recordFileRead</code>，从而写入 registry sequence。
           但 memory/relevant memory/REPL startup 等 side-channel 直接 <code>readFileState.set</code>，没有统一调用 <code>recordFileRead</code>。
           当前 registry 对 <code>registrySequence === undefined</code> 的处理是保守地视为 stale；这能避免漏写，但会增加误提醒/误拒绝，也让“模型已经通过上下文看到内容”与 registry 判断脱节。
+          本轮新增 <code>setObservedFileState()</code>，把 side-channel “已经展示给模型/注入上下文的文件内容” 统一写入 read cache 并登记 registrySequence。
         </p>
         <div class="evidence">
           <h4>证据</h4>
           <ul class="mono-list">
             <li><code>agent/src/tools/FileReadTool/FileReadTool.ts:1037-1045</code> text Read 写 cache 后调用 <code>recordFileRead</code>。</li>
-            <li><code>agent/src/utils/attachments.ts:1461-1469</code> nested memory 直接 set，没有 <code>recordFileRead</code>。</li>
-            <li><code>agent/src/utils/attachments.ts:2228-2233</code> relevant memory 直接 set，没有 <code>recordFileRead</code>。</li>
-            <li><code>agent/src/screens/REPL.tsx:3430-3435</code> startup memory 直接 set。</li>
+            <li><code>agent/src/utils/fileStateRegistry.ts</code> 新增 <code>setObservedFileState()</code>：先写 <code>readFileState</code>，再调用 <code>recordFileRead</code>。</li>
+            <li><code>agent/src/utils/attachments.ts</code> nested memory 和 relevant memory 现在通过 <code>setObservedFileState()</code> 写入；truncated relevant memory 同时标记 <code>isPartialView</code>。</li>
+            <li><code>agent/src/screens/REPL.tsx</code> startup memory 现在也通过 <code>setObservedFileState()</code> 写入。</li>
             <li><code>agent/src/utils/fileStateRegistry.ts:148-150</code> undefined sequence 会被视为 stale。</li>
+            <li><code>agent/src/__tests__/unit/utils/attachmentsFileStateRegistry.test.ts</code> 覆盖 relevant memory 的 registrySequence 和 truncated partial-view 标记。</li>
           </ul>
         </div>
-        <p><strong>建议：</strong>抽一个统一 helper，例如 <code>recordObservedFileContent()</code>，同时写 content/partial metadata 和 registry sequence；不同注入路径只决定是否 full-content。</p>
+        <p><strong>状态：</strong>已修复。语义保持原决策：side-channel full 内容仍可作为已读依据；裁剪/变形内容继续通过 <code>isPartialView</code> 阻止 Write 覆盖。</p>
       </article>
 
       <article class="finding">
@@ -619,17 +626,17 @@
           <tr>
             <td>hookUpdatedInput / permission.updatedInput revalidation</td>
             <td>确认 hook 改写后的 FileEdit multiple-match/settings 校验不会被绕过。</td>
-            <td><span class="sev high">高</span></td>
+            <td><span class="sev ok">已补</span></td>
           </tr>
           <tr>
             <td>writer registry true LRU</td>
             <td>重复写入老 key 后再写大量新 key，不应淘汰刚写过的路径。</td>
-            <td><span class="sev med">中</span></td>
+            <td><span class="sev ok">已补</span></td>
           </tr>
           <tr>
             <td>side-channel <code>recordFileRead</code></td>
             <td>验证 memory/relevant memory 的 registrySequence 与 partial 标记符合预期。</td>
-            <td><span class="sev med">中</span></td>
+            <td><span class="sev ok">已补</span></td>
           </tr>
         </tbody>
       </table>
@@ -643,10 +650,9 @@
         </div>
       </div>
       <ol>
-        <li>下一波先修 R3：补 hookUpdatedInput / permission.updatedInput 的失败测试，证明 FileEdit multiple-match/settings 校验不能被绕过。</li>
-        <li>实现 R3：updatedInput 后二次 schema/validate；先限制在工具执行层的最小安全改动，并确认不会破坏 hook/permission 正常改写。</li>
-        <li>随后修 R4/R5：writer registry 改 true LRU；抽统一 read-state helper 并记录 registrySequence。</li>
-        <li>再处理 R7 telemetry 默认字段，最后才进入 file harness UI/统计。</li>
+        <li>下一波先决策 R6：是否在 macOS 做目录级 case-sensitivity 探测与缓存，还是把该项明确列为已接受边界。</li>
+        <li>随后处理 R7：file harness 统计默认只记录结构化元数据，不默认记录正文、diff、完整命令输出。</li>
+        <li>R6/R7 落定后，再进入 file harness UI/统计；同时保留一轮 full file-harness targeted regression。</li>
       </ol>
     </section>
 
@@ -667,6 +673,16 @@
         </thead>
         <tbody>
           <tr>
+            <td><code>pnpm --filter ./agent exec vitest run src/__tests__/unit/services/tools/toolExecutionFileHarnessError.test.ts --no-file-parallelism --testTimeout 30000 --hookTimeout 120000</code></td>
+            <td><span class="sev ok">通过</span></td>
+            <td>4 个 toolExecution harness 测试通过；包含 PreToolUse updatedInput 和 permission updatedInput 二次验证覆盖。</td>
+          </tr>
+          <tr>
+            <td><code>pnpm --filter ./agent exec vitest run src/__tests__/unit/services/tools/toolExecutionValidation.test.ts src/__tests__/unit/services/tools/toolExecutionSnapshot.test.ts --no-file-parallelism --testTimeout 30000 --hookTimeout 120000</code></td>
+            <td><span class="sev ok">通过</span></td>
+            <td>8 个 toolExecution validation/snapshot 测试通过。</td>
+          </tr>
+          <tr>
             <td><code>pnpm --filter ./agent exec vitest run src/__tests__/unit/tools/FileHarness/fileWrite.behavior.test.ts --no-file-parallelism --testTimeout 30000 --hookTimeout 120000</code></td>
             <td><span class="sev ok">通过</span></td>
             <td>29 个 Write harness 测试通过；包含本轮新增 partial-state validate/call 覆盖。</td>
@@ -682,14 +698,34 @@
             <td>34 个 Edit/NotebookEdit/simulated sed harness 测试通过，确认本轮没有改变 Edit partial-read 行为。</td>
           </tr>
           <tr>
+            <td><code>pnpm --filter ./agent exec vitest run src/__tests__/unit/tools/FileHarness/fileRead.dedup.test.ts --no-file-parallelism --testTimeout 30000 --hookTimeout 120000</code></td>
+            <td><span class="sev ok">通过</span></td>
+            <td>6 个 FileRead dedup 测试通过，覆盖 readFileState offset/limit 与 dedup 行为。</td>
+          </tr>
+          <tr>
             <td><code>pnpm --filter ./agent exec vitest run src/__tests__/unit/utils/fileStateRegistry.test.ts --no-file-parallelism --testTimeout 30000 --hookTimeout 120000</code></td>
             <td><span class="sev ok">通过</span></td>
-            <td>13 个 fileStateRegistry 单测通过；覆盖 symlink alias、sibling reminder、path lock serialization/reentry。</td>
+            <td>15 个 fileStateRegistry 单测通过；覆盖 symlink alias、sibling reminder、writer registry true LRU、side-channel observed read stamp、path lock serialization/reentry。</td>
+          </tr>
+          <tr>
+            <td><code>pnpm --filter ./agent exec vitest run src/__tests__/unit/utils/attachmentsFileStateRegistry.test.ts --no-file-parallelism --testTimeout 30000 --hookTimeout 120000</code></td>
+            <td><span class="sev ok">通过</span></td>
+            <td>2 个 attachment registry 集成测试通过；覆盖 relevant memory 的 registrySequence 与 truncated partial-view 标记。</td>
+          </tr>
+          <tr>
+            <td><code>pnpm --filter ./agent exec vitest run src/__tests__/unit/utils/fileStateCache.test.ts --no-file-parallelism --testTimeout 30000 --hookTimeout 120000</code></td>
+            <td><span class="sev ok">通过</span></td>
+            <td>2 个 FileStateCache 测试通过，确认 registrySequence 不持久化但 clone 会保留进程内状态。</td>
           </tr>
           <tr>
             <td><code>pnpm --filter ./agent exec vitest run src/__tests__/unit/tools/FileHarness/failureMetadata.test.ts --no-file-parallelism --testTimeout 30000 --hookTimeout 120000</code></td>
             <td><span class="sev ok">通过</span></td>
             <td>14 个 failure metadata 测试通过。</td>
+          </tr>
+          <tr>
+            <td><code>pnpm run build:types</code></td>
+            <td><span class="sev ok">通过</span></td>
+            <td>TypeScript 类型检查通过；覆盖 <code>filterDuplicateMemoryAttachments</code> 签名变更与 updatedInput 验证返回类型。</td>
           </tr>
           <tr>
             <td><code>git diff --check</code></td>

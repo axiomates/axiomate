@@ -89,6 +89,7 @@ import {
 } from '../tools/FileReadTool/prompt.js'
 import { getDefaultFileReadingLimits } from '../tools/FileReadTool/limits.js'
 import { cacheKeys, type FileStateCache } from './fileStateCache.js'
+import { setObservedFileState } from './fileStateRegistry.js'
 import {
   createAbortController,
   createChildAbortController,
@@ -1455,10 +1456,10 @@ export function memoryFilesToAttachments(
       //
       // When the injected content doesn't match disk (stripped HTML comments,
       // stripped frontmatter, truncated MEMORY.md), cache the RAW disk bytes
-      // with `isPartialView: true`. Edit/Write see the flag and require a real
-      // Read first; getChangedFiles sees real content + undefined offset/limit
+      // with `isPartialView: true`. Write requires a real full Read before
+      // overwriting; getChangedFiles sees real content + undefined offset/limit
       // so mid-session change detection still works.
-      toolUseContext.readFileState.set(memoryFile.path, {
+      setObservedFileState(toolUseContext, memoryFile.path, {
         content: memoryFile.contentDiffersFromDisk
           ? (memoryFile.rawContent ?? memoryFile.content)
           : memoryFile.content,
@@ -2216,20 +2217,21 @@ export function collectRecentSuccessfulTools(
  */
 export function filterDuplicateMemoryAttachments(
   attachments: Attachment[],
-  readFileState: FileStateCache,
+  toolUseContext: Pick<ToolUseContext, 'agentId' | 'readFileState'>,
 ): Attachment[] {
   return attachments
     .map(attachment => {
       if (attachment.type !== 'relevant_memories') return attachment
       const filtered = attachment.memories.filter(
-        m => !readFileState.has(m.path),
+        m => !toolUseContext.readFileState.has(m.path),
       )
       for (const m of filtered) {
-        readFileState.set(m.path, {
+        setObservedFileState(toolUseContext, m.path, {
           content: m.content,
           timestamp: m.mtimeMs,
           offset: undefined,
           limit: m.limit,
+          ...(m.limit !== undefined ? { isPartialView: true } : {}),
         })
       }
       return filtered.length > 0 ? { ...attachment, memories: filtered } : null

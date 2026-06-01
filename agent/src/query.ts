@@ -1416,7 +1416,7 @@ async function* queryLoop(
     ) {
       const memoryAttachments = filterDuplicateMemoryAttachments(
         await pendingMemoryPrefetch.promise,
-        toolUseContext.readFileState,
+        toolUseContext,
       )
       for (const memAttachment of memoryAttachments) {
         const msg = createAttachmentMessage(memAttachment)

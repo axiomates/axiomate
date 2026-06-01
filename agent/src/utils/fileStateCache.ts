@@ -17,8 +17,9 @@ export type FileState = {
   // True when this entry was populated by auto-injection (e.g. AXIOMATE.md) and
   // the injected content did not match disk (stripped HTML comments, stripped
   // frontmatter, truncated MEMORY.md). The model has only seen a partial view;
-  // Edit/Write must require an explicit Read first. `content` here holds the
-  // RAW disk bytes (for getChangedFiles diffing), not what the model saw.
+  // Write treats this as insufficient for overwriting an existing file. `content`
+  // here holds the RAW disk bytes (for getChangedFiles diffing), not what the
+  // model saw.
   isPartialView?: boolean
   // Internal process-local ordering stamp used by fileStateRegistry. This is
   // intentionally carried by cloneFileStateCache so subagents inherit the

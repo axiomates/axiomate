@@ -709,6 +709,77 @@ export function buildToolValidationErrorContent(
   )
 }
 
+async function validateUpdatedToolInput(
+  tool: Tool,
+  input: Record<string, unknown>,
+  toolUseContext: ToolUseContext,
+  toolUseID: string,
+  assistantMessage: AssistantMessage,
+  source: 'hook' | 'permission',
+): Promise<
+  | { ok: true; input: Record<string, unknown> }
+  | { ok: false; messages: MessageUpdateLazy[] }
+> {
+  const parsedInput = tool.inputSchema.safeParse(input)
+  if (!parsedInput.success) {
+    const errorContent = formatZodValidationError(tool.name, parsedInput.error)
+    logForDebugging(
+      `${tool.name} ${source} updated input error: ${errorContent.slice(0, 200)}`,
+    )
+    return {
+      ok: false,
+      messages: [
+        {
+          message: createUserMessage({
+            content: [
+              {
+                type: 'tool_result',
+                content: `<tool_use_error>InputValidationError: ${errorContent}</tool_use_error>`,
+                is_error: true,
+                tool_use_id: toolUseID,
+              },
+            ],
+            toolUseResult: `InputValidationError: ${parsedInput.error.message}`,
+            sourceToolAssistantUUID: assistantMessage.uuid,
+          }),
+        },
+      ],
+    }
+  }
+
+  const validation = await tool.validateInput?.(
+    parsedInput.data,
+    toolUseContext,
+  )
+  if (validation?.result === false) {
+    const errorContent = buildToolValidationErrorContent(validation)
+    logForDebugging(
+      `${tool.name} ${source} updated input validation error: ${errorContent.slice(0, 200)}`,
+    )
+    return {
+      ok: false,
+      messages: [
+        {
+          message: createUserMessage({
+            content: [
+              {
+                type: 'tool_result',
+                content: `<tool_use_error>${errorContent}</tool_use_error>`,
+                is_error: true,
+                tool_use_id: toolUseID,
+              },
+            ],
+            toolUseResult: `Error: ${errorContent}`,
+            sourceToolAssistantUUID: assistantMessage.uuid,
+          }),
+        },
+      ],
+    }
+  }
+
+  return { ok: true, input: parsedInput.data as Record<string, unknown> }
+}
+
 /**
  * Appended when a deferred tool call fails and wasn't in the discovered-tool
  * set. The raw error ("expected array, got string" or "Either coordinate
@@ -941,7 +1012,18 @@ async function checkPermissionsAndCallTool(
       case 'hookUpdatedInput':
         // Hook provided updatedInput without making a permission decision (passthrough)
         // Update processedInput so it's used in the normal permission flow
-        processedInput = result.updatedInput
+        {
+          const validation = await validateUpdatedToolInput(
+            tool,
+            result.updatedInput,
+            toolUseContext,
+            toolUseID,
+            assistantMessage,
+            'hook',
+          )
+          if (validation.ok === false) return validation.messages
+          processedInput = validation.input
+        }
         break
       case 'preventContinuation':
         shouldPreventContinuation = result.shouldPreventContinuation
@@ -1143,7 +1225,16 @@ async function checkPermissionsAndCallTool(
   // Use the updated input from permissions if provided
   // (Don't overwrite if undefined - processedInput may have been modified by passthrough hooks)
   if (permissionDecision.updatedInput !== undefined) {
-    processedInput = permissionDecision.updatedInput
+    const validation = await validateUpdatedToolInput(
+      tool,
+      permissionDecision.updatedInput,
+      toolUseContext,
+      toolUseID,
+      assistantMessage,
+      'permission',
+    )
+    if (validation.ok === false) return validation.messages
+    processedInput = validation.input
   }
 
   // Prepare tool parameters for logging in tool_result event.

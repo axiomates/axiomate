@@ -152,6 +152,7 @@ import { partialCompactConversation } from '../services/compact/compact.js';
 import type { LogOption } from '../types/logs.js';
 import type { AgentColorName } from '../tools/AgentTool/agentColorManager.js';
 import { type FileHistoryState, fileHistoryRewind, type FileHistorySnapshot, fileHistoryHasDiffVsDisk } from '../utils/fileHistory.js';
+import { setObservedFileState } from '../utils/fileStateRegistry.js';
 import { listCodeAnchors } from '../utils/checkpoints/listCodeAnchors.js';
 import { parseCommitBody } from '../utils/checkpoints/reason.js';
 import { computeResumeRewindHint } from '../utils/checkpoints/resumeRewindHint.js';
@@ -3425,9 +3426,9 @@ export function REPL({
     for (const file of memoryFiles) {
       // When the injected content doesn't match disk (stripped HTML comments,
       // stripped frontmatter, MEMORY.md truncation), cache the RAW disk bytes
-      // with isPartialView so Edit/Write require a real Read first while
-      // getChangedFiles + nested_memory dedup still work.
-      readFileState.current.set(file.path, {
+      // with isPartialView so Write requires a real full Read before overwrite
+      // while getChangedFiles + nested_memory dedup still work.
+      setObservedFileState({ readFileState: readFileState.current }, file.path, {
         content: file.contentDiffersFromDisk ? file.rawContent ?? file.content : file.content,
         timestamp: Date.now(),
         offset: undefined,

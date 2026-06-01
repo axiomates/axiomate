@@ -12,6 +12,7 @@ import {
   getFileStatePathLockDepthForTests,
   getKnownReadFilePaths,
   getPathsWrittenByOtherContextsSince,
+  setObservedFileState,
   noteFileWrite,
   recordFileRead,
   wasFileModifiedAfterReadByAnotherContext,
@@ -26,13 +27,12 @@ function makeContext(agentId?: ReturnType<typeof asAgentId>) {
 }
 
 function seedRead(context: ReturnType<typeof makeContext>, path: string): void {
-  context.readFileState.set(path, {
+  setObservedFileState(context, path, {
     content: 'content',
     timestamp: 1,
     offset: 1,
     limit: undefined,
   })
-  recordFileRead(context, path)
 }
 
 async function withTempDir<T>(callback: (dir: string) => Promise<T>): Promise<T> {
@@ -227,6 +227,68 @@ describe('fileStateRegistry reminder queries', () => {
         getKnownReadFilePaths(parent),
       ),
     ).toEqual([])
+  })
+
+  test('keeps recently rewritten paths when the writer registry reaches its cap', () => {
+    const parent = makeContext()
+    const child = makeContext(asAgentId('achild000000000306'))
+    const refreshedPath = normalize('/tmp/refreshed.txt')
+    const evictedPath = normalize('/tmp/evicted.txt')
+
+    seedRead(parent, refreshedPath)
+    seedRead(parent, evictedPath)
+    const sinceSequence = getFileStateRegistrySequence()
+
+    noteFileWrite(child, refreshedPath)
+    noteFileWrite(child, evictedPath)
+    for (let i = 0; i < 4094; i++) {
+      noteFileWrite(child, normalize(`/tmp/fill-${i}.txt`))
+    }
+    noteFileWrite(child, refreshedPath)
+    noteFileWrite(child, normalize('/tmp/overflow.txt'))
+
+    expect(wasFileModifiedAfterReadByAnotherContext(parent, refreshedPath)).toBe(
+      true,
+    )
+    expect(wasFileModifiedAfterReadByAnotherContext(parent, evictedPath)).toBe(
+      false,
+    )
+    expect(
+      getPathsWrittenByOtherContextsSince(
+        parent,
+        sinceSequence,
+        getKnownReadFilePaths(parent),
+      ),
+    ).toEqual([refreshedPath])
+  })
+
+  test('stamps observed side-channel reads for sibling write checks', () => {
+    const parent = makeContext()
+    const child = makeContext(asAgentId('achild000000000307'))
+    const beforePath = normalize('/tmp/observed-before.txt')
+    const afterPath = normalize('/tmp/observed-after.txt')
+
+    noteFileWrite(child, beforePath)
+    setObservedFileState(parent, beforePath, {
+      content: 'before',
+      timestamp: 1,
+      offset: undefined,
+      limit: undefined,
+    })
+    setObservedFileState(parent, afterPath, {
+      content: 'after',
+      timestamp: 1,
+      offset: undefined,
+      limit: undefined,
+    })
+    noteFileWrite(child, afterPath)
+
+    expect(wasFileModifiedAfterReadByAnotherContext(parent, beforePath)).toBe(
+      false,
+    )
+    expect(wasFileModifiedAfterReadByAnotherContext(parent, afterPath)).toBe(
+      true,
+    )
   })
 })
 
