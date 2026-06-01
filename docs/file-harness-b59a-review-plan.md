@@ -672,19 +672,26 @@ Review result:
 
 - Keep registry and lock behavior.
 
-Decision needed:
+Decision result:
 
-- NotebookEdit still treats any mtime drift as `stale_mtime`; unlike
-  FileEdit/FileWrite, it has no content-same fallback. This may cause false
-  stale rejections from mtime-only drift.
+- HR3 resolved on 2026-06-01: NotebookEdit now uses a content fallback for
+  full-read mtime-only drift.
+- The comparison uses the same processed notebook cell JSON that FileReadTool
+  stores in `readFileState`, not the raw full `.ipynb` JSON. This matches what
+  the model actually read.
+- Partial read state still does not get the fallback and remains stale on mtime
+  drift.
 - The throw-vs-error-payload behavior for execution stale changed. This may be
   correct for consistency with FileEdit/FileWrite, but it is a user-visible
   behavior change and should be approved explicitly.
 
-Missing tests:
+Current tests:
 
-- Notebook mtime-only drift with identical content.
-- Notebook stale content vs stale mtime classification.
+- Notebook mtime-only drift with identical content is allowed after full Read.
+- Notebook mtime drift after partial read state is still rejected.
+
+Remaining missing tests:
+
 - Notebook UTF-16LE/BOM preservation if supported or intentionally unsupported.
 
 ### B13: Bash `_simulatedSedEdit` now preserves format, locks, and records writes
@@ -939,7 +946,7 @@ Required caution:
 | --- | --- | --- | --- | --- |
 | HR1 | `Write` canonicalization + transcript resume | Resumed `readFileState` used to risk raw tool input while disk contained canonical content | Fixed and tested | Keep no JSONL mutation; monitor focused resume tests |
 | HR2 | Atomic helper shared callers | Global strict atomic would break config/settings fallback semantics | Fixed and tested | Keep file tools strict; allow config/settings constrained rename-lock fallback |
-| HR3 | NotebookEdit mtime-only drift | False stale rejection unlike FileEdit/FileWrite | Needs decision | Add test and decide alignment |
+| HR3 | NotebookEdit mtime-only drift | False stale rejection unlike FileEdit/FileWrite | Fixed and tested | Keep FileReadTool cell-view comparison |
 | HR4 | NotebookEdit stale throw behavior | Tool result error payload changed to thrown error | Needs decision | Decide consistency vs compatibility |
 | HR5 | Bash simulated sed stale/read-before-write | Internal shell edit can write without read guard | Needs decision | Decide if simulated sed is structured harness writer |
 | HR6 | UTF-16LE BOM preservation | `UTF8_BOM` char with `utf16le` encoding likely works but unpinned | Needs test | Add UTF-16LE edit test |
@@ -965,7 +972,7 @@ Required caution:
 | Atomic failure | `file.test` | Good for helper | non-file-tool caller effects |
 | Failure metadata | `failureMetadata`, `fileHarnessFailures` | Strong | telemetry export audit |
 | FileEdit escalation | `failureMetadata`, utility tests, toolExecution test | Good | reset after reread |
-| NotebookEdit | `notebookEdit.behavior`, `failureMetadata` | Partial | mtime-only, stale-content distinction, UTF-16LE |
+| NotebookEdit | `notebookEdit.behavior`, `failureMetadata` | Good | stale throw decision, UTF-16LE |
 | Bash simulated sed | `bashSimulatedSed.behavior` | Partial | read-before-write/stale decision |
 | Subagent reminders | `fileStateReminder`, registry tests | Partial | killed/failed/resume integration |
 | Checkpoint test stability | Changed tests | Adequate | full-suite soak over time |
@@ -1044,15 +1051,14 @@ Important:
 
 ### Phase E: Decision review
 
-Status: HR1 and HR2 resolved; 5 user/product decisions remain.
+Status: HR1, HR2, and HR3 resolved; 4 user/product decisions remain.
 
 Decisions to review before runtime changes:
 
-1. Should NotebookEdit use content fallback like FileEdit/FileWrite?
-2. Should NotebookEdit execution stale failures throw or return tool data error?
-3. Should Bash simulated sed enforce read-before-write/stale guards?
-4. Should registry path identity move from `normalize` to `realpath`/casefold?
-5. Should killed/failed subagents append file-state reminders?
+1. Should NotebookEdit execution stale failures throw or return tool data error?
+2. Should Bash simulated sed enforce read-before-write/stale guards?
+3. Should registry path identity move from `normalize` to `realpath`/casefold?
+4. Should killed/failed subagents append file-state reminders?
 
 ## Decision Checklist
 
@@ -1068,7 +1074,7 @@ Decisions to review before runtime changes:
 | Cross-process registry | No | Keep no cross-process registry |
 | Shell write parsing | No | Keep no arbitrary shell parsing |
 | Bash simulated sed stale guard | No | Needs explicit decision |
-| Notebook mtime content fallback | No | Needs explicit decision |
+| Notebook mtime content fallback | Yes | Resolved: compare FileReadTool cell-view content |
 | Atomic fallback removal globally | No | Resolved: file tools strict; config/settings constrained fallback for rename lock |
 | Registry realpath/case aliasing | No | Needs explicit decision |
 | Subagent killed/failed reminder | Probably no | Needs explicit decision |
@@ -1081,13 +1087,15 @@ well tested:
 - `Write` is full replacement and now requires full prior read.
 - `Edit` is precise replacement and can proceed after partial read if current
   disk state is fresh.
-- Full-read mtime-only drift uses content fallback for FileEdit/FileWrite.
+- Full-read mtime-only drift uses content fallback for FileEdit/FileWrite and
+  NotebookEdit.
 - Same-process sibling writes and same-path write interleavings are guarded.
 - FileEdit/FileWrite format policy matches the decided split.
 
 The static behavior review is complete, and the highest-risk resume
-reconstruction issue plus atomic-helper scope have been fixed. The series
-should still not be treated as fully signed off until the remaining 5 decision
+reconstruction issue, atomic-helper scope, and NotebookEdit mtime fallback have
+been fixed. The series should still not be treated as fully signed off until
+the remaining 4 decision
 items are resolved. The serious
 unresolved items are outside the narrow happy path:
 

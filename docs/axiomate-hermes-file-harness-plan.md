@@ -895,8 +895,7 @@ Estimated work:
 There is no remaining core Hermes file-harness port planned. Remaining work is
 behavior sign-off plus observability and product polish:
 
-0. Close the remaining 5 b59a behavior decisions.
-   - NotebookEdit mtime-only content fallback.
+0. Close the remaining 4 b59a behavior decisions.
    - NotebookEdit execution stale throw vs tool error payload.
    - Bash simulated sed read-before-write/stale guard.
    - Registry path identity for symlink/realpath/case aliases.

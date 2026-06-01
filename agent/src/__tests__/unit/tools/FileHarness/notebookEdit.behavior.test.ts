@@ -190,6 +190,71 @@ describe('NotebookEditTool file harness behavior', () => {
     expect(await readNotebookSource(path)).toBe('print("child")')
   })
 
+  test('allows notebook edit when mtime changes but full-read content is unchanged', async () => {
+    const path = join(getHarnessCwd(), 'mtime-only-notebook.ipynb')
+    await writeNotebook(path, 'print("one")')
+    const context = await readNotebookIntoContext(path)
+    const originalTimestamp = context.readFileState.get(path)?.timestamp
+    expect(originalTimestamp).toBeDefined()
+
+    const touchedDate = new Date(originalTimestamp! + 2_000)
+    await utimes(path, touchedDate, touchedDate)
+
+    const validation = await NotebookEditTool.validateInput!(
+      {
+        notebook_path: path,
+        cell_id: 'cell-a',
+        new_source: 'print("two")',
+        edit_mode: 'replace',
+      },
+      context,
+    )
+    expect(validation.result).toBe(true)
+
+    await editNotebookCell(path, 'print("two")', context)
+
+    expect(await readNotebookSource(path)).toBe('print("two")')
+  })
+
+  test('still rejects notebook mtime drift after partial read state', async () => {
+    const path = join(getHarnessCwd(), 'partial-mtime-notebook.ipynb')
+    await writeNotebook(path, 'print("one")')
+    const context = await readNotebookIntoContext(path)
+    const fullState = context.readFileState.get(path)
+    expect(fullState).toBeDefined()
+    context.readFileState.set(path, {
+      ...fullState!,
+      offset: 1,
+      limit: 10,
+      isPartialView: true,
+    })
+
+    const touchedDate = new Date(fullState!.timestamp + 2_000)
+    await utimes(path, touchedDate, touchedDate)
+
+    const validation = await NotebookEditTool.validateInput!(
+      {
+        notebook_path: path,
+        cell_id: 'cell-a',
+        new_source: 'print("two")',
+        edit_mode: 'replace',
+      },
+      context,
+    )
+    expectValidationFailure(validation)
+    expect(validation.errorCode).toBe(10)
+    expect(validation.fileHarnessFailure).toMatchObject({
+      reason: 'stale_mtime',
+      phase: 'validation',
+      path,
+    })
+
+    await expect(
+      editNotebookCell(path, 'print("two")', context),
+    ).rejects.toThrow(FILE_UNEXPECTEDLY_MODIFIED_ERROR)
+    expect(await readNotebookSource(path)).toBe('print("one")')
+  })
+
   test('call waits for the same-path file state lock before final stale check and write', async () => {
     const path = join(getHarnessCwd(), 'locked-notebook.ipynb')
     await writeNotebook(path, 'print("one")')

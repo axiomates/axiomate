@@ -20,10 +20,11 @@ import {
   wasFileModifiedAfterReadByAnotherContext,
   withFileStatePathLock,
 } from '../../utils/fileStateRegistry.js'
+import { fileStateHasFullContent } from '../../utils/fileStateCache.js'
 import { readFileSyncWithMetadata } from '../../utils/fileRead.js'
 import { safeParseJSON } from '../../utils/json.js'
 import { lazySchema } from '../../utils/lazySchema.js'
-import { parseCellId } from '../../utils/notebook.js'
+import { parseCellId, readNotebookCellsSync } from '../../utils/notebook.js'
 import { checkWritePermissionForTool } from '../../utils/permissions/filesystem.js'
 import type { PermissionDecision } from '../../utils/permissions/PermissionResult.js'
 import { jsonParse, jsonStringify } from '../../utils/slowOperations.js'
@@ -249,20 +250,6 @@ export const NotebookEditTool = buildTool({
         ),
       }
     }
-    if (getFileModificationTime(fullPath) > readTimestamp.timestamp) {
-      return {
-        result: false,
-        message:
-          'File has been modified since read, either by the user or by a linter. Read it again before attempting to write it.',
-        errorCode: 10,
-        fileHarnessFailure: fileHarnessFailure(
-          'stale_mtime',
-          'validation',
-          fullPath,
-        ),
-      }
-    }
-
     let content: string
     try {
       content = readFileSyncWithMetadata(fullPath).content
@@ -275,6 +262,27 @@ export const NotebookEditTool = buildTool({
         }
       }
       throw e
+    }
+    if (getFileModificationTime(fullPath) > readTimestamp.timestamp) {
+      const notebookReadContent = getNotebookReadStateContent(fullPath)
+      const contentUnchanged =
+        fileStateHasFullContent(readTimestamp) &&
+        notebookReadContent === readTimestamp.content
+      if (!contentUnchanged) {
+        return {
+          result: false,
+          message:
+            'File has been modified since read, either by the user or by a linter. Read it again before attempting to write it.',
+          errorCode: 10,
+          fileHarnessFailure: fileHarnessFailure(
+            fileStateHasFullContent(readTimestamp)
+              ? 'stale_content'
+              : 'stale_mtime',
+            'validation',
+            fullPath,
+          ),
+        }
+      }
     }
     const notebook = safeParseJSON(content) as NotebookContent | null
     if (!notebook) {
@@ -359,15 +367,6 @@ export const NotebookEditTool = buildTool({
             fullPath,
           )
         }
-        if (getFileModificationTime(fullPath) > lastRead.timestamp) {
-          throwFileHarnessFailure(
-            FILE_UNEXPECTEDLY_MODIFIED_ERROR,
-            'stale_mtime',
-            'execution',
-            fullPath,
-          )
-        }
-
         // readFileSyncWithMetadata gives content + encoding + line endings in
         // one safeResolvePath + readFileSync pass, replacing the previous
         // detectFileEncoding + readFile + detectLineEndings chain (each of
@@ -379,6 +378,22 @@ export const NotebookEditTool = buildTool({
         // notebook in place below (cells.splice, targetCell.source = ...).
         // Using the memoized version poisons the cache for validateInput() and
         // any subsequent call() with the same file content.
+        if (getFileModificationTime(fullPath) > lastRead.timestamp) {
+          const contentUnchanged =
+            fileStateHasFullContent(lastRead) &&
+            getNotebookReadStateContent(fullPath) === lastRead.content
+          if (!contentUnchanged) {
+            throwFileHarnessFailure(
+              FILE_UNEXPECTEDLY_MODIFIED_ERROR,
+              fileStateHasFullContent(lastRead)
+                ? 'stale_content'
+                : 'stale_mtime',
+              'execution',
+              fullPath,
+            )
+          }
+        }
+
         let notebook: NotebookContent
         try {
           notebook = jsonParse(content) as NotebookContent
@@ -546,3 +561,7 @@ export const NotebookEditTool = buildTool({
     }
   },
 } satisfies ToolDef<InputSchema, Output>)
+
+function getNotebookReadStateContent(filePath: string): string {
+  return jsonStringify(readNotebookCellsSync(filePath))
+}

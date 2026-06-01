@@ -183,6 +183,27 @@ export async function readNotebook(
   )
 }
 
+export function readNotebookCellsSync(
+  notebookPath: string,
+  cellId?: string,
+): NotebookCellSource[] {
+  const fullPath = expandPath(notebookPath)
+  const buffer = getFsImplementation().readFileBytesSync(fullPath)
+  const content = normalizeContentToLf(buffer.toString('utf-8'))
+  const notebook = jsonParse(content) as NotebookContent
+  const language = notebook.metadata.language_info?.name ?? 'python'
+  if (cellId) {
+    const cell = notebook.cells.find(c => c.id === cellId)
+    if (!cell) {
+      throw new Error(`Cell with ID "${cellId}" not found in notebook`)
+    }
+    return [processCell(cell, notebook.cells.indexOf(cell), language, true)]
+  }
+  return notebook.cells.map((cell, index) =>
+    processCell(cell, index, language, false),
+  )
+}
+
 /**
  * Maps notebook cell data to tool result block parameters with sophisticated text block merging
  */
