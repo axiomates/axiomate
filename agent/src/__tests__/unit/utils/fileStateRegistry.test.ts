@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs'
 import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, normalize } from 'node:path'
@@ -92,20 +93,65 @@ describe('fileStateRegistry path keys', () => {
     })
   })
 
-  test('case-folds registry keys only on Windows', async () => {
+  test('applies separate Windows, macOS, and Linux case rules', async () => {
     await withTempDir(async tempDir => {
       const mixedCase = join(tempDir, 'CaseProbe', 'File.TXT')
       const lowerCase = join(tempDir, 'caseprobe', 'file.txt')
 
-      if (process.platform === 'win32') {
-        expect(getFileStateRegistryPathKeyForTests(mixedCase)).toBe(
-          getFileStateRegistryPathKeyForTests(lowerCase),
-        )
-      } else {
-        expect(getFileStateRegistryPathKeyForTests(mixedCase)).not.toBe(
-          getFileStateRegistryPathKeyForTests(lowerCase),
-        )
-      }
+      expect(
+        getFileStateRegistryPathKeyForTests(mixedCase, {
+          platform: 'win32',
+        }),
+      ).toBe(
+        getFileStateRegistryPathKeyForTests(lowerCase, { platform: 'win32' }),
+      )
+      expect(
+        getFileStateRegistryPathKeyForTests(mixedCase, {
+          platform: 'linux',
+        }),
+      ).not.toBe(
+        getFileStateRegistryPathKeyForTests(lowerCase, { platform: 'linux' }),
+      )
+      expect(
+        getFileStateRegistryPathKeyForTests(mixedCase, {
+          platform: 'darwin',
+          macCaseInsensitive: true,
+        }),
+      ).toBe(
+        getFileStateRegistryPathKeyForTests(lowerCase, {
+          platform: 'darwin',
+          macCaseInsensitive: true,
+        }),
+      )
+      expect(
+        getFileStateRegistryPathKeyForTests(mixedCase, {
+          platform: 'darwin',
+          macCaseInsensitive: false,
+        }),
+      ).not.toBe(
+        getFileStateRegistryPathKeyForTests(lowerCase, {
+          platform: 'darwin',
+          macCaseInsensitive: false,
+        }),
+      )
+    })
+  })
+
+  test('detects the current macOS volume case rule without using Windows logic', async () => {
+    await withTempDir(async tempDir => {
+      const probePath = join(tempDir, 'CaseProbe')
+      const lowerProbePath = join(tempDir, 'caseprobe')
+      await writeFile(probePath, 'content', 'utf8')
+      const volumeIsCaseInsensitive = existsSync(lowerProbePath)
+
+      expect(
+        getFileStateRegistryPathKeyForTests(probePath, {
+          platform: 'darwin',
+        }) ===
+          getFileStateRegistryPathKeyForTests(lowerProbePath, {
+            platform: 'darwin',
+          }),
+      ).toBe(volumeIsCaseInsensitive)
     })
   })
 

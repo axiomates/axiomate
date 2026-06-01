@@ -266,21 +266,21 @@
       </div>
       <div class="verdict">
         <div class="callout danger">
-          <h3>R1/R2/R3/R4/R5 已修复；UI/统计前还剩边界决策</h3>
+          <h3>R1/R2/R3/R4/R5/R6 已修复；UI/统计前还剩 telemetry 边界决策</h3>
           <p>
             当前 path lock 本身已经能在单进程内按路径串行，并且 reentry 会 fail-fast，不再是主要问题。
             本轮已经修复 Write 覆盖路径的 full-read 判定，以及 resume 对 failed Read/Write 和 empty Write 的重建问题。
             随后又修复了 hook/permission 改写 input 后没有二次 schema/validate 的问题。
             之后继续补上 writer registry true LRU，以及 side-channel read state 的 registrySequence 统一登记。
-            剩余风险主要是 macOS case-insensitive path alias 边界，以及 telemetry 内容字段默认边界。
+            R6 已按平台拆分 path-key 规则：Windows、macOS、Linux 不再混用同一套大小写策略。
+            剩余风险主要是 telemetry 内容字段默认边界。
           </p>
         </div>
         <div class="callout warn">
           <h3>优先级建议</h3>
           <p>
-            下一波先处理 R6/R7：确认 macOS 大小写不敏感卷是否要做目录级探测，
-            并把 file harness 统计默认字段限制在 reason/code/path extension/size/boolean。
-            这两个决策落定后，再进入 file harness UI/统计。
+            下一波先处理 R7：把 file harness 统计默认字段限制在 reason/code/path extension/size/boolean。
+            该决策落定后，再进入 file harness UI/统计。
           </p>
         </div>
       </div>
@@ -298,7 +298,7 @@
         <div class="subcard">
           <div class="stat-label">Confirmed Findings</div>
           <div class="stat-value">7</div>
-          <p class="muted">5 项已修复，2 项仍需后续处理或决策。</p>
+          <p class="muted">6 项已修复，1 项仍需后续处理或决策。</p>
         </div>
         <div class="subcard">
           <div class="stat-label">Tests Run</div>
@@ -479,22 +479,26 @@
       <article class="finding">
         <div class="finding-head">
           <h3>R6. path lock / sibling path key 仍有跨平台别名边界</h3>
-          <span class="sev med">中</span>
+          <span class="sev ok">已修复</span>
         </div>
         <p>
-          当前 path key 已处理 symlink parent 和 Windows 大小写折叠，单进程锁也能按该 key 串行。
-          但大小写折叠只在 <code>process.platform === 'win32'</code> 时启用；macOS 常见 APFS/HFS+ 卷可能大小写不敏感。
-          在这种卷上，同一文件通过不同大小写路径访问时，path lock/sibling registry 可能认为是两个路径。
+          当前 path key 已处理 symlink parent，单进程锁也能按该 key 串行。
+          审计时发现大小写规则只按 <code>process.platform === 'win32'</code> 做全局折叠；
+          这把 Windows、macOS、Linux 混成了一个二分规则。新的决策是三平台分开：
+          Windows 永远大小写不敏感，Linux 永远大小写敏感，macOS 按实际卷/目录能力探测并按 device 缓存。
+          探测失败时保守不折叠，避免误合并大小写敏感卷上的不同文件。
         </p>
         <div class="evidence">
           <h4>证据</h4>
           <ul class="mono-list">
-            <li><code>agent/src/utils/fileStateRegistry.ts:55-56</code> 只有 Windows case-fold。</li>
-            <li><code>agent/src/utils/fileStateRegistry.ts:59-73</code> registry key 使用 safe resolve/deepest ancestor resolve 后 normalize。</li>
-            <li><code>agent/src/__tests__/unit/utils/fileStateRegistry.test.ts:95-100</code> 测试也明确 “case-folds registry keys only on Windows”。</li>
+            <li><code>agent/src/utils/fileStateRegistry.ts</code> 现在拆分 <code>windowsRegistryPathKey()</code>、<code>macRegistryPathKey()</code>、<code>linuxRegistryPathKey()</code>。</li>
+            <li>Windows 规则：registry key 始终 lower-case，匹配 NTFS/Windows 常见大小写不敏感行为。</li>
+            <li>Linux 规则：registry key 保留大小写，不做折叠。</li>
+            <li>macOS 规则：找最近存在目录，写入临时 probe，检测大小写别名是否存在，并按 <code>stat.dev</code> 缓存结果。</li>
+            <li><code>agent/src/__tests__/unit/utils/fileStateRegistry.test.ts</code> 新增三平台规则测试，以及 macOS 动态探测测试。</li>
           </ul>
         </div>
-        <p><strong>建议：</strong>在 macOS 上按实际卷能力决定是否 case-fold 很难，但至少应把此项列为已知边界；如果要加强，需要按目录探测大小写敏感性并缓存。</p>
+        <p><strong>状态：</strong>已修复。UNC/双斜杠路径不会触发 macOS probe；无法探测时保守保持大小写敏感，避免把不同文件误合并。</p>
       </article>
 
       <article class="finding">
@@ -546,7 +550,7 @@
             <li>锁是进程内的，不是跨进程文件锁；另一个 Axiomate 进程、编辑器、shell 命令仍可能并发写。</li>
             <li>任意 Bash/PowerShell 写文件不进入 fileStateRegistry；只有内部 simulated sed 会更新 state。</li>
             <li>mtime 使用 <code>Math.floor(mtimeMs)</code>，有意降低误报，但同一秒内外部写入仍主要靠 sibling registry/checkpoint 兜底。</li>
-            <li>hard link 未 canonicalize 到 inode；大小写不敏感 macOS 卷也不是完整覆盖。</li>
+            <li>hard link 未 canonicalize 到 inode；跨进程/外部写入仍不进入进程内 registry。</li>
           </ul>
         </div>
       </div>
@@ -650,9 +654,8 @@
         </div>
       </div>
       <ol>
-        <li>下一波先决策 R6：是否在 macOS 做目录级 case-sensitivity 探测与缓存，还是把该项明确列为已接受边界。</li>
-        <li>随后处理 R7：file harness 统计默认只记录结构化元数据，不默认记录正文、diff、完整命令输出。</li>
-        <li>R6/R7 落定后，再进入 file harness UI/统计；同时保留一轮 full file-harness targeted regression。</li>
+        <li>下一波处理 R7：file harness 统计默认只记录结构化元数据，不默认记录正文、diff、完整命令输出。</li>
+        <li>R7 落定后，再进入 file harness UI/统计；同时保留一轮 full file-harness targeted regression。</li>
       </ol>
     </section>
 
@@ -705,7 +708,7 @@
           <tr>
             <td><code>pnpm --filter ./agent exec vitest run src/__tests__/unit/utils/fileStateRegistry.test.ts --no-file-parallelism --testTimeout 30000 --hookTimeout 120000</code></td>
             <td><span class="sev ok">通过</span></td>
-            <td>15 个 fileStateRegistry 单测通过；覆盖 symlink alias、sibling reminder、writer registry true LRU、side-channel observed read stamp、path lock serialization/reentry。</td>
+            <td>16 个 fileStateRegistry 单测通过；覆盖 symlink alias、三平台大小写规则、macOS 动态探测、sibling reminder、writer registry true LRU、side-channel observed read stamp、path lock serialization/reentry。</td>
           </tr>
           <tr>
             <td><code>pnpm --filter ./agent exec vitest run src/__tests__/unit/utils/attachmentsFileStateRegistry.test.ts --no-file-parallelism --testTimeout 30000 --hookTimeout 120000</code></td>

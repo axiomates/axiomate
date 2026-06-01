@@ -1,5 +1,5 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
-import { isAbsolute, normalize, resolve } from 'node:path'
+import { dirname, isAbsolute, join, normalize, resolve } from 'node:path'
 import type { ToolUseContext } from '../Tool.js'
 import type { FileState } from './fileStateCache.js'
 import {
@@ -33,6 +33,12 @@ const lastWriterByPath = new Map<string, WriteStamp>()
 const pathLockTails = new Map<string, Promise<void>>()
 const pathLockDepths = new Map<string, number>()
 const heldPathLocks = new AsyncLocalStorage<Set<string>>()
+const macCaseSensitivityByDevice = new Map<number, boolean>()
+
+type RegistryPathKeyOptions = {
+  platform?: NodeJS.Platform
+  macCaseInsensitive?: boolean
+}
 
 function getOwnerId(context: FileStateContext): string {
   if (context.agentId) return `agent:${context.agentId}`
@@ -53,13 +59,106 @@ function capMap<TKey, TValue>(map: Map<TKey, TValue>, limit: number): void {
   }
 }
 
-function caseFoldRegistryKey(key: string): string {
-  return process.platform === 'win32' ? key.toLowerCase() : key
+function windowsRegistryPathKey(key: string): string {
+  return key.toLowerCase()
 }
 
-function registryPathKey(filePath: string): string {
+function linuxRegistryPathKey(key: string): string {
+  return key
+}
+
+function findExistingDirectoryForCaseProbe(
+  filePath: string,
+): string | undefined {
+  const fs = getFsImplementation()
+  let dir = dirname(filePath)
+  while (dir !== dirname(dir)) {
+    try {
+      if (fs.statSync(dir).isDirectory()) return dir
+    } catch {}
+    dir = dirname(dir)
+  }
+
+  try {
+    return fs.statSync(dir).isDirectory() ? dir : undefined
+  } catch {
+    return undefined
+  }
+}
+
+function isDirectoryCaseSensitiveOnMac(dirPath: string): boolean {
+  const fs = getFsImplementation()
+  let device: number | undefined
+  try {
+    device = fs.statSync(dirPath).dev
+    const cached = macCaseSensitivityByDevice.get(device)
+    if (cached !== undefined) return cached
+  } catch {}
+
+  const probeName = `.axiomate-case-probe-${process.pid}-${Date.now()}-${Math.random()
+    .toString(36)
+    .slice(2)}`
+  const probePath = join(dirPath, probeName)
+  const oppositeCasePath = join(dirPath, probeName.toUpperCase())
+
+  try {
+    fs.appendFileSync(probePath, '', { mode: 0o600 })
+    const caseSensitive = !fs.existsSync(oppositeCasePath)
+    if (device !== undefined) {
+      macCaseSensitivityByDevice.set(device, caseSensitive)
+    }
+    return caseSensitive
+  } catch {
+    // If probing is blocked, keep this path conservative and do not fold. Do
+    // not cache the failure at device level; another directory on the same
+    // volume may be probeable.
+    return true
+  } finally {
+    try {
+      fs.unlinkSync(probePath)
+    } catch {}
+  }
+}
+
+function macRegistryPathKey(
+  key: string,
+  options?: RegistryPathKeyOptions,
+  allowProbe = true,
+): string {
+  const caseInsensitive =
+    options?.macCaseInsensitive ??
+    (() => {
+      if (!allowProbe) return false
+      const dir = findExistingDirectoryForCaseProbe(key)
+      return dir === undefined ? false : !isDirectoryCaseSensitiveOnMac(dir)
+    })()
+  return caseInsensitive ? key.toLowerCase() : key
+}
+
+function platformRegistryPathKey(
+  key: string,
+  options?: RegistryPathKeyOptions,
+  allowMacProbe = true,
+): string {
+  const platform = options?.platform ?? process.platform
+  switch (platform) {
+    case 'win32':
+      return windowsRegistryPathKey(key)
+    case 'darwin':
+      return macRegistryPathKey(key, options, allowMacProbe)
+    case 'linux':
+      return linuxRegistryPathKey(key)
+    default:
+      return key
+  }
+}
+
+function registryPathKey(
+  filePath: string,
+  options?: RegistryPathKeyOptions,
+): string {
   if (filePath.startsWith('//') || filePath.startsWith('\\\\')) {
-    return caseFoldRegistryKey(normalize(filePath))
+    return platformRegistryPathKey(normalize(filePath), options, false)
   }
 
   const fs = getFsImplementation()
@@ -71,7 +170,7 @@ function registryPathKey(filePath: string): string {
     ? resolvedExisting.resolvedPath
     : (resolveDeepestExistingAncestorSync(fs, absolutePath) ?? absolutePath)
 
-  return caseFoldRegistryKey(normalize(resolvedPath))
+  return platformRegistryPathKey(normalize(resolvedPath), options)
 }
 
 function getReadPathByRegistryKey(
@@ -93,8 +192,11 @@ function rememberReadPathForRegistryKey(
   getReadPathByRegistryKey(context).set(registryKey, normalize(filePath))
 }
 
-export function getFileStateRegistryPathKeyForTests(filePath: string): string {
-  return registryPathKey(filePath)
+export function getFileStateRegistryPathKeyForTests(
+  filePath: string,
+  options?: RegistryPathKeyOptions,
+): string {
+  return registryPathKey(filePath, options)
 }
 
 export function recordFileRead(
@@ -267,4 +369,5 @@ export function clearFileStateRegistryForTests(): void {
   lastWriterByPath.clear()
   pathLockTails.clear()
   pathLockDepths.clear()
+  macCaseSensitivityByDevice.clear()
 }
