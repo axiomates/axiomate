@@ -315,10 +315,14 @@ metadata, edit-match escalation, and read-dedup loop guidance.
   edits made after the historical tool call.
 - The JSONL transcript is not rewritten, and `toolNormalization` is omitted from
   `cacheToObject`.
-- There are 6 remaining b59a behavior decisions before UI/statistics work:
-  shared atomic helper scope, NotebookEdit content fallback, NotebookEdit stale
-  throw-vs-payload behavior, simulated sed stale guard, registry realpath/case
-  aliasing, and killed/failed subagent reminders.
+- HR2/HR3/HR4 are also resolved: atomic helper strictness is scoped to file
+  tools with constrained config/settings fallback, NotebookEdit has full-read
+  mtime content fallback, and NotebookEdit/file-harness stale throws are caught
+  by the tool runner and surfaced as `is_error` tool results rather than
+  exiting the program.
+- There are 3 remaining b59a behavior decisions before UI/statistics work:
+  simulated sed stale guard, registry realpath/case aliasing, and killed/failed
+  subagent reminders.
 
 Completed and pushed:
 
@@ -350,9 +354,8 @@ Completed Stage 6B slice:
 - `FileEditTool` now distinguishes execution-time `not_read`,
   `sibling_write_after_read`, `stale_mtime`, and `stale_content`.
 - `NotebookEditTool` now distinguishes execution-time `not_read`,
-  `sibling_write_after_read`, and `stale_mtime`. It does not claim
-  `stale_content` because the final notebook write path does not currently run
-  a content fallback.
+  `sibling_write_after_read`, `stale_mtime`, and `stale_content` after the
+  same FileReadTool cell-view content fallback used by its validation path.
 - `writeFileSyncAndFlush_DEPRECATED` now wraps atomic write failures in
   `FileHarnessError` with `reason: atomic_write_failed`, `phase: helper`,
   `path`, errno `code`, and original filesystem error in `cause`.
@@ -373,9 +376,19 @@ Completed Stage 7B/8 slice:
 - Third and later repeated unchanged reads add STOP-level guidance.
 - A real text or notebook read clears the dedup loop tracker for that path.
 
+Completed HR4 follow-up:
+
+- Keep thrown `FileHarnessError` semantics inside file tools and NotebookEdit
+  for execution-time safety failures.
+- Treat the tool runner as the boundary: `runToolUse` / `checkPermissionsAndCallTool`
+  catches the throw and returns a normal `tool_result` with `is_error: true`.
+- The main loop should not exit because a file harness guard throws.
+- This is pinned by
+  `agent/src/__tests__/unit/services/tools/toolExecutionFileHarnessError.test.ts`.
+
 Next implementation target:
 
-- Close the remaining 6 b59a behavior decisions, then treat the remaining
+- Close the remaining 3 b59a behavior decisions, then treat the remaining
   harness work as optional observability/UI/recovery polish, not missing core
   Stage 1-8 behavior. Two candidate policy branches are explicitly closed for
   now:
@@ -841,12 +854,14 @@ Estimated work:
     - New callers can inspect `error.fileHarnessFailure` without changing
       model-facing tool text.
 
-18. Notebook execution stale-content classification waits for a real fallback.
+18. Notebook execution stale-content classification uses the cell-view fallback.
     - `FileWriteTool` and `FileEditTool` can report `stale_content` when their
       final critical section compares cached full content to current content.
-    - `NotebookEditTool` currently checks mtime before reading/parsing the
-      notebook in `call()`, so execution-time mtime drift remains
-      `stale_mtime`.
+    - `NotebookEditTool` now compares the current FileReadTool notebook cell
+      view to the cached full read state after mtime drift.
+    - Full-read mtime-only drift can proceed; partial-read drift still rejects.
+    - Execution safety failures still throw inside the tool, but the tool runner
+      catches them and surfaces an `is_error` tool result.
 
 19. Unsupported encoding is reserved but not enforced.
     - The catalog keeps `encoding_unsupported` so future code has a stable
@@ -895,8 +910,7 @@ Estimated work:
 There is no remaining core Hermes file-harness port planned. Remaining work is
 behavior sign-off plus observability and product polish:
 
-0. Close the remaining 4 b59a behavior decisions.
-   - NotebookEdit execution stale throw vs tool error payload.
+0. Close the remaining 3 b59a behavior decisions.
    - Bash simulated sed read-before-write/stale guard.
    - Registry path identity for symlink/realpath/case aliases.
    - Killed/failed subagent file-state reminders.

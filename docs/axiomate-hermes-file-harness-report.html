@@ -230,7 +230,7 @@
     <section class="hero">
       <div class="eyebrow">File Harness · Migration Feasibility · Risk Review</div>
       <h1>Axiomate vs Hermes Agent File Harness 专项报告</h1>
-      <p>本报告只讨论文件读写/编辑可靠性：原子落盘、BOM/CRLF、staleness guard、read dedup、patch failure taxonomy、权限/安全 guard、并发文件状态和测试夹具。当前结论是：Axiomate 已经把 Hermes 最值得迁移的 file harness invariant 落入现有 TypeScript 工具体系；核心迁移完成。2026-06-01 已补上 resume/cold-start reconstruction 的格式语义缺口、明确 atomic helper scope，并补齐 NotebookEdit mtime-only content fallback；剩余是 4 个行为决策和之后的 UI/统计打磨。</p>
+      <p>本报告只讨论文件读写/编辑可靠性：原子落盘、BOM/CRLF、staleness guard、read dedup、patch failure taxonomy、权限/安全 guard、并发文件状态和测试夹具。当前结论是：Axiomate 已经把 Hermes 最值得迁移的 file harness invariant 落入现有 TypeScript 工具体系；核心迁移完成。2026-06-01 已补上 resume/cold-start reconstruction 的格式语义缺口、明确 atomic helper scope，补齐 NotebookEdit mtime-only content fallback，并确认 file harness throw 由 tool runner 捕获为 <code>is_error</code> tool result；剩余是 3 个行为决策和之后的 UI/统计打磨。</p>
       <div class="meta">更新时间：2026-06-01 · Axiomate：C:\public\workspace\axiomate (main，已覆盖 Stage 1-8 file harness 实现 + HR1 resume reconstruction 修复) · Hermes Agent：C:\public\workspace\hermes-agent (main @ 02d1da49) · 口径：本地代码阅读、git 提交证据、Vitest/类型检查验证</div>
     </section>
 
@@ -271,7 +271,7 @@
         </div>
         <div class="callout">
           <strong>当前优先级：</strong>
-          不再把 Stage 1-8 当成待迁移主线。<code>encoding_unsupported</code> 保留 reason 但不启用拒绝，cross-process registry/locking 不做；HR1/HR2/HR3 已修复。下一步先关闭剩余 4 个行为决策，再做 UI surfacing、统计看板和 telemetry 证明必要后的可选 edit recovery。
+          不再把 Stage 1-8 当成待迁移主线。<code>encoding_unsupported</code> 保留 reason 但不启用拒绝，cross-process registry/locking 不做；HR1/HR2/HR3/HR4 已修复。下一步先关闭剩余 3 个行为决策，再做 UI surfacing、统计看板和 telemetry 证明必要后的可选 edit recovery。
         </div>
       </div>
       <div class="pill-row">
@@ -280,7 +280,7 @@
         <span class="pill good">已落地：resume canonicalization</span>
         <span class="pill good">已落地：failure escalation</span>
         <span class="pill good">已落地：read dedup loop guard</span>
-        <span class="pill warn">剩余：4 个行为决策</span>
+        <span class="pill warn">剩余：3 个行为决策</span>
         <span class="pill info">保留现状：encoding best-effort</span>
         <span class="pill info">不做：cross-process registry</span>
       </div>
@@ -660,11 +660,11 @@
       </div>
       <div class="grid-3">
         <article class="subcard">
-          <h3>4 behavior decisions</h3>
+          <h3>3 behavior decisions</h3>
           <p class="muted">先做，非可选</p>
           <ul>
-            <li>NotebookEdit stale 输出语义。</li>
-            <li>simulated sed guard、registry alias、killed/failed subagent reminder。</li>
+            <li>simulated sed guard。</li>
+            <li>registry alias、killed/failed subagent reminder。</li>
           </ul>
         </article>
         <article class="subcard">
@@ -738,11 +738,11 @@
             <td>Write history canonicalize；Edit history replay full-known transcript state；<code>toolNormalization</code> runtime-only，不改 JSONL。</td>
           </tr>
           <tr>
-            <td>剩余 4 个行为决策</td>
+            <td>剩余 3 个行为决策</td>
             <td><span class="pill warn">待签字</span></td>
             <td><strong>未知，取决于决策</strong></td>
             <td>每项先补/确认测试，再改逻辑</td>
-            <td>NotebookEdit stale 输出语义、simulated sed、registry alias、subagent killed/failed reminder；这些应先于 UI/统计。</td>
+            <td>simulated sed、registry alias、subagent killed/failed reminder；这些应先于 UI/统计。</td>
           </tr>
           <tr>
             <td>剩余 UI/统计/观察</td>
@@ -754,7 +754,7 @@
         </tbody>
       </table>
       <div class="callout warn" style="margin-top: 14px;">
-        <strong>当前建议：</strong>不要继续为了“完整抄 Hermes”扩大范围。Axiomate 已经完成核心 file harness；下一步先关闭 4 个行为决策，再做 UI/统计/观察类打磨，或等 telemetry 证明必要后再增强 edit recovery。
+        <strong>当前建议：</strong>不要继续为了“完整抄 Hermes”扩大范围。Axiomate 已经完成核心 file harness；下一步先关闭 3 个行为决策，再做 UI/统计/观察类打磨，或等 telemetry 证明必要后再增强 edit recovery。
       </div>
     </section>
 
@@ -916,7 +916,7 @@ Verification:
         </div>
       </div>
       <p>Axiomate file harness 的主体迁移已经完成。正确路线仍然不是把 Hermes 的文件工具整套搬进来，而是把 Hermes 证明有效的工程约束迁入 Axiomate 现有 TypeScript 工具体系；这条路线已经覆盖测试、读后写、stale guard、同进程 registry、path lock、file-tool strict atomic write、BOM/CRLF、failure taxonomy、edit failure escalation、read dedup loop guard，以及 resume/cold-start file-state reconstruction。</p>
-      <p>已收敛的边界是：<code>encoding_unsupported</code> 保留 taxonomy reason 但不启用硬拒绝，跨进程 registry/locking 不做，JSONL 历史不为格式矫正而重写，config/settings 只对 rename lock 保留受控 direct fallback。剩余工作不应再按“继续抄 Hermes”推进；应先关闭 4 个 b59a 行为决策，再做 UI 展示、低敏数据统计，以及 telemetry 证明必要后的 edit recovery 打磨。</p>
+      <p>已收敛的边界是：<code>encoding_unsupported</code> 保留 taxonomy reason 但不启用硬拒绝，跨进程 registry/locking 不做，JSONL 历史不为格式矫正而重写，config/settings 只对 rename lock 保留受控 direct fallback，file harness safety failure 在工具内部 throw、由 runner 捕获为 <code>is_error</code> tool result。剩余工作不应再按“继续抄 Hermes”推进；应先关闭 3 个 b59a 行为决策，再做 UI 展示、低敏数据统计，以及 telemetry 证明必要后的 edit recovery 打磨。</p>
     </section>
   </main>
 </body>

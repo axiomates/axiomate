@@ -643,8 +643,9 @@ Old behavior at `b59a`:
 - NotebookEdit required read-before-edit and mtime stale checks.
 - It did not use sibling registry.
 - It did not use path lock.
-- `FILE_UNEXPECTEDLY_MODIFIED_ERROR` from execution catch would be returned as
-  a tool data error payload, not rethrown.
+- `FILE_UNEXPECTEDLY_MODIFIED_ERROR` from NotebookEdit internals could be
+  returned as a tool data error payload before reaching the shared tool-runner
+  error boundary.
 
 New behavior:
 
@@ -652,11 +653,13 @@ New behavior:
 - Execution uses same-path lock.
 - Writes preserve BOM/line ending via `readFileSyncWithMetadata` and
   `writeTextContent`.
-- `FILE_UNEXPECTEDLY_MODIFIED_ERROR` is rethrown from call.
+- `FILE_UNEXPECTEDLY_MODIFIED_ERROR` is thrown from call as a typed
+  `FileHarnessError`.
 
 Decision status:
 
-- Mostly intended, but one behavior needs explicit decision.
+- Intended after HR4: throw inside the tool, catch at the shared tool runner
+  boundary, and return an `is_error` tool result without exiting the program.
 
 Current tests:
 
@@ -681,14 +684,17 @@ Decision result:
   the model actually read.
 - Partial read state still does not get the fallback and remains stale on mtime
   drift.
-- The throw-vs-error-payload behavior for execution stale changed. This may be
-  correct for consistency with FileEdit/FileWrite, but it is a user-visible
-  behavior change and should be approved explicitly.
+- HR4 resolved on 2026-06-01: execution-time stale failures keep throw
+  semantics inside NotebookEdit/file tools, but `runToolUse` catches the throw
+  and returns a normal `tool_result` with `is_error: true`. The program/main
+  loop must not exit on a file harness safety failure.
 
 Current tests:
 
 - Notebook mtime-only drift with identical content is allowed after full Read.
 - Notebook mtime drift after partial read state is still rejected.
+- `toolExecutionFileHarnessError.test.ts` verifies thrown `FileHarnessError`
+  becomes an error tool result instead of an outer tool-runner crash payload.
 
 Remaining missing tests:
 
@@ -947,7 +953,7 @@ Required caution:
 | HR1 | `Write` canonicalization + transcript resume | Resumed `readFileState` used to risk raw tool input while disk contained canonical content | Fixed and tested | Keep no JSONL mutation; monitor focused resume tests |
 | HR2 | Atomic helper shared callers | Global strict atomic would break config/settings fallback semantics | Fixed and tested | Keep file tools strict; allow config/settings constrained rename-lock fallback |
 | HR3 | NotebookEdit mtime-only drift | False stale rejection unlike FileEdit/FileWrite | Fixed and tested | Keep FileReadTool cell-view comparison |
-| HR4 | NotebookEdit stale throw behavior | Tool result error payload changed to thrown error | Needs decision | Decide consistency vs compatibility |
+| HR4 | NotebookEdit stale throw behavior | Tool-internal throw could be mistaken for process failure | Fixed and tested | Keep shared tool-runner catch returning `is_error` |
 | HR5 | Bash simulated sed stale/read-before-write | Internal shell edit can write without read guard | Needs decision | Decide if simulated sed is structured harness writer |
 | HR6 | UTF-16LE BOM preservation | `UTF8_BOM` char with `utf16le` encoding likely works but unpinned | Needs test | Add UTF-16LE edit test |
 | HR7 | Registry path identity | `path.normalize` misses realpath/symlink/case aliases | Accepted or fix | Decide before adding complexity |
@@ -972,7 +978,7 @@ Required caution:
 | Atomic failure | `file.test` | Good for helper | non-file-tool caller effects |
 | Failure metadata | `failureMetadata`, `fileHarnessFailures` | Strong | telemetry export audit |
 | FileEdit escalation | `failureMetadata`, utility tests, toolExecution test | Good | reset after reread |
-| NotebookEdit | `notebookEdit.behavior`, `failureMetadata` | Good | stale throw decision, UTF-16LE |
+| NotebookEdit | `notebookEdit.behavior`, `failureMetadata`, `toolExecutionFileHarnessError` | Good | UTF-16LE |
 | Bash simulated sed | `bashSimulatedSed.behavior` | Partial | read-before-write/stale decision |
 | Subagent reminders | `fileStateReminder`, registry tests | Partial | killed/failed/resume integration |
 | Checkpoint test stability | Changed tests | Adequate | full-suite soak over time |
@@ -1051,14 +1057,13 @@ Important:
 
 ### Phase E: Decision review
 
-Status: HR1, HR2, and HR3 resolved; 4 user/product decisions remain.
+Status: HR1, HR2, HR3, and HR4 resolved; 3 user/product decisions remain.
 
 Decisions to review before runtime changes:
 
-1. Should NotebookEdit execution stale failures throw or return tool data error?
-2. Should Bash simulated sed enforce read-before-write/stale guards?
-3. Should registry path identity move from `normalize` to `realpath`/casefold?
-4. Should killed/failed subagents append file-state reminders?
+1. Should Bash simulated sed enforce read-before-write/stale guards?
+2. Should registry path identity move from `normalize` to `realpath`/casefold?
+3. Should killed/failed subagents append file-state reminders?
 
 ## Decision Checklist
 
@@ -1075,6 +1080,7 @@ Decisions to review before runtime changes:
 | Shell write parsing | No | Keep no arbitrary shell parsing |
 | Bash simulated sed stale guard | No | Needs explicit decision |
 | Notebook mtime content fallback | Yes | Resolved: compare FileReadTool cell-view content |
+| Notebook/file harness execution failure boundary | Tool throws; runner returns `is_error` | Resolved: keep throw semantics inside tools, catch in runner |
 | Atomic fallback removal globally | No | Resolved: file tools strict; config/settings constrained fallback for rename lock |
 | Registry realpath/case aliasing | No | Needs explicit decision |
 | Subagent killed/failed reminder | Probably no | Needs explicit decision |
@@ -1093,13 +1099,12 @@ well tested:
 - FileEdit/FileWrite format policy matches the decided split.
 
 The static behavior review is complete, and the highest-risk resume
-reconstruction issue, atomic-helper scope, and NotebookEdit mtime fallback have
-been fixed. The series should still not be treated as fully signed off until
-the remaining 4 decision
-items are resolved. The serious
+reconstruction issue, atomic-helper scope, NotebookEdit mtime fallback, and
+Notebook/file-harness throw boundary have been fixed. The series should still
+not be treated as fully signed off until the remaining 3 decision items are
+resolved. The serious
 unresolved items are outside the narrow happy path:
 
-- NotebookEdit behavior consistency with FileEdit/FileWrite;
 - Bash simulated sed's guard level;
 - registry alias limitations;
 - reminder behavior for killed/failed subagents.

@@ -265,7 +265,7 @@
         这份报告把 <code>b59ac433254fb311cada9fa70963045fd772e17b..9bc40e1e</code> 的 file harness 改动翻译成人类可读的中文审查材料，并追加记录 2026-06-01 已实现的 resume/cold-start 修复。重点不是证明测试通过，而是把行为和旧版 Axiomate 不一样的地方全部列出，并标明哪些设计决策还需要重新确认。
       </p>
       <div class="meta">
-        更新日期：2026-06-01 · 静态审查 Head：<code>9bc40e1e</code> · HR1/HR2/HR3 已实现并测试，剩余 4 个决策点。
+        更新日期：2026-06-01 · 静态审查 Head：<code>9bc40e1e</code> · HR1/HR2/HR3/HR4 已实现并测试，剩余 3 个决策点。
       </div>
     </section>
 
@@ -288,7 +288,7 @@
       <div class="card">
         <div class="stat-label">行为项</div>
         <div class="stat-value">19 项</div>
-        <p class="muted">原 7 个需确认决策；HR1/HR2/HR3 已处理，剩余 4 个</p>
+        <p class="muted">原 7 个需确认决策；HR1/HR2/HR3/HR4 已处理，剩余 3 个</p>
       </div>
     </section>
 
@@ -309,7 +309,7 @@
         <div class="callout warn">
           <h3>但还不能签字说整轮 harness 已完全无风险</h3>
           <p>
-            HR1 的 resume/cold-start 重建问题已按“不改 JSONL、不读当前盘、解释历史工具语义”的方案修复；HR2 的 atomic fallback 范围已收窄为“file tool strict，config/settings 受控 fallback”；HR3 已让 NotebookEdit 对齐 FileEdit/FileWrite 的 full-read mtime-only content fallback。未决项现在主要集中在 NotebookEdit stale 输出语义、Bash simulated sed、registry alias、subagent killed/failed reminder。
+            HR1 的 resume/cold-start 重建问题已按“不改 JSONL、不读当前盘、解释历史工具语义”的方案修复；HR2 的 atomic fallback 范围已收窄为“file tool strict，config/settings 受控 fallback”；HR3 已让 NotebookEdit 对齐 FileEdit/FileWrite 的 full-read mtime-only content fallback；HR4 已确认 file harness 内部保持 throw，但由 tool runner 捕获并转成 <code>is_error</code> tool result，不退出程序。未决项现在主要集中在 Bash simulated sed、registry alias、subagent killed/failed reminder。
           </p>
         </div>
       </div>
@@ -327,7 +327,7 @@
       <div class="section-title">
         <div>
           <div class="kicker">Decisions</div>
-          <h2>已处理 3 个，剩余 4 个设计决策</h2>
+          <h2>已处理 4 个，剩余 3 个设计决策</h2>
         </div>
       </div>
       <div class="grid-2">
@@ -343,20 +343,20 @@
           <h3>已处理：NotebookEdit mtime-only content fallback</h3>
           <p>NotebookEdit 现在对 full-read mtime-only drift 做 content fallback。比较口径是 FileReadTool 存入 <code>readFileState</code> 的 notebook cell 视图，而不是 raw <code>.ipynb</code> JSON；partial read state 仍拒绝。</p>
         </div>
-        <div class="subcard decision review">
-          <h3>1. NotebookEdit stale 是 throw 还是返回 tool error</h3>
-          <p>现在 stale execution 会 rethrow，更接近 FileEdit/FileWrite，但和旧 NotebookEdit 的 error payload 行为不同。</p>
+        <div class="subcard decision keep">
+          <h3>已处理：NotebookEdit / file harness throw 边界</h3>
+          <p>file harness safety failure 在工具内部继续 throw typed <code>FileHarnessError</code>；共享 tool runner 捕获后返回 <code>is_error: true</code> 的 <code>tool_result</code>，主循环不退出。该行为由 <code>toolExecutionFileHarnessError.test.ts</code> 钉住。</p>
         </div>
         <div class="subcard decision review">
-          <h3>2. Bash simulated sed 是否属于 structured harness writer</h3>
+          <h3>1. Bash simulated sed 是否属于 structured harness writer</h3>
           <p>它现在会 lock、preserve format、noteFileWrite，但不强制 read-before-write/stale guard。需要决定这是 permission-approved shell edit，还是严格 file harness edit。</p>
         </div>
         <div class="subcard decision review">
-          <h3>3. registry 是否处理 realpath/case alias</h3>
+          <h3>2. registry 是否处理 realpath/case alias</h3>
           <p>当前 registry 用 <code>path.normalize</code>。symlink、Windows 大小写、路径 alias 可能绕过 sibling 检测。</p>
         </div>
         <div class="subcard decision review">
-          <h3>4. killed/failed subagent 是否提醒父 context</h3>
+          <h3>3. killed/failed subagent 是否提醒父 context</h3>
           <p>完成路径会 append reminder，但 killed/failed subagent 可能已经改过文件。是否提醒需要确认。</p>
         </div>
       </div>
@@ -384,7 +384,7 @@
             <tr><td>HR1</td><td><code>Write</code> canonicalization + transcript resume</td><td>旧风险：恢复出的 <code>readFileState</code> 可能用原始 input，而 disk 是 canonical 内容</td><td><span class="tag keep">已修复</span></td><td>保留不改 JSONL；继续跑 focused resume tests</td></tr>
             <tr><td>HR2</td><td>atomic helper shared callers</td><td>如果一刀切 strict，会把 config/settings 的可用性 fallback 也删掉</td><td><span class="tag keep">已修复</span></td><td>保留 file tool strict；config/settings 只对 rename lock 受控 fallback</td></tr>
             <tr><td>HR3</td><td>NotebookEdit mtime-only drift</td><td>比 FileEdit/FileWrite 更容易 false stale</td><td><span class="tag keep">已修复</span></td><td>使用 FileReadTool cell-view content fallback；partial read 仍拒绝</td></tr>
-            <tr><td>HR4</td><td>NotebookEdit stale throw behavior</td><td>旧行为可能返回 tool data error，现在抛错</td><td><span class="tag review">需决策</span></td><td>一致性 vs 兼容性</td></tr>
+            <tr><td>HR4</td><td>NotebookEdit / file harness throw boundary</td><td>工具内部 throw 不能让程序退出</td><td><span class="tag keep">已修复</span></td><td>runner 捕获并返回 <code>is_error</code></td></tr>
             <tr><td>HR5</td><td>Bash simulated sed stale/read guard</td><td>internal sed edit 可在未读或 stale 状态写入</td><td><span class="tag review">需决策</span></td><td>决定它是不是 structured writer</td></tr>
             <tr><td>HR6</td><td>UTF-16LE BOM preservation</td><td>实现可能正确，但未被测试钉住</td><td><span class="tag review">需测试</span></td><td>加 UTF-16LE edit test</td></tr>
             <tr><td>HR7</td><td>registry path identity</td><td><code>normalize</code> 不能覆盖 symlink/case alias</td><td><span class="tag review">需决策</span></td><td>决定接受限制还是升级 realpath/casefold</td></tr>
@@ -482,10 +482,10 @@
           </div>
         </details>
         <details>
-          <summary>B12 · NotebookEdit 纳入 registry/lock<span class="tag review">部分需决策</span></summary>
+          <summary>B12 · NotebookEdit 纳入 registry/lock<span class="tag keep">建议保留</span></summary>
           <div class="details-body split">
             <div><h4>旧行为</h4><p>有 read-before-edit 和 mtime guard，但没有 sibling registry/path lock。</p></div>
-            <div><h4>新行为</h4><p>有 registry 和 lock，保留 BOM/line ending；full-read mtime-only drift 有 content fallback；execution stale 仍改为 throw，需 HR4 单独决策。</p></div>
+            <div><h4>新行为</h4><p>有 registry 和 lock，保留 BOM/line ending；full-read mtime-only drift 有 content fallback；execution stale 在工具内部 throw，但 runner 捕获并返回 <code>is_error</code> tool result。</p></div>
           </div>
         </details>
         <details>
@@ -566,7 +566,7 @@
             <tr><td>Read dedup escalation</td><td><code>fileRead.dedup</code>, utility tests</td><td><span class="tag keep">好</span></td><td>reset after reread; offset=0</td></tr>
             <tr><td>Registry sibling writes</td><td>FileHarness tests + <code>fileStateRegistry</code></td><td><span class="tag keep">好</span></td><td>symlink/case alias</td></tr>
             <tr><td>Atomic failure / fallback</td><td><code>file.test</code>, <code>settingsWriteFallback</code></td><td><span class="tag keep">好</span></td><td>config 因 test-mode 内存分支，主要由 helper opt-in 覆盖</td></tr>
-            <tr><td>NotebookEdit</td><td><code>notebookEdit.behavior</code>, <code>failureMetadata</code></td><td><span class="tag keep">好</span></td><td>stale throw 语义、UTF-16LE</td></tr>
+            <tr><td>NotebookEdit</td><td><code>notebookEdit.behavior</code>, <code>failureMetadata</code>, <code>toolExecutionFileHarnessError</code></td><td><span class="tag keep">好</span></td><td>UTF-16LE</td></tr>
             <tr><td>Bash simulated sed</td><td><code>bashSimulatedSed.behavior</code></td><td><span class="tag review">部分</span></td><td>read-before-write/stale decision</td></tr>
             <tr><td>Subagent reminders</td><td><code>fileStateReminder</code>, registry tests</td><td><span class="tag review">部分</span></td><td>killed/failed/resume integration</td></tr>
           </tbody>
@@ -597,7 +597,7 @@
       </div>
       <div class="callout warn" style="margin-top: 15px;">
         <h3>审查顺序建议</h3>
-        <p>先处理剩余 4 个决策项，再做 UI/统计。否则 UI 和 telemetry 会把可能不正确的行为固化为产品事实。</p>
+        <p>先处理剩余 3 个决策项，再做 UI/统计。否则 UI 和 telemetry 会把可能不正确的行为固化为产品事实。</p>
       </div>
     </section>
 
@@ -617,11 +617,12 @@
         <li>HR1 修复测试：<code>agent/src/__tests__/unit/utils/queryHelpers.fileStateResume.test.ts</code>、<code>fileStateCache.test.ts</code>、<code>fileWrite.behavior.test.ts</code></li>
         <li>HR2 修复测试：<code>agent/src/__tests__/unit/utils/file.test.ts</code>、<code>settingsWriteFallback.test.ts</code></li>
         <li>HR3 修复测试：<code>agent/src/__tests__/unit/tools/FileHarness/notebookEdit.behavior.test.ts</code></li>
+        <li>HR4 修复测试：<code>agent/src/__tests__/unit/services/tools/toolExecutionFileHarnessError.test.ts</code></li>
       </ul>
     </section>
 
     <div class="footer">
-      静态审查报告 + 2026-06-01 HR1/HR2/HR3 修复记录。剩余 4 个决策点。
+      静态审查报告 + 2026-06-01 HR1/HR2/HR3/HR4 修复记录。剩余 3 个决策点。
     </div>
   </main>
 </body>
