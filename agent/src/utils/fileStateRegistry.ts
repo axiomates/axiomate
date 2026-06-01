@@ -1,5 +1,10 @@
-import { normalize } from 'path'
+import { isAbsolute, normalize, resolve } from 'node:path'
 import type { ToolUseContext } from '../Tool.js'
+import {
+  getFsImplementation,
+  resolveDeepestExistingAncestorSync,
+  safeResolvePath,
+} from './fsOperations.js'
 
 type FileStateContext = Pick<ToolUseContext, 'agentId' | 'readFileState'>
 
@@ -10,7 +15,14 @@ type WriteStamp = {
 
 const MAX_GLOBAL_WRITERS = 4096
 
-const ownerIdsByReadFileState = new WeakMap<ToolUseContext['readFileState'], string>()
+let ownerIdsByReadFileState = new WeakMap<
+  ToolUseContext['readFileState'],
+  string
+>()
+let readPathByRegistryKeyByReadFileState = new WeakMap<
+  ToolUseContext['readFileState'],
+  Map<string, string>
+>()
 
 let nextOwnerId = 0
 let sequence = 0
@@ -37,13 +49,62 @@ function capMap<TKey, TValue>(map: Map<TKey, TValue>, limit: number): void {
   }
 }
 
+function caseFoldRegistryKey(key: string): string {
+  return process.platform === 'win32' ? key.toLowerCase() : key
+}
+
+function registryPathKey(filePath: string): string {
+  if (filePath.startsWith('//') || filePath.startsWith('\\\\')) {
+    return caseFoldRegistryKey(normalize(filePath))
+  }
+
+  const fs = getFsImplementation()
+  const absolutePath = isAbsolute(filePath)
+    ? filePath
+    : resolve(fs.cwd(), filePath)
+  const resolvedExisting = safeResolvePath(fs, absolutePath)
+  const resolvedPath = resolvedExisting.isCanonical
+    ? resolvedExisting.resolvedPath
+    : (resolveDeepestExistingAncestorSync(fs, absolutePath) ?? absolutePath)
+
+  return caseFoldRegistryKey(normalize(resolvedPath))
+}
+
+function getReadPathByRegistryKey(
+  context: FileStateContext,
+): Map<string, string> {
+  let paths = readPathByRegistryKeyByReadFileState.get(context.readFileState)
+  if (paths) return paths
+
+  paths = new Map()
+  readPathByRegistryKeyByReadFileState.set(context.readFileState, paths)
+  return paths
+}
+
+function rememberReadPathForRegistryKey(
+  context: FileStateContext,
+  filePath: string,
+  registryKey: string,
+): void {
+  getReadPathByRegistryKey(context).set(registryKey, normalize(filePath))
+}
+
+export function getFileStateRegistryPathKeyForTests(filePath: string): string {
+  return registryPathKey(filePath)
+}
+
 export function recordFileRead(
   context: FileStateContext,
   filePath: string,
 ): void {
   getOwnerId(context)
-  const fileState = context.readFileState.get(normalize(filePath))
+  const normalizedPath = normalize(filePath)
+  const registryKey = registryPathKey(filePath)
+  const fileState = context.readFileState.get(normalizedPath)
   if (fileState) fileState.registrySequence = ++sequence
+  if (fileState) {
+    rememberReadPathForRegistryKey(context, normalizedPath, registryKey)
+  }
 }
 
 export function noteFileWrite(
@@ -53,7 +114,8 @@ export function noteFileWrite(
   const ownerId = getOwnerId(context)
   const writeSequence = ++sequence
   const normalizedPath = normalize(filePath)
-  lastWriterByPath.set(normalizedPath, {
+  const registryKey = registryPathKey(filePath)
+  lastWriterByPath.set(registryKey, {
     ownerId,
     sequence: writeSequence,
   })
@@ -61,6 +123,9 @@ export function noteFileWrite(
 
   const fileState = context.readFileState.get(normalizedPath)
   if (fileState) fileState.registrySequence = writeSequence
+  if (fileState) {
+    rememberReadPathForRegistryKey(context, normalizedPath, registryKey)
+  }
 }
 
 export function wasFileModifiedAfterReadByAnotherContext(
@@ -68,11 +133,13 @@ export function wasFileModifiedAfterReadByAnotherContext(
   filePath: string,
 ): boolean {
   const ownerId = getOwnerId(context)
-  const normalizedPath = normalize(filePath)
-  const lastWriter = lastWriterByPath.get(normalizedPath)
+  const registryKey = registryPathKey(filePath)
+  const lastWriter = lastWriterByPath.get(registryKey)
   if (!lastWriter || lastWriter.ownerId === ownerId) return false
 
-  const readStamp = context.readFileState.get(normalizedPath)
+  const readPath =
+    getReadPathByRegistryKey(context).get(registryKey) ?? normalize(filePath)
+  const readStamp = context.readFileState.get(readPath)
   if (!readStamp) return true
 
   return (
@@ -96,15 +163,19 @@ export function getPathsWrittenByOtherContextsSince(
   filePaths: Iterable<string>,
 ): string[] {
   const ownerId = getOwnerId(context)
-  const paths = new Set(Array.from(filePaths, path => normalize(path)))
+  const paths = new Map(
+    Array.from(filePaths, path => [registryPathKey(path), normalize(path)]),
+  )
   const stalePaths: string[] = []
 
-  for (const [path, lastWriter] of lastWriterByPath) {
-    if (!paths.has(path)) continue
+  for (const [registryKey, lastWriter] of lastWriterByPath) {
+    const path = paths.get(registryKey)
+    if (!path) continue
     if (lastWriter.ownerId === ownerId) continue
     if (lastWriter.sequence <= sinceSequence) continue
 
-    const readStamp = context.readFileState.get(path)
+    const readPath = getReadPathByRegistryKey(context).get(registryKey) ?? path
+    const readStamp = context.readFileState.get(readPath)
     if (
       readStamp?.registrySequence !== undefined &&
       readStamp.registrySequence >= lastWriter.sequence
@@ -121,8 +192,8 @@ export async function withFileStatePathLock<T>(
   filePath: string,
   callback: () => T | Promise<T>,
 ): Promise<T> {
-  const normalizedPath = normalize(filePath)
-  const previousTail = pathLockTails.get(normalizedPath)
+  const registryKey = registryPathKey(filePath)
+  const previousTail = pathLockTails.get(registryKey)
   let release!: () => void
   const currentGate = new Promise<void>(resolve => {
     release = resolve
@@ -132,10 +203,10 @@ export async function withFileStatePathLock<T>(
     () => currentGate,
   )
 
-  pathLockTails.set(normalizedPath, currentTail)
+  pathLockTails.set(registryKey, currentTail)
   pathLockDepths.set(
-    normalizedPath,
-    (pathLockDepths.get(normalizedPath) ?? 0) + 1,
+    registryKey,
+    (pathLockDepths.get(registryKey) ?? 0) + 1,
   )
 
   try {
@@ -145,25 +216,27 @@ export async function withFileStatePathLock<T>(
     return await callback()
   } finally {
     release()
-    const nextDepth = (pathLockDepths.get(normalizedPath) ?? 1) - 1
+    const nextDepth = (pathLockDepths.get(registryKey) ?? 1) - 1
     if (nextDepth <= 0) {
-      pathLockDepths.delete(normalizedPath)
+      pathLockDepths.delete(registryKey)
     } else {
-      pathLockDepths.set(normalizedPath, nextDepth)
+      pathLockDepths.set(registryKey, nextDepth)
     }
-    if (pathLockTails.get(normalizedPath) === currentTail) {
-      pathLockTails.delete(normalizedPath)
+    if (pathLockTails.get(registryKey) === currentTail) {
+      pathLockTails.delete(registryKey)
     }
   }
 }
 
 export function getFileStatePathLockDepthForTests(filePath: string): number {
-  return pathLockDepths.get(normalize(filePath)) ?? 0
+  return pathLockDepths.get(registryPathKey(filePath)) ?? 0
 }
 
 export function clearFileStateRegistryForTests(): void {
   sequence = 0
   nextOwnerId = 0
+  ownerIdsByReadFileState = new WeakMap()
+  readPathByRegistryKeyByReadFileState = new WeakMap()
   lastWriterByPath.clear()
   pathLockTails.clear()
   pathLockDepths.clear()

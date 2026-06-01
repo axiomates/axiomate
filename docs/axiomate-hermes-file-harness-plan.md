@@ -324,8 +324,12 @@ metadata, edit-match escalation, and read-dedup loop guidance.
 - HR5 is resolved: Bash `_simulatedSedEdit` is a structured harness writer and
   now enforces read-before-write, sibling-write, and mtime/content stale guards.
   Arbitrary Bash/PowerShell writes remain outside this scope.
-- There are 2 remaining b59a behavior decisions before UI/statistics work:
-  registry realpath/case aliasing and killed/failed subagent reminders.
+- HR7 is resolved: process-local `fileStateRegistry`/path locks now use a
+  canonical internal path key. Existing paths are resolved through `realpath`,
+  new paths under symlinked parents resolve the deepest existing ancestor, and
+  casefolding is Windows-only. `readFileState` keys remain unchanged.
+- There is 1 remaining b59a behavior decision before UI/statistics work:
+  killed/failed subagent reminders.
 
 Completed and pushed:
 
@@ -391,7 +395,7 @@ Completed HR4 follow-up:
 
 Next implementation target:
 
-- Close the remaining 2 b59a behavior decisions, then treat the remaining
+- Close the remaining b59a behavior decision, then treat the remaining
   harness work as optional observability/UI/recovery polish, not missing core
   Stage 1-8 behavior. Two candidate policy branches are explicitly closed for
   now:
@@ -436,6 +440,23 @@ Implemented in Stage 3C:
   cache-update/`noteFileWrite` critical sections.
 - Added FileHarness behavior tests that hold the same-path lock and assert each
   structured write waits before touching disk.
+
+Implemented in HR7:
+
+- `fileStateRegistry` no longer keys sibling writes and path locks by
+  `path.normalize` alone.
+- Existing path aliases are collapsed with `realpath`.
+- New/nonexistent paths under a symlinked parent are collapsed by resolving the
+  deepest existing ancestor and rejoining the missing tail.
+- Windows registry keys are casefolded; Linux/macOS keys are not lowercased.
+- `readFileState` keeps its original logical path keys; registry maintains a
+  process-local map from canonical registry key to the logical path this context
+  read.
+- Tests cover existing symlink aliases, new files under symlink parents,
+  Windows-only casefold policy, sibling stale checks across aliases, and path
+  mutex serialization across aliases.
+- Still not covered by design: hard-link identity, arbitrary shell writes, and
+  cross-process registry/locking.
 
 Decided boundaries:
 
@@ -927,8 +948,7 @@ Estimated work:
 There is no remaining core Hermes file-harness port planned. Remaining work is
 behavior sign-off plus observability and product polish:
 
-0. Close the remaining 2 b59a behavior decisions.
-   - Registry path identity for symlink/realpath/case aliases.
+0. Close the remaining b59a behavior decision.
    - Killed/failed subagent file-state reminders.
 
 1. UI surfacing for file-harness failures.

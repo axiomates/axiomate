@@ -446,27 +446,39 @@ Current tests:
 - `fileStateRegistry.test.ts` covers sequence/reminder queries.
 - `fileStateCache.test.ts` covers clone preserving registry sequence and
   persistence omitting it.
+- HR7 added registry alias coverage:
+  - existing symlinked parent path and real path collapse to the same registry
+    key;
+  - new file paths under a symlinked parent collapse to the same registry key;
+  - Windows-only casefolding is applied, while Linux/macOS paths are not
+    lowercased;
+  - FileWrite/FileEdit sibling stale checks and the path mutex are pinned across
+    symlink aliases.
 
 Review result:
 
 - Keep same-process behavior.
+- HR7 fixed same-process path identity for structured harness registry/lock.
 
 Accepted limitations:
 
 - No cross-process registry.
 - Separate CLI/tmux/pane processes rely on mtime/content stale checks and
   checkpoint recovery.
+- Hard links are not canonicalized by inode.
+- Arbitrary Bash/PowerShell writes remain outside the registry; only structured
+  tool writes and Bash `_simulatedSedEdit` call `noteFileWrite`.
 
-Potential concern:
+Resolved concern:
 
-- Registry path identity uses `path.normalize`, not `realpath`.
-- Symlink aliases and case differences on case-insensitive filesystems may
-  evade sibling detection.
+- Registry path identity no longer uses `path.normalize` alone. It resolves
+  existing paths via `realpath`, resolves the deepest existing ancestor for
+  new/nonexistent tails, and folds case only on Windows.
 
-Missing tests:
+Remaining tests not planned unless bugs appear:
 
-- Symlink alias behavior should be documented or pinned.
-- Windows case-insensitive alias behavior should be reviewed.
+- Hard-link identity.
+- Cross-process/file-backed registry behavior.
 
 ### B08: Same-path structured writes are serialized with an async mutex
 
@@ -964,7 +976,7 @@ Required caution:
 | HR4 | NotebookEdit stale throw behavior | Tool-internal throw could be mistaken for process failure | Fixed and tested | Keep shared tool-runner catch returning `is_error` |
 | HR5 | Bash simulated sed stale/read-before-write | Internal shell edit could write without read guard | Fixed and tested | Keep scoped to `_simulatedSedEdit`; arbitrary shell writes stay outside |
 | HR6 | UTF-16LE BOM preservation | `UTF8_BOM` char with `utf16le` encoding needed pinning | Fixed and tested | Keep focused FileEdit UTF-16LE BOM test |
-| HR7 | Registry path identity | `path.normalize` misses realpath/symlink/case aliases | Accepted or fix | Decide before adding complexity |
+| HR7 | Registry path identity | `path.normalize` missed realpath/symlink/case aliases | Fixed and tested | Keep process-local canonical key; no hard-link/cross-process expansion |
 | HR8 | Lock non-reentrancy | Nested same-path lock would deadlock | Accepted invariant | Document for future writers |
 | HR9 | Subagent killed/failed reminders | File changes may happen but no completion reminder | Needs review | Inspect lifecycle and decide |
 | HR10 | Telemetry/privacy | Metadata contains paths; escalation telemetry avoids paths | Needs audit | Verify all logging/export paths |
@@ -981,7 +993,7 @@ Required caution:
 | Edit format preservation | `fileEdit.behavior`, `fileRead.metadata` | Strong | None obvious |
 | Edit resume reconstruction | `queryHelpers.fileStateResume` | Good | More quote-style replay edge cases only if bugs appear |
 | Read dedup escalation | `fileRead.dedup`, `fileReadDedupEscalation` | Good | reset after reread; offset=0 |
-| Registry sibling writes | FileHarness tests + `fileStateRegistry` | Good | symlink/case alias |
+| Registry sibling writes | FileHarness tests + `fileStateRegistry` | Strong | hard-link/cross-process identity out of scope |
 | Path lock | FileHarness tests + `fileStateRegistry` | Good | nested lock invariant |
 | Atomic failure | `file.test` | Good for helper | non-file-tool caller effects |
 | Failure metadata | `failureMetadata`, `fileHarnessFailures` | Strong | telemetry export audit |
@@ -1031,9 +1043,7 @@ Candidate probes:
 - Re-run Write CRLF+BOM resume/cold-start extraction if future query history
   parsing changes.
 - Notebook mtime-only drift with identical content.
-- Registry symlink/case alias.
-- Symlink path read via symlink, write via realpath.
-- Registry symlink/case alias.
+- Registry symlink/case alias: completed for structured registry/lock paths.
 
 ### Phase D: Full-suite stability check
 
@@ -1065,12 +1075,11 @@ Important:
 
 ### Phase E: Decision review
 
-Status: HR1, HR2, HR3, HR4, and HR5 resolved; 2 user/product decisions remain.
+Status: HR1, HR2, HR3, HR4, HR5, and HR7 resolved; 1 user/product decision remains.
 
-Decisions to review before runtime changes:
+Decision to review before runtime changes:
 
-1. Should registry path identity move from `normalize` to `realpath`/casefold?
-2. Should killed/failed subagents append file-state reminders?
+1. Should killed/failed subagents append file-state reminders?
 
 ## Decision Checklist
 
@@ -1090,7 +1099,7 @@ Decisions to review before runtime changes:
 | Notebook mtime content fallback | Yes | Resolved: compare FileReadTool cell-view content |
 | Notebook/file harness execution failure boundary | Tool throws; runner returns `is_error` | Resolved: keep throw semantics inside tools, catch in runner |
 | Atomic fallback removal globally | No | Resolved: file tools strict; config/settings constrained fallback for rename lock |
-| Registry realpath/case aliasing | No | Needs explicit decision |
+| Registry realpath/case aliasing | Yes, process-local structured registry only | Resolved: realpath/deepest-parent resolution plus Windows-only casefold |
 | Subagent killed/failed reminder | Probably no | Needs explicit decision |
 
 ## Current Review Conclusion
@@ -1107,14 +1116,12 @@ well tested:
 - FileEdit/FileWrite format policy matches the decided split.
 
 The static behavior review is complete, and the highest-risk resume
-reconstruction issue, atomic-helper scope, NotebookEdit mtime fallback, and
-Notebook/file-harness throw boundary, and `_simulatedSedEdit` guard level have
-been fixed. The series should still not be treated as fully signed off until
-the remaining 2 decision items are
-resolved. The serious
-unresolved items are outside the narrow happy path:
+reconstruction issue, atomic-helper scope, NotebookEdit mtime fallback,
+Notebook/file-harness throw boundary, `_simulatedSedEdit` guard level, and
+registry alias behavior have been fixed. The series should still not be treated
+as fully signed off until the remaining decision item is resolved. The serious
+unresolved item is outside the narrow happy path:
 
-- registry alias limitations;
 - reminder behavior for killed/failed subagents.
 
 These items need decision before any further harness UI/statistics work, because

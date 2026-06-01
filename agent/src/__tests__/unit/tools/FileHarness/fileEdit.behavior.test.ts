@@ -1,4 +1,11 @@
-import { readFile, stat, utimes, writeFile } from 'node:fs/promises'
+import {
+  mkdir,
+  readFile,
+  stat,
+  symlink,
+  utimes,
+  writeFile,
+} from 'node:fs/promises'
 import { join } from 'node:path'
 import { beforeAll, describe, expect, test } from 'vitest'
 import { FILE_UNEXPECTEDLY_MODIFIED_ERROR } from '../../../../tools/FileEditTool/constants.js'
@@ -49,6 +56,26 @@ async function readIntoContext(path: string) {
     parentMessage,
   )
   return context
+}
+
+async function createSymlinkAliasFile(name: string) {
+  const realDir = join(getHarnessCwd(), `${name}-real`)
+  const linkDir = join(getHarnessCwd(), `${name}-link`)
+  await mkdir(realDir, { recursive: true })
+  try {
+    await symlink(
+      realDir,
+      linkDir,
+      process.platform === 'win32' ? 'junction' : 'dir',
+    )
+  } catch {
+    return null
+  }
+
+  return {
+    realPath: join(realDir, 'target.txt'),
+    linkPath: join(linkDir, 'target.txt'),
+  }
 }
 
 describe('FileEditTool file harness behavior', () => {
@@ -421,6 +448,52 @@ describe('FileEditTool file harness behavior', () => {
       ),
     ).rejects.toThrow(FILE_UNEXPECTEDLY_MODIFIED_ERROR)
     expect(await readFile(path, 'utf8')).toBe('alpha\nchild\n')
+  })
+
+  test('rejects editing after a sibling writes through a symlink alias', async () => {
+    const { FileEditTool } = await loadFileTools()
+    const alias = await createSymlinkAliasFile('sibling-alias-edit')
+    if (!alias) return
+
+    await writeFile(alias.realPath, 'alpha\nbeta\n', 'utf8')
+    const parentContext = await readIntoContext(alias.linkPath)
+    const originalTimestamp = parentContext.readFileState.get(
+      alias.linkPath,
+    )?.timestamp
+    expect(originalTimestamp).toBeDefined()
+
+    const childContext = await readIntoContext(alias.realPath)
+    childContext.agentId = asAgentId('achild000000000307')
+    await FileEditTool.call(
+      { file_path: alias.realPath, old_string: 'beta', new_string: 'child' },
+      childContext,
+      allowToolUse,
+      parentMessage,
+    )
+
+    const originalDate = new Date(originalTimestamp!)
+    await utimes(alias.realPath, originalDate, originalDate)
+    expect(Math.floor((await stat(alias.realPath)).mtimeMs)).toBe(
+      originalTimestamp,
+    )
+
+    const validation = await FileEditTool.validateInput!(
+      { file_path: alias.linkPath, old_string: 'alpha', new_string: 'ALPHA' },
+      parentContext,
+    )
+    expectValidationFailure(validation)
+    expect(validation.errorCode).toBe(7)
+    expect(validation.message).toContain('modified since read')
+
+    await expect(
+      FileEditTool.call(
+        { file_path: alias.linkPath, old_string: 'alpha', new_string: 'ALPHA' },
+        parentContext,
+        allowToolUse,
+        parentMessage,
+      ),
+    ).rejects.toThrow(FILE_UNEXPECTEDLY_MODIFIED_ERROR)
+    expect(await readFile(alias.realPath, 'utf8')).toBe('alpha\nchild\n')
   })
 
   test('call waits for the same-path file state lock before final stale check and write', async () => {

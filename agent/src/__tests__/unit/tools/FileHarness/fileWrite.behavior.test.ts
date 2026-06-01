@@ -1,4 +1,13 @@
-import { chmod, readFile, readdir, stat, utimes, writeFile } from 'node:fs/promises'
+import {
+  chmod,
+  mkdir,
+  readFile,
+  readdir,
+  stat,
+  symlink,
+  utimes,
+  writeFile,
+} from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
 import { beforeAll, describe, expect, test } from 'vitest'
 import { FILE_UNEXPECTEDLY_MODIFIED_ERROR } from '../../../../tools/FileEditTool/constants.js'
@@ -49,6 +58,26 @@ async function readIntoContext(path: string) {
     parentMessage,
   )
   return context
+}
+
+async function createSymlinkAliasFile(name: string) {
+  const realDir = join(getHarnessCwd(), `${name}-real`)
+  const linkDir = join(getHarnessCwd(), `${name}-link`)
+  await mkdir(realDir, { recursive: true })
+  try {
+    await symlink(
+      realDir,
+      linkDir,
+      process.platform === 'win32' ? 'junction' : 'dir',
+    )
+  } catch {
+    return null
+  }
+
+  return {
+    realPath: join(realDir, 'target.txt'),
+    linkPath: join(linkDir, 'target.txt'),
+  }
 }
 
 describe('FileWriteTool file harness behavior', () => {
@@ -475,6 +504,52 @@ describe('FileWriteTool file harness behavior', () => {
     expect(await readFile(path, 'utf8')).toBe('child\n')
   })
 
+  test('rejects overwriting after a sibling writes through a symlink alias', async () => {
+    const { FileWriteTool } = await loadFileTools()
+    const alias = await createSymlinkAliasFile('sibling-alias-write')
+    if (!alias) return
+
+    await writeFile(alias.realPath, 'alpha\n', 'utf8')
+    const parentContext = await readIntoContext(alias.realPath)
+    const originalTimestamp = parentContext.readFileState.get(
+      alias.realPath,
+    )?.timestamp
+    expect(originalTimestamp).toBeDefined()
+
+    const childContext = await readIntoContext(alias.linkPath)
+    childContext.agentId = asAgentId('achild000000000306')
+    await FileWriteTool.call(
+      { file_path: alias.linkPath, content: 'child\n' },
+      childContext,
+      allowToolUse,
+      parentMessage,
+    )
+
+    const originalDate = new Date(originalTimestamp!)
+    await utimes(alias.realPath, originalDate, originalDate)
+    expect(Math.floor((await stat(alias.realPath)).mtimeMs)).toBe(
+      originalTimestamp,
+    )
+
+    const validation = await FileWriteTool.validateInput!(
+      { file_path: alias.realPath, content: 'parent\n' },
+      parentContext,
+    )
+    expectValidationFailure(validation)
+    expect(validation.errorCode).toBe(3)
+    expect(validation.message).toContain('modified since read')
+
+    await expect(
+      FileWriteTool.call(
+        { file_path: alias.realPath, content: 'parent\n' },
+        parentContext,
+        allowToolUse,
+        parentMessage,
+      ),
+    ).rejects.toThrow(FILE_UNEXPECTEDLY_MODIFIED_ERROR)
+    expect(await readFile(alias.realPath, 'utf8')).toBe('child\n')
+  })
+
   test('call allows mtime-only drift after write-updated full-file state', async () => {
     const { FileWriteTool } = await loadFileTools()
     const path = join(getHarnessCwd(), 'mtime-after-write.txt')
@@ -580,6 +655,44 @@ describe('FileWriteTool file harness behavior', () => {
     await writeAttempt
 
     expect(await readFile(path, 'utf8')).toBe('beta\n')
+  })
+
+  test('call waits for a symlink-alias file state lock before writing', async () => {
+    const { FileWriteTool } = await loadFileTools()
+    const alias = await createSymlinkAliasFile('locked-alias-write')
+    if (!alias) return
+
+    await writeFile(alias.realPath, 'alpha\n', 'utf8')
+    const context = await readIntoContext(alias.realPath)
+
+    let releaseLock!: () => void
+    const lockMayRelease = new Promise<void>(resolve => {
+      releaseLock = resolve
+    })
+    const lockHolder = withFileStatePathLock(alias.linkPath, async () => {
+      await lockMayRelease
+    })
+
+    let writeSettled = false
+    const writeAttempt = FileWriteTool.call(
+      { file_path: alias.realPath, content: 'beta\n' },
+      context,
+      allowToolUse,
+      parentMessage,
+    ).finally(() => {
+      writeSettled = true
+    })
+
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(writeSettled).toBe(false)
+    expect(await readFile(alias.realPath, 'utf8')).toBe('alpha\n')
+
+    releaseLock()
+    await lockHolder
+    await writeAttempt
+
+    expect(await readFile(alias.realPath, 'utf8')).toBe('beta\n')
   })
 
   test('successful overwrite cleans up its atomic temp file', async () => {

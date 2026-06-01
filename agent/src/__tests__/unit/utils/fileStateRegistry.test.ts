@@ -1,15 +1,19 @@
-import { normalize } from 'node:path'
+import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join, normalize } from 'node:path'
 import { beforeEach, describe, expect, test } from 'vitest'
 import { asAgentId } from '../../../types/ids.js'
 import { createFileStateCacheWithSizeLimit } from '../../../utils/fileStateCache.js'
 import {
   clearFileStateRegistryForTests,
+  getFileStateRegistryPathKeyForTests,
   getFileStateRegistrySequence,
   getFileStatePathLockDepthForTests,
   getKnownReadFilePaths,
   getPathsWrittenByOtherContextsSince,
   noteFileWrite,
   recordFileRead,
+  wasFileModifiedAfterReadByAnotherContext,
   withFileStatePathLock,
 } from '../../../utils/fileStateRegistry.js'
 
@@ -29,6 +33,133 @@ function seedRead(context: ReturnType<typeof makeContext>, path: string): void {
   })
   recordFileRead(context, path)
 }
+
+async function withTempDir<T>(callback: (dir: string) => Promise<T>): Promise<T> {
+  const dir = await mkdtemp(join(tmpdir(), 'axiomate-registry-'))
+  try {
+    return await callback(dir)
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+}
+
+async function createDirectoryAlias(
+  realDir: string,
+  linkDir: string,
+): Promise<boolean> {
+  try {
+    await symlink(
+      realDir,
+      linkDir,
+      process.platform === 'win32' ? 'junction' : 'dir',
+    )
+    return true
+  } catch {
+    return false
+  }
+}
+
+describe('fileStateRegistry path keys', () => {
+  beforeEach(() => {
+    clearFileStateRegistryForTests()
+  })
+
+  test('uses the same key for an existing file reached through a symlinked parent', async () => {
+    await withTempDir(async tempDir => {
+      const realDir = join(tempDir, 'real')
+      const linkDir = join(tempDir, 'link')
+      await mkdir(realDir)
+      await writeFile(join(realDir, 'same.txt'), 'content', 'utf8')
+      if (!(await createDirectoryAlias(realDir, linkDir))) return
+
+      expect(
+        getFileStateRegistryPathKeyForTests(join(linkDir, 'same.txt')),
+      ).toBe(getFileStateRegistryPathKeyForTests(join(realDir, 'same.txt')))
+    })
+  })
+
+  test('uses the same key for a new file under a symlinked parent', async () => {
+    await withTempDir(async tempDir => {
+      const realDir = join(tempDir, 'real')
+      const linkDir = join(tempDir, 'link')
+      await mkdir(realDir)
+      if (!(await createDirectoryAlias(realDir, linkDir))) return
+
+      expect(
+        getFileStateRegistryPathKeyForTests(join(linkDir, 'new.txt')),
+      ).toBe(getFileStateRegistryPathKeyForTests(join(realDir, 'new.txt')))
+    })
+  })
+
+  test('case-folds registry keys only on Windows', async () => {
+    await withTempDir(async tempDir => {
+      const mixedCase = join(tempDir, 'CaseProbe', 'File.TXT')
+      const lowerCase = join(tempDir, 'caseprobe', 'file.txt')
+
+      if (process.platform === 'win32') {
+        expect(getFileStateRegistryPathKeyForTests(mixedCase)).toBe(
+          getFileStateRegistryPathKeyForTests(lowerCase),
+        )
+      } else {
+        expect(getFileStateRegistryPathKeyForTests(mixedCase)).not.toBe(
+          getFileStateRegistryPathKeyForTests(lowerCase),
+        )
+      }
+    })
+  })
+
+  test('detects sibling writes through symlink aliases', async () => {
+    await withTempDir(async tempDir => {
+      const realDir = join(tempDir, 'real')
+      const linkDir = join(tempDir, 'link')
+      await mkdir(realDir)
+      await writeFile(join(realDir, 'same.txt'), 'content', 'utf8')
+      if (!(await createDirectoryAlias(realDir, linkDir))) return
+
+      const parent = makeContext()
+      const child = makeContext(asAgentId('achild000000000304'))
+      const realPath = join(realDir, 'same.txt')
+      const linkPath = join(linkDir, 'same.txt')
+
+      seedRead(parent, realPath)
+      const sinceSequence = getFileStateRegistrySequence()
+      noteFileWrite(child, linkPath)
+
+      expect(wasFileModifiedAfterReadByAnotherContext(parent, realPath)).toBe(
+        true,
+      )
+      expect(
+        getPathsWrittenByOtherContextsSince(
+          parent,
+          sinceSequence,
+          getKnownReadFilePaths(parent),
+        ),
+      ).toEqual([normalize(realPath)])
+    })
+  })
+
+  test('treats an alias read as current when it happened after a sibling write', async () => {
+    await withTempDir(async tempDir => {
+      const realDir = join(tempDir, 'real')
+      const linkDir = join(tempDir, 'link')
+      await mkdir(realDir)
+      await writeFile(join(realDir, 'same.txt'), 'content', 'utf8')
+      if (!(await createDirectoryAlias(realDir, linkDir))) return
+
+      const parent = makeContext()
+      const child = makeContext(asAgentId('achild000000000305'))
+      const realPath = join(realDir, 'same.txt')
+      const linkPath = join(linkDir, 'same.txt')
+
+      noteFileWrite(child, realPath)
+      seedRead(parent, linkPath)
+
+      expect(wasFileModifiedAfterReadByAnotherContext(parent, realPath)).toBe(
+        false,
+      )
+    })
+  })
+})
 
 describe('fileStateRegistry reminder queries', () => {
   beforeEach(() => {
@@ -175,5 +306,42 @@ describe('fileStateRegistry path locks', () => {
 
     expect(events).toEqual(['first:start', 'second:start'])
     expect(getFileStatePathLockDepthForTests(path)).toBe(0)
+  })
+
+  test('serializes callbacks for symlink aliases of the same file', async () => {
+    await withTempDir(async tempDir => {
+      const realDir = join(tempDir, 'real')
+      const linkDir = join(tempDir, 'link')
+      await mkdir(realDir)
+      await writeFile(join(realDir, 'same.txt'), 'content', 'utf8')
+      if (!(await createDirectoryAlias(realDir, linkDir))) return
+
+      const realPath = join(realDir, 'same.txt')
+      const linkPath = join(linkDir, 'same.txt')
+      const events: string[] = []
+      let releaseFirst!: () => void
+      const firstMayFinish = new Promise<void>(resolve => {
+        releaseFirst = resolve
+      })
+
+      const first = withFileStatePathLock(linkPath, async () => {
+        events.push('first:start')
+        await firstMayFinish
+        events.push('first:end')
+      })
+      const second = withFileStatePathLock(realPath, async () => {
+        events.push('second:start')
+      })
+
+      await Promise.resolve()
+      expect(events).toEqual(['first:start'])
+      expect(getFileStatePathLockDepthForTests(realPath)).toBe(2)
+
+      releaseFirst()
+      await Promise.all([first, second])
+
+      expect(events).toEqual(['first:start', 'first:end', 'second:start'])
+      expect(getFileStatePathLockDepthForTests(linkPath)).toBe(0)
+    })
   })
 })
