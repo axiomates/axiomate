@@ -262,10 +262,10 @@
       <div class="eyebrow">Axiomate File Harness Review</div>
       <h1>b59a 以来 File Harness 行为变动审查报告</h1>
       <p>
-        这份报告把 <code>b59ac433254fb311cada9fa70963045fd772e17b..9bc40e1e</code> 的 file harness 改动翻译成人类可读的中文审查材料，并追加记录 2026-06-01 已实现的 resume/cold-start 修复。重点不是证明测试通过，而是把行为和旧版 Axiomate 不一样的地方全部列出，并标明哪些设计决策还需要重新确认。
+        这份报告把 <code>b59ac433254fb311cada9fa70963045fd772e17b..9bc40e1e</code> 的 file harness 改动翻译成人类可读的中文审查材料，并追加记录 2026-06-01 已实现的 HR1-HR9 修复。重点不是证明测试通过，而是把行为和旧版 Axiomate 不一样的地方全部列出，并标明当前决策边界。
       </p>
       <div class="meta">
-        更新日期：2026-06-01 · 静态审查 Head：<code>9bc40e1e</code> · HR1/HR2/HR3/HR4/HR5/HR7 已实现并测试，剩余 1 个决策点。
+        更新日期：2026-06-01 · 静态审查 Head：<code>9bc40e1e</code> · HR1-HR9 已实现并测试；无剩余核心行为决策，HR10 telemetry/privacy 仍需审计。
       </div>
     </section>
 
@@ -288,7 +288,7 @@
       <div class="card">
         <div class="stat-label">行为项</div>
         <div class="stat-value">19 项</div>
-        <p class="muted">原 7 个需确认决策；HR1/HR2/HR3/HR4/HR5/HR7 已处理，剩余 1 个</p>
+        <p class="muted">原行为决策已处理；剩余是 telemetry/privacy 审计和 UI/统计打磨</p>
       </div>
     </section>
 
@@ -307,9 +307,9 @@
           </p>
         </div>
         <div class="callout warn">
-          <h3>但还不能签字说整轮 harness 已完全无风险</h3>
+          <h3>核心行为决策已经关闭</h3>
           <p>
-            HR1 的 resume/cold-start 重建问题已按“不改 JSONL、不读当前盘、解释历史工具语义”的方案修复；HR2 的 atomic fallback 范围已收窄为“file tool strict，config/settings 受控 fallback”；HR3 已让 NotebookEdit 对齐 FileEdit/FileWrite 的 full-read mtime-only content fallback；HR4 已确认 file harness 内部保持 throw，但由 tool runner 捕获并转成 <code>is_error</code> tool result，不退出程序；HR5 已把 Bash <code>_simulatedSedEdit</code> 收进 structured harness guard；HR7 已把同进程 registry/path lock 升级为 canonical path key。剩余未决项主要是 subagent killed/failed reminder。
+            HR1 的 resume/cold-start 重建问题已按“不改 JSONL、不读当前盘、解释历史工具语义”的方案修复；HR2 的 atomic fallback 范围已收窄为“file tool strict，config/settings 受控 fallback”；HR3 已让 NotebookEdit 对齐 FileEdit/FileWrite 的 full-read mtime-only content fallback；HR4 已确认 file harness 内部保持 throw，但由 tool runner 捕获并转成 <code>is_error</code> tool result，不退出程序；HR5 已把 Bash <code>_simulatedSedEdit</code> 收进 structured harness guard；HR7/HR8 已处理同进程 registry/path lock alias 与重入死锁；HR9 已让 killed/failed subagent notification 也带 reread reminder。
           </p>
         </div>
       </div>
@@ -321,6 +321,7 @@
         <span class="pill good">已修复：NotebookEdit mtime fallback</span>
         <span class="pill good">已修复：Bash simulated sed guard</span>
         <span class="pill good">已修复：registry alias</span>
+        <span class="pill good">已修复：killed/failed subagent reminder</span>
       </div>
     </section>
 
@@ -328,7 +329,7 @@
       <div class="section-title">
         <div>
           <div class="kicker">Decisions</div>
-          <h2>已处理 6 个，剩余 1 个设计决策</h2>
+          <h2>核心行为决策已处理完</h2>
         </div>
       </div>
       <div class="grid-2">
@@ -356,9 +357,9 @@
           <h3>已处理：registry realpath/case alias</h3>
           <p><code>fileStateRegistry</code> 和 path lock 现在使用内部 canonical key：已有路径走 <code>realpath</code>，未存在尾部路径解析最深已有父目录，Windows 才做大小写折叠。<code>readFileState</code> 仍保留原逻辑路径键。硬链接、任意 shell 写、跨进程 registry 不纳入。</p>
         </div>
-        <div class="subcard decision review">
-          <h3>1. killed/failed subagent 是否提醒父 context</h3>
-          <p>完成路径会 append reminder，但 killed/failed subagent 可能已经改过文件。是否提醒需要确认。</p>
+        <div class="subcard decision keep">
+          <h3>已处理：killed/failed subagent 也提醒父 context</h3>
+          <p>如果子 agent 在被停止或失败前通过 structured file tool 改了父 context 已读文件，notification 的 <code>&lt;result&gt;</code> 会追加同一套 reread reminder。任务状态仍是 killed/failed，错误 summary 不变；没有相关写入时输出保持旧行为。</p>
         </div>
       </div>
     </section>
@@ -390,8 +391,8 @@
             <tr><td>HR6</td><td>UTF-16LE BOM preservation</td><td>原风险是实现可能正确但未被测试钉住</td><td><span class="tag keep">已测试</span></td><td>保留 FileEdit UTF-16LE BOM focused test</td></tr>
             <tr><td>HR7</td><td>registry path identity</td><td><code>normalize</code> 不能覆盖 symlink/case alias</td><td><span class="tag keep">已修复</span></td><td>使用 process-local canonical key；不扩展到硬链接/跨进程</td></tr>
             <tr><td>HR8</td><td>lock non-reentrancy</td><td>同路径嵌套 lock 曾会等待自己</td><td><span class="tag keep">已修复</span></td><td>同一 async chain 重入同一路径时 fail-fast，不排队死锁</td></tr>
-            <tr><td>HR9</td><td>subagent killed/failed reminders</td><td>可能已经写文件但父 context 没提醒</td><td><span class="tag review">需审查</span></td><td>检查 lifecycle</td></tr>
-            <tr><td>HR10</td><td>telemetry/privacy</td><td>metadata 里有 path，需确认不会误外发</td><td><span class="tag review">需审查</span></td><td>审日志/遥测出口</td></tr>
+            <tr><td>HR9</td><td>subagent killed/failed reminders</td><td>可能已经写文件但父 context 没提醒</td><td><span class="tag keep">已修复</span></td><td>保留 notification reminder；不改变 killed/failed 状态</td></tr>
+            <tr><td>HR10</td><td>telemetry/privacy</td><td>metadata 里有 path，需确认不会误外发</td><td><span class="tag review">需审计</span></td><td>UI/统计前审日志/遥测出口</td></tr>
           </tbody>
         </table>
       </div>
@@ -504,10 +505,10 @@
           </div>
         </details>
         <details open>
-          <summary>B15 · subagent completion reminder<span class="tag review">失败路径需审</span></summary>
+          <summary>B15 · subagent completion / killed / failed reminder<span class="tag keep">已修复</span></summary>
           <div class="details-body split">
             <div><h4>旧行为</h4><p>subagent 改了父 context 已读文件，父 context 不一定被提醒。</p></div>
-            <div><h4>新行为</h4><p>完成路径 append reread reminder；但 killed/failed 路径是否提醒仍需审查。</p></div>
+            <div><h4>新行为</h4><p>完成、后台完成、resume 后完成以及 killed/failed notification 都会在同进程 registry 发现相关 structured child write 时 append reread reminder。killed/failed 状态和错误 summary 不变；无相关写入时不新增 <code>&lt;result&gt;</code>。</p></div>
           </div>
         </details>
         <details open>
@@ -569,7 +570,7 @@
             <tr><td>Atomic failure / fallback</td><td><code>file.test</code>, <code>settingsWriteFallback</code></td><td><span class="tag keep">好</span></td><td>config 因 test-mode 内存分支，主要由 helper opt-in 覆盖</td></tr>
             <tr><td>NotebookEdit</td><td><code>notebookEdit.behavior</code>, <code>failureMetadata</code>, <code>toolExecutionFileHarnessError</code></td><td><span class="tag keep">好</span></td><td>UTF-16LE</td></tr>
             <tr><td>Bash simulated sed</td><td><code>bashSimulatedSed.behavior</code></td><td><span class="tag keep">好</span></td><td>无明显缺口</td></tr>
-            <tr><td>Subagent reminders</td><td><code>fileStateReminder</code>, registry tests</td><td><span class="tag review">部分</span></td><td>killed/failed/resume integration</td></tr>
+            <tr><td>Subagent reminders</td><td><code>fileStateReminder</code>, <code>agentLifecycleFileStateReminder</code>, registry tests</td><td><span class="tag keep">好</span></td><td>更深 AgentTool UI 集成仅在后续回归时补</td></tr>
           </tbody>
         </table>
       </div>
@@ -589,7 +590,7 @@
         </div>
         <div class="subcard">
           <h3>Phase C：adversarial probes</h3>
-          <p>Write semantic resume、overwrite envelope preservation、Notebook mtime-only、simulated sed stale guard、UTF-16LE edit 与 registry symlink/case alias 已有 focused test；后续重点审 killed/failed subagent reminder。</p>
+          <p>Write semantic resume、overwrite envelope preservation、Notebook mtime-only、simulated sed stale guard、UTF-16LE edit、registry symlink/case alias、path-lock reentry 与 killed/failed subagent reminder 已有 focused test；后续重点是 telemetry/privacy 审计和 UI/统计是否值得做。</p>
         </div>
         <div class="subcard">
           <h3>Phase D：测试稳定性</h3>
@@ -598,7 +599,7 @@
       </div>
       <div class="callout warn" style="margin-top: 15px;">
         <h3>审查顺序建议</h3>
-        <p>先处理 killed/failed subagent reminder 这个剩余决策项，再做 UI/统计。否则 UI 和 telemetry 会把可能不正确的行为固化为产品事实。</p>
+        <p>核心行为决策已关闭。下一步先做 HR10 telemetry/privacy 审计，再决定是否把 failure metadata 接入 UI、<code>/doctor</code>、checkpoint delta 或统计看板。</p>
       </div>
     </section>
 
@@ -619,11 +620,12 @@
         <li>HR2 修复测试：<code>agent/src/__tests__/unit/utils/file.test.ts</code>、<code>settingsWriteFallback.test.ts</code></li>
         <li>HR3 修复测试：<code>agent/src/__tests__/unit/tools/FileHarness/notebookEdit.behavior.test.ts</code></li>
         <li>HR4 修复测试：<code>agent/src/__tests__/unit/services/tools/toolExecutionFileHarnessError.test.ts</code></li>
+        <li>HR9 修复测试：<code>agent/src/__tests__/unit/tools/AgentTool/fileStateReminder.test.ts</code>、<code>agentLifecycleFileStateReminder.test.ts</code></li>
       </ul>
     </section>
 
     <div class="footer">
-      静态审查报告 + 2026-06-01 HR1/HR2/HR3/HR4/HR5/HR7 修复记录。剩余 1 个决策点。
+      静态审查报告 + 2026-06-01 HR1-HR9 修复记录。无剩余核心行为决策；HR10 telemetry/privacy 待审计。
     </div>
   </main>
 </body>

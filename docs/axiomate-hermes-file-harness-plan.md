@@ -331,8 +331,11 @@ metadata, edit-match escalation, and read-dedup loop guidance.
 - HR8 is resolved: same async-chain reentry into the same canonical path lock
   now fails fast instead of waiting on itself. Normal concurrent writers from
   other async tasks still queue.
-- There is 1 remaining b59a behavior decision before UI/statistics work:
-  killed/failed subagent reminders.
+- HR9 is resolved: killed/failed async subagent notifications append the same
+  file-state reminder when structured child writes touch parent-read files.
+  The task status stays killed/failed and the failure summary stays intact.
+- There is no remaining core b59a file-harness behavior decision before
+  UI/statistics work.
 
 Completed and pushed:
 
@@ -351,6 +354,7 @@ Completed and pushed:
 - Stage 7A: repeated FileEdit match-failure tracker and escalation hint.
 - Stage 7B: telemetry for repeated FileEdit match-failure escalation.
 - Stage 8: repeated `file_unchanged` read-dedup loop guidance.
+- HR9: killed/failed subagent file-state reminders.
 
 Completed Stage 6B slice:
 
@@ -398,14 +402,15 @@ Completed HR4 follow-up:
 
 Next implementation target:
 
-- Close the remaining b59a behavior decision, then treat the remaining
-  harness work as optional observability/UI/recovery polish, not missing core
-  Stage 1-8 behavior. Two candidate policy branches are explicitly closed for
-  now:
+- Treat the remaining harness work as optional observability/UI/recovery
+  polish, not missing core Stage 1-8 behavior. Two candidate policy branches
+  are explicitly closed for now:
   - `encoding_unsupported` stays reserved in the taxonomy but is not enforced;
     `Edit` keeps current best-effort behavior for compatibility.
   - Cross-process registry/locking is not implemented; mtime/content stale
     checks plus checkpoint/rewind are the accepted cross-session safety layer.
+  - HR10 telemetry/privacy audit should precede any dashboard or broad UI
+    surfacing of file-harness metadata.
 
 ### Stage 3: Complete Registry Coverage
 
@@ -959,10 +964,13 @@ Estimated work:
 ## Remaining Work
 
 There is no remaining core Hermes file-harness port planned. Remaining work is
-behavior sign-off plus observability and product polish:
+observability, privacy audit, and product polish:
 
-0. Close the remaining b59a behavior decision.
-   - Killed/failed subagent file-state reminders.
+0. Telemetry/privacy audit before UI/statistics expansion.
+   - Verify file-harness metadata paths are not exported through analytics or
+     debug surfaces unexpectedly.
+   - Keep existing edit-escalation telemetry low sensitivity: reason/count/
+     level/file extension only.
 
 1. UI surfacing for file-harness failures.
    - Decide whether validation/execution `fileHarnessFailure` metadata should

@@ -53,6 +53,7 @@ import { getTokenCountFromUsage } from '../../utils/tokens.js'
 import { EXIT_PLAN_MODE_V2_TOOL_NAME } from '../ExitPlanModeTool/constants.js'
 import { AGENT_TOOL_NAME, LEGACY_AGENT_TOOL_NAME } from './constants.js'
 import {
+  appendSubagentFileStateReminderToOptionalText,
   appendSubagentFileStateReminderToResult,
   type SubagentFileStateReminderSnapshot,
 } from './fileStateReminder.js'
@@ -522,13 +523,20 @@ export async function runAsyncAgentLifecycle({
       killAsyncAgent(taskId, rootSetAppState)
       const worktreeResult = await getWorktreeResult()
       const partialResult = extractPartialResult(agentMessages)
+      const finalMessage = fileStateReminderSnapshot
+        ? appendSubagentFileStateReminderToOptionalText(
+            partialResult,
+            toolUseContext,
+            fileStateReminderSnapshot,
+          )
+        : partialResult
       enqueueAgentNotification({
         taskId,
         description,
         status: 'killed',
         setAppState: rootSetAppState,
         toolUseId: toolUseContext.toolUseId,
-        finalMessage: partialResult,
+        finalMessage,
         ...worktreeResult,
       })
       return
@@ -536,6 +544,13 @@ export async function runAsyncAgentLifecycle({
     const msg = errorMessage(error)
     failAsyncAgent(taskId, msg, rootSetAppState)
     const worktreeResult = await getWorktreeResult()
+    const finalMessage = fileStateReminderSnapshot
+      ? appendSubagentFileStateReminderToOptionalText(
+          undefined,
+          toolUseContext,
+          fileStateReminderSnapshot,
+        )
+      : undefined
     enqueueAgentNotification({
       taskId,
       description,
@@ -543,6 +558,7 @@ export async function runAsyncAgentLifecycle({
       error: msg,
       setAppState: rootSetAppState,
       toolUseId: toolUseContext.toolUseId,
+      finalMessage,
       ...worktreeResult,
     })
   } finally {

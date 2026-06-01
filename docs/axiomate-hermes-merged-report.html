@@ -295,14 +295,14 @@
       <div class="grid-2">
         <div>
           <p><strong>Axiomate 已经实现 persistent goals。</strong> 代码与文档显示它具备 Ralph-loop 风格 <code>/goal</code>：<code>GoalManager</code>、JSONL <code>goal-state</code> 持久化、turn-end judge、<code>/subgoal</code> 附加准则、Ctrl+C pause、turn budget、parse-failure backstop、footer GoalIndicator、<code>/resume</code>/<code>--continue</code>/compact resume 状态恢复，以及用户文档 <code>docs/user/goals_zhcn.html</code>。这是一等控制原语，不是待补功能。</p>
-          <p><strong>API harness 和 file harness 都不再是 Axiomate 的基础短板。</strong> 05-27 之后的代码和文档显示，API 失败恢复已收敛到 observe → decide → execute；file harness 也已覆盖 read-before-write、stale guard、registry/lock、file-tool strict atomic write、BOM/CRLF、failure taxonomy、edit/read escalation，并在 2026-06-01 修复 Write/Edit resume reconstruction、atomic helper scope、NotebookEdit mtime fallback、file-harness throw runner 边界、Bash simulated sed guard、registry/path lock alias 与 path-lock reentry fail-fast。后续是 dogfood、窄 fixture、1 个行为决策签字和 UI/统计展示，不是重建 harness。</p>
+          <p><strong>API harness 和 file harness 都不再是 Axiomate 的基础短板。</strong> 05-27 之后的代码和文档显示，API 失败恢复已收敛到 observe → decide → execute；file harness 也已覆盖 read-before-write、stale guard、registry/lock、file-tool strict atomic write、BOM/CRLF、failure taxonomy、edit/read escalation，并在 2026-06-01 修复 Write/Edit resume reconstruction、atomic helper scope、NotebookEdit mtime fallback、file-harness throw runner 边界、Bash simulated sed guard、registry/path lock alias、path-lock reentry fail-fast 与 killed/failed subagent reminder。后续是 dogfood、窄 fixture、telemetry/privacy 审计和 UI/统计展示，不是重建 harness。</p>
           <p><strong>Context/memory 的基线必须按 Claude Code 2.1.88 切开。</strong> Axiomate fork 自 Claude Code CLI 2.1.88；本次参考的 <code>C:\public\workspace\claude-code-sourcemap</code> README 说明该仓库从公开 npm 包 <code>@anthropic-ai/claude-code</code> 的 <code>cli.js.map</code> 还原，版本为 <code>2.1.88</code>。Axiomate 的 <code>memdir</code>、extractMemories、SessionMemory、autoDream、compact 等核心 context/memory 系统仍是这套基线的延续，主要差异是品牌、路径和 Anthropic 私有 gate 的删减。因此报告里的“已有什么”应理解为继承了 2.1.88 之前的 Claude Code 系统；2.1.88 之后 Claude Code 不再有可用开源基线，只能通过官方文档、博客和行为描述补差。</p>
           <p><strong>Hermes 的领先仍然真实，但领先点转为 runtime 与运维厚度。</strong> 它不是因为单次 API retry 更强而领先，而是把 long-running agent 做成平台 runtime：durable kanban、Curator/background review、MemoryProvider/ProviderProfile/ContextEngine plugin ABI、gateway/delivery/restart、s6/service supervision、security hardening、TUI session orchestrator 与跨入口 session continuity。05-27 之后新增的 prompt-size diagnostic、/compress here、atomic file operations、MCP isolation、FTS degradation 和 kanban breaker 修复继续强化这些面。</p>
           <p><strong>Axiomate 的下一版不应复制 Hermes 的 RAG memory 插件路线。</strong> 官方 Claude Code memory 文档显示 Claude Code 依赖 <code>CLAUDE.md</code>、作用域 memory 文件和递归导入；Managed Agents memory/dreams 文档把 memory stores 挂载成 filesystem 目录，再用 dreams 异步合并重复、替换陈旧和提炼新洞见。对 coding agent 来说，这比默认向量化切碎代码更符合 Axiomate 的本地执行路线。</p>
         </div>
         <div class="callout">
           <strong>一句话判断：</strong>
-          当前差距不是“缺 API harness / 缺 file harness / 缺 goal / 缺 checkpoint”，而是“需要从 Claude Code 2.1.88 的继承基线继续补 context/memory 生命周期”。Axiomate 下一轮优先级应是 Claude-style memory + dream + prompt-size/compression + session search，然后处理 file harness 剩余 1 个行为决策、MCP/process hygiene、guardrails 和轻量 durable task runtime。
+          当前差距不是“缺 API harness / 缺 file harness / 缺 goal / 缺 checkpoint”，而是“需要从 Claude Code 2.1.88 的继承基线继续补 context/memory 生命周期”。Axiomate 下一轮优先级应是 Claude-style memory + dream + prompt-size/compression + session search，然后做 file harness telemetry/privacy 审计与 UI/统计展示、MCP/process hygiene、guardrails 和轻量 durable task runtime。
         </div>
       </div>
       <div class="pill-row">
@@ -925,10 +925,10 @@
         <article class="gap-item">
           <div class="gap-head">
             <div>
-              <h3>10. Patch / file operation reliability：核心已补，剩余是签字与展示</h3>
-              <div class="muted">Hermes 近期的 patch/write 改动曾是重要缺口；Axiomate 已补上核心 file harness，现在要审剩余行为决策并产品化展示。</div>
+              <h3>10. Patch / file operation reliability：核心行为已补，剩余是审计与展示</h3>
+              <div class="muted">Hermes 近期的 patch/write 改动曾是重要缺口；Axiomate 已补上核心 file harness，现在要先审 telemetry/privacy，再产品化展示。</div>
             </div>
-            <span class="pill warn">剩余决策</span>
+            <span class="pill good">核心已关闭</span>
           </div>
           <div class="gap-body">
             <div class="grid-3">
@@ -955,8 +955,8 @@
                   <li>已实现 read-before-write、partial/full read split、mtime/content stale fallback、same-process registry、path mutex、file-tool strict atomic write、BOM/CRLF policy、failure taxonomy、edit/read escalation。</li>
                   <li>2026-06-01 已修复 resume reconstruction：Write 历史输入只 canonicalize 语义内容，真实覆盖已有文件保留原 encoding/BOM/line-ending envelope；Edit 只 replay full-known transcript content，不读当前磁盘，不改 JSONL；atomic helper scope 已定为 file tools strict、config/settings rename-lock 受控 fallback；NotebookEdit 已补 full-read mtime-only content fallback。</li>
                   <li>registry/path lock alias 已按 process-local canonical key 修复：realpath、symlink parent、Windows-only casefold；同一路径锁重入会 fail-fast；硬链接、任意 shell 写和跨进程 registry 不纳入。</li>
-                  <li>剩余不是核心移植，而是 1 个行为决策：killed/failed subagent reminder。</li>
-                  <li>之后再把 failure metadata 接入 UI、/doctor、checkpoint delta 或统计看板。</li>
+                  <li>killed/failed subagent notification 已补齐 file-state reminder：相关 structured child write 会提示父 context 重读，但不改变 killed/failed 状态。</li>
+                  <li>之后先审 telemetry/privacy，再把 failure metadata 接入 UI、/doctor、checkpoint delta 或统计看板。</li>
                 </ul>
               </div>
             </div>
@@ -1066,8 +1066,8 @@
           <ul><li>对 resume/session search 增加索引健康诊断，明确 FTS/trigram/CJK 不可用时的 fallback。</li><li>让 context history search 与 memory relevance scan 有共同的 token budget 和解释字段。</li><li>失败时降级为 rg/linear scan，而不是让启动或恢复卡住。</li></ul>
         </div>
         <div class="phase">
-          <h3>5. 关闭 file harness 剩余 1 个行为决策</h3>
-          <ul><li>核心 Write/Edit/Read harness 已补齐，包括 temp-file + rename、BOM/CRLF、failure taxonomy、resume reconstruction、runner 捕获 file-harness throw、Bash simulated sed guard 和 registry alias。</li><li>先严肃审 killed/failed subagent reminder。</li><li>签字后再把失败结果接入 ValidationErrorsList、checkpoint delta、/doctor 或统计看板。</li></ul>
+          <h3>5. File harness telemetry/privacy 与展示</h3>
+          <ul><li>核心 Write/Edit/Read harness 已补齐，包括 temp-file + rename、BOM/CRLF、failure taxonomy、resume reconstruction、runner 捕获 file-harness throw、Bash simulated sed guard、registry alias 和 killed/failed subagent reminder。</li><li>先严肃审 HR10 telemetry/privacy，确认路径/内容不会误外发。</li><li>审计后再把失败结果接入 ValidationErrorsList、checkpoint delta、/doctor 或统计看板。</li></ul>
         </div>
         <div class="phase">
           <h3>6. 补 MCP / LSP / background process hygiene</h3>
@@ -1137,7 +1137,7 @@
       </div>
       <p>Hermes Agent 当前仍是更成熟的平台 runtime：durable kanban、curator review、plugin ABI、gateway/delivery/restart、security hardening、TUI/session orchestrator 与 service supervision 形成了系统优势。05-27 之后的提交没有推翻这个判断，但新增压力主要来自 context/ops hygiene，而不是 API harness。</p>
       <p>Axiomate 的强项集中在 API O-D-E recovery、persistent goal、checkpoint/rewind、conversation rewind 持久化、双轴 picker、rtk-axiomate、本地 CDP/napi 执行线。这些是 Hermes 没有正面对位的强项。</p>
-      <p>因此新版结论是：Axiomate 不是“基础层全面落后”。API harness 和核心 file harness 已经补到可发布水平；下个版本最该做的是 Claude-style context lifecycle，其次处理 file harness 剩余 1 个行为决策与展示，再补 Hermes 最近展示出来的基础 hygiene：prompt-size、/compress here、MCP/process cleanup、guardrails 和轻量 durable task runtime。</p>
+      <p>因此新版结论是：Axiomate 不是“基础层全面落后”。API harness 和核心 file harness 已经补到可发布水平；下个版本最该做的是 Claude-style context lifecycle，其次做 file harness telemetry/privacy 审计与展示，再补 Hermes 最近展示出来的基础 hygiene：prompt-size、/compress here、MCP/process cleanup、guardrails 和轻量 durable task runtime。</p>
     </section>
 
     <section class="card">

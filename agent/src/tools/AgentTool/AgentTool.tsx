@@ -42,7 +42,7 @@ import { setAgentColor } from './agentColorManager.js';
 import { agentToolResultSchema, emitTaskProgress, extractPartialResult, finalizeAgentTool, getLastToolUseName, runAsyncAgentLifecycle } from './agentToolUtils.js';
 import { GENERAL_PURPOSE_AGENT } from './built-in/generalPurposeAgent.js';
 import { AGENT_TOOL_NAME, LEGACY_AGENT_TOOL_NAME, ONE_SHOT_BUILTIN_AGENT_TYPES } from './constants.js';
-import { appendSubagentFileStateReminderToResult, captureSubagentFileStateReminderSnapshot } from './fileStateReminder.js';
+import { appendSubagentFileStateReminderToOptionalText, appendSubagentFileStateReminderToResult, captureSubagentFileStateReminderSnapshot } from './fileStateReminder.js';
 import type { AgentDefinition } from './loadAgentsDir.js';
 import { filterAgentsByMcpRequirements, hasRequiredMcpServers, isBuiltInAgent } from './loadAgentsDir.js';
 import { getPrompt } from './prompt.js';
@@ -820,13 +820,14 @@ export const AgentTool = buildTool({
                       killAsyncAgent(backgroundedTaskId, rootSetAppState);
                       const worktreeResult = await cleanupWorktreeIfNeeded();
                       const partialResult = extractPartialResult(agentMessages);
+                      const finalMessage = appendSubagentFileStateReminderToOptionalText(partialResult, toolUseContext, fileStateReminderSnapshot);
                       enqueueAgentNotification({
                         taskId: backgroundedTaskId,
                         description,
                         status: 'killed',
                         setAppState: rootSetAppState,
                         toolUseId: toolUseContext.toolUseId,
-                        finalMessage: partialResult,
+                        finalMessage,
                         ...worktreeResult
                       });
                       return;
@@ -834,6 +835,7 @@ export const AgentTool = buildTool({
                     const errMsg = errorMessage(error);
                     failAsyncAgent(backgroundedTaskId, errMsg, rootSetAppState);
                     const worktreeResult = await cleanupWorktreeIfNeeded();
+                    const finalMessage = appendSubagentFileStateReminderToOptionalText(undefined, toolUseContext, fileStateReminderSnapshot);
                     enqueueAgentNotification({
                       taskId: backgroundedTaskId,
                       description,
@@ -841,6 +843,7 @@ export const AgentTool = buildTool({
                       error: errMsg,
                       setAppState: rootSetAppState,
                       toolUseId: toolUseContext.toolUseId,
+                      finalMessage,
                       ...worktreeResult
                     });
                   } finally {

@@ -10,6 +10,7 @@ import { noteFileWrite } from '../../../../utils/fileStateRegistry.js'
 import {
   appendSubagentFileStateReminderToResult,
   appendSubagentFileStateReminderToText,
+  appendSubagentFileStateReminderToOptionalText,
   captureSubagentFileStateReminderSnapshot,
 } from '../../../../tools/AgentTool/fileStateReminder.js'
 import {
@@ -155,5 +156,45 @@ describe('AgentTool file state reminders', () => {
     expect(text).toContain('child done')
     expect(text).toContain('subagent modified files')
     expect(text).toContain('background-read.txt')
+  })
+
+  test('creates notification text from only the reminder when no partial text exists', async () => {
+    const path = join(getHarnessCwd(), 'notification-only-read.txt')
+    await writeFile(path, 'before\n', 'utf8')
+    const parentContext = makeToolContext()
+    await FileReadTool.call(
+      { file_path: path },
+      parentContext,
+      allowToolUse,
+      parentMessage,
+    )
+    const snapshot = captureSubagentFileStateReminderSnapshot(parentContext)
+    recordStructuredChildWrite(
+      parentContext,
+      path,
+      asAgentId('achild000000000404'),
+    )
+
+    const text = appendSubagentFileStateReminderToOptionalText(
+      undefined,
+      parentContext,
+      snapshot,
+    )
+
+    expect(text).toContain('subagent modified files')
+    expect(text).toContain('notification-only-read.txt')
+  })
+
+  test('keeps empty notification text absent when no reminder is needed', async () => {
+    const parentContext = makeToolContext()
+    const snapshot = captureSubagentFileStateReminderSnapshot(parentContext)
+
+    const text = appendSubagentFileStateReminderToOptionalText(
+      undefined,
+      parentContext,
+      snapshot,
+    )
+
+    expect(text).toBeUndefined()
   })
 })

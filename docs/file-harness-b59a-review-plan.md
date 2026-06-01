@@ -10,15 +10,18 @@ Baseline under review:
 
 This document is a serious review plan and static behavior review record for
 the file harness work since `b59a`. The original review pass was docs-only.
-The 2026-06-01 follow-up implements the first approved fix: transcript/resume
-reconstruction for `Write` semantic canonicalization and `Edit` replay.
+The 2026-06-01 follow-up series closes the approved behavior fixes through
+HR9: transcript/resume reconstruction, atomic helper scope, NotebookEdit
+mtime fallback, tool-runner error boundary, structured sed guards, registry
+canonicalization, path-lock reentry, and killed/failed subagent reminders.
 
 Review status:
 
 - Static diff and behavior inventory: complete.
-- HR1 follow-up implementation: complete and covered by focused unit tests.
-- Remaining work: 6 product/engineering decisions plus their approved
-  follow-up tests/fixes.
+- HR1-HR9 behavior follow-up implementations: complete and covered by focused
+  unit tests.
+- Remaining work: no core file-harness behavior decision is open. HR10 remains
+  a telemetry/privacy audit item before any dashboard/UI expansion.
 
 ## Review Goal
 
@@ -987,8 +990,8 @@ Required caution:
 | HR6 | UTF-16LE BOM preservation | `UTF8_BOM` char with `utf16le` encoding needed pinning | Fixed and tested | Keep focused FileEdit UTF-16LE BOM test |
 | HR7 | Registry path identity | `path.normalize` missed realpath/symlink/case aliases | Fixed and tested | Keep process-local canonical key; no hard-link/cross-process expansion |
 | HR8 | Lock non-reentrancy | Nested same-path lock used to deadlock | Fixed and tested | Keep typed fail-fast same-chain guard; runner returns `is_error` |
-| HR9 | Subagent killed/failed reminders | File changes may happen but no completion reminder | Needs review | Inspect lifecycle and decide |
-| HR10 | Telemetry/privacy | Metadata contains paths; escalation telemetry avoids paths | Needs audit | Verify all logging/export paths |
+| HR9 | Subagent killed/failed reminders | File changes can happen before non-completion | Fixed and tested | Keep reminder in killed/failed notifications without changing task status |
+| HR10 | Telemetry/privacy | Metadata contains paths; escalation telemetry avoids paths | Needs audit | Verify all logging/export paths before UI/dashboard expansion |
 
 ## Test Coverage Map
 
@@ -1009,7 +1012,7 @@ Required caution:
 | FileEdit escalation | `failureMetadata`, utility tests, toolExecution test | Good | reset after reread |
 | NotebookEdit | `notebookEdit.behavior`, `failureMetadata`, `toolExecutionFileHarnessError` | Good | UTF-16LE |
 | Bash simulated sed | `bashSimulatedSed.behavior` | Good | None obvious for `_simulatedSedEdit` |
-| Subagent reminders | `fileStateReminder`, registry tests | Partial | killed/failed/resume integration |
+| Subagent reminders | `fileStateReminder`, `agentLifecycleFileStateReminder`, registry tests | Good | deeper full AgentTool UI integration only if future regressions appear |
 | Checkpoint test stability | Changed tests | Adequate | full-suite soak over time |
 
 ## Review Execution Plan
@@ -1084,11 +1087,12 @@ Important:
 
 ### Phase E: Decision review
 
-Status: HR1, HR2, HR3, HR4, HR5, and HR7 resolved; 1 user/product decision remains.
+Status: HR1-HR9 resolved. No core file-harness behavior decision remains open.
 
-Decision to review before runtime changes:
+Remaining review before UI/statistics work:
 
-1. Should killed/failed subagents append file-state reminders?
+1. HR10 telemetry/privacy audit: verify no full paths or content leave via
+   analytics/log export surfaces unless explicitly intended.
 
 ## Decision Checklist
 
@@ -1109,7 +1113,7 @@ Decision to review before runtime changes:
 | Notebook/file harness execution failure boundary | Tool throws; runner returns `is_error` | Resolved: keep throw semantics inside tools, catch in runner |
 | Atomic fallback removal globally | No | Resolved: file tools strict; config/settings constrained fallback for rename lock |
 | Registry realpath/case aliasing | Yes, process-local structured registry only | Resolved: realpath/deepest-parent resolution plus Windows-only casefold |
-| Subagent killed/failed reminder | Probably no | Needs explicit decision |
+| Subagent killed/failed reminder | Yes, in notification result text when registry finds child writes to parent-read files | Resolved: keep; killed/failed status and error summary remain unchanged |
 
 ## Current Review Conclusion
 
@@ -1127,12 +1131,8 @@ well tested:
 The static behavior review is complete, and the highest-risk resume
 reconstruction issue, atomic-helper scope, NotebookEdit mtime fallback,
 Notebook/file-harness throw boundary, `_simulatedSedEdit` guard level, registry
-alias behavior, and path-lock same-chain reentrancy have been fixed. The series
-should still not be treated as fully signed off until the remaining decision
-item is resolved. The serious unresolved item is outside the narrow happy path:
-
-- reminder behavior for killed/failed subagents.
-
-These items need decision before any further harness UI/statistics work, because
-UI and telemetry would otherwise expose or solidify behavior that may still be
-wrong.
+alias behavior, path-lock same-chain reentrancy, and killed/failed subagent
+reminder behavior have been fixed. The remaining work is no longer core
+file-harness behavior: first audit telemetry/privacy sinks, then decide whether
+failure metadata belongs in UI, `/doctor`, checkpoint deltas, or aggregate
+debugging dashboards.

@@ -69,3 +69,13 @@ export function appendSubagentFileStateReminderToText(
   const reminder = buildSubagentFileStateReminder(parentContext, snapshot)
   return reminder ? `${text}\n\n${reminder}` : text
 }
+
+export function appendSubagentFileStateReminderToOptionalText(
+  text: string | undefined,
+  parentContext: Pick<ToolUseContext, 'agentId' | 'readFileState'>,
+  snapshot: SubagentFileStateReminderSnapshot,
+): string | undefined {
+  const reminder = buildSubagentFileStateReminder(parentContext, snapshot)
+  if (!reminder) return text
+  return text ? `${text}\n\n${reminder}` : reminder
+}
