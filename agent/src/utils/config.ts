@@ -252,7 +252,7 @@ export type ModelProviderUsageMapping = {
  *
  * - `enabled` is the on/off switch.
  * - `effort` is a coarse intensity level. Vendors that don't accept all
- *   four levels remap internally (e.g. DeepSeek collapses low/medium → high).
+ *   four levels expose only their supported tiers or remap internally.
  * - `budget` is a token budget. Used by Anthropic / Qwen-style vendors.
  *   effort and budget are independent; vendors pick whichever they support.
  *
@@ -276,16 +276,23 @@ export type ModelProviderConfig = {
   protocol: 'openai-chat' | 'openai-responses' | 'anthropic'
   /**
    * Vendor template name. Determines how `thinking` translates to wire
-   * fields. Built-in: 'openai-chat-deepseek-official' | 'openai-chat-aliyun'
-   * | 'openai-chat-siliconflow'. For vanilla protocols (no gateway
-   * override) leave this unset — resolveStack falls back to the protocol
-   * layer alone. Users can register more under config's top-level
-   * `templates` field.
+   * fields. Built-in gateway vendors include 'openai-chat-deepseek-official',
+   * 'openai-chat-aliyun', and 'openai-chat-siliconflow'. Protocol names are also valid explicit
+   * values. For vanilla protocols (no gateway override) leave this unset —
+   * resolveStack falls back to the protocol layer alone. Users can register
+   * more under config's top-level `templates` field.
    *
-   * When omitted, axiomate infers from protocol + model name (see
-   * `vendorTemplates.ts:inferVendor`).
+   * When omitted, axiomate infers from protocol + baseUrl only for vendors
+   * with a safe host match (see `vendorTemplates.ts:inferVendor`).
    */
   vendor?: string
+  /**
+   * Optional model-template overlay. This is explicit by design: model
+   * templates are not applied at runtime just because their regex matches
+   * the model name. The onboarding wizard may recommend one, but leaving this
+   * unset means no model-layer patches override the protocol/vendor stack.
+   */
+  modelTemplate?: string
   /** API endpoint (e.g. "https://api.siliconflow.cn/v1") */
   baseUrl: string
   apiKey: string
@@ -667,10 +674,10 @@ export type GlobalConfig = {
    * User-defined model templates. Overlay model-specific quirks on top of
    * whatever vendor resolved (e.g. DeepSeek V4+ requiring reasoning_content
    * round-trip in tool calls regardless of which gateway you reach v4 via).
-   * Auto-matched via `matchModelRegex` (required) plus optional
-   * `matchVendorRegex` / `protocol` filters — no explicit pin from the
-   * model entry. See vendorTemplates.ts (builtinModelTemplates /
-   * inferModelTemplate).
+   * Runtime applies these only when a model entry sets `modelTemplate`.
+   * The matcher fields (`matchModelRegex`, optional `matchVendorRegex`,
+   * `matchBaseUrlRegex`, and `protocol`) are used for wizard recommendation
+   * and compatibility validation of explicit pins.
    */
   modelTemplates?: Record<string, ModelTemplate>
   /** Default turn budget for /goal. */
@@ -964,8 +971,8 @@ export function deleteTemplateFromConfig(name: string): void {
 /**
  * Persist a custom model template to ~/.axiomate.json under the
  * top-level `modelTemplates` field. Mirror of saveTemplateToConfig but
- * for the model layer (auto-matched via matchModelRegex etc., no
- * explicit pin from model entries).
+ * for the explicit model layer (referenced via models[*].modelTemplate;
+ * matchModelRegex powers wizard recommendations and compatibility checks).
  */
 export function saveModelTemplateToConfig(
   name: string,

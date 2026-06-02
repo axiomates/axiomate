@@ -526,10 +526,15 @@ export class OpenAIProvider implements LLMProvider {
   }
 
   async inference(request: InferenceRequest): Promise<InferenceResponse> {
+    const vendorTemplate = this.getResolvedTemplate()
     let body: Record<string, unknown> = {
       model: this.config.modelConfig!.model,
       messages: messagesToOpenAI(request.messages, request.system, {
         supportsImages: this.config.modelConfig?.supportsImages ?? true,
+        roundTripReasoningContent:
+          vendorTemplate.autoRoundTripReasoningContent ?? false,
+        reasoningRoundTripFormat:
+          vendorTemplate.reasoningRoundTripFormat ?? 'reasoning_content',
       }),
       max_tokens: request.maxTokens ?? 4096,
     }
@@ -654,6 +659,8 @@ export class OpenAIProvider implements LLMProvider {
       supportsImages: this.config.modelConfig?.supportsImages ?? true,
       roundTripReasoningContent:
         vendorTemplate.autoRoundTripReasoningContent ?? false,
+      reasoningRoundTripFormat:
+        vendorTemplate.reasoningRoundTripFormat ?? 'reasoning_content',
     })
 
     const body: Record<string, unknown> = {
@@ -751,6 +758,7 @@ export class OpenAIProvider implements LLMProvider {
     return resolveStack({
       protocol: cfg.protocol,
       vendor: cfg.vendor,
+      modelTemplate: cfg.modelTemplate,
       model: cfg.model,
       baseUrl: cfg.baseUrl,
       customVendors: getGlobalConfig().templates,
@@ -764,7 +772,10 @@ export class OpenAIProvider implements LLMProvider {
     if (!choice?.message) return blocks
 
     // Reasoning content (thinking)
-    if (choice.message.reasoning_content) {
+    const hasReasoningContent =
+      typeof choice.message.reasoning_content === 'string' &&
+      choice.message.reasoning_content.length > 0
+    if (hasReasoningContent) {
       blocks.push({
         type: 'thinking',
         thinking: choice.message.reasoning_content,
@@ -773,11 +784,30 @@ export class OpenAIProvider implements LLMProvider {
     }
 
     // Text content
-    if (choice.message.content) {
+    if (typeof choice.message.content === 'string' && choice.message.content) {
       blocks.push({
         type: 'text',
         text: choice.message.content,
       })
+    } else if (Array.isArray(choice.message.content)) {
+      for (const part of choice.message.content) {
+        if (
+          !hasReasoningContent &&
+          part?.type === 'thinking' &&
+          typeof part.thinking === 'string'
+        ) {
+          blocks.push({
+            type: 'thinking',
+            thinking: part.thinking,
+            roundTrip: { provider: 'none' },
+          })
+        } else if (part?.type === 'text' && typeof part.text === 'string') {
+          blocks.push({
+            type: 'text',
+            text: part.text,
+          })
+        }
+      }
     }
 
     // Tool calls

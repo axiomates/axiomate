@@ -122,6 +122,7 @@ export function getCyclableEffortLevels(model: string): EffortLevel[] {
     template = resolveStack({
       protocol: config.protocol,
       vendor: config.vendor,
+      modelTemplate: config.modelTemplate,
       model: config.model,
       baseUrl: config.baseUrl,
       customVendors,

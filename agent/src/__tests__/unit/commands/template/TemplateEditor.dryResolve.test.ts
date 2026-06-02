@@ -11,7 +11,10 @@ vi.mock('../../../../utils/config.js', () => ({
   saveTemplateToConfig: vi.fn(),
 }))
 
-import { buildDryResolveSchema } from '../../../../commands/template/TemplateEditor.js'
+import {
+  buildDryResolveSchema,
+  buildInitialVendorTemplate,
+} from '../../../../commands/template/TemplateEditor.js'
 
 describe('buildDryResolveSchema', () => {
   test("rejects extends typo with resolveTemplate's error message", () => {
@@ -83,5 +86,19 @@ describe('buildDryResolveSchema', () => {
       effort: { patch: { reasoning_effort: '<value>' } },
     })
     expect(result.success).toBe(true)
+  })
+})
+
+describe('buildInitialVendorTemplate', () => {
+  test('protocol parents generate an explicit extends stub', () => {
+    expect(buildInitialVendorTemplate('openai-chat')).toEqual({
+      extends: 'openai-chat',
+    })
+  })
+
+  test('built-in gateway parents preserve the selected parent name', () => {
+    const initial = buildInitialVendorTemplate('openai-chat-deepseek-official')
+    expect(initial.extends).toBe('openai-chat-deepseek-official')
+    expect(initial.enabledPatch).toEqual({ thinking: { type: 'enabled' } })
   })
 })

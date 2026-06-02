@@ -126,6 +126,43 @@ describe('OpenAIProvider.inference', () => {
     })
   })
 
+  it('maps content thinking parts from OpenAI-compatible non-streaming responses', async () => {
+    const provider = makeProvider('deepseek-v4-pro')
+    attachClient(provider, {
+      id: 'resp_content_thinking',
+      model: 'deepseek-v4-pro',
+      choices: [
+        {
+          finish_reason: 'stop',
+          message: {
+            content: [
+              { type: 'thinking', thinking: 'Need to inspect state.' },
+              { type: 'text', text: 'Done.' },
+            ],
+          },
+        },
+      ],
+      usage: {
+        prompt_tokens: 10,
+        completion_tokens: 5,
+      },
+    })
+
+    const result = await provider.inference({
+      model: 'deepseek-v4-pro',
+      messages: [{ role: 'user', content: 'hello' }],
+    })
+
+    expect(result.content).toEqual([
+      {
+        type: 'thinking',
+        thinking: 'Need to inspect state.',
+        roundTrip: { provider: 'none' },
+      },
+      { type: 'text', text: 'Done.' },
+    ])
+  })
+
   it('throws LLMAPIError(502) when response has no choices (undefined)', async () => {
     const provider = makeProvider()
     attachClient(provider, {

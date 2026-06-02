@@ -14,6 +14,7 @@ import {
   getBuiltinTemplates,
   isBuiltinModelTemplate,
   isBuiltinVendor,
+  PROTOCOLS,
   resolveTemplate,
   type ModelTemplate,
   type VendorTemplate,
@@ -61,9 +62,8 @@ const EXTENDS_OPTIONS = [
 const SCRATCH_INITIAL_VENDOR: VendorTemplate = {}
 
 const SCRATCH_INITIAL_MODEL: ModelTemplate = {
-  // matchModelRegex is REQUIRED for a model template to ever be selected,
-  // so prefill a stub so the user knows to fill it in. The Zod schema
-  // rejects an empty string at save time.
+  // matchModelRegex is required so the onboarding wizard can recommend this
+  // template and explicit modelTemplate pins can be compatibility-checked.
   matchModelRegex: 'CHANGE_ME — regex against the model name',
 }
 
@@ -178,13 +178,18 @@ export function TemplateEditor({
   return null
 }
 
-function buildInitialVendorTemplate(baseName: string): VendorTemplate {
+export function buildInitialVendorTemplate(baseName: string): VendorTemplate {
   if (baseName === '__none__') return SCRATCH_INITIAL_VENDOR
+  if (PROTOCOLS.includes(baseName as (typeof PROTOCOLS)[number])) {
+    return { extends: baseName } as VendorTemplate
+  }
   const builtins = getBuiltinTemplates()
   if (baseName in builtins) {
+    const { extends: _parent, ...baseTemplate } =
+      builtins[baseName as keyof typeof builtins]
     return {
+      ...baseTemplate,
       extends: baseName,
-      ...builtins[baseName as keyof typeof builtins],
     } as VendorTemplate
   }
   return SCRATCH_INITIAL_VENDOR
@@ -306,7 +311,7 @@ function NameStep({
   const hint =
     kind === 'vendor'
       ? 'Pick a unique name (alphanumeric, dashes, underscores). Used as `vendor` in your model entries.'
-      : 'Pick a unique name (alphanumeric, dashes, underscores). Auto-matched against models via matchModelRegex; never referenced from a model entry.'
+      : 'Pick a unique name (alphanumeric, dashes, underscores). Used as `modelTemplate` in your model entries; matchModelRegex powers wizard recommendations and compatibility checks.'
 
   return (
     <Box flexDirection="column" paddingLeft={1} gap={1}>

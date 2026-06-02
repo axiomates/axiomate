@@ -4,7 +4,10 @@ import { useCallback, useReducer, useState } from 'react'
 import { Box, Newline, Text, useInput } from '../ink.js'
 import { saveGlobalConfig, getGlobalConfig } from '../utils/config.js'
 import {
+  getBuiltinModelTemplates,
   getBuiltinTemplates,
+  getMatchingModelTemplates,
+  inferVendor,
   resolveTemplate,
   type VendorTemplateName,
 } from '../services/api/vendorTemplates.js'
@@ -15,16 +18,17 @@ import {
   buildOnboardingProviderConfigUpdateResult,
   CONTEXT_WINDOW_HINT,
   DEFAULT_BASE_URLS,
-  DEFAULT_CONTEXT_WINDOW_VALUE,
-  DEFAULT_MAX_OUTPUT_TOKENS_VALUE,
   initialOnboardingProviderState,
   MAX_OUTPUT_TOKENS_HINT,
+  MODEL_TEMPLATE_HINT,
   MODEL_ID_HINT,
   onboardingProviderReducer,
   ROUTE_USAGE_HINT,
   THINKING_HINT,
   USER_AGENT_HINT,
   getThinkingChoicesForVendor,
+  getThinkingChoicesForStack,
+  getRecommendedModelTemplate,
   isThinkingChoiceSupported,
   shouldAskRouteUsage,
   shouldSkipVendorStage,
@@ -39,7 +43,8 @@ import { verifyOnboardingProviderApiKey } from './OnboardingProviderStep.verify.
 /**
  * Provider-setup sub-wizard. Walks a first-run user through
  * protocol → baseUrl → apiKey → modelId → contextWindow →
- * maxOutputTokens → supportsImages → userAgent → verify → persist.
+ * maxOutputTokens → supportsImages → vendor → modelTemplate →
+ * userAgent → verify → persist.
  *
  * Pure state transitions live in ./OnboardingProviderStep.reducer.ts so
  * tests can exercise them without loading the provider / llm chain.
@@ -162,7 +167,7 @@ export function OnboardingProviderStep({
             dispatch({
               type: 'submitSupportsImages',
               value: v,
-              nextStage: skip ? 'thinking' : 'vendor',
+              nextStage: skip ? 'modelTemplate' : 'vendor',
             })
           }}
           onBack={() => dispatch({ type: 'back' })}
@@ -186,6 +191,44 @@ export function OnboardingProviderStep({
           }}
           onCreateNew={() => dispatch({ type: 'startCreateTemplate' })}
           onBack={() => dispatch({ type: 'back' })}
+        />
+      )
+    case 'modelTemplate':
+      return (
+        <ModelTemplateStep
+          initial={state.modelTemplate}
+          protocol={state.protocol}
+          baseUrl={state.baseUrl}
+          modelId={state.modelId}
+          vendor={state.vendor}
+          onSubmit={v => {
+            const config = getGlobalConfig()
+            const choices = getThinkingChoicesForStack(
+              {
+                protocol: state.protocol,
+                baseUrl: state.baseUrl,
+                modelId: state.modelId,
+                vendor: state.vendor,
+                modelTemplate: v,
+              },
+              config.templates,
+              config.modelTemplates,
+            )
+            dispatch({
+              type: 'submitModelTemplate',
+              value: v,
+              nextThinking: choices.includes(state.thinking)
+                ? state.thinking
+                : 'off',
+            })
+          }}
+          onBack={() => {
+            const customTemplates = getGlobalConfig().templates
+            dispatch({
+              type: 'back',
+              skipVendor: shouldSkipVendorStage(state.protocol, customTemplates),
+            })
+          }}
         />
       )
     case 'createTemplate':
@@ -213,14 +256,14 @@ export function OnboardingProviderStep({
       return (
         <ThinkingStep
           initial={state.thinking}
+          protocol={state.protocol}
+          baseUrl={state.baseUrl}
+          modelId={state.modelId}
           vendor={state.vendor}
+          modelTemplate={state.modelTemplate}
           onSubmit={v => dispatch({ type: 'submitThinking', value: v })}
           onBack={() => {
-            const customTemplates = getGlobalConfig().templates
-            dispatch({
-              type: 'back',
-              skipVendor: shouldSkipVendorStage(state.protocol, customTemplates),
-            })
+            dispatch({ type: 'back' })
           }}
         />
       )
@@ -471,13 +514,12 @@ function ContextWindowStep({
   onSubmit,
   onBack,
 }: {
-  initial: number
+  initial?: number
   previousError?: string
   onSubmit: (v: string) => void
   onBack: () => void
 }): React.ReactNode {
-  const seed =
-    initial && initial !== DEFAULT_CONTEXT_WINDOW_VALUE ? String(initial) : ''
+  const seed = initial !== undefined ? String(initial) : ''
   const [value, setValue] = useState(seed)
   const [cursor, setCursor] = useState(seed.length)
 
@@ -518,13 +560,12 @@ function MaxOutputTokensStep({
   onSubmit,
   onBack,
 }: {
-  initial: number
+  initial?: number
   previousError?: string
   onSubmit: (v: string) => void
   onBack: () => void
 }): React.ReactNode {
-  const seed =
-    initial && initial !== DEFAULT_MAX_OUTPUT_TOKENS_VALUE ? String(initial) : ''
+  const seed = initial !== undefined ? String(initial) : ''
   const [value, setValue] = useState(seed)
   const [cursor, setCursor] = useState(seed.length)
 
@@ -636,6 +677,78 @@ function VendorStep({
   )
 }
 
+function ModelTemplateStep({
+  initial,
+  protocol,
+  baseUrl,
+  modelId,
+  vendor,
+  onSubmit,
+  onBack,
+}: {
+  initial: string
+  protocol: Protocol
+  baseUrl: string
+  modelId: string
+  vendor: string
+  onSubmit: (modelTemplateName: string) => void
+  onBack: () => void
+}): React.ReactNode {
+  useInput((_input, key) => {
+    if (key.escape) onBack()
+  })
+
+  const config = getGlobalConfig()
+  const customVendors = config.templates
+  const customModels = config.modelTemplates
+  const resolvedVendor =
+    vendor && vendor !== 'auto'
+      ? vendor
+      : inferVendor({ protocol, model: modelId, baseUrl }, customVendors)
+  const matches = getMatchingModelTemplates(
+    modelId,
+    resolvedVendor,
+    protocol,
+    customModels,
+    baseUrl,
+  )
+  const recommended = getRecommendedModelTemplate(
+    { protocol, baseUrl, modelId, vendor },
+    customVendors,
+    customModels,
+  )
+  const builtins = getBuiltinModelTemplates()
+  const customs = customModels ?? {}
+  const defaultValue =
+    initial !== 'none'
+      ? initial
+      : recommended ?? 'none'
+  const options = [
+    {
+      label: 'None — no model template',
+      value: 'none',
+    },
+    ...matches.map(name => ({
+      label: `${name}${name === recommended ? ' — recommended' : ''}${name in customs ? ' — custom' : name in builtins ? ' — built-in' : ''}`,
+      value: name,
+    })),
+  ]
+
+  return (
+    <Box flexDirection="column" paddingLeft={1} gap={1}>
+      <Text bold>Model template</Text>
+      <Text dimColor>{MODEL_TEMPLATE_HINT}</Text>
+      <Select
+        defaultValue={options.some(o => o.value === defaultValue) ? defaultValue : 'none'}
+        options={options}
+        onChange={onSubmit}
+        onCancel={onBack}
+      />
+      <Text dimColor>Esc to go back</Text>
+    </Box>
+  )
+}
+
 function SupportsImagesStep({
   initial,
   onSubmit,
@@ -672,20 +785,32 @@ function SupportsImagesStep({
 
 function ThinkingStep({
   initial,
+  protocol,
+  baseUrl,
+  modelId,
   vendor,
+  modelTemplate,
   onSubmit,
   onBack,
 }: {
   initial: ThinkingChoice
+  protocol: Protocol
+  baseUrl: string
+  modelId: string
   vendor: string
+  modelTemplate: string
   onSubmit: (v: ThinkingChoice) => void
   onBack: () => void
 }): React.ReactNode {
   useInput((_input, key) => {
     if (key.escape) onBack()
   })
-  const customTemplates = getGlobalConfig().templates
-  const allowed = getThinkingChoicesForVendor(vendor, customTemplates)
+  const config = getGlobalConfig()
+  const allowed = getThinkingChoicesForStack(
+    { protocol, baseUrl, modelId, vendor, modelTemplate },
+    config.templates,
+    config.modelTemplates,
+  )
   const allChoices: { label: string; value: ThinkingChoice }[] = [
     { label: 'Off (no reasoning params sent)', value: 'off' },
     { label: 'Low', value: 'low' },

@@ -7,7 +7,15 @@
 import type { LLMProvider } from './provider.js'
 import { getGlobalConfig, type ModelProviderConfig } from '../../utils/config.js'
 import { validateModelProviderConfig } from '../../utils/modelConfigSchema.js'
-import { isBuiltinVendor, resolveTemplate } from './vendorTemplates.js'
+import {
+  getBuiltinModelTemplates,
+  getBuiltinTemplates,
+  isBuiltinModelTemplate,
+  isBuiltinVendor,
+  PROTOCOLS,
+  resolveStack,
+  resolveTemplate,
+} from './vendorTemplates.js'
 import Anthropic from '@anthropic-ai/sdk'
 import { AnthropicProvider } from './providers/anthropicProvider.js'
 import { OpenAIProvider } from './providers/openaiProvider.js'
@@ -21,6 +29,13 @@ import type { NonNullableUsage } from '../../entrypoints/sdk/sdkUtilityTypes.js'
 
 const providerCache = new Map<string, LLMProvider>()
 const validatedKeys = new Set<string>()
+const builtinVendorList = [
+  ...PROTOCOLS,
+  ...Object.keys(getBuiltinTemplates()),
+].map(name => `'${name}'`).join(', ')
+const builtinModelTemplateList = Object.keys(getBuiltinModelTemplates())
+  .map(name => `'${name}'`)
+  .join(', ')
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -62,7 +77,7 @@ export function getProviderForModel(model: string): LLMProvider {
       if (!customTemplate) {
         throw new Error(
           `Model '${model}' references vendor '${modelConfig.vendor}', which is neither a built-in template nor defined in config.templates. ` +
-          `Built-in templates: 'openai-chat-deepseek-official', 'openai-chat-aliyun', 'openai-chat-siliconflow'. ` +
+          `Built-in templates: ${builtinVendorList}. ` +
           `For vanilla protocols (no gateway override) leave 'vendor' unset, or use the protocol name itself: 'openai-chat', 'openai-responses', 'anthropic'.`,
         )
       }
@@ -90,6 +105,33 @@ export function getProviderForModel(model: string): LLMProvider {
         // resolveTemplate may throw "Unknown template" — surface those
         // with the model's name attached for clarity.
         if (err instanceof Error && err.message.startsWith('Model ')) throw err
+        throw new Error(
+          `Model '${model}': ${err instanceof Error ? err.message : String(err)}`,
+        )
+      }
+    }
+    if (modelConfig.modelTemplate) {
+      if (
+        !isBuiltinModelTemplate(modelConfig.modelTemplate) &&
+        !config.modelTemplates?.[modelConfig.modelTemplate]
+      ) {
+        throw new Error(
+          `Model '${model}' references modelTemplate '${modelConfig.modelTemplate}', which is neither a built-in template nor defined in config.modelTemplates. ` +
+          `Built-in model templates: ${builtinModelTemplateList || '(none)'}. ` +
+          `Leave 'modelTemplate' unset to apply no model-layer template.`,
+        )
+      }
+      try {
+        resolveStack({
+          protocol: modelConfig.protocol,
+          vendor: modelConfig.vendor,
+          modelTemplate: modelConfig.modelTemplate,
+          model: modelConfig.model,
+          baseUrl: modelConfig.baseUrl,
+          customVendors: config.templates,
+          customModels: config.modelTemplates,
+        })
+      } catch (err) {
         throw new Error(
           `Model '${model}': ${err instanceof Error ? err.message : String(err)}`,
         )

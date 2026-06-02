@@ -13,14 +13,16 @@
  *               OpenAI's reasoning_effort vs reasoning.effort, etc.
  *
  *   model     — quirks that follow the *model itself* across gateways.
- *               deepseek-v4 needs reasoning_content round-tripped in tool
- *               calls regardless of whether you reach it via the official
- *               API, SiliconFlow, OpenRouter, or any other relay.
+ *               deepseek-v4 needs prior reasoning/thinking replayed across
+ *               tool calls, but different gateways can require different
+ *               replay shapes. Pin a modelTemplate for those model-specific
+ *               history quirks.
  *
  * Three layers compose with RFC 7396 JSON Merge Patch semantics: deep
  * merge, arrays replaced, `null` deletes the inherited key. resolveStack
- * walks protocol → vendor → model, merging each in order, and emits the
- * final ResolvedTemplate consumed by applyThinkingTemplate. Built-in
+ * walks protocol → vendor → explicitly configured model template, merging
+ * each in order, and emits the final ResolvedTemplate consumed by
+ * applyThinkingTemplate. Built-in
  * templates ship for the common combinations; users can register custom
  * templates at any layer in `~/.axiomate.json` and reference them via
  * `vendor:` / `modelTemplate:` on a model entry.
@@ -38,6 +40,12 @@ export type EffortLevel = 'none' | 'low' | 'medium' | 'high' | 'max'
 
 /** Wire protocols a vendor/model template's patches can target. */
 export type Protocol = 'anthropic' | 'openai-chat' | 'openai-responses'
+
+/**
+ * How an OpenAI Chat-compatible gateway expects assistant thinking to be
+ * replayed in message history once a model-level template enables replay.
+ */
+export type ReasoningRoundTripFormat = 'reasoning_content' | 'content_thinking'
 
 export const PROTOCOLS: readonly Protocol[] = [
   'anthropic',
@@ -94,6 +102,28 @@ export type TemplatePatches = {
    * didn't supply one. Other vendors leave this unset.
    */
   anthropicThinkingField?: { defaultBudgetTokens: number } | null
+
+  /**
+   * Echo reasoning_content back in the assistant message history on
+   * subsequent tool calls. Required by some reasoning models (DeepSeek
+   * V4+) to maintain reasoning context across tool-use turns.
+   *
+   * Recommended home: model templates, because this usually follows the
+   * model across gateways. Kept in the shared patch shape as an escape hatch
+   * for gateways that need to force or disable replay broadly.
+   */
+  autoRoundTripReasoningContent?: boolean | null
+
+  /**
+   * Message-history shape for replaying reasoning after
+   * `autoRoundTripReasoningContent` opts in. Official DeepSeek uses top-level
+   * `reasoning_content`; some relays require a thinking block inside the
+   * assistant `content` array.
+   *
+   * Recommended home: vendor templates, because this usually follows the
+   * gateway wire schema. Model templates may override it for narrow quirks.
+   */
+  reasoningRoundTripFormat?: ReasoningRoundTripFormat | null
 }
 
 /**
@@ -103,11 +133,6 @@ export type TemplatePatches = {
  * either specify `protocol` (independent template) or `extends`
  * (inherits another vendor's full chain). Cycles and missing parents are
  * caught at resolveStack time.
- *
- * NOTE: `autoRoundTripReasoningContent` is intentionally NOT part of this
- * shape — it's a model-class quirk (DeepSeek V4+ requires reasoning_content
- * round-trip on tool calls regardless of which gateway hosts the model),
- * not a gateway behavior. Declare it on ModelTemplate instead.
  */
 export type VendorTemplate = TemplatePatches & {
   /**
@@ -136,35 +161,33 @@ export type VendorTemplate = TemplatePatches & {
 
 /**
  * A model template overlays model-specific quirks on top of a vendor.
- * Selected per ModelProviderConfig either via explicit `modelTemplate:`
- * or auto-matched by the model name regex.
+ * Selected per ModelProviderConfig via explicit `modelTemplate:`.
+ * The matcher fields below are still used by onboarding and diagnostics to
+ * recommend a template, but runtime resolution never applies one implicitly.
  *
- * Owns `autoRoundTripReasoningContent` — that flag follows the model
- * across gateways (e.g. DeepSeek V4 needs it whether reached via the
- * official API, SiliconFlow, OpenRouter, or a private relay), so it
- * naturally lives at the model layer rather than vendor.
+ * `autoRoundTripReasoningContent` usually belongs here because it follows
+ * the model across gateways (e.g. DeepSeek V4 needs it whether reached via
+ * the official API, SiliconFlow, OpenRouter, or a private relay). Vendor
+ * templates can still set it as an escape hatch.
  */
 export type ModelTemplate = TemplatePatches & {
   /**
-   * Required regex auto-matched against the model name. There is no
-   * explicit pin field on ModelProviderConfig — this regex IS the
-   * mechanism by which a model template gets selected. A template
-   * without matchModelRegex can never be applied; the loader logs a
-   * warning and skips it.
+   * Required regex matched against the model name for wizard recommendations
+   * and compatibility validation of explicit modelTemplate pins.
    *
    * Combined with matchVendorRegex / protocol below: ALL gates must
    * match (or be unset) for the template to apply. Mismatches are
-   * silent — the template just doesn't contribute, which lets a single
-   * model template safely live in the registry and only activate on
-   * the entries it's designed for.
+   * silent during recommendation. For explicit pins, resolveStack rejects
+   * incompatible template/model/vendor/protocol combinations with a clear
+   * config error.
    */
   matchModelRegex: string
 
   /**
-   * Optional regex auto-matched against the resolved vendor template
-   * name. Lets a model template scope itself to "this model AND on this
-   * vendor" — e.g. a quirk that only manifests when GLM-5.1 is reached
-   * via SiliconFlow but not when reached via aliyun.
+   * Optional regex matched against the resolved vendor template name. Lets
+   * a model template scope itself to "this model AND on this vendor" — e.g.
+   * a quirk that only manifests when GLM-5.1 is reached via SiliconFlow but
+   * not when reached via aliyun.
    *
    * Combined with matchModelRegex via AND. When the field is omitted
    * (today's default), the model template matches on any vendor.
@@ -172,29 +195,23 @@ export type ModelTemplate = TemplatePatches & {
   matchVendorRegex?: string
 
   /**
-   * Optional protocol filter. When set, the template only applies when
-   * the model entry's protocol matches — silent skip otherwise (no
-   * throw). Lets a template scope itself to a specific wire shape; the
-   * auto-match nature of model templates makes silent filtering the
-   * right behavior.
+   * Optional protocol filter. When set, the template is recommended only for
+   * that protocol, and explicit pins must use the same protocol.
    *
-   * Most model templates (e.g. openai-chat-deepseek-v4p) leave this
-   * unset because their fields are protocol-neutral
-   * (autoRoundTripReasoningContent is a client-side flag, not a wire
-   * field). Set protocol when the template's enabledPatch /
-   * effort.patch / etc. would be invalid on other protocols.
+   * Set this when the template's patches or replay flags are meaningful only
+   * for one wire shape. For example, both built-in DeepSeek replay templates
+   * target OpenAI Chat history shapes, so they declare `openai-chat`.
+   * Leave it unset only for genuinely protocol-neutral overlays.
    */
   protocol?: Protocol
 
   /**
-   * Echo reasoning_content back in the assistant message history on
-   * subsequent tool calls. Required by some reasoning models (DeepSeek
-   * V4+) to maintain reasoning context across tool-use turns.
-   *
-   * Lives only on the model layer — it's a property of the model itself
-   * that travels with it across gateways, not a vendor/protocol concern.
+   * Optional baseUrl gate used for wizard recommendations. Runtime still
+   * requires an explicit `modelTemplate` field; this only helps choose the
+   * best default in onboarding when two model templates match the same model
+   * name (for example official DeepSeek vs a relay-specific replay shape).
    */
-  autoRoundTripReasoningContent?: boolean | null
+  matchBaseUrlRegex?: string
 }
 
 /**
@@ -206,14 +223,11 @@ export type ProtocolTemplate = TemplatePatches
 
 /**
  * Final shape consumed by applyThinkingTemplate after the three-layer merge.
- * Includes ModelTemplate fields (autoRoundTripReasoningContent) since the
- * model layer participates in the merge.
+ * Includes replay fields since every layer participates in the merge.
  */
 export type ResolvedTemplate = TemplatePatches & {
   /** Protocol the resolved patches target — used for runtime routing. */
   protocol: Protocol
-  /** Inherited from the model layer if any model template matched. */
-  autoRoundTripReasoningContent?: boolean
 }
 
 // Backwards-compat alias for the rare callers that imported the old name.
@@ -366,12 +380,10 @@ const builtinVendorTemplates: Record<string, VendorTemplate> = {
 // ---------------------------------------------------------------------------
 
 /**
- * Model-level overlays. Live independently of the vendor / gateway: when
- * openai-chat-deepseek-v4p matches by name (or the user sets
- * `modelTemplate:` on a model entry), its patches apply on top of
- * whatever vendor stack resolved — so DeepSeek-V4-via-SiliconFlow gets
- * BOTH SiliconFlow's enable_thinking and the V4 family's
- * reasoning_content round-trip.
+ * Model-level overlays. Runtime applies one only when a model entry sets
+ * `modelTemplate:` explicitly. The matcher fields remain here so onboarding
+ * can recommend a default while still allowing users to leave the model
+ * layer unset.
  *
  * The protocol-family prefix in the name (openai-chat-) hints which
  * vendors this overlay is compatible with. We don't enforce it
@@ -379,12 +391,45 @@ const builtinVendorTemplates: Record<string, VendorTemplate> = {
  * remain valid across any vendor in that protocol family.
  */
 const builtinModelTemplates: Record<string, ModelTemplate> = {
+  'openai-chat-micu-deepseek': {
+    // micu-specific DeepSeek V4+ replay shape. This is intentionally a model
+    // template rather than a vendor. It is self-contained for DeepSeek's
+    // thinking switch and high/max tiers, so the user only needs to pin this
+    // modelTemplate; a separate DeepSeek vendor pin is harmless but not
+    // required for the built-in micu case.
+    //
+    // Runtime never applies this by regex alone. matchBaseUrlRegex only lets
+    // onboarding preselect this template when the user is adding a micu DeepSeek
+    // model, avoiding accidental coverage of every DeepSeek V4 endpoint.
+    matchModelRegex: '\\bdeepseek[\\s\\-_]*v?[\\s\\-_]*(\\d+)',
+    matchBaseUrlRegex: 'micuapi\\.ai',
+    protocol: 'openai-chat',
+    enabledPatch: { thinking: { type: 'enabled' } },
+    disabledPatch: { thinking: { type: 'disabled' } },
+    effort: {
+      valueMap: {
+        low: null,
+        medium: null,
+        high: 'high',
+        max: 'max',
+      },
+    },
+    autoRoundTripReasoningContent: true,
+    reasoningRoundTripFormat: 'content_thinking',
+  },
   'openai-chat-deepseek-v4p': {
     // Match v4 and up. See DEEPSEEK_REASONING_RE for shape rationale.
     matchModelRegex: '\\bdeepseek[\\s\\-_]*v?[\\s\\-_]*(\\d+)',
-    // The actual >=4 numeric threshold is enforced inside inferModelTemplate
+    protocol: 'openai-chat',
+    // The actual >=4 numeric threshold is enforced inside matchesModel
     // since regex alone can't express it.
+    //
+    // Keep this template to the official/default DeepSeek V4+ behavior:
+    // replay prior thinking with OpenAI-compatible `reasoning_content`.
+    // Relay-specific shapes such as micu's content[].thinking use their own
+    // explicit model template so they do not affect every DeepSeek V4 model.
     autoRoundTripReasoningContent: true,
+    reasoningRoundTripFormat: 'reasoning_content',
   },
 }
 
@@ -431,10 +476,12 @@ const RESOLVE_DEPTH_LIMIT = 8
 type ResolveInput = {
   protocol: Protocol
   vendor?: string
-  // NOTE: model templates have no explicit pin field on ModelProviderConfig.
-  // They're always auto-matched via inferModelTemplate's regex/protocol/
-  // vendor filters — the user can't accidentally pin a wrong template, so
-  // the system silently selects the correct one (or none).
+  /**
+   * Explicit model-template pin from ModelProviderConfig.modelTemplate.
+   * Omitted means no model layer is applied. inferModelTemplate is only a
+   * wizard recommendation helper; it is not part of runtime resolution.
+   */
+  modelTemplate?: string | null
   model: string
   baseUrl?: string
   customVendors?: Record<string, VendorTemplate>
@@ -449,15 +496,10 @@ type ResolveInput = {
  *   2. Pick the vendor template (custom > built-in). If `vendor` is
  *      omitted, runs inferVendor with the same inputs to derive one.
  *      The vendor's own extends chain resolves recursively.
- *   3. Auto-match a model template via inferModelTemplate. The match
- *      requires:
- *        - matchModelRegex hits the model name (always required)
- *        - matchVendorRegex hits the resolved vendor name, if set
- *        - the template's `protocol` equals the entry's protocol, if set
- *      Mismatches are silent — the model template just doesn't apply,
- *      and the rest of the stack proceeds normally. There is no explicit
- *      `modelTemplate:` pin on the model entry; templates either match
- *      automatically or don't.
+ *   3. Apply a model template only when the model entry explicitly sets
+ *      `modelTemplate`. The template's matcher fields are then treated as
+ *      compatibility guards; mismatches throw a config error instead of
+ *      silently changing the wire body.
  *   4. deepMerge the three layers using RFC 7396 semantics (`null` keys
  *      delete inherited fields).
  *
@@ -480,19 +522,26 @@ export function resolveStack(input: ResolveInput): ResolvedTemplate {
     )
   }
 
-  // Model templates are auto-matched only — there's no explicit pin on
-  // the model entry. Mismatches are silent: the template just doesn't
-  // contribute. inferModelTemplate filters by matchModelRegex (required),
-  // matchVendorRegex (optional), and template.protocol (optional).
-  const modelTemplateName = inferModelTemplate(
-    input.model,
-    vendorName,
-    input.protocol,
-    input.customModels,
-  )
+  const modelTemplateName = input.modelTemplate || undefined
   const modelTemplate = modelTemplateName
     ? resolveModelTemplate(modelTemplateName, input.customModels)
     : undefined
+  if (
+    modelTemplateName &&
+    modelTemplate &&
+    !matchesModel(
+      modelTemplate,
+      input.model,
+      vendorName ?? '',
+      input.protocol,
+      modelTemplateName,
+      input.baseUrl,
+    )
+  ) {
+    throw new Error(
+      `Model '${input.model}' explicitly references modelTemplate '${modelTemplateName}', but that template does not match this model/vendor/protocol/baseUrl combination.`,
+    )
+  }
 
   const merged: TemplatePatches & { protocol?: Protocol } = {}
   deepMerge(merged as Record<string, unknown>, structuredClone(protocolPatches as Record<string, unknown>))
@@ -705,24 +754,27 @@ export function inferVendor(
 }
 
 /**
- * Find the model template that matches `model` by regex, additionally
- * gated by the resolved `vendorName` and `protocol` of the model entry.
- * Returns the template name, or undefined when nothing matches. Custom
- * templates win on regex collision.
+ * Recommend a model template that matches `model` by regex, additionally
+ * gated by the resolved `vendorName`, `protocol`, and optional `baseUrl` of
+ * the model entry. Returns the template name, or undefined when nothing
+ * matches. Custom templates win on regex collision.
+ *
+ * This is a recommendation helper for onboarding and diagnostics only.
+ * resolveStack does not call it; runtime applies a model template only when
+ * the model entry explicitly sets `modelTemplate`.
  *
  * A model template applies when ALL of:
  *   - matchModelRegex matches the model name (required — model templates
- *     have no explicit pin field on model entries, so the regex IS the
- *     selector)
+ *     is the recommender signal)
  *   - matchVendorRegex matches the resolved vendor name (when set;
  *     absent = applies on any vendor)
  *   - the template's `protocol` equals the entry's protocol (when set;
  *     absent = applies on any protocol)
+ *   - matchBaseUrlRegex matches the entry's baseUrl (when set;
+ *     absent = applies on any baseUrl)
  *
- * All filters are silent — a non-matching template just doesn't apply,
- * with no error or warning. The user can't accidentally pin a wrong
- * template since there's no pin mechanism; they only describe matching
- * conditions and let the system pick.
+ * All filters are silent in this recommendation path — a non-matching
+ * template is simply not recommended.
  *
  * Built-in `openai-chat-deepseek-v4p` additionally enforces the >=4
  * numeric threshold from DEEPSEEK_REASONING_RE; lower versions don't
@@ -733,15 +785,35 @@ export function inferModelTemplate(
   vendorName: string | undefined,
   protocol: Protocol | undefined,
   custom?: Record<string, ModelTemplate>,
+  baseUrl?: string,
 ): string | undefined {
-  // Custom first.
-  for (const [name, tpl] of Object.entries(custom ?? {})) {
-    if (matchesModel(tpl, model, vendorName ?? '', protocol, name)) return name
-  }
-  for (const [name, tpl] of Object.entries(builtinModelTemplates)) {
-    if (matchesModel(tpl, model, vendorName ?? '', protocol, name)) return name
-  }
-  return undefined
+  return getMatchingModelTemplates(
+    model,
+    vendorName,
+    protocol,
+    custom,
+    baseUrl,
+  )[0]
+}
+
+export function getMatchingModelTemplates(
+  model: string,
+  vendorName: string | undefined,
+  protocol: Protocol | undefined,
+  custom?: Record<string, ModelTemplate>,
+  baseUrl?: string,
+): string[] {
+  const customEntries = Object.entries(custom ?? {})
+  const customNames = new Set(customEntries.map(([name]) => name))
+  const candidates: Array<[string, ModelTemplate]> = [
+    ...customEntries,
+    ...Object.entries(builtinModelTemplates).filter(([name]) => !customNames.has(name)),
+  ]
+  return candidates
+    .filter(([name, tpl]) =>
+      matchesModel(tpl, model, vendorName ?? '', protocol, name, baseUrl),
+    )
+    .map(([name]) => name)
 }
 
 function matchesModel(
@@ -750,12 +822,13 @@ function matchesModel(
   vendorName: string,
   protocol: Protocol | undefined,
   name: string,
+  baseUrl?: string,
 ): boolean {
   // matchModelRegex is required. Without it, a model template has no
-  // way to be selected (there's no explicit pin field).
+  // way to be recommended or compatibility-checked against a model entry.
   if (!tpl.matchModelRegex) {
     logForDebugging(
-      `[model-template] '${name}' has no matchModelRegex; ignoring (every model template needs one to be auto-matched).`,
+      `[model-template] '${name}' has no matchModelRegex; ignoring.`,
     )
     return false
   }
@@ -786,16 +859,30 @@ function matchesModel(
   }
 
   // Optional protocol gate. Silent filter: a model template that
-  // declares protocol just doesn't apply when the entry's protocol
-  // doesn't match — no throw. (Vendor-template protocol mismatches
-  // still throw because users pin vendors explicitly and benefit from
-  // a loud error; model templates are auto-matched, so silent skip
-  // matches the auto nature.)
+  // declares protocol just doesn't get recommended when the entry's protocol
+  // doesn't match. Explicit pins are validated by resolveStack, which turns
+  // this false result into a clear config error.
   if (tpl.protocol && tpl.protocol !== protocol) return false
+
+  // Optional baseUrl gate. This is primarily for recommendations when two
+  // model templates target the same model family but only one is appropriate
+  // for a specific relay.
+  if (tpl.matchBaseUrlRegex) {
+    let baseUrlRe: RegExp
+    try {
+      baseUrlRe = new RegExp(tpl.matchBaseUrlRegex, 'i')
+    } catch {
+      logForDebugging(
+        `[model-template] '${name}' has invalid matchBaseUrlRegex; ignoring.`,
+      )
+      return false
+    }
+    if (!baseUrlRe.test(baseUrl ?? '')) return false
+  }
 
   // Special case for the DeepSeek family: enforce the >=4 numeric threshold
   // built into DEEPSEEK_REASONING_RE so v3 / v3.5 don't get the V4 overlay.
-  if (name === 'openai-chat-deepseek-v4p') {
+  if (name === 'openai-chat-deepseek-v4p' || name === 'openai-chat-micu-deepseek') {
     const ver = Number.parseInt(m[1] ?? '0', 10)
     if (ver < 4) return false
   }

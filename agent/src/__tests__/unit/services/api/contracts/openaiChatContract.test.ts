@@ -125,6 +125,22 @@ function makeProvider() {
   })
 }
 
+function makeMicuDeepSeekProvider() {
+  return new OpenAIProvider({
+    baseUrl: 'https://www.micuapi.ai/v1',
+    apiKey: 'test-key',
+    modelConfig: {
+      model: 'deepseek-v4-pro',
+      protocol: 'openai-chat',
+      vendor: 'openai-chat-deepseek-official',
+      modelTemplate: 'openai-chat-micu-deepseek',
+      baseUrl: 'https://www.micuapi.ai/v1',
+      apiKey: 'test-key',
+      thinking: { enabled: true, effort: 'high' },
+    },
+  })
+}
+
 function makeIntent(messages: MessageParam[] = baseMessages): StreamIntent {
   return {
     model: 'gpt-4o',
@@ -139,6 +155,14 @@ function makeIntent(messages: MessageParam[] = baseMessages): StreamIntent {
     maxOutputTokens: 4096,
     temperature: 0.2,
     thinking: { type: 'disabled' },
+  }
+}
+
+function makeMicuDeepSeekIntent(messages: MessageParam[]): StreamIntent {
+  return {
+    ...makeIntent(messages),
+    model: 'deepseek-v4-pro',
+    thinking: { type: 'enabled', budgetTokens: 4096 },
   }
 }
 
@@ -174,6 +198,26 @@ async function buildRequestBody(
       { stream: true },
   )
   return stableJson(body)
+}
+
+async function buildMicuDeepSeekRequestBody(messages: MessageParam[]) {
+  const provider = makeMicuDeepSeekProvider()
+  return (provider as unknown as {
+    buildRequestBodyForRetry(
+      model: string,
+      intent: StreamIntent,
+      retryContext: RetryContext,
+      options: { stream: boolean },
+    ): Promise<Record<string, unknown>>
+  }).buildRequestBodyForRetry(
+    'deepseek-v4-pro',
+    makeMicuDeepSeekIntent(messages),
+    {
+      model: 'deepseek-v4-pro',
+      thinkingConfig: { type: 'enabled', budgetTokens: 4096 },
+    },
+    { stream: true },
+  )
 }
 
 async function consume<T>(gen: AsyncGenerator<unknown, T>): Promise<T> {
@@ -287,6 +331,51 @@ describe('OpenAI Chat request body golden fixtures', () => {
         data: Buffer.from('large-image').toString('base64'),
       },
     })
+  })
+
+  it('micu DeepSeek request uses content[].thinking through provider template resolution', async () => {
+    const body = await buildMicuDeepSeekRequestBody([
+      {
+        role: 'assistant',
+        content: [
+          {
+            type: 'thinking',
+            thinking: 'Need to inspect state.',
+            roundTrip: { provider: 'none' },
+          },
+          {
+            type: 'tool_use',
+            id: 'call_micu',
+            name: 'Read',
+            input: { file_path: 'C:/repo/README.md' },
+          },
+        ],
+      },
+    ]) as {
+      thinking?: unknown
+      reasoning_effort?: unknown
+      messages: Array<{
+        role: string
+        content?: unknown
+        reasoning_content?: unknown
+        tool_calls?: unknown[]
+      }>
+    }
+
+    expect(body.thinking).toEqual({ type: 'enabled' })
+    expect(body.reasoning_effort).toBe('high')
+    expect(body.messages).toHaveLength(2)
+    expect(body.messages[1]).toMatchObject({
+      role: 'assistant',
+      content: [{ type: 'thinking', thinking: 'Need to inspect state.' }],
+      tool_calls: [
+        expect.objectContaining({
+          id: 'call_micu',
+          function: expect.objectContaining({ name: 'Read' }),
+        }),
+      ],
+    })
+    expect(body.messages[1]?.reasoning_content).toBeUndefined()
   })
 })
 

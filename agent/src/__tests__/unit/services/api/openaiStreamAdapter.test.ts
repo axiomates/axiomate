@@ -300,4 +300,61 @@ describe('OpenAIStreamState thinking lifecycle', () => {
     expect(blockStopsByIndex.filter(idx => idx === 0).length).toBe(1)
     expect(blockStopsByIndex.filter(idx => idx === 1).length).toBe(1)
   })
+
+  it('maps content thinking parts from OpenAI-compatible stream chunks', () => {
+    const state = new OpenAIStreamState()
+    const events = state.mapChunk({
+      id: 'chatcmpl_content_thinking',
+      model: 'deepseek-v4-pro',
+      choices: [
+        {
+          index: 0,
+          delta: {
+            role: 'assistant',
+            content: [
+              { type: 'thinking', thinking: 'Need to inspect state.' },
+              { type: 'text', text: 'Done.' },
+            ],
+          },
+          finish_reason: 'stop',
+        },
+      ],
+    } as OpenAIChatChunk)
+
+    expect(events).toEqual([
+      expect.objectContaining({ type: 'response_start' }),
+      {
+        type: 'block_start',
+        index: 0,
+        block: {
+          type: 'thinking',
+          thinking: '',
+          roundTrip: { provider: 'none' },
+        },
+      },
+      {
+        type: 'block_delta',
+        index: 0,
+        delta: { type: 'thinking', thinking: 'Need to inspect state.' },
+      },
+      { type: 'block_stop', index: 0 },
+      {
+        type: 'block_start',
+        index: 1,
+        block: { type: 'text', text: '' },
+      },
+      {
+        type: 'block_delta',
+        index: 1,
+        delta: { type: 'text', text: 'Done.' },
+      },
+      { type: 'block_stop', index: 1 },
+      {
+        type: 'response_delta',
+        stopReason: 'end_turn',
+        usage: { inputTokens: 0, outputTokens: 0 },
+      },
+      { type: 'response_stop' },
+    ])
+  })
 })

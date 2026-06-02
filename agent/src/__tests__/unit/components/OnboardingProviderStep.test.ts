@@ -3,6 +3,8 @@ import {
   buildModelConfig,
   buildOnboardingProviderConfigUpdate,
   buildOnboardingProviderConfigUpdateResult,
+  getRecommendedModelTemplate,
+  getThinkingChoicesForStack,
   getThinkingChoicesForVendor,
   getVendorChoicesForProtocol,
   initialOnboardingProviderState,
@@ -16,11 +18,11 @@ import {
 import type { GlobalConfig, ModelProviderConfig } from '../../../utils/config.js'
 
 describe('onboardingProviderReducer', () => {
-  it('parses maxOutputTokens input with an empty-input default', () => {
-    expect(parseMaxOutputTokensInput('', 128_000)).toBe(128_000)
-    expect(parseMaxOutputTokensInput('4096', 128_000)).toBe(4_096)
-    expect(parseMaxOutputTokensInput('0', 128_000)).toBeNull()
-    expect(parseMaxOutputTokensInput('4.5', 128_000)).toBeNull()
+  it('parses maxOutputTokens input with empty input left unset', () => {
+    expect(parseMaxOutputTokensInput('')).toBeUndefined()
+    expect(parseMaxOutputTokensInput('4096')).toBe(4_096)
+    expect(parseMaxOutputTokensInput('0')).toBeNull()
+    expect(parseMaxOutputTokensInput('4.5')).toBeNull()
   })
 
   it('starts on the protocol step with an openai default', () => {
@@ -71,33 +73,35 @@ describe('onboardingProviderReducer', () => {
     expect(next.error).toBeUndefined()
   })
 
-  it('advances modelId → contextWindow', () => {
+  it('advances modelId → contextWindow and preloads fuzzy recommendations', () => {
     const next = onboardingProviderReducer(
       { ...initialOnboardingProviderState, stage: 'modelId' },
-      { type: 'submitModelId', value: 'gpt-4o' },
+      { type: 'submitModelId', value: 'qwen/qwen3-235b' },
     )
     expect(next.stage).toBe('contextWindow')
-    expect(next.modelId).toBe('gpt-4o')
+    expect(next.modelId).toBe('qwen/qwen3-235b')
+    expect(next.contextWindow).toBe(40_960)
+    expect(next.maxOutputTokens).toBe(32_768)
   })
 
-  it('parses contextWindow input and advances to maxOutputTokens with a derived default', () => {
+  it('parses contextWindow input and advances to maxOutputTokens without deriving a fallback default', () => {
     const next = onboardingProviderReducer(
       { ...initialOnboardingProviderState, stage: 'contextWindow' },
       { type: 'submitContextWindow', value: '200000' },
     )
     expect(next.stage).toBe('maxOutputTokens')
     expect(next.contextWindow).toBe(200_000)
-    expect(next.maxOutputTokens).toBe(32_768)
+    expect(next.maxOutputTokens).toBeUndefined()
   })
 
-  it('accepts empty contextWindow input and uses 32K default', () => {
+  it('accepts empty contextWindow input and leaves the config value unset', () => {
     const next = onboardingProviderReducer(
       { ...initialOnboardingProviderState, stage: 'contextWindow' },
       { type: 'submitContextWindow', value: '' },
     )
     expect(next.stage).toBe('maxOutputTokens')
-    expect(next.contextWindow).toBe(32_000)
-    expect(next.maxOutputTokens).toBe(4_096)
+    expect(next.contextWindow).toBeUndefined()
+    expect(next.maxOutputTokens).toBeUndefined()
   })
 
   it('rejects non-numeric contextWindow and stays on stage with error', () => {
@@ -118,7 +122,7 @@ describe('onboardingProviderReducer', () => {
     expect(next.maxOutputTokens).toBe(128_000)
   })
 
-  it('accepts empty maxOutputTokens input and uses the derived default', () => {
+  it('accepts empty maxOutputTokens input and leaves the config value unset', () => {
     const next = onboardingProviderReducer(
       {
         ...initialOnboardingProviderState,
@@ -128,7 +132,7 @@ describe('onboardingProviderReducer', () => {
       { type: 'submitMaxOutputTokens', value: '' },
     )
     expect(next.stage).toBe('supportsImages')
-    expect(next.maxOutputTokens).toBe(32_768)
+    expect(next.maxOutputTokens).toBeUndefined()
   })
 
   it('rejects non-numeric maxOutputTokens and stays on stage with error', () => {
@@ -149,25 +153,25 @@ describe('onboardingProviderReducer', () => {
     expect(next.supportsImages).toBe(false)
   })
 
-  it('submitSupportsImages skips to thinking when nextStage is thinking', () => {
+  it('submitSupportsImages skips to modelTemplate when the vendor stage is skipped', () => {
     const next = onboardingProviderReducer(
       {
         ...initialOnboardingProviderState,
         stage: 'supportsImages',
         protocol: 'anthropic',
       },
-      { type: 'submitSupportsImages', value: false, nextStage: 'thinking' },
+      { type: 'submitSupportsImages', value: false, nextStage: 'modelTemplate' },
     )
-    expect(next.stage).toBe('thinking')
+    expect(next.stage).toBe('modelTemplate')
     expect(next.vendor).toBe('auto')
   })
 
-  it('submitVendor advances to thinking and stores the vendor', () => {
+  it('submitVendor advances to modelTemplate and stores the vendor', () => {
     const next = onboardingProviderReducer(
       { ...initialOnboardingProviderState, stage: 'vendor' },
       { type: 'submitVendor', value: 'openai-chat-deepseek-official', nextThinking: 'high' },
     )
-    expect(next.stage).toBe('thinking')
+    expect(next.stage).toBe('modelTemplate')
     expect(next.vendor).toBe('openai-chat-deepseek-official')
   })
 
@@ -182,8 +186,21 @@ describe('onboardingProviderReducer', () => {
       },
       { type: 'submitVendor', value: 'openai-chat-deepseek-official', nextThinking: 'off' },
     )
-    expect(next.stage).toBe('thinking')
+    expect(next.stage).toBe('modelTemplate')
     expect(next.thinking).toBe('off')
+  })
+
+  it('submitModelTemplate advances to thinking and stores the explicit choice', () => {
+    const next = onboardingProviderReducer(
+      { ...initialOnboardingProviderState, stage: 'modelTemplate' },
+      {
+        type: 'submitModelTemplate',
+        value: 'openai-chat-micu-deepseek',
+        nextThinking: 'off',
+      },
+    )
+    expect(next.stage).toBe('thinking')
+    expect(next.modelTemplate).toBe('openai-chat-micu-deepseek')
   })
 
   it('startCreateTemplate enters createTemplate stage', () => {
@@ -194,12 +211,12 @@ describe('onboardingProviderReducer', () => {
     expect(next.stage).toBe('createTemplate')
   })
 
-  it('finishCreateTemplate sets vendor to new template name and advances to thinking', () => {
+  it('finishCreateTemplate sets vendor to new template name and advances to modelTemplate', () => {
     const next = onboardingProviderReducer(
       { ...initialOnboardingProviderState, stage: 'createTemplate' },
       { type: 'finishCreateTemplate', templateName: 'my-private-api', nextThinking: 'off' },
     )
-    expect(next.stage).toBe('thinking')
+    expect(next.stage).toBe('modelTemplate')
     expect(next.vendor).toBe('my-private-api')
   })
 
@@ -209,6 +226,7 @@ describe('onboardingProviderReducer', () => {
         ...initialOnboardingProviderState,
         stage: 'createTemplate',
         vendor: 'auto',
+        modelTemplate: 'none',
       },
       { type: 'cancelCreateTemplate' },
     )
@@ -343,12 +361,28 @@ describe('onboardingProviderReducer', () => {
     expect(next.stage).toBe('maxOutputTokens')
   })
 
-  it('back from thinking returns to vendor', () => {
+  it('back from thinking returns to modelTemplate', () => {
     const next = onboardingProviderReducer(
       { ...initialOnboardingProviderState, stage: 'thinking' },
       { type: 'back' },
     )
+    expect(next.stage).toBe('modelTemplate')
+  })
+
+  it('back from modelTemplate returns to vendor when vendor stage was shown', () => {
+    const next = onboardingProviderReducer(
+      { ...initialOnboardingProviderState, stage: 'modelTemplate' },
+      { type: 'back' },
+    )
     expect(next.stage).toBe('vendor')
+  })
+
+  it('back from modelTemplate returns to supportsImages when vendor stage was skipped', () => {
+    const next = onboardingProviderReducer(
+      { ...initialOnboardingProviderState, stage: 'modelTemplate' },
+      { type: 'back', skipVendor: true },
+    )
+    expect(next.stage).toBe('supportsImages')
   })
 
   it('back from vendor returns to supportsImages', () => {
@@ -397,7 +431,7 @@ describe('onboardingProviderReducer', () => {
 })
 
 describe('full happy-path transition', () => {
-  it('protocol → baseUrl → apiKey → modelId → contextWindow → maxOutputTokens → supportsImages → thinking → userAgent → verifying carries all values', () => {
+  it('protocol → baseUrl → apiKey → modelId → contextWindow → maxOutputTokens → supportsImages → vendor → modelTemplate → thinking → userAgent → verifying carries all values', () => {
     let state = initialOnboardingProviderState
     state = onboardingProviderReducer(state, {
       type: 'pickProtocol',
@@ -434,6 +468,11 @@ describe('full happy-path transition', () => {
       nextThinking: 'high',
     })
     state = onboardingProviderReducer(state, {
+      type: 'submitModelTemplate',
+      value: 'none',
+      nextThinking: 'high',
+    })
+    state = onboardingProviderReducer(state, {
       type: 'submitThinking',
       value: 'high',
     })
@@ -451,6 +490,7 @@ describe('full happy-path transition', () => {
       maxOutputTokens: 32_768,
       supportsImages: false,
       vendor: 'auto',
+      modelTemplate: 'none',
       thinking: 'high',
       userAgent: 'codex_cli_rs/0.50.0',
       routeUsage: 'main_primary',
@@ -472,6 +512,7 @@ describe('buildModelConfig', () => {
       userAgent: '',
       thinking: 'off',
       vendor: 'auto',
+      modelTemplate: 'none',
       routeUsage: 'main_primary',
     }
     expect(buildModelConfig(state)).toEqual({
@@ -498,6 +539,7 @@ describe('buildModelConfig', () => {
       userAgent: '',
       thinking: 'off',
       vendor: 'auto',
+      modelTemplate: 'none',
       routeUsage: 'main_primary',
     }
     expect(buildModelConfig(state)).toMatchObject({ supportsImages: false })
@@ -516,11 +558,52 @@ describe('buildModelConfig', () => {
       thinking: 'high',
       userAgent: '',
       vendor: 'auto',
+      modelTemplate: 'none',
       routeUsage: 'main_primary',
     }
     expect(buildModelConfig(state)).toMatchObject({
       thinking: { enabled: true, effort: 'high' },
     })
+  })
+
+  it('emits modelTemplate only when the wizard chose a template', () => {
+    const base: OnboardingProviderState = {
+      stage: 'verifying',
+      protocol: 'openai-chat',
+      baseUrl: 'https://www.micuapi.ai/v1',
+      apiKey: 'sk-test',
+      modelId: 'deepseek-v4-pro',
+      supportsImages: true,
+      thinking: 'off',
+      userAgent: '',
+      vendor: 'openai-chat-deepseek-official',
+      modelTemplate: 'openai-chat-micu-deepseek',
+      routeUsage: 'main_primary',
+    }
+    expect(buildModelConfig(base)).toMatchObject({
+      modelTemplate: 'openai-chat-micu-deepseek',
+    })
+    const withoutTemplate = buildModelConfig({ ...base, modelTemplate: 'none' })
+    expect('modelTemplate' in withoutTemplate).toBe(false)
+  })
+
+  it('omits contextWindow and maxOutputTokens when wizard inputs were empty', () => {
+    const state: OnboardingProviderState = {
+      stage: 'verifying',
+      protocol: 'openai-chat',
+      baseUrl: 'https://api.example.com/v1',
+      apiKey: 'sk-test',
+      modelId: 'plain-model',
+      supportsImages: true,
+      thinking: 'off',
+      userAgent: '',
+      vendor: 'auto',
+      modelTemplate: 'none',
+      routeUsage: 'main_primary',
+    }
+    const cfg = buildModelConfig(state)
+    expect('contextWindow' in cfg).toBe(false)
+    expect('maxOutputTokens' in cfg).toBe(false)
   })
 
   it('omits thinking field entirely when wizard chose Off', () => {
@@ -536,6 +619,7 @@ describe('buildModelConfig', () => {
       thinking: 'off',
       userAgent: '',
       vendor: 'auto',
+      modelTemplate: 'none',
       routeUsage: 'main_primary',
     }
     const cfg = buildModelConfig(state)
@@ -555,6 +639,7 @@ describe('buildModelConfig', () => {
       userAgent: 'codex_cli_rs/0.50.0',
       thinking: 'off',
       vendor: 'auto',
+      modelTemplate: 'none',
       routeUsage: 'main_primary',
     }
     expect(buildModelConfig(base)).toMatchObject({
@@ -585,6 +670,7 @@ describe('onboarding route persistence', () => {
     userAgent: '',
     thinking: 'off',
     vendor: 'auto',
+    modelTemplate: 'none',
     routeUsage: 'main_primary',
   }
 
@@ -726,7 +812,7 @@ describe('getThinkingChoicesForVendor', () => {
     ])
   })
 
-  it('deepseek-reasoning offers off/high/max only', () => {
+  it('openai-chat-deepseek-official offers off/high/max only', () => {
     expect(getThinkingChoicesForVendor('openai-chat-deepseek-official')).toEqual([
       'off',
       'high',
@@ -734,7 +820,7 @@ describe('getThinkingChoicesForVendor', () => {
     ])
   })
 
-  it('openai-ali-thinking offers off/high/max only', () => {
+  it('openai-chat-aliyun offers off/high/max only', () => {
     expect(getThinkingChoicesForVendor('openai-chat-aliyun')).toEqual([
       'off',
       'high',
@@ -742,14 +828,14 @@ describe('getThinkingChoicesForVendor', () => {
     ])
   })
 
-  it('openai-siliconflow-thinking offers off/high/max only', () => {
+  it('openai-chat-siliconflow offers off/high/max only', () => {
     expect(
       getThinkingChoicesForVendor('openai-chat-siliconflow'),
     ).toEqual(['off', 'high', 'max'])
   })
 
-  it('openai-default offers all 5 choices', () => {
-    expect(getThinkingChoicesForVendor('openai-chat-default')).toEqual([
+  it('unknown OpenAI-chat-style vendor falls back to all 5 choices', () => {
+    expect(getThinkingChoicesForVendor('unknown-openai-chat-vendor')).toEqual([
       'off',
       'low',
       'medium',
@@ -791,6 +877,32 @@ describe('getThinkingChoicesForVendor', () => {
     expect(
       getThinkingChoicesForVendor('no-effort', {
         'no-effort': { protocol: 'openai-chat' },
+      }),
+    ).toEqual(['off', 'low', 'medium', 'high', 'max'])
+  })
+})
+
+describe('getThinkingChoicesForStack', () => {
+  it('honors modelTemplate effort overrides even when vendor is auto', () => {
+    expect(
+      getThinkingChoicesForStack({
+        protocol: 'openai-chat',
+        baseUrl: 'https://www.micuapi.ai/v1',
+        modelId: 'deepseek-v4-pro',
+        vendor: 'auto',
+        modelTemplate: 'openai-chat-micu-deepseek',
+      }),
+    ).toEqual(['off', 'high', 'max'])
+  })
+
+  it('keeps protocol defaults when no modelTemplate is selected', () => {
+    expect(
+      getThinkingChoicesForStack({
+        protocol: 'openai-chat',
+        baseUrl: 'https://example.test/v1',
+        modelId: 'plain-model',
+        vendor: 'auto',
+        modelTemplate: 'none',
       }),
     ).toEqual(['off', 'low', 'medium', 'high', 'max'])
   })
@@ -854,6 +966,39 @@ describe('getVendorChoicesForProtocol', () => {
   })
 })
 
+describe('getRecommendedModelTemplate', () => {
+  it('recommends the micu DeepSeek model template only on micu baseUrl', () => {
+    expect(
+      getRecommendedModelTemplate({
+        protocol: 'openai-chat',
+        baseUrl: 'https://www.micuapi.ai/v1',
+        modelId: 'deepseek-v4-pro',
+        vendor: 'openai-chat-deepseek-official',
+      }),
+    ).toBe('openai-chat-micu-deepseek')
+
+    expect(
+      getRecommendedModelTemplate({
+        protocol: 'openai-chat',
+        baseUrl: 'https://api.deepseek.com',
+        modelId: 'deepseek-v4-pro',
+        vendor: 'openai-chat-deepseek-official',
+      }),
+    ).toBe('openai-chat-deepseek-v4p')
+  })
+
+  it('returns undefined when no model template matches', () => {
+    expect(
+      getRecommendedModelTemplate({
+        protocol: 'openai-chat',
+        baseUrl: 'https://example.test/v1',
+        modelId: 'plain-model',
+        vendor: 'auto',
+      }),
+    ).toBeUndefined()
+  })
+})
+
 describe('shouldSkipVendorStage', () => {
   it('anthropic protocol — skips (no built-in vendors fit)', () => {
     expect(shouldSkipVendorStage('anthropic')).toBe(true)
@@ -863,7 +1008,7 @@ describe('shouldSkipVendorStage', () => {
     expect(shouldSkipVendorStage('openai-responses')).toBe(true)
   })
 
-  it('openai-chat protocol — does not skip (3 gateway-specific vendors fit)', () => {
+  it('openai-chat protocol — does not skip (gateway-specific vendors fit)', () => {
     expect(shouldSkipVendorStage('openai-chat')).toBe(false)
   })
 

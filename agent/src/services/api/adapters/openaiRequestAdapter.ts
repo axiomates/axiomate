@@ -31,9 +31,14 @@ export type OpenAIMessage = {
   reasoning_content?: string
 }
 
+export type OpenAIReasoningRoundTripFormat =
+  | 'reasoning_content'
+  | 'content_thinking'
+
 type OpenAIContentPart =
   | { type: 'text'; text: string }
   | { type: 'image_url'; image_url: { url: string; detail?: 'auto' | 'low' | 'high' } }
+  | { type: 'thinking'; thinking: string }
 
 type OpenAIToolCall = {
   id: string
@@ -54,10 +59,16 @@ type OpenAIToolCall = {
 export function messagesToOpenAI(
   messages: MessageParam[],
   systemPrompt?: string | ContentBlockParam[],
-  options?: { supportsImages?: boolean; roundTripReasoningContent?: boolean },
+  options?: {
+    supportsImages?: boolean
+    roundTripReasoningContent?: boolean
+    reasoningRoundTripFormat?: OpenAIReasoningRoundTripFormat
+  },
 ): OpenAIMessage[] {
   const supportsImages = options?.supportsImages ?? true
   const roundTripReasoning = options?.roundTripReasoningContent ?? false
+  const reasoningRoundTripFormat =
+    options?.reasoningRoundTripFormat ?? 'reasoning_content'
   const result: OpenAIMessage[] = []
 
   // System prompt
@@ -88,7 +99,7 @@ export function messagesToOpenAI(
     // as a follow-up role:'user' message after all tool replies.
     const pendingToolResultImages: OpenAIContentPart[] = []
     // Accumulated thinking text for this assistant msg, attached as
-    // `reasoning_content` only when roundTripReasoning is enabled.
+    // the configured replay shape only when roundTripReasoning is enabled.
     let reasoningText = ''
 
     for (const block of msg.content) {
@@ -216,23 +227,35 @@ export function messagesToOpenAI(
     // their tool_calls by an intervening user message.
     let mainMessage: OpenAIMessage | null = null
     const emitToolResultsFirst = msg.role === 'user' && toolResults.length > 0
+    const replayThinkingInContent =
+      msg.role === 'assistant' &&
+      reasoningText.length > 0 &&
+      reasoningRoundTripFormat === 'content_thinking'
+    const replayThinkingAsReasoningContent =
+      msg.role === 'assistant' &&
+      reasoningText.length > 0 &&
+      reasoningRoundTripFormat === 'reasoning_content'
+    const assistantContentParts =
+      replayThinkingInContent
+        ? [{ type: 'thinking' as const, thinking: reasoningText }, ...textParts]
+        : textParts
 
     if (msg.role === 'assistant' && toolCalls.length > 0) {
       mainMessage = {
         role: 'assistant',
-        content: textParts.length > 0 ? textParts : null,
+        content: assistantContentParts.length > 0 ? assistantContentParts : null,
         tool_calls: toolCalls,
-        ...(reasoningText.length > 0
+        ...(replayThinkingAsReasoningContent
           ? { reasoning_content: reasoningText }
           : {}),
       }
     } else if (textParts.length > 0) {
       mainMessage = {
         role: msg.role,
-        content: textParts.length === 1 && textParts[0]!.type === 'text'
-          ? textParts[0]!.text
-          : textParts,
-        ...(msg.role === 'assistant' && reasoningText.length > 0
+        content: assistantContentParts.length === 1 && assistantContentParts[0]!.type === 'text'
+          ? assistantContentParts[0]!.text
+          : assistantContentParts,
+        ...(replayThinkingAsReasoningContent
           ? { reasoning_content: reasoningText }
           : {}),
       }
@@ -242,8 +265,12 @@ export function messagesToOpenAI(
       // attached to the right turn.
       mainMessage = {
         role: 'assistant',
-        content: '',
-        reasoning_content: reasoningText,
+        content: replayThinkingInContent
+          ? [{ type: 'thinking' as const, thinking: reasoningText }]
+          : '',
+        ...(replayThinkingAsReasoningContent
+          ? { reasoning_content: reasoningText }
+          : {}),
       }
     }
 

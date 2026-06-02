@@ -41,6 +41,73 @@ export const ThinkingDeclSchema = z
 const PatchObjectSchema = z.record(z.unknown())
 
 const PROTOCOL_LITERALS = ['anthropic', 'openai-chat', 'openai-responses'] as const
+const REASONING_ROUND_TRIP_FORMATS = ['reasoning_content', 'content_thinking'] as const
+const TemplatePatchFields = {
+  // Patches accept null at the top level as an RFC 7396 delete marker —
+  // a child layer can null out an inherited enabledPatch / disabledPatch.
+  enabledPatch: z.union([PatchObjectSchema, z.null()]).optional(),
+  disabledPatch: z.union([PatchObjectSchema, z.null()]).optional(),
+  effort: z
+    .union([
+      z
+        .object({
+          patch: z.union([PatchObjectSchema, z.null()]).optional(),
+          // valueMap maps the user-facing effort levels (low|medium|high|max)
+          // to vendor-specific wire strings. 'none' is intentionally NOT a
+          // key here: it's the runtime off-switch used by ModelPicker to
+          // emit `disabledPatch`, not an effort tier to remap. The .strict()
+          // below rejects `valueMap: { none: '...' }` configs at parse time.
+          // applyThinkingTemplate() handles 'none' by branching to
+          // disabledPatch BEFORE valueMap lookup happens.
+          //
+          // valueMap is *partial*: the keys present here are exactly the
+          // tiers ModelPicker exposes in its left/right cycling for this
+          // vendor. Omitting a tier means "this vendor does not support
+          // that level" — see getCyclableEffortLevels in effort.ts.
+          // A tier may be set to `null` to remove an inherited entry
+          // (RFC 7396 JSON Merge Patch semantics).
+          valueMap: z
+            .object({
+              low: z.union([z.string(), z.null()]).optional(),
+              medium: z.union([z.string(), z.null()]).optional(),
+              high: z.union([z.string(), z.null()]).optional(),
+              max: z.union([z.string(), z.null()]).optional(),
+            })
+            .strict()
+            .partial()
+            .optional(),
+        })
+        .strict(),
+      z.null(),
+    ])
+    .optional(),
+  budget: z
+    .union([
+      z
+        .object({
+          patch: z.union([PatchObjectSchema, z.null()]).optional(),
+        })
+        .strict(),
+      z.null(),
+    ])
+    .optional(),
+  anthropicThinkingField: z
+    .union([
+      z
+        .object({
+          defaultBudgetTokens: z.number().int().positive(),
+        })
+        .strict(),
+      z.null(),
+    ])
+    .optional(),
+  autoRoundTripReasoningContent: z
+    .union([z.boolean(), z.null()])
+    .optional(),
+  reasoningRoundTripFormat: z
+    .union([z.enum(REASONING_ROUND_TRIP_FORMATS), z.null()])
+    .optional(),
+}
 
 export const VendorTemplateSchema = z
   .object({
@@ -65,91 +132,31 @@ export const VendorTemplateSchema = z
           return false
         }
       }, { message: 'matchBaseUrlRegex is not a valid regular expression' }),
-    // Patches accept null at the top level as an RFC 7396 delete marker —
-    // a child layer can null out an inherited enabledPatch / disabledPatch.
-    enabledPatch: z.union([PatchObjectSchema, z.null()]).optional(),
-    disabledPatch: z.union([PatchObjectSchema, z.null()]).optional(),
-    effort: z
-      .union([
-        z
-          .object({
-            patch: z.union([PatchObjectSchema, z.null()]).optional(),
-            // valueMap maps the user-facing effort levels (low|medium|high|max)
-            // to vendor-specific wire strings. 'none' is intentionally NOT a
-            // key here: it's the runtime off-switch used by ModelPicker to
-            // emit `disabledPatch`, not an effort tier to remap. The .strict()
-            // below rejects `valueMap: { none: '...' }` configs at parse time.
-            // applyThinkingTemplate() handles 'none' by branching to
-            // disabledPatch BEFORE valueMap lookup happens.
-            //
-            // valueMap is *partial*: the keys present here are exactly the
-            // tiers ModelPicker exposes in its left/right cycling for this
-            // vendor. Omitting a tier means "this vendor does not support
-            // that level" — see getCyclableEffortLevels in effort.ts.
-            // A tier may be set to `null` to remove an inherited entry
-            // (RFC 7396 JSON Merge Patch semantics).
-            valueMap: z
-              .object({
-                low: z.union([z.string(), z.null()]).optional(),
-                medium: z.union([z.string(), z.null()]).optional(),
-                high: z.union([z.string(), z.null()]).optional(),
-                max: z.union([z.string(), z.null()]).optional(),
-              })
-              .strict()
-              .partial()
-              .optional(),
-          })
-          .strict(),
-        z.null(),
-      ])
-      .optional(),
-    budget: z
-      .union([
-        z
-          .object({
-            patch: z.union([PatchObjectSchema, z.null()]).optional(),
-          })
-          .strict(),
-        z.null(),
-      ])
-      .optional(),
-    anthropicThinkingField: z
-      .union([
-        z
-          .object({
-            defaultBudgetTokens: z.number().int().positive(),
-          })
-          .strict(),
-        z.null(),
-      ])
-      .optional(),
-    // autoRoundTripReasoningContent is intentionally NOT on VendorTemplate.
-    // It's a model-class quirk (DeepSeek V4+ requires reasoning_content
-    // round-trip on tool calls regardless of which gateway hosts the model),
-    // so it lives on ModelTemplate. Putting it here would silently let
-    // users misclassify it as a vendor concern.
+    ...TemplatePatchFields,
   })
   .strict()
 
 /**
  * Model templates overlay quirks that follow a model across gateways
- * (e.g. DeepSeek V4+ requiring reasoning_content round-trip in tool
- * calls regardless of whether you reach it via api.deepseek.com,
+ * (e.g. DeepSeek V4+ requiring prior reasoning/thinking replay across
+ * tool calls regardless of whether you reach it via api.deepseek.com,
  * SiliconFlow, or any third-party relay).
  *
- * Same patch shape as VendorTemplate sans `extends`. Owns
- * `autoRoundTripReasoningContent` since that quirk follows the model.
+ * Same patch shape as VendorTemplate sans `extends`. Replay fields may be
+ * declared here or on vendor templates; model templates win after merge.
  *
- * Has THREE matching mechanisms (combined via AND on auto-match):
- *   - matchModelRegex: required for auto-match; tested against model name
+ * Has FOUR matching mechanisms (combined via AND for recommendations and
+ * explicit-pin compatibility validation):
+ *   - matchModelRegex: required; tested against model name
  *   - matchVendorRegex: optional gate; tested against the resolved vendor
  *     name. Lets a quirk scope to "this model AND on this vendor".
- *   - protocol: optional protocol gate. When set, resolveStack throws
- *     if the model entry's protocol doesn't match (prevents emitting
- *     wrong-shape wire fields).
+ *   - matchBaseUrlRegex: optional gate; tested against the model entry baseUrl
+ *     so relay-specific model overlays can be recommended narrowly.
+ *   - protocol: optional protocol gate. When set, explicit modelTemplate pins
+ *     must use the same protocol (prevents emitting wrong-shape wire fields).
  *
- * Most model templates leave protocol unset since their fields are
- * protocol-neutral (autoRoundTripReasoningContent is a client-side flag).
+ * Set protocol when a template's patches or replay flags only make sense for
+ * one wire shape; leave it unset only for protocol-neutral overlays.
  */
 export const ModelTemplateSchema = z
   .object({
@@ -176,52 +183,20 @@ export const ModelTemplateSchema = z
           return false
         }
       }, { message: 'matchVendorRegex is not a valid regular expression' }),
+    matchBaseUrlRegex: z
+      .string()
+      .optional()
+      .refine(s => {
+        if (s === undefined) return true
+        try {
+          new RegExp(s)
+          return true
+        } catch {
+          return false
+        }
+      }, { message: 'matchBaseUrlRegex is not a valid regular expression' }),
     protocol: z.enum(PROTOCOL_LITERALS).optional(),
-    enabledPatch: z.union([PatchObjectSchema, z.null()]).optional(),
-    disabledPatch: z.union([PatchObjectSchema, z.null()]).optional(),
-    effort: z
-      .union([
-        z
-          .object({
-            patch: z.union([PatchObjectSchema, z.null()]).optional(),
-            valueMap: z
-              .object({
-                low: z.union([z.string(), z.null()]).optional(),
-                medium: z.union([z.string(), z.null()]).optional(),
-                high: z.union([z.string(), z.null()]).optional(),
-                max: z.union([z.string(), z.null()]).optional(),
-              })
-              .strict()
-              .partial()
-              .optional(),
-          })
-          .strict(),
-        z.null(),
-      ])
-      .optional(),
-    budget: z
-      .union([
-        z
-          .object({
-            patch: z.union([PatchObjectSchema, z.null()]).optional(),
-          })
-          .strict(),
-        z.null(),
-      ])
-      .optional(),
-    anthropicThinkingField: z
-      .union([
-        z
-          .object({
-            defaultBudgetTokens: z.number().int().positive(),
-          })
-          .strict(),
-        z.null(),
-      ])
-      .optional(),
-    autoRoundTripReasoningContent: z
-      .union([z.boolean(), z.null()])
-      .optional(),
+    ...TemplatePatchFields,
   })
   .strict()
 
@@ -241,11 +216,10 @@ export const ModelProviderConfigSchema = z
     description: z.string().optional(),
     protocol: z.enum(['openai-chat', 'openai-responses', 'anthropic']),
     vendor: z.string().optional(),
-    // Note: there is no explicit `modelTemplate` pin field. Model templates
-    // are always auto-matched by inferModelTemplate via matchModelRegex
-    // (required) plus optional matchVendorRegex / protocol filters. This
-    // makes user error impossible at the entry level — a model template
-    // either matches the entry's model+vendor+protocol or doesn't.
+    // Explicit model-layer overlay. Leaving it unset means no model template
+    // participates in runtime resolution; inferModelTemplate is only used by
+    // onboarding to recommend a value.
+    modelTemplate: z.string().optional(),
     baseUrl: z.string().min(1),
     apiKey: z.string(),
     contextWindow: z.number().int().positive().optional(),

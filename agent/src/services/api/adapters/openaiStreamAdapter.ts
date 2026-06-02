@@ -29,7 +29,7 @@ export type OpenAIChatChunk = {
     index: number
     delta: {
       role?: string
-      content?: string | null
+      content?: string | OpenAIChatContentPart[] | null
       tool_calls?: Array<{
         index: number
         id?: string
@@ -47,6 +47,11 @@ export type OpenAIChatChunk = {
     total_tokens?: number
   }) | null
 }
+
+type OpenAIChatContentPart =
+  | { type: 'text'; text?: string | null }
+  | { type: 'thinking'; thinking?: string | null }
+  | { type: string; [key: string]: unknown }
 
 // ---------------------------------------------------------------------------
 // Adapter state — tracks block indices across chunks
@@ -122,42 +127,29 @@ export class OpenAIStreamState {
       const delta = choice.delta ?? {}
 
       // --- Thinking (reasoning_content) ---
-      if (delta.reasoning_content) {
-        if (!this.hasThinkingBlock) {
-          this.hasThinkingBlock = true
-          this.thinkingBlockIndex = this.nextIndex++
-          const block: ContentBlock = {
-            type: 'thinking',
-            thinking: '',
-            roundTrip: { provider: 'none' },
-          }
-          events.push({ type: 'block_start', index: this.thinkingBlockIndex, block })
-        }
-        const thinkingDelta: BlockDelta = { type: 'thinking', thinking: delta.reasoning_content }
-        events.push({ type: 'block_delta', index: this.thinkingBlockIndex, delta: thinkingDelta })
+      const hasReasoningContent =
+        typeof delta.reasoning_content === 'string' &&
+        delta.reasoning_content.length > 0
+      if (hasReasoningContent) {
+        this.appendThinking(events, delta.reasoning_content)
       }
 
       // --- Text content ---
-      if (delta.content) {
-        if (!this.hasTextBlock) {
-          this.hasTextBlock = true
-          this.textBlockIndex = this.nextIndex++
-          // Close thinking block before starting text
-          if (this.hasThinkingBlock) {
-            events.push({ type: 'block_stop', index: this.thinkingBlockIndex })
-            // Clear the flag — mirror of the tool_use clear at the bottom of
-            // finish_reason. Without this, finish_reason would re-emit
-            // block_stop[thinking] and streamAccumulator would push a second
-            // AssistantMessage that normalizeMessagesForAPI then merges into
-            // [thinking, thinking, text]. Currently invisible (OpenAI request
-            // adapter strips thinking blocks) but a latent bug.
-            this.hasThinkingBlock = false
+      const content = delta.content
+      if (typeof content === 'string') {
+        this.appendText(events, content)
+      } else if (Array.isArray(content)) {
+        for (const part of content) {
+          if (
+            !hasReasoningContent &&
+            part.type === 'thinking' &&
+            typeof part.thinking === 'string'
+          ) {
+            this.appendThinking(events, part.thinking)
+          } else if (part.type === 'text' && typeof part.text === 'string') {
+            this.appendText(events, part.text)
           }
-          const block: ContentBlock = { type: 'text', text: '' }
-          events.push({ type: 'block_start', index: this.textBlockIndex, block })
         }
-        const textDelta: BlockDelta = { type: 'text', text: delta.content }
-        events.push({ type: 'block_delta', index: this.textBlockIndex, delta: textDelta })
       }
 
       // --- Tool calls ---
@@ -182,14 +174,8 @@ export class OpenAIStreamState {
               this.toolBlockIndices.set(tc.index, blockIdx)
               this.pendingToolCalls.delete(tc.index)
               // Close open blocks before starting tool
-              if (this.hasThinkingBlock) {
-                events.push({ type: 'block_stop', index: this.thinkingBlockIndex })
-                this.hasThinkingBlock = false
-              }
-              if (this.hasTextBlock) {
-                events.push({ type: 'block_stop', index: this.textBlockIndex })
-                this.hasTextBlock = false
-              }
+              this.closeThinking(events)
+              this.closeText(events)
               const block: ContentBlock = {
                 type: 'tool_use',
                 id: pending.id,
@@ -213,14 +199,8 @@ export class OpenAIStreamState {
       // --- Finish reason ---
       if (choice.finish_reason) {
         // Close any open blocks and clear flags (so flush() won't duplicate)
-        if (this.hasThinkingBlock) {
-          events.push({ type: 'block_stop', index: this.thinkingBlockIndex })
-          this.hasThinkingBlock = false
-        }
-        if (this.hasTextBlock) {
-          events.push({ type: 'block_stop', index: this.textBlockIndex })
-          this.hasTextBlock = false
-        }
+        this.closeThinking(events)
+        this.closeText(events)
         for (const [, idx] of this.toolBlockIndices) {
           events.push({ type: 'block_stop', index: idx })
         }
@@ -295,14 +275,8 @@ export class OpenAIStreamState {
    */
   flush(): StreamEvent[] {
     const events: StreamEvent[] = []
-    if (this.hasThinkingBlock) {
-      events.push({ type: 'block_stop', index: this.thinkingBlockIndex })
-      this.hasThinkingBlock = false
-    }
-    if (this.hasTextBlock) {
-      events.push({ type: 'block_stop', index: this.textBlockIndex })
-      this.hasTextBlock = false
-    }
+    this.closeThinking(events)
+    this.closeText(events)
     for (const [, idx] of this.toolBlockIndices) {
       events.push({ type: 'block_stop', index: idx })
     }
@@ -317,5 +291,47 @@ export class OpenAIStreamState {
       events.push({ type: 'response_stop' })
     }
     return events
+  }
+
+  private appendThinking(events: StreamEvent[], thinking: string): void {
+    if (thinking.length === 0) return
+    if (!this.hasThinkingBlock) {
+      this.closeText(events)
+      this.hasThinkingBlock = true
+      this.thinkingBlockIndex = this.nextIndex++
+      const block: ContentBlock = {
+        type: 'thinking',
+        thinking: '',
+        roundTrip: { provider: 'none' },
+      }
+      events.push({ type: 'block_start', index: this.thinkingBlockIndex, block })
+    }
+    const thinkingDelta: BlockDelta = { type: 'thinking', thinking }
+    events.push({ type: 'block_delta', index: this.thinkingBlockIndex, delta: thinkingDelta })
+  }
+
+  private appendText(events: StreamEvent[], text: string): void {
+    if (text.length === 0) return
+    if (!this.hasTextBlock) {
+      this.closeThinking(events)
+      this.hasTextBlock = true
+      this.textBlockIndex = this.nextIndex++
+      const block: ContentBlock = { type: 'text', text: '' }
+      events.push({ type: 'block_start', index: this.textBlockIndex, block })
+    }
+    const textDelta: BlockDelta = { type: 'text', text }
+    events.push({ type: 'block_delta', index: this.textBlockIndex, delta: textDelta })
+  }
+
+  private closeThinking(events: StreamEvent[]): void {
+    if (!this.hasThinkingBlock) return
+    events.push({ type: 'block_stop', index: this.thinkingBlockIndex })
+    this.hasThinkingBlock = false
+  }
+
+  private closeText(events: StreamEvent[]): void {
+    if (!this.hasTextBlock) return
+    events.push({ type: 'block_stop', index: this.textBlockIndex })
+    this.hasTextBlock = false
   }
 }

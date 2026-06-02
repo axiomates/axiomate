@@ -134,6 +134,56 @@ describe('providerRegistry', () => {
     expect(provider.name).toBe('openai-responses')
   })
 
+  it('rejects unknown modelTemplate references', () => {
+    mockGlobalConfig.mockReturnValue({
+      models: {
+        'deepseek-v4-pro': {
+          model: 'deepseek-v4-pro',
+          protocol: 'openai-chat',
+          baseUrl: 'https://api.deepseek.com',
+          apiKey: 'sk-test',
+          modelTemplate: 'does-not-exist',
+        },
+      },
+    })
+    expect(() => getProviderForModel('deepseek-v4-pro')).toThrow(
+      /references modelTemplate 'does-not-exist'/,
+    )
+  })
+
+  it('rejects explicit modelTemplate pins that do not match the configured endpoint', () => {
+    mockGlobalConfig.mockReturnValue({
+      models: {
+        'deepseek-v4-pro': {
+          model: 'deepseek-v4-pro',
+          protocol: 'openai-chat',
+          baseUrl: 'https://api.deepseek.com',
+          apiKey: 'sk-test',
+          modelTemplate: 'openai-chat-micu-deepseek',
+        },
+      },
+    })
+    expect(() => getProviderForModel('deepseek-v4-pro')).toThrow(
+      /does not match this model\/vendor\/protocol\/baseUrl/,
+    )
+  })
+
+  it('accepts a compatible explicit modelTemplate pin', () => {
+    mockGlobalConfig.mockReturnValue({
+      models: {
+        'micu-0.2-deepseek-v4-pro': {
+          model: 'deepseek-v4-pro',
+          protocol: 'openai-chat',
+          baseUrl: 'https://www.micuapi.ai/v1',
+          apiKey: 'sk-test',
+          modelTemplate: 'openai-chat-micu-deepseek',
+        },
+      },
+    })
+    const provider = getProviderForModel('micu-0.2-deepseek-v4-pro')
+    expect(provider.name).toBe('openai-chat')
+  })
+
   it('rejects unsupported protocol at config validation', () => {
     mockGlobalConfig.mockReturnValue({
       models: {

@@ -20,13 +20,13 @@ describe('templateEditorReducer', () => {
   it('submitExtends from extends → opening with both name and baseName', () => {
     const next = templateEditorReducer(
       { phase: 'extends', kind: 'vendor', name: 'my-vendor' },
-      { type: 'submitExtends', baseName: 'openai-chat-default' },
+      { type: 'submitExtends', baseName: 'openai-chat' },
     )
     expect(next).toEqual({
       phase: 'opening',
 kind: 'vendor',
       name: 'my-vendor',
-      baseName: 'openai-chat-default',
+      baseName: 'openai-chat',
     })
   })
 
@@ -34,14 +34,14 @@ kind: 'vendor',
     const state = { phase: 'name' as const, kind: 'vendor' as const }
     const next = templateEditorReducer(state, {
       type: 'submitExtends',
-      baseName: 'openai-chat-default',
+      baseName: 'openai-chat',
     })
     expect(next).toBe(state)
   })
 
   it('editorSucceeded transitions to done', () => {
     const next = templateEditorReducer(
-      { phase: 'opening', kind: 'vendor', name: 'foo', baseName: 'openai-chat-default' },
+      { phase: 'opening', kind: 'vendor', name: 'foo', baseName: 'openai-chat' },
       { type: 'editorSucceeded' },
     )
     expect(next).toEqual({ phase: 'done', kind: 'vendor' })
@@ -49,7 +49,7 @@ kind: 'vendor',
 
   it('editorCancelled transitions to done', () => {
     const next = templateEditorReducer(
-      { phase: 'opening', kind: 'vendor', name: 'foo', baseName: 'openai-chat-default' },
+      { phase: 'opening', kind: 'vendor', name: 'foo', baseName: 'openai-chat' },
       { type: 'editorCancelled' },
     )
     expect(next).toEqual({ phase: 'done', kind: 'vendor' })
@@ -57,7 +57,7 @@ kind: 'vendor',
 
   it('editorInvalid → invalid phase carrying error and tempPath', () => {
     const next = templateEditorReducer(
-      { phase: 'opening', kind: 'vendor', name: 'foo', baseName: 'openai-chat-default' },
+      { phase: 'opening', kind: 'vendor', name: 'foo', baseName: 'openai-chat' },
       {
         type: 'editorInvalid',
         error: 'Schema validation failed:\n  • effort.patch: required',
@@ -68,7 +68,7 @@ kind: 'vendor',
       phase: 'invalid',
 kind: 'vendor',
       name: 'foo',
-      baseName: 'openai-chat-default',
+      baseName: 'openai-chat',
       error: 'Schema validation failed:\n  • effort.patch: required',
       tempPath: '/tmp/xyz.json',
     })
@@ -80,7 +80,7 @@ kind: 'vendor',
         phase: 'invalid',
 kind: 'vendor',
         name: 'foo',
-        baseName: 'openai-chat-default',
+        baseName: 'openai-chat',
         error: 'oops',
         tempPath: '/tmp/abc.json',
       },
@@ -90,7 +90,7 @@ kind: 'vendor',
       phase: 'opening',
 kind: 'vendor',
       name: 'foo',
-      baseName: 'openai-chat-default',
+      baseName: 'openai-chat',
       reusePath: '/tmp/abc.json',
     })
   })

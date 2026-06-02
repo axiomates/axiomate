@@ -17,9 +17,10 @@ disentangle:
   DeepSeek's `thinking.type` switch, etc.
 
 - **model** — quirks that follow the *model itself* across gateways.
-  DeepSeek V4+ needs `reasoning_content` round-tripped on tool calls
-  regardless of whether you reach it via the official API, SiliconFlow,
-  OpenRouter, or any private relay.
+  DeepSeek V4+ needs prior reasoning/thinking round-tripped on tool calls
+  but the exact replay shape can differ by relay. Runtime applies a model
+  template only when the model entry explicitly sets `modelTemplate`; the
+  wizard uses matcher fields to recommend one.
 
 ## Resolution
 
@@ -61,12 +62,9 @@ Owns gateway-specific deviations from the protocol's standard. Built-in:
 
 | Vendor | Protocol | Quirks |
 |---|---|---|
-| `anthropic` | `anthropic` | (none — pure protocol) |
-| `openai-chat-default` | `openai-chat` | (none — pure protocol) |
 | `openai-chat-deepseek-official` | `openai-chat` | `thinking.type` switch + valueMap deletes low/medium |
 | `openai-chat-aliyun` | `openai-chat` | `enable_thinking` + `thinking_budget` + valueMap deletes low/medium + remaps max → xhigh |
 | `openai-chat-siliconflow` | `openai-chat` | `enable_thinking` + `thinking_budget` + valueMap deletes low/medium |
-| `openai-responses` | `openai-responses` | (none — pure protocol) |
 
 User-defined vendors live under `~/.axiomate.json`'s top-level `templates`
 field. `protocol` is **optional** at this layer: a vendor template that
@@ -102,21 +100,26 @@ to compatible model entries.
   } | null
   budget?: { patch?: dict | null } | null   // contains '<budget>' placeholder
   anthropicThinkingField?: { defaultBudgetTokens: number } | null
+  autoRoundTripReasoningContent?: boolean | null
+  reasoningRoundTripFormat?: 'reasoning_content' | 'content_thinking' | null
 }
 ```
 
-`autoRoundTripReasoningContent` is **intentionally absent** from
-VendorTemplate — that's a model-class quirk, not a gateway behavior.
-Declare it on a ModelTemplate instead.
+`autoRoundTripReasoningContent` and `reasoningRoundTripFormat` are accepted
+on both vendor templates and model templates. The recommended split is:
+use model templates for model-specific replay behavior. Gateway-wide replay
+defaults can still live in vendor templates, but model templates are merged
+after vendor templates, so the model layer wins if both set the same field.
 
 ### Model layer
 
 Owns quirks specific to a model that travel with it across gateways.
 Built-in:
 
-| Model template | Auto-match | Quirks |
-|---|---|---|
-| `openai-chat-deepseek-v4p` | `\bdeepseek[\s\-_]*v?[\s\-_]*\d+` (with version >= 4) | `autoRoundTripReasoningContent: true` |
+| Model template | Protocol gate | Recommendation match | Quirks |
+|---|---|---|---|
+| `openai-chat-deepseek-v4p` | `openai-chat` | `\bdeepseek[\s\-_]*v?[\s\-_]*\d+` (with version >= 4) | `autoRoundTripReasoningContent: true`, `reasoningRoundTripFormat: reasoning_content` |
+| `openai-chat-micu-deepseek` | `openai-chat` | same DeepSeek V4+ regex + `matchBaseUrlRegex: micuapi\.ai` | DeepSeek `thinking.type` switch + high/max valueMap + `autoRoundTripReasoningContent: true` + `reasoningRoundTripFormat: content_thinking` |
 
 User-defined model templates live under `~/.axiomate.json`'s top-level
 `modelTemplates` field.
@@ -125,9 +128,8 @@ User-defined model templates live under `~/.axiomate.json`'s top-level
 
 ```ts
 {
-  // REQUIRED. There is no explicit pin field on ModelProviderConfig —
-  // this regex IS the selection mechanism. A model template without
-  // matchModelRegex can never be applied; the loader logs a warning.
+  // REQUIRED. Used by the wizard to recommend templates and by resolveStack
+  // to validate explicit models[*].modelTemplate pins.
   matchModelRegex: string
 
   // Optional gate. When set, the resolved vendor name must also match.
@@ -135,12 +137,11 @@ User-defined model templates live under `~/.axiomate.json`'s top-level
   // e.g. GLM-5.1 only-on-SiliconFlow workarounds.
   matchVendorRegex?: string
 
-  // Optional protocol filter. When set, the template applies ONLY when
-  // the model entry's protocol matches — silent skip otherwise (no
-  // throw). The auto-match nature of model templates makes silent
-  // filtering the right default: a non-matching template just doesn't
-  // contribute, and the user can't accidentally pin a wrong template
-  // since there's no pin mechanism.
+  // Optional baseUrl gate for recommendations / compatibility validation.
+  matchBaseUrlRegex?: string
+
+  // Optional protocol filter. When set, explicit modelTemplate pins must
+  // use this same protocol.
   protocol?: 'anthropic' | 'openai-chat' | 'openai-responses'
 
   enabledPatch?: dict | null
@@ -149,12 +150,15 @@ User-defined model templates live under `~/.axiomate.json`'s top-level
   budget?: { patch? } | null
   anthropicThinkingField?: ... | null
   autoRoundTripReasoningContent?: boolean | null
+  reasoningRoundTripFormat?: 'reasoning_content' | 'content_thinking' | null
 }
 ```
 
-All three filters (`matchModelRegex` + optional `matchVendorRegex` +
-optional `protocol`) combine via AND. If any one of them fails, the
-template silently skips and the rest of the stack proceeds normally.
+All filters (`matchModelRegex` + optional `matchVendorRegex` +
+`matchBaseUrlRegex` + `protocol`) combine via AND. During wizard
+recommendation, non-matching templates are skipped. During runtime
+resolution, an explicit `modelTemplate` whose gates do not match throws a
+configuration error.
 
 Note: ModelTemplate has **no `extends`**. Model overlays don't form
 inheritance chains — they apply one at a time, on top of whatever
@@ -178,9 +182,7 @@ The user's per-model configuration:
 
   // Template selection
   vendor?: string                // pin vendor template; otherwise inferred from baseUrl
-  // (No modelTemplate pin field — model templates are always auto-matched
-  //  via matchModelRegex + optional matchVendorRegex + optional protocol
-  //  filters. The user cannot accidentally pin a wrong template.)
+  modelTemplate?: string         // explicit model overlay; omitted = none
 
   // Capacity / capability
   contextWindow?: number
@@ -294,7 +296,7 @@ Examples (varying vendor):
   no `reasoning_effort`, no `thinking_budget`
 - `enabled: false` on `openai-chat-deepseek-official` → wire has
   `thinking: { type: "disabled" }`
-- `enabled: false` on `openai-chat-default` (no `disabledPatch`) →
+- `enabled: false` on `openai-chat` (no `disabledPatch`) →
   wire has **no thinking-related fields at all**
 
 ### `effort: 'none' | 'low' | 'medium' | 'high' | 'max'` — default tier
@@ -330,7 +332,7 @@ Built-in coverage:
 | `openai-chat-siliconflow` | ✅ | `thinking_budget: <budget>` |
 | `openai-chat-aliyun` | ✅ | `thinking_budget: <budget>` |
 | `anthropic` (protocol) | ✅ | `thinking.budget_tokens: <budget>` |
-| `openai-chat-default` | ❌ — silently ignored + debug warning |  |
+| `openai-chat` | ❌ — silently ignored + debug warning |  |
 | `openai-chat-deepseek-official` | ❌ — same |  |
 | `openai-responses` | ❌ — same |  |
 
@@ -394,17 +396,19 @@ fragmentation.
 |---|---|---|
 | **Protocol-defined field** | protocol (built-in only) | `output_config.effort` for anthropic |
 | **API gateway extension** | vendor template | aliyun's `enable_thinking`, deepseek's `thinking.type` |
-| **Model-class quirk** (cross-gateway) | model template | DeepSeek V4+ `autoRoundTripReasoningContent` |
+| **Model / relay quirk** | model template | DeepSeek V4+ reasoning replay; micu DeepSeek's `content[].thinking` replay shape |
 | **Runtime preference** | model entry `thinking` field | `enabled: true, effort: 'high'` |
 | **Wire-protocol settings** | model entry top level | `baseUrl`, `apiKey`, `supportsImages`, `contextWindow` |
 
-Most users only write the last two categories. The first three are
-auto-resolved from baseUrl host + model name regex.
+Most users only write the last two categories. Vendor templates are
+auto-resolved only when they declare `matchBaseUrlRegex`; model templates
+are explicit runtime pins, with matcher fields used by the wizard to
+recommend a value.
 
 ## Auto-inference
 
 When the user omits `vendor` on a model entry, axiomate auto-resolves
-it. Model templates are always auto-resolved (no pin field exists).
+it. Model templates are not auto-applied at runtime.
 
 ### Vendor inference (`inferVendor`)
 
@@ -415,33 +419,41 @@ Gateway-only; ignores model name:
 3. `protocol === 'openai-chat'`:
    - Walk vendor templates (custom > built-in) and pick the first whose
      `matchBaseUrlRegex` matches the model entry's baseUrl. Built-ins
-     ship with patterns for known gateways (`api.deepseek.com`,
-     `siliconflow.cn`, `dashscope.aliyun*.com`). Custom vendors that
-     set `matchBaseUrlRegex` join the auto-match pool — those without
-     the field require `vendor: 'name'` on the model entry.
-   - Fallback: `openai-chat-default`.
+     ship with patterns for known safe gateway-wide schemas
+     (`api.deepseek.com`, `siliconflow.cn`, `dashscope.aliyun*.com`).
+     Custom vendors that set `matchBaseUrlRegex` join the auto-match pool
+     — those without the field require `vendor: 'name'` on the model
+     entry.
+   - Fallback: no vendor layer; the protocol layer handles vanilla
+     `openai-chat`.
 
 The vendor wire schema is determined by the gateway, not by which model
 the gateway hosts — DeepSeek-V4 reached via SiliconFlow uses SiliconFlow's
 schema, not DeepSeek's official schema.
 
-### Model template inference (`inferModelTemplate`)
+### Model template recommendations (`inferModelTemplate`)
 
-Walks the `modelTemplates` registry (custom first, then built-in). A
-template applies when **all** of:
+Walks the `modelTemplates` registry (custom first, then built-in) to
+recommend a template in the add-model wizard. A template is recommended when
+**all** of:
 
-- `matchModelRegex` matches the model name (required — there is no
-  explicit pin field, so the regex IS how the template gets selected).
+- `matchModelRegex` matches the model name (required).
 - `matchVendorRegex` matches the resolved vendor name, if the field is
+  set (otherwise wildcard).
+- `matchBaseUrlRegex` matches the model entry's baseUrl, if the field is
   set (otherwise wildcard).
 - The template's `protocol` equals the entry's protocol, if the field
   is set (otherwise wildcard).
 
-All three filters combine via AND; any failure silently skips the
-template. The first matching template wins. `openai-chat-deepseek-v4p`
-additionally enforces
-a numeric `>=4` threshold on the captured version digit to avoid matching
-DeepSeek v3.
+All filters combine via AND; any failure silently skips the template in the
+recommendation path. Runtime resolution does **not** call this helper.
+Runtime applies a model template only when the model entry explicitly sets
+`modelTemplate`, and then the same matcher fields become compatibility
+guards. A mismatch throws a config error.
+
+`openai-chat-deepseek-v4p` and `openai-chat-micu-deepseek` additionally
+enforce a numeric `>=4` threshold on the captured DeepSeek version digit to
+avoid matching DeepSeek v3.
 
 ## Conflict and edge-case semantics
 
@@ -474,8 +486,8 @@ explains why.
 
 ### B. `thinking.budget` set but the resolved template has no `budget.patch`
 
-Example: `vendor: 'openai-chat-default'` (no budget patch in the OpenAI
-chat protocol) + `thinking: { budget: 4096 }`.
+Example: vanilla `openai-chat` (no budget patch in the OpenAI chat
+protocol) + `thinking: { budget: 4096 }`.
 
 - **Wire**: budget is silently dropped — there's nowhere to put it.
 - **Warning**: `logForDebugging` emits:
@@ -503,7 +515,7 @@ To temporarily disable thinking while keeping the picker live, prefer
 
 ## Worked examples
 
-### Example 1: DeepSeek V4 on the official API (full auto-inference)
+### Example 1: DeepSeek V4 on the official API
 
 `~/.axiomate.json`:
 
@@ -515,6 +527,7 @@ To temporarily disable thinking while keeping the picker live, prefer
       "protocol": "openai-chat",
       "baseUrl": "https://api.deepseek.com",
       "apiKey": "sk-...",
+      "modelTemplate": "openai-chat-deepseek-v4p",
       "thinking": { "enabled": true, "effort": "high" }
     }
   }
@@ -527,9 +540,9 @@ Resolution:
 2. Vendor layer (auto): `inferVendor` matches `api.deepseek.com` →
    `openai-chat-deepseek-official` → adds `thinking.type` switch and
    nulls out low/medium in valueMap
-3. Model layer (auto): `inferModelTemplate('deepseek-v4-pro')` matches
-   `openai-chat-deepseek-v4p` regex with version 4 → adds
-   `autoRoundTripReasoningContent: true`
+3. Model layer (explicit): `modelTemplate: openai-chat-deepseek-v4p` adds
+   `autoRoundTripReasoningContent: true` and
+   `reasoningRoundTripFormat: reasoning_content`
 
 Wire body:
 ```json
@@ -546,6 +559,7 @@ request, so subsequent tool calls echo `reasoning_content`.
   "protocol": "openai-chat",
   "baseUrl": "https://api.siliconflow.cn/v1",
   "apiKey": "sk-...",
+  "modelTemplate": "openai-chat-deepseek-v4p",
   "thinking": { "enabled": true, "effort": "max" }
 }
 ```
@@ -556,8 +570,7 @@ Resolution:
 2. Vendor (auto): `inferVendor` matches `siliconflow.cn` →
    `openai-chat-siliconflow` → adds `enable_thinking` and
    `thinking_budget`, nulls out low/medium
-3. Model (auto): `inferModelTemplate` matches the model name →
-   `openai-chat-deepseek-v4p` → adds
+3. Model (explicit): `modelTemplate: openai-chat-deepseek-v4p` adds
    `autoRoundTripReasoningContent: true`
 
 Wire body:
@@ -585,9 +598,8 @@ Resolution:
 
 1. Protocol: `openai-responses` → `reasoning.effort` patch + 4-tier
    valueMap + `reasoning.summary: 'auto'` enabledPatch
-2. Vendor (auto): `openai-responses` (built-in, declares only the
-   protocol — no overrides)
-3. Model (auto): no template matches; nothing applied
+2. Vendor: no gateway-specific template; protocol layer only
+3. Model: no `modelTemplate`; nothing applied
 
 Wire body:
 ```json
@@ -608,6 +620,7 @@ standard wire field:
       "model": "deepseek-v4-pro",
       "protocol": "openai-chat",
       "vendor": "my-private-relay",
+      "modelTemplate": "openai-chat-deepseek-v4p",
       "baseUrl": "https://relay.internal.example/v1",
       "apiKey": "..."
     }
@@ -632,8 +645,8 @@ standard wire field:
 - `valueMap.high: 'premium'` overrides the inherited `'high'` mapping.
 - `valueMap.max: null` deletes the `max` tier (relay doesn't support it).
 
-The model layer (`openai-chat-deepseek-v4p`) still auto-applies because
-`inferModelTemplate` runs against the model name independently.
+The model layer applies because the model entry explicitly sets
+`modelTemplate: "openai-chat-deepseek-v4p"`.
 
 ### Example 5: Custom model template for a hypothetical future quirk
 
@@ -650,11 +663,11 @@ If some new model needs a wire-level workaround on every gateway:
 }
 ```
 
-Any model entry whose `model` name matches the regex (regardless of
-vendor / protocol) automatically inherits `custom_field: true` on the
-enabledPatch. There is no explicit pin mechanism — selection is purely
-auto-match. To narrow scope, refine the regex or add a
-`matchVendorRegex` / `protocol` filter to the template itself.
+The wizard can recommend this template for model names matching the regex.
+Runtime applies it only when the model entry sets
+`modelTemplate: "future-model-quirk"`. To narrow the recommendation and
+compatibility scope, refine the regex or add `matchVendorRegex`,
+`matchBaseUrlRegex`, or `protocol`.
 
 ### Example 6: Vendor with `matchBaseUrlRegex` for auto-match
 
@@ -704,8 +717,9 @@ not when reached via aliyun:
 ```
 
 Both conditions must hold: model name matches AND the resolved vendor
-name matches. The same GLM-5.1 entry on aliyun gets the regular vendor
-patches without the SiliconFlow-only workaround.
+name matches. The wizard can recommend this template only for the matching
+combination; runtime applies it only when the model entry explicitly sets
+`modelTemplate: "glm-5.1-on-siliconflow-quirk"`.
 
 ## CLI
 
@@ -737,23 +751,23 @@ Built-in templates are read-only — `delete` rejects them, `show` works.
 
 ## Best practices
 
-- **Don't write `vendor:` unless you must.** The auto-inference covers
-  all built-in cases (and any custom vendor with `matchBaseUrlRegex`).
-  Manual `vendor:` pin is for vendors that don't auto-match (no
-  `matchBaseUrlRegex` set, or a host pattern that overlaps an existing
-  vendor and you need to disambiguate).
+- **Don't write `vendor:` unless you must.** Auto-inference covers
+  built-in vendors whose host match is safe gateway-wide, plus any custom
+  vendor with `matchBaseUrlRegex`. Manual `vendor:` pin is for vendors
+  whose host pattern overlaps an existing vendor and you need to
+  disambiguate, or for custom templates without `matchBaseUrlRegex`.
 
-- **Model templates have no pin field at all.** They're always
-  auto-matched via `matchModelRegex` plus optional vendor/protocol
-  filters. If you need a quirk to apply only on a specific
-  model+vendor+protocol combination, encode it in those filters
-  rather than reaching for a pin mechanism.
+- **Model templates are explicit runtime pins.** The wizard uses
+  `matchModelRegex` plus optional vendor/baseUrl/protocol filters only to
+  recommend a template. Runtime applies no model-layer patches unless the
+  model entry sets `modelTemplate`.
 
-- **Keep model-class quirks in model templates, not vendor templates.**
-  The system enforces this at the type level — `VendorTemplate` doesn't
-  have an `autoRoundTripReasoningContent` field. If you find yourself
-  wanting a vendor template that captures "this model's behavior on
-  this gateway," it probably wants to be a model template.
+- **Prefer semantic ownership, but use the escape hatches when needed.**
+  `autoRoundTripReasoningContent` usually belongs in model templates.
+  `reasoningRoundTripFormat` can live in either layer: gateway-wide defaults
+  fit vendor templates; model/relay-specific replay shapes such as micu
+  DeepSeek fit model templates. Both fields are accepted on both layers;
+  model templates merge last and win if both layers set the same field.
 
 - **Use `null` deletion liberally.** When extending a built-in template,
   null out the keys you don't want rather than restating the entire

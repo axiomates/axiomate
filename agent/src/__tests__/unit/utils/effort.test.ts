@@ -176,7 +176,8 @@ describe('getCyclableEffortLevels', () => {
     // Vendor inference is gateway-only in the 3-layer DSL — DeepSeek V4
     // quirks (autoRoundTripReasoningContent) live in the model template
     // layer instead. Without an explicit baseUrl matching deepseek's
-    // host, we resolve to openai-chat-default which keeps all 4 tiers.
+    // host, we resolve to the openai-chat protocol layer, which keeps all
+    // four effort tiers plus the runtime "none" off-switch.
     mockGetGlobalConfig.mockReturnValue({
       models: {
         m: {

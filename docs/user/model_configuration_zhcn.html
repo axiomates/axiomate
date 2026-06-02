@@ -720,7 +720,12 @@
           <tr>
             <td><code>vendor</code></td>
             <td>否</td>
-            <td>供应商模板名，用来把中立的 <code>thinking</code> 配置翻译成 provider 需要的字段。通常可以省略，让 Axiomate 按协议、baseUrl、模型名推断。</td>
+            <td>供应商模板名，用来把中立的 <code>thinking</code> 配置翻译成 provider 需要的字段，并处理网关级兼容差异。通常可以省略，让 Axiomate 按协议和 <code>baseUrl</code> 推断；如果当前模型通过特殊中转网关暴露，建议显式设置。</td>
+          </tr>
+          <tr>
+            <td><code>modelTemplate</code></td>
+            <td>否</td>
+            <td>显式模型层模板名，用来叠加模型/中转组合特有行为。初始化 wizard 会按模型名、vendor、<code>baseUrl</code> 给推荐值，但运行时只有配置了这个字段才会应用 model template；不配表示不应用任何模型层覆盖。内置 DeepSeek V4+ model template 面向 <code>openai-chat</code> 协议。</td>
           </tr>
           <tr>
             <td><code>baseUrl</code></td>
@@ -779,6 +784,50 @@
           </tr>
         </tbody>
       </table>
+
+      <h3>Vendor / Model Template 的 reasoning 回放字段</h3>
+      <p>Axiomate 的 template 分三层合并：<code>protocol</code> → <code>vendor</code> → <code>model</code>。后面的层覆盖前面的层，所以当 vendor template 和 model template 都声明同一个字段时，model template 最终生效。</p>
+      <table>
+        <thead>
+          <tr>
+            <th>字段</th>
+            <th>可写位置</th>
+            <th>推荐位置</th>
+            <th>含义</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>autoRoundTripReasoningContent</code></td>
+            <td><code>templates</code>、<code>modelTemplates</code></td>
+            <td><code>modelTemplates</code></td>
+            <td>是否在工具调用后的下一轮请求里回传上一轮 assistant 的 reasoning / thinking。DeepSeek V4+ 这类模型通常需要它。</td>
+          </tr>
+          <tr>
+            <td><code>reasoningRoundTripFormat</code></td>
+            <td><code>templates</code>、<code>modelTemplates</code></td>
+            <td><code>templates</code> 或 <code>modelTemplates</code></td>
+            <td>reasoning 回传的历史消息形状。可选 <code>reasoning_content</code> 或 <code>content_thinking</code>。官方 DeepSeek 通常用 <code>reasoning_content</code>；micu DeepSeek 网关使用 <code>content_thinking</code>。</td>
+          </tr>
+        </tbody>
+      </table>
+      <p>Model template 不会在运行时按模型名自动生效，必须在模型条目里显式写 <code>modelTemplate</code>。内置 <code>openai-chat-deepseek-v4p</code> 用于 <code>openai-chat</code> 协议下官方 / 默认 DeepSeek V4+ 回放形状（<code>reasoning_content</code>）。内置 <code>openai-chat-micu-deepseek</code> 是 <code>openai-chat</code> 协议的 model template，用于 micu DeepSeek 的 <code>content_thinking</code> 回放形状，并自带 DeepSeek 的 <code>thinking.type</code> 开关和 high/max effort 限制；wizard 在 <code>baseUrl</code> 命中 micu 且模型名命中 DeepSeek V4+ 时会推荐它。</p>
+      <pre><code>{
+  "models": {
+    "micu-0.2-deepseek-v4-pro": {
+      "model": "deepseek-v4-pro",
+      "name": "micu-0.2-deepseek-v4-pro",
+      "protocol": "openai-chat",
+      "baseUrl": "https://www.micuapi.ai/v1",
+      "apiKey": "sk-...",
+      "modelTemplate": "openai-chat-micu-deepseek",
+      "contextWindow": 1000000,
+      "maxOutputTokens": 384000,
+      "supportsImages": false,
+      "thinking": { "enabled": true, "effort": "high" }
+    }
+  }
+}</code></pre>
 
       <h3>三种协议怎么选</h3>
       <table>
@@ -1340,7 +1389,7 @@
           </tr>
         </tbody>
       </table>
-      <p><code>/template list</code>、<code>/template show &lt;name&gt;</code>、<code>/template new</code>、<code>/template delete &lt;name&gt;</code> 用于管理 provider/vendor template。它们修改的是顶层 <code>templates</code>，不是 route。</p>
+      <p><code>/template vendor list|show|new|delete</code> 用于管理 provider/vendor template，修改顶层 <code>templates</code>；<code>/template model list|show|new|delete</code> 用于管理 model template，修改顶层 <code>modelTemplates</code>。这些命令不修改 route。</p>
     </section>
 
     <section>
@@ -1384,7 +1433,7 @@
       "apiKey": "sk-...",
 
       // 可选：供应商模板。通常可以省略；当 provider 的 reasoning/thinking 字段有特殊格式时再显式指定。
-      "vendor": "siliconflow",
+      "vendor": "openai-chat-siliconflow",
 
       // 可选：覆盖 HTTP User-Agent。只有特定兼容网关需要时再填。
       "userAgent": "axiomate",

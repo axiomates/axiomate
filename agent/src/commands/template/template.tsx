@@ -14,7 +14,9 @@ import {
   getBuiltinTemplates,
   isBuiltinModelTemplate,
   isBuiltinVendor,
+  PROTOCOLS,
   resolveTemplate,
+  type VendorTemplate,
 } from '../../services/api/vendorTemplates.js'
 import { TemplateEditor } from './TemplateEditor.js'
 
@@ -32,9 +34,8 @@ const HELP_TEXT =
   '  /template model delete <name>         — delete custom model template\n' +
   '\n' +
   'Vendor templates translate the neutral thinking config to wire fields per\n' +
-  'gateway. Model templates overlay model-specific quirks (e.g. DeepSeek V4+\n' +
-  'reasoning_content round-trip) regardless of which gateway you reach the\n' +
-  'model via.'
+  'gateway. Model templates overlay explicitly selected model-specific quirks\n' +
+  '(e.g. DeepSeek V4+ reasoning/thinking replay).'
 
 export const call: LocalJSXCommandCall = async (onDone, _context, args) => {
   const trimmed = (args ?? '').trim()
@@ -148,26 +149,18 @@ function ShowTemplateAndClose({
 }): React.ReactNode {
   React.useEffect(() => {
     if (group === 'vendor') {
-      const builtins = getBuiltinTemplates()
-      const customs = getGlobalConfig().templates ?? {}
-      if (!(name in builtins) && !(name in customs)) {
+      const result = formatVendorTemplateForShow(
+        name,
+        getGlobalConfig().templates ?? {},
+      )
+      if (result.ok === false) {
         onDone(
-          `Vendor template '${name}' not found. Run /template vendor list.`,
+          result.message,
           { display: 'system' },
         )
         return
       }
-      try {
-        const resolved = resolveTemplate(name, customs)
-        onDone(
-          `${chalk.bold(name)}${name in customs ? ' (custom)' : ' (built-in)'}\n` +
-            JSON.stringify(resolved, null, 2),
-        )
-      } catch (err) {
-        onDone(`Error resolving '${name}': ${(err as Error).message}`, {
-          display: 'system',
-        })
-      }
+      onDone(result.text)
       return
     }
     // group === 'model'
@@ -189,6 +182,37 @@ function ShowTemplateAndClose({
     )
   }, [group, name, onDone])
   return null
+}
+
+export function formatVendorTemplateForShow(
+  name: string,
+  customs: Record<string, VendorTemplate>,
+):
+  | { ok: true; text: string }
+  | { ok: false; message: string } {
+  const builtins = getBuiltinTemplates()
+  const isProtocol = PROTOCOLS.includes(name as (typeof PROTOCOLS)[number])
+  if (!(name in builtins) && !(name in customs) && !isProtocol) {
+    return {
+      ok: false,
+      message: `Vendor template '${name}' not found. Run /template vendor list.`,
+    }
+  }
+
+  try {
+    const resolved = resolveTemplate(name, customs)
+    return {
+      ok: true,
+      text:
+        `${chalk.bold(name)}${name in customs ? ' (custom)' : ' (built-in)'}\n` +
+        JSON.stringify(resolved, null, 2),
+    }
+  } catch (err) {
+    return {
+      ok: false,
+      message: `Error resolving '${name}': ${(err as Error).message}`,
+    }
+  }
 }
 
 function NewTemplateAndClose({
@@ -252,7 +276,7 @@ function DeleteTemplateAndClose({
   const followUpHint =
     group === 'vendor'
       ? `Models referencing this template via \`vendor: "${name}"\` will fail validation until the field is updated.`
-      : `Model entries that previously matched this template's matchModelRegex will lose its overlay; their wire bodies may change.`
+      : `Models referencing this template via \`modelTemplate: "${name}"\` will fail validation until the field is updated.`
 
   return (
     <Box flexDirection="column" paddingLeft={1} gap={1}>

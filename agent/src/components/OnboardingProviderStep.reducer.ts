@@ -6,20 +6,22 @@
  */
 
 import {
+  getMatchingModelTemplates,
   getBuiltinTemplates,
+  inferVendor,
+  resolveStack,
   resolveTemplate,
+  type ModelTemplate,
   type Protocol,
   type VendorTemplate,
 } from '../services/api/vendorTemplates.js'
 import type { GlobalConfig } from '../utils/config.js'
+import { fuzzyMatchContextWindow } from '../utils/model/contextWindowFuzzy.js'
 import {
   buildAddRouteFallback,
   buildSinglePrimaryMainRoute,
 } from '../utils/model/modelRoutePersistence.js'
-import {
-  fuzzyMatchMaxOutputTokens,
-  tieredMaxOutputTokens,
-} from '../utils/model/maxOutputTokensFuzzy.js'
+import { fuzzyMatchMaxOutputTokens } from '../utils/model/maxOutputTokensFuzzy.js'
 
 export type { Protocol }
 
@@ -35,6 +37,7 @@ export type Stage =
   | 'maxOutputTokens'
   | 'supportsImages'
   | 'vendor'
+  | 'modelTemplate'
   | 'createTemplate'
   | 'thinking'
   | 'userAgent'
@@ -112,6 +115,47 @@ export function getThinkingChoicesForVendor(
   return ['off', ...tiers]
 }
 
+export function getThinkingChoicesForStack(
+  input: {
+    protocol: Protocol
+    baseUrl: string
+    modelId: string
+    vendor: string
+    modelTemplate: string
+  },
+  customVendors?: Record<string, VendorTemplate>,
+  customModels?: Record<string, ModelTemplate>,
+): ThinkingChoice[] {
+  const vendor =
+    input.vendor && input.vendor !== 'auto' ? input.vendor : undefined
+  const modelTemplate =
+    input.modelTemplate && input.modelTemplate !== 'none'
+      ? input.modelTemplate
+      : undefined
+  try {
+    const template = resolveStack({
+      protocol: input.protocol,
+      vendor,
+      modelTemplate,
+      model: input.modelId,
+      baseUrl: input.baseUrl,
+      customVendors,
+      customModels,
+    })
+    if (!template.effort) return ['off']
+    const valueMap = template.effort.valueMap
+    if (!valueMap) return ['off', 'low', 'medium', 'high', 'max']
+    const tiers: ThinkingChoice[] = (
+      ['low', 'medium', 'high', 'max'] as const
+    ).filter(
+      t => t in valueMap && (valueMap as Record<string, unknown>)[t] !== null,
+    )
+    return ['off', ...tiers]
+  } catch {
+    return getThinkingChoicesForVendor(input.vendor, customVendors)
+  }
+}
+
 /** Returns true iff the wizard's thinking choice is offerable for this vendor. */
 export function isThinkingChoiceSupported(
   choice: ThinkingChoice,
@@ -122,7 +166,7 @@ export function isThinkingChoiceSupported(
 }
 
 /**
- * Vendor templates whose `protocols` array includes the given protocol —
+ * Vendor templates whose resolved `protocol` matches the given protocol —
  * the candidates the wizard would show on the vendor stage. Considers both
  * built-ins and user-defined custom templates so the count adapts as the
  * user adds custom templates over time.
@@ -160,6 +204,36 @@ export function shouldSkipVendorStage(
   return getVendorChoicesForProtocol(protocol, customTemplates).length === 0
 }
 
+export function getRecommendedModelTemplate(
+  input: {
+    protocol: Protocol
+    baseUrl: string
+    modelId: string
+    vendor: string
+  },
+  customVendors?: Record<string, VendorTemplate>,
+  customModels?: Parameters<typeof getMatchingModelTemplates>[3],
+): string | undefined {
+  const vendorName =
+    input.vendor && input.vendor !== 'auto'
+      ? input.vendor
+      : inferVendor(
+          {
+            protocol: input.protocol,
+            model: input.modelId,
+            baseUrl: input.baseUrl,
+          },
+          customVendors,
+        )
+  return getMatchingModelTemplates(
+    input.modelId,
+    vendorName,
+    input.protocol,
+    customModels,
+    input.baseUrl,
+  )[0]
+}
+
 
 export type OnboardingProviderState = {
   stage: Stage
@@ -167,8 +241,8 @@ export type OnboardingProviderState = {
   baseUrl: string
   apiKey: string
   modelId: string
-  contextWindow: number
-  maxOutputTokens: number
+  contextWindow?: number
+  maxOutputTokens?: number
   /** Whether this model accepts image input. Default: true. */
   supportsImages: boolean
   /**
@@ -176,6 +250,12 @@ export type OnboardingProviderState = {
    * field). Otherwise writes `vendor: <name>` into the model entry.
    */
   vendor: string
+  /**
+   * Model template name. 'none' = do not write modelTemplate. The wizard may
+   * preselect a recommendation, but runtime only applies model-layer patches
+   * when this field is persisted explicitly.
+   */
+  modelTemplate: string
   /** Thinking preference for this model. 'off' = field is omitted from config. */
   thinking: ThinkingChoice
   /**
@@ -195,8 +275,9 @@ export type OnboardingProviderAction =
   | { type: 'submitModelId'; value: string }
   | { type: 'submitContextWindow'; value: string }
   | { type: 'submitMaxOutputTokens'; value: string }
-  | { type: 'submitSupportsImages'; value: boolean; nextStage: 'vendor' | 'thinking' }
+  | { type: 'submitSupportsImages'; value: boolean; nextStage: 'vendor' | 'modelTemplate' }
   | { type: 'submitVendor'; value: string; nextThinking: ThinkingChoice }
+  | { type: 'submitModelTemplate'; value: string; nextThinking: ThinkingChoice }
   | { type: 'startCreateTemplate' }
   | { type: 'finishCreateTemplate'; templateName: string; nextThinking: ThinkingChoice }
   | { type: 'cancelCreateTemplate' }
@@ -227,10 +308,10 @@ export const MODEL_ID_HINT: Record<Protocol, string> = {
 }
 
 export const CONTEXT_WINDOW_HINT =
-  "Model's context window in tokens (e.g., 200000 for 200K, 1000000 for 1M). Defaults to 32000 if empty."
+  "Model's context window in tokens (e.g., 200000 for 200K, 1000000 for 1M). A recognized model ID is prefilled; empty leaves the config unset."
 
 export const MAX_OUTPUT_TOKENS_HINT =
-  "Maximum tokens the model may generate in one response. Empty uses the detected/default value from the model ID and context window."
+  "Maximum tokens the model may generate in one response. A recognized model ID is prefilled; empty leaves the config unset."
 
 export const USER_AGENT_HINT =
   "Override HTTP User-Agent. Leave empty to keep the SDK default — only set this if your provider blocks the OpenAI SDK's UA (some Responses gateways do). Example: codex_cli_rs/0.50.0"
@@ -238,13 +319,12 @@ export const USER_AGENT_HINT =
 export const THINKING_HINT =
   "Reasoning depth for this model. 'Off' is safe for any model. Pick a level for reasoning models (o-series, Claude extended thinking, DeepSeek V4, Qwen3 thinking). axiomate translates to the right wire param via the vendor template."
 
+export const MODEL_TEMPLATE_HINT =
+  'Optional model-specific overlay. Pick a recommended template only when this exact model/gateway needs extra behavior; choose None to apply only protocol/vendor rules.'
+
 export const ROUTE_USAGE_HINT =
   'Choose where this model is used. Recovery decisions still come from the API recovery engine; route policy only supplies model candidates.'
 
-export const DEFAULT_CONTEXT_WINDOW_VALUE = 32_000
-export const DEFAULT_MAX_OUTPUT_TOKENS_VALUE = tieredMaxOutputTokens(
-  DEFAULT_CONTEXT_WINDOW_VALUE,
-)
 const MIN_CONTEXT_WINDOW = 1024
 const MIN_MAX_OUTPUT_TOKENS = 1
 
@@ -254,10 +334,11 @@ export const initialOnboardingProviderState: OnboardingProviderState = {
   baseUrl: '',
   apiKey: '',
   modelId: '',
-  contextWindow: DEFAULT_CONTEXT_WINDOW_VALUE,
-  maxOutputTokens: DEFAULT_MAX_OUTPUT_TOKENS_VALUE,
+  contextWindow: undefined,
+  maxOutputTokens: undefined,
   supportsImages: true,
   vendor: 'auto',
+  modelTemplate: 'none',
   thinking: 'off',
   userAgent: '',
   routeUsage: 'main_primary',
@@ -269,38 +350,29 @@ export function shouldAskRouteUsage(current: GlobalConfig): boolean {
 }
 
 /**
- * Parse the user's context-window input. Empty string → default.
+ * Parse the user's context-window input. Empty string → undefined (do not
+ * write contextWindow to config).
  * Returns null if the value is non-numeric or below the sane floor.
  */
-export function parseContextWindowInput(raw: string): number | null {
+export function parseContextWindowInput(raw: string): number | null | undefined {
   const trimmed = raw.trim()
-  if (trimmed === '') return DEFAULT_CONTEXT_WINDOW_VALUE
+  if (trimmed === '') return undefined
   const parsed = Number(trimmed)
   if (!Number.isFinite(parsed) || !Number.isInteger(parsed)) return null
   if (parsed < MIN_CONTEXT_WINDOW) return null
   return parsed
 }
 
-function inferDefaultMaxOutputTokens(
-  modelId: string,
-  contextWindow: number,
-): number {
-  return (
-    fuzzyMatchMaxOutputTokens(modelId) ??
-    tieredMaxOutputTokens(contextWindow)
-  )
-}
-
 /**
- * Parse the user's max-output input. Empty string → detected/default value.
+ * Parse the user's max-output input. Empty string → undefined (do not write
+ * maxOutputTokens to config).
  * Returns null if the value is non-numeric or below the sane floor.
  */
 export function parseMaxOutputTokensInput(
   raw: string,
-  defaultValue: number,
-): number | null {
+): number | null | undefined {
   const trimmed = raw.trim()
-  if (trimmed === '') return defaultValue
+  if (trimmed === '') return undefined
   const parsed = Number(trimmed)
   if (!Number.isFinite(parsed) || !Number.isInteger(parsed)) return null
   if (parsed < MIN_MAX_OUTPUT_TOKENS) return null
@@ -333,6 +405,8 @@ export function onboardingProviderReducer(
         ...state,
         stage: 'contextWindow',
         modelId: action.value.trim(),
+        contextWindow: fuzzyMatchContextWindow(action.value.trim()),
+        maxOutputTokens: fuzzyMatchMaxOutputTokens(action.value.trim()),
         error: undefined,
       }
     case 'submitContextWindow': {
@@ -347,15 +421,11 @@ export function onboardingProviderReducer(
         ...state,
         stage: 'maxOutputTokens',
         contextWindow: parsed,
-        maxOutputTokens: inferDefaultMaxOutputTokens(state.modelId, parsed),
         error: undefined,
       }
     }
     case 'submitMaxOutputTokens': {
-      const parsed = parseMaxOutputTokensInput(
-        action.value,
-        state.maxOutputTokens,
-      )
+      const parsed = parseMaxOutputTokensInput(action.value)
       if (parsed === null) {
         return {
           ...state,
@@ -375,16 +445,24 @@ export function onboardingProviderReducer(
         stage: action.nextStage,
         supportsImages: action.value,
         // When the dispatcher told us to skip vendor (only one vendor fits
-        // the protocol), 'auto' is the right placeholder — inferVendor at
-        // request time will resolve to the same single candidate anyway.
-        ...(action.nextStage === 'thinking' ? { vendor: 'auto' } : {}),
+        // the protocol), 'auto' is the right placeholder. It leaves runtime
+        // vendor resolution to protocol/baseUrl inference.
+        ...(action.nextStage === 'modelTemplate' ? { vendor: 'auto' } : {}),
         error: undefined,
       }
     case 'submitVendor':
       return {
         ...state,
-        stage: 'thinking',
+        stage: 'modelTemplate',
         vendor: action.value,
+        thinking: action.nextThinking,
+        error: undefined,
+      }
+    case 'submitModelTemplate':
+      return {
+        ...state,
+        stage: 'thinking',
+        modelTemplate: action.value,
         thinking: action.nextThinking,
         error: undefined,
       }
@@ -397,7 +475,7 @@ export function onboardingProviderReducer(
     case 'finishCreateTemplate':
       return {
         ...state,
-        stage: 'thinking',
+        stage: 'modelTemplate',
         vendor: action.templateName,
         thinking: action.nextThinking,
         error: undefined,
@@ -461,12 +539,12 @@ function previousStage(stage: Stage, skipVendor?: boolean): Stage {
       return 'maxOutputTokens'
     case 'vendor':
       return 'supportsImages'
+    case 'modelTemplate':
+      return skipVendor ? 'supportsImages' : 'vendor'
     case 'createTemplate':
       return 'vendor'
     case 'thinking':
-      // When the vendor stage was skipped (single matching vendor for the
-      // current protocol), back from thinking jumps straight to supportsImages.
-      return skipVendor ? 'supportsImages' : 'vendor'
+      return 'modelTemplate'
     case 'userAgent':
       return 'thinking'
     case 'routeUsage':
@@ -487,16 +565,21 @@ export function buildModelConfig(state: OnboardingProviderState) {
       : { enabled: true, effort: state.thinking }
   const vendorField =
     state.vendor && state.vendor !== 'auto' ? { vendor: state.vendor } : {}
+  const modelTemplateField =
+    state.modelTemplate && state.modelTemplate !== 'none'
+      ? { modelTemplate: state.modelTemplate }
+      : {}
   return {
     model: state.modelId,
     name: state.modelId,
     protocol: state.protocol,
     baseUrl: state.baseUrl,
     apiKey: state.apiKey,
-    contextWindow: state.contextWindow,
-    maxOutputTokens: state.maxOutputTokens,
+    ...(state.contextWindow !== undefined ? { contextWindow: state.contextWindow } : {}),
+    ...(state.maxOutputTokens !== undefined ? { maxOutputTokens: state.maxOutputTokens } : {}),
     ...(state.supportsImages ? {} : { supportsImages: false }),
     ...vendorField,
+    ...modelTemplateField,
     ...(thinking ? { thinking } : {}),
     ...(ua ? { userAgent: ua } : {}),
   }
