@@ -200,8 +200,8 @@ export type ModelTemplate = TemplatePatches & {
    * that protocol, and explicit pins must use the same protocol.
    *
    * Set this when the template's patches or replay flags are meaningful only
-   * for one wire shape. For example, both built-in DeepSeek replay templates
-   * target OpenAI Chat history shapes, so they declare `openai-chat`.
+   * for one wire shape. For example, the built-in DeepSeek V4+ replay
+   * template targets OpenAI Chat history, so it declares `openai-chat`.
    * Leave it unset only for genuinely protocol-neutral overlays.
    */
   protocol?: Protocol
@@ -601,18 +601,6 @@ function resolveModelTemplate(
   return tpl
 }
 
-/**
- * Backward-compat wrapper for callers that still use the single-vendor
- * resolution path. Returns the protocol-merged vendor template — i.e. the
- * vendor chain plus its protocol's patches deep-merged on top, so callers
- * see the same effective shape applyThinkingTemplate would. Does NOT
- * apply model-layer patches; use resolveStack for full 3-layer resolution.
- *
- * Vendors that don't declare a protocol (and don't inherit one) are
- * allowed — those represent "API quirks that don't fit cleanly into a
- * single protocol." resolveTemplate returns the vendor patches alone in
- * that case (no protocol-layer merge).
- */
 /**
  * Backward-compat wrapper for callers that still use the single-vendor
  * resolution path. Returns the protocol-merged vendor template — i.e. the

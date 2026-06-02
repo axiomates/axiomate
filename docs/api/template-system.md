@@ -17,10 +17,11 @@ disentangle:
   DeepSeek's `thinking.type` switch, etc.
 
 - **model** — quirks that follow the *model itself* across gateways.
-  DeepSeek V4+ needs prior reasoning/thinking round-tripped on tool calls
-  but the exact replay shape can differ by relay. Runtime applies a model
-  template only when the model entry explicitly sets `modelTemplate`; the
-  wizard uses matcher fields to recommend one.
+  DeepSeek V4+ needs prior reasoning/thinking round-tripped on tool calls.
+  The current OpenAI Chat adapter supports the official/default
+  `reasoning_content` replay shape only. Runtime applies a model template
+  only when the model entry explicitly sets `modelTemplate`; the wizard uses
+  matcher fields to recommend one.
 
 ## Resolution
 
