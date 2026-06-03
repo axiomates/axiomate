@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Axiomate Codex 插件用户指南</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f5f7f8;
+      --panel: #ffffff;
+      --panel-soft: #f0f5f6;
+      --text: #172126;
+      --muted: #5d6b73;
+      --line: #d7e0e3;
+      --accent: #0f766e;
+      --accent-soft: #dff5f2;
+      --warn: #8a5a00;
+      --warn-soft: #fff4d6;
+      --code: #f3f6f7;
+      --shadow: 0 12px 28px rgba(23, 33, 38, 0.08);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font: 15px/1.65 "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    }
+
+    .wrap {
+      width: min(1120px, calc(100vw - 32px));
+      margin: 26px auto 52px;
+      display: grid;
+      gap: 18px;
+    }
+
+    header,
+    section {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+    }
+
+    header { padding: 28px 30px; }
+    section { padding: 24px 26px; }
+
+    .eyebrow {
+      margin: 0 0 10px;
+      color: var(--accent);
+      font-weight: 700;
+    }
+
+    h1,
+    h2,
+    h3 {
+      margin: 0;
+      line-height: 1.25;
+    }
+
+    h1 {
+      font-size: 32px;
+      margin-bottom: 10px;
+    }
+
+    h2 {
+      font-size: 22px;
+      margin-bottom: 12px;
+    }
+
+    h3 {
+      font-size: 17px;
+      margin: 20px 0 8px;
+    }
+
+    p { margin: 0 0 12px; }
+
+    code {
+      padding: 1px 5px;
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      background: var(--code);
+      font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+      font-size: 0.95em;
+    }
+
+    pre {
+      margin: 12px 0 18px;
+      padding: 15px 16px;
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #101820;
+      color: #f5fbfc;
+      font: 13px/1.55 ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+    }
+
+    pre code {
+      padding: 0;
+      border: 0;
+      background: transparent;
+      color: inherit;
+      font-size: inherit;
+    }
+
+    ul,
+    ol {
+      margin: 8px 0 14px 22px;
+      padding: 0;
+    }
+
+    li { margin: 6px 0; }
+
+    .muted { color: var(--muted); }
+
+    .callout,
+    .warn {
+      margin: 14px 0 18px;
+      padding: 13px 15px;
+      border-left: 4px solid var(--accent);
+      border-radius: 6px;
+      background: var(--accent-soft);
+    }
+
+    .warn {
+      border-left-color: var(--warn);
+      background: var(--warn-soft);
+    }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <header>
+      <p class="eyebrow">Axiomate 用户指南</p>
+      <h1>Codex 插件安装与使用</h1>
+      <p class="muted">本文说明如何在 Axiomate 中安装、刷新和初始化 Codex 插件。</p>
+    </header>
+
+    <section>
+      <h2>用途</h2>
+      <p>Codex 插件把 OpenAI Codex CLI 接入 Axiomate，用于代码审查、后台任务、救援式调查和可选的停止前 review gate。</p>
+      <p>插件 marketplace 名称是 <code>openai-codex</code>，插件名称是 <code>codex</code>，因此安装目标写作 <code>codex@openai-codex</code>。</p>
+    </section>
+
+    <section>
+      <h2>首次安装</h2>
+      <p>先添加 marketplace，再安装插件并重新加载：</p>
+      <pre><code>/plugin marketplace add axiomates/codex-plugin-cc
+/plugin install codex@openai-codex
+/reload-plugins
+/codex:setup</code></pre>
+      <p><code>/codex:setup</code> 会检查本机 Node.js、npm、Codex CLI 和 Codex 认证状态。如果提示未登录，按输出中的提示运行 <code>!codex login</code>。</p>
+    </section>
+
+    <section>
+      <h2>重新安装或刷新</h2>
+      <p>如果之前安装过旧版本，推荐先卸载再安装：</p>
+      <pre><code>/plugin uninstall codex
+/plugin install codex@openai-codex
+/reload-plugins
+/codex:setup</code></pre>
+      <p>如果只是想拉取 marketplace 上的新版本，也可以先刷新 marketplace，再更新插件：</p>
+      <pre><code>/plugin marketplace refresh
+/plugin update codex
+/reload-plugins
+/codex:setup</code></pre>
+    </section>
+
+    <section>
+      <h2>常用命令</h2>
+      <ul>
+        <li><code>/codex:setup</code>：检查 Codex CLI 是否可用，并显示下一步操作。</li>
+        <li><code>/codex:status</code>：查看当前 Codex runtime、review gate 状态和后台任务。</li>
+        <li><code>/codex:review</code>：对当前 git 工作区或分支运行 Codex 代码审查。</li>
+        <li><code>/codex:adversarial-review</code>：运行更偏设计质疑和假设挑战的审查。</li>
+        <li><code>/codex:rescue</code>：把调查、修复或后续救援任务委托给 Codex。</li>
+        <li><code>/codex:result</code>：查看已完成 Codex 后台任务的结果。</li>
+        <li><code>/codex:cancel</code>：取消正在运行的 Codex 后台任务。</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>可选：启用停止前 review gate</h2>
+      <p>如果希望每次停止会话前由 Codex 做一次审查，可以启用 review gate：</p>
+      <pre><code>/codex:setup --enable-review-gate</code></pre>
+      <p>关闭 review gate：</p>
+      <pre><code>/codex:setup --disable-review-gate</code></pre>
+      <div class="warn">
+        <p><strong>注意：</strong>review gate 会在停止阶段运行 Codex 审查，可能增加等待时间。建议确认 Codex CLI 和认证状态正常后再启用。</p>
+      </div>
+    </section>
+  </main>
+</body>
+</html>
