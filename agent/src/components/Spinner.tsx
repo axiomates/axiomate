@@ -298,7 +298,7 @@ function SpinnerWithVerbInner({
   const showBtwTip =
     tipsEnabled && elapsedSnapshot > 30_000 && !getGlobalConfig().btwUseCount
 
-  const effectiveTip = contextTipsActive
+  const effectiveTip = !tipsEnabled || contextTipsActive
     ? undefined
     : showClearTip && !nextTask
       ? 'Use /clear to start fresh when switching topics and free up context'

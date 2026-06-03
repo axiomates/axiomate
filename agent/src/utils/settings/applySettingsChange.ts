@@ -52,6 +52,8 @@ export function applySettingsChange(
     return {
       ...prev,
       settings: newSettings,
+      spinnerTip:
+        newSettings.spinnerTipsEnabled === false ? undefined : prev.spinnerTip,
       toolPermissionContext: newContext,
       // When the disk dict changes, replace AppState's dict — but preserve
       // session-only entries (--effort flag, runtime overrides) that aren't

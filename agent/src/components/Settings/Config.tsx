@@ -209,6 +209,7 @@ export function Config({
       thinkingEnabled: s.thinkingEnabled,
       promptSuggestionEnabled: s.promptSuggestionEnabled,
       settings: s.settings,
+      spinnerTip: s.spinnerTip,
     }
   })
   // Set on first user-visible change; gates revertChanges() on Escape so
@@ -311,6 +312,12 @@ export function Config({
         setSettingsData(prev => ({
           ...prev,
           spinnerTipsEnabled,
+        }))
+        // Sync to AppState so the active spinner reacts immediately.
+        setAppState(prev => ({
+          ...prev,
+          settings: { ...prev.settings, spinnerTipsEnabled },
+          spinnerTip: spinnerTipsEnabled ? prev.spinnerTip : undefined,
         }))
       },
     },
@@ -1181,6 +1188,14 @@ export function Config({
       )
     }
     if (
+      (settingsData?.spinnerTipsEnabled ?? true) !==
+      (initialSettingsData.current?.spinnerTipsEnabled ?? true)
+    ) {
+      formattedChanges.push(
+        `${settingsData?.spinnerTipsEnabled !== false ? 'Enabled' : 'Disabled'} spinner tips`,
+      )
+    }
+    if (
       globalConfig.respectGitignore !== initialConfig.current.respectGitignore
     ) {
       formattedChanges.push(
@@ -1293,6 +1308,7 @@ export function Config({
       thinkingEnabled: ia.thinkingEnabled,
       promptSuggestionEnabled: ia.promptSuggestionEnabled,
       settings: ia.settings,
+      spinnerTip: ia.spinnerTip,
     }))
   }, [
     themeSetting,

@@ -1292,6 +1292,16 @@ export function REPL({
         const content = await tip.content({
           theme
         });
+        if (store.getState().settings.spinnerTipsEnabled === false) {
+          setAppState(prev => {
+            if (prev.spinnerTip === undefined) return prev;
+            return {
+              ...prev,
+              spinnerTip: undefined
+            };
+          });
+          return;
+        }
         setAppState(prev => ({
           ...prev,
           spinnerTip: content
@@ -1307,7 +1317,7 @@ export function REPL({
         });
       }
     });
-  }, [setAppState, theme]);
+  }, [setAppState, store, theme]);
 
   // Resets UI loading state. Does NOT call onTurnComplete - that should be
   // called explicitly only when a query turn actually completes.
