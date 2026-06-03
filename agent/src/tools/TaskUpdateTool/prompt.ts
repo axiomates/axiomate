@@ -1,6 +1,9 @@
-export const DESCRIPTION = 'Update a task in the task list'
+export const DESCRIPTION =
+  'Update task status, ownership, dependencies, or details in the task list'
 
 export const PROMPT = `Use this tool to update a task in the task list.
+
+TaskUpdate is the only tool that changes task status. Use it whenever an existing task moves between \`pending\`, \`in_progress\`, \`completed\`, or \`deleted\`. Never use TaskCreate to represent progress on an existing task.
 
 ## When to Use This Tool
 

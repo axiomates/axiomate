@@ -1,6 +1,7 @@
 import { isAgentSwarmsEnabled } from '../../utils/agentSwarmsEnabled.js'
 
-export const DESCRIPTION = 'Create a new task in the task list'
+export const DESCRIPTION =
+  'Create pending tasks in the task list. Use TaskUpdate for every task status change.'
 
 export function getPrompt(): string {
   const teammateContext = isAgentSwarmsEnabled()
@@ -13,8 +14,21 @@ export function getPrompt(): string {
 `
     : ''
 
-  return `Use this tool to create a structured task list for your current coding session. This helps you track progress, organize complex tasks, and demonstrate thoroughness to the user.
+  return `Use this tool to create new pending tasks in the structured task list for your current coding session. This helps you track progress, organize complex tasks, and demonstrate thoroughness to the user.
 It also helps the user understand the progress of the task and overall progress of their requests.
+
+## Tool Boundary
+
+TaskCreate only creates tasks. It does not start, complete, delete, claim, or update existing tasks.
+
+All tasks created by TaskCreate start with status \`pending\`.
+
+For every status change, use TaskUpdate instead:
+- Before starting work on a task, call TaskUpdate with \`status: "in_progress"\`
+- Immediately after finishing that task, call TaskUpdate with \`status: "completed"\`
+- If a task is obsolete or was created by mistake, call TaskUpdate with \`status: "deleted"\`
+- Do not create a replacement task just to change status
+- Do not rely on final text to update task status; final answers do not change task state
 
 ## When to Use This Tool
 
@@ -26,8 +40,8 @@ Use this tool proactively in these scenarios:
 - User explicitly requests todo list - When the user directly asks you to use the todo list
 - User provides multiple tasks - When users provide a list of things to be done (numbered or comma-separated)
 - After receiving new instructions - Immediately capture user requirements as tasks
-- When you start working on a task - Mark it as in_progress BEFORE beginning work
-- After completing a task - Mark it as completed and add any new follow-up tasks discovered during implementation
+- Before starting implementation - create any missing tasks, then use TaskUpdate to mark the current task as in_progress
+- After finishing a task - use TaskUpdate to mark that same task as completed, then create any new follow-up tasks discovered during implementation
 
 ## When NOT to Use This Tool
 
@@ -50,7 +64,7 @@ All tasks are created with status \`pending\`.
 ## Tips
 
 - Create tasks with clear, specific subjects that describe the outcome
-- After creating tasks, use TaskUpdate to set up dependencies (blocks/blockedBy) if needed
+- After creating tasks, use TaskUpdate to set up dependencies (blocks/blockedBy) or status changes if needed
 ${teammateTips}- Check TaskList first to avoid creating duplicate tasks
 `
 }
