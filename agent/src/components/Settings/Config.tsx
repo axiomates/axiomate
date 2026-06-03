@@ -580,6 +580,36 @@ export function Config({
               })
             },
           },
+          {
+            id: 'checkpointsMaxFiles',
+            label: 'Checkpoints max workdir files',
+            value: String(globalConfig.checkpointsMaxFiles),
+            options: [
+              '50000',
+              '100000',
+              '200000',
+              '300000',
+              '500000',
+              '1000000',
+              '2000000',
+              '5000000',
+              '10000000',
+              '0',
+            ],
+            type: 'enum' as const,
+            onChange(value: string) {
+              const n = Number(value)
+              if (!Number.isFinite(n) || n < 0) return
+              saveGlobalConfig(current => ({
+                ...current,
+                checkpointsMaxFiles: n,
+              }))
+              setGlobalConfig({
+                ...getGlobalConfig(),
+                checkpointsMaxFiles: n,
+              })
+            },
+          },
         ]
       : []),
     {
@@ -1143,6 +1173,14 @@ export function Config({
     ) {
       formattedChanges.push(
         `Set checkpoints per-project snapshot cap to ${chalk.bold(globalConfig.checkpointsMaxSnapshotsPerProject)}`,
+      )
+    }
+    if (
+      globalConfig.checkpointsMaxFiles !==
+      initialConfig.current.checkpointsMaxFiles
+    ) {
+      formattedChanges.push(
+        `Set checkpoints max workdir files to ${chalk.bold(globalConfig.checkpointsMaxFiles)}`,
       )
     }
     if (

@@ -62,9 +62,10 @@ import { formatCommitSubject } from './reason.js'
 import { ensureStore } from './store.js'
 import { touchProject } from './touchProject.js'
 
-// Module-level constants. These are intentionally not configurable from
+// Module-level constants. Most are intentionally not configurable from
 // callers — they're tuned for "checkpoints subsystem must never block
 // the agent" and changing them requires deliberation, not arguments.
+// MAX_FILES is the fallback for `globalConfig.checkpointsMaxFiles`.
 export const MAX_FILES = 200_000
 export const MAX_FILE_SIZE_MB = 50
 /**
@@ -218,13 +219,18 @@ async function _runCreateSnapshot(
   const ref = refName(hash)
   await touchProject(canonical) // never throws
 
-  // 5. File-count guard.
-  const counted = await countFilesUnder(canonical, { max: MAX_FILES })
-  if (counted.aborted) {
-    logForDebugging(
-      `createSnapshot: skipped — too many files (>${MAX_FILES}) in ${canonical}`,
-    )
-    return { ok: false, skipped: 'too-many-files' }
+  // 5. File-count guard. Reads `checkpointsMaxFiles` from globalConfig
+  //     when set; otherwise falls back to MAX_FILES. `0` disables this
+  //     guard for users who accept the git-add cost on very large repos.
+  const maxFiles = resolveMaxFiles()
+  if (maxFiles > 0) {
+    const counted = await countFilesUnder(canonical, { max: maxFiles })
+    if (counted.aborted) {
+      logForDebugging(
+        `createSnapshot: skipped — too many files (>${maxFiles}) in ${canonical}`,
+      )
+      return { ok: false, skipped: 'too-many-files' }
+    }
   }
 
   // 6. Per-project state already computed above.
@@ -350,6 +356,18 @@ async function _runCreateSnapshot(
 
   // 13. Cross-project size cap deferred to Phase 4.
   return { ok: true, hash: newSha, ref }
+}
+
+function resolveMaxFiles(): number {
+  const configured = getGlobalConfig().checkpointsMaxFiles
+  if (
+    typeof configured === 'number' &&
+    Number.isFinite(configured) &&
+    configured >= 0
+  ) {
+    return configured
+  }
+  return MAX_FILES
 }
 
 /**

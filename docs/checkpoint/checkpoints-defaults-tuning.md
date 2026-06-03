@@ -109,14 +109,30 @@ write-time 兜底默认值（globalConfig 未设时使用）。
 
 ### 6. `MAX_FILES` — 单次快照文件数上限
 
-**主源**：`agent/src/utils/checkpoints/createSnapshot.ts:67`
+**主源**：`agent/src/utils/checkpoints/createSnapshot.ts:67` ——
+fallback 默认值（globalConfig 未设时使用）。
+
+**用户可配置入口**：globalConfig `checkpointsMaxFiles`，通过 `/config`
+TUI 调整。createSnapshot 写快照前读取这个 config；设置 `0` 禁用文件数
+guard。
 
 **跟随**：
 
-- 同文件错误消息字符串 `` `... too many files (>${MAX_FILES}) ...` ``
-  —— **用模板字符串引用常量**，不是 hard-coded 数字，所以源码一处改完
-- `docs/user/checkpoints_zhcn.html`：自动跳过表格"文件数超过 50,000"项；
-  失败模式表格"工作目录有超过 50,000 个文件"项
+- 同文件 step 5 注释（提及读 config、fallback 与 `0` 禁用）
+- 同文件错误消息字符串 `` `... too many files (>${maxFiles}) ...` ``
+  —— 使用解析后的有效值，不是 hard-coded 数字
+- `agent/src/utils/config.ts`：
+  - `GlobalConfig.checkpointsMaxFiles` 类型字段
+  - `getDefaults()` 默认值（必须 = MAX_FILES）
+  - `GLOBAL_CONFIG_KEYS` 列表
+- `agent/src/components/Settings/Config.tsx` 的 `checkpointsMaxFiles`
+  enum option 列表 —— 跟 `checkpointsMaxSnapshotsPerProject` 同形循环菜单
+- `agent/src/tools/ConfigTool/supportedSettings.ts` 的
+  `checkpointsMaxFiles` schema (min/max/description)
+- `docs/user/checkpoints_zhcn.html`：默认值卡片；自动跳过表格；用户配置表；
+  Prune 阈值表格里的"单次快照最多工作目录文件数"；失败模式表格
+- 单测 `agent/src/__tests__/unit/utils/checkpoints/createSnapshot.test.ts`
+  的 `checkpointsMaxFiles` skip-with-touch 覆盖
 
 注意 `agent/src/utils/gitDiff.ts` 里有一个**同名但语义不同**的
 `const MAX_FILES = 50` —— 它是 diff 单次解析的文件数上限，不是

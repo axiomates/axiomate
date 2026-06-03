@@ -15,6 +15,10 @@ import { indexPath, projectHash, projectMetaPath, refName } from '../../../../ut
 import { ensureStore } from '../../../../utils/checkpoints/store.js'
 import { parseCommitSubject } from '../../../../utils/checkpoints/reason.js'
 import { createSnapshot, MAX_FILE_SIZE_MB } from '../../../../utils/checkpoints/createSnapshot.js'
+import {
+  DEFAULT_GLOBAL_CONFIG,
+  saveGlobalConfig,
+} from '../../../../utils/config.js'
 
 let tmpRoot: string
 let workTree: string
@@ -31,6 +35,10 @@ afterAll(() => {
 })
 
 beforeEach(async () => {
+  saveGlobalConfig(current => ({
+    ...current,
+    checkpointsMaxFiles: DEFAULT_GLOBAL_CONFIG.checkpointsMaxFiles,
+  }))
   tmpRoot = mkdtempSync(join(tmpdir(), 'axiomate-snap-'))
   process.env.AXIOMATE_CHECKPOINT_BASE = join(tmpRoot, 'cp')
   workTree = mkdtempSync(join(tmpRoot, 'wt-'))
@@ -40,6 +48,10 @@ beforeEach(async () => {
 })
 
 afterEach(() => {
+  saveGlobalConfig(current => ({
+    ...current,
+    checkpointsMaxFiles: DEFAULT_GLOBAL_CONFIG.checkpointsMaxFiles,
+  }))
   rmSync(tmpRoot, { recursive: true, force: true })
 })
 
@@ -240,6 +252,27 @@ describe('createSnapshot — touchProject ordering (step 4 before step 5)', () =
     expect(meta.workdir.length).toBeGreaterThan(0)
     expect(typeof meta.created_at).toBe('number')
     expect(typeof meta.last_touch).toBe('number')
+  })
+
+  test('projects/<hash>.json is written when checkpointsMaxFiles skips snapshot', async () => {
+    saveGlobalConfig(current => ({
+      ...current,
+      checkpointsMaxFiles: 2,
+    }))
+    writeFileSync(join(workTree, 'a.txt'), '1')
+    writeFileSync(join(workTree, 'b.txt'), '2')
+    writeFileSync(join(workTree, 'c.txt'), '3')
+
+    const r = await createSnapshot(workTree, {
+      messageId: 'msg-001',
+      label: 'l',
+    })
+    expect(r.ok).toBe(false)
+    if (r.ok === true) return
+    expect(r.skipped).toBe('too-many-files')
+
+    const metaPath = projectMetaPath(projectHash(workTree))
+    expect(existsSync(metaPath)).toBe(true)
   })
 })
 

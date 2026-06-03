@@ -559,6 +559,12 @@ export type GlobalConfig = {
   // Range 0..100_000.
   checkpointsMaxSnapshotsPerProject: number
 
+  // Working-directory file-count guard for checkpoint snapshots.
+  // createSnapshot.ts counts files before `git add -A` and skips the
+  // snapshot once this cap is exceeded. 0 disables the file-count guard.
+  // Range 0..10_000_000.
+  checkpointsMaxFiles: number
+
   // Terminal progress bar configuration (OSC 9;4)
   terminalProgressBarEnabled: boolean
 
@@ -736,6 +742,7 @@ function createDefaultGlobalConfig(): GlobalConfig {
     fileCheckpointingEnabled: true,
     checkpointsStatusRows: 50,
     checkpointsMaxSnapshotsPerProject: 1000,
+    checkpointsMaxFiles: 200_000,
     terminalProgressBarEnabled: true,
     respectGitignore: true,
     copyFullResponse: false,
@@ -765,6 +772,7 @@ export const GLOBAL_CONFIG_KEYS = [
   'fileCheckpointingEnabled',
   'checkpointsStatusRows',
   'checkpointsMaxSnapshotsPerProject',
+  'checkpointsMaxFiles',
   'terminalProgressBarEnabled',
   'showStatusInTerminalTab',
   'respectGitignore',
