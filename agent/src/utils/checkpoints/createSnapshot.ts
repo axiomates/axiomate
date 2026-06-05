@@ -41,6 +41,10 @@ import { existsSync } from 'fs'
 import { getGlobalConfig } from '../config.js'
 import { logForDebugging } from '../debug.js'
 import { countFilesUnder } from './countFiles.js'
+import {
+  logCheckpointDiagnostic,
+  quoteDiagnostic,
+} from './diagnostics.js'
 import { dropOversizeFromIndex } from './dropOversizeFromIndex.js'
 import {
   probeGitAvailable,
@@ -152,14 +156,59 @@ export async function createSnapshot(
   const start = Date.now()
   const result = await _runCreateSnapshot(workdir, reason, opts)
   const duration_ms = Date.now() - start
+  const metricProjectHash = projectHashOrEmpty(workdir)
   void recordSnapshotOutcome({
     ts: start,
     duration_ms,
     outcome: outcomeFor(result),
-    project_hash: projectHashOrEmpty(workdir),
+    project_hash: metricProjectHash,
     reason: reasonFor(result),
   })
+  if (result.ok === false) {
+    logCreateSnapshotDiagnostic({
+      result,
+      workdir,
+      reason,
+      duration_ms,
+      projectHash: metricProjectHash,
+    })
+  }
   return result
+}
+
+function logCreateSnapshotDiagnostic(params: {
+  result: Exclude<CreateSnapshotResult, { ok: true }>
+  workdir: string
+  reason: CreateSnapshotReason
+  duration_ms: number
+  projectHash: string
+}): void {
+  if (params.result.skipped === 'no-changes') return
+
+  logCheckpointDiagnostic(() => {
+    let canonical = params.workdir
+    try {
+      canonical = normalizePath(params.workdir)
+    } catch {
+      // Keep the caller-provided path; this is a diagnostic only.
+    }
+    const fields = [
+      'snapshot skipped',
+      `skipped=${params.result.skipped}`,
+      `durationMs=${params.duration_ms}`,
+      `workdir=${quoteDiagnostic(canonical)}`,
+      `projectHash=${quoteDiagnostic(params.projectHash)}`,
+      `messageId=${quoteDiagnostic(params.reason.messageId)}`,
+      `label=${quoteDiagnostic(params.reason.label)}`,
+    ]
+    if (params.result.skipped === 'too-many-files') {
+      fields.push(`maxFiles=${params.result.maxFiles}`)
+      fields.push(`firstDetection=${params.result.firstDetection}`)
+    } else if (params.result.message) {
+      fields.push(`message=${quoteDiagnostic(params.result.message)}`)
+    }
+    return fields.join(' ')
+  })
 }
 
 function outcomeFor(r: CreateSnapshotResult): SnapshotOutcome {

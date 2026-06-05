@@ -36,6 +36,10 @@ import { unlink } from 'fs/promises'
 import { isAbsolute, join, relative } from 'path'
 import { getOriginalCwd } from '../bootstrap/state.js'
 import { createSnapshot } from './checkpoints/createSnapshot.js'
+import {
+  logCheckpointDiagnostic,
+  quoteDiagnostic,
+} from './checkpoints/diagnostics.js'
 import { runCheckpointGit } from './checkpoints/git.js'
 import { indexPath, normalizePath, projectHash } from './checkpoints/paths.js'
 import { rollback } from './checkpoints/rollback.js'
@@ -180,6 +184,14 @@ export async function fileHistoryMakeSnapshot(
   if (result.ok === false) {
     logForDebugging(
       `FileHistory: snapshot skipped for ${messageId} (${result.skipped})`,
+    )
+    logCheckpointDiagnostic(
+      () =>
+        `fileHistory snapshot skipped messageId=${quoteDiagnostic(messageId)} ` +
+        `skipped=${result.skipped}` +
+        ('message' in result && result.message
+          ? ` message=${quoteDiagnostic(result.message)}`
+          : ''),
     )
     // `no-changes` is benign — the previous anchor already represents
     // current disk, no new commit needed. Every other skip reason is

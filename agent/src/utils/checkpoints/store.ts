@@ -23,6 +23,10 @@ import { mkdir, writeFile } from 'fs/promises'
 import { existsSync } from 'fs'
 import { join } from 'path'
 import { logForDebugging } from '../debug.js'
+import {
+  logCheckpointDiagnostic,
+  quoteDiagnostic,
+} from './diagnostics.js'
 import { runCheckpointGit, runCheckpointGitInit } from './git.js'
 import {
   DEFAULT_EXCLUDES,
@@ -94,6 +98,11 @@ export async function ensureStore(): Promise<EnsureStoreResult> {
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     logForDebugging(`ensureStore: mkdir failed: ${msg}`)
+    logCheckpointDiagnostic(
+      () =>
+        `ensureStore mkdir failed store=${quoteDiagnostic(store)} ` +
+        `message=${quoteDiagnostic(msg)}`,
+    )
     return { ok: false, reason: `mkdir failed: ${msg}` }
   }
 
@@ -112,6 +121,12 @@ export async function ensureStore(): Promise<EnsureStoreResult> {
     logForDebugging(
       `ensureStore: git init --bare failed (reason=${initResult.reason}, ` +
         `code=${initResult.code}): ${initResult.message}`,
+    )
+    logCheckpointDiagnostic(
+      () =>
+        `ensureStore git-init failed store=${quoteDiagnostic(store)} ` +
+        `reason=${initResult.reason} code=${initResult.code} ` +
+        `message=${quoteDiagnostic(initResult.message)}`,
     )
     return {
       ok: false,
@@ -147,9 +162,19 @@ export async function ensureStore(): Promise<EnsureStoreResult> {
       logForDebugging(
         `ensureStore: git config ${key} failed: ${r.message}`,
       )
+      logCheckpointDiagnostic(
+        () =>
+          `ensureStore git-config failed key=${quoteDiagnostic(key)} ` +
+          `store=${quoteDiagnostic(store)} reason=${r.reason} code=${r.code} ` +
+          `message=${quoteDiagnostic(r.message)}`,
+      )
     }
   }
   if (configFailures === configCommands.length) {
+    logCheckpointDiagnostic(
+      () =>
+        `ensureStore failed all repo-local git config writes store=${quoteDiagnostic(store)}`,
+    )
     return {
       ok: false,
       reason: 'all repo-local git config writes failed',
@@ -166,6 +191,11 @@ export async function ensureStore(): Promise<EnsureStoreResult> {
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     logForDebugging(`ensureStore: info/exclude write failed: ${msg}`)
+    logCheckpointDiagnostic(
+      () =>
+        `ensureStore info-exclude write failed path=${quoteDiagnostic(infoExcludePath())} ` +
+        `message=${quoteDiagnostic(msg)}`,
+    )
     return { ok: false, reason: `info/exclude write failed: ${msg}` }
   }
 

@@ -17,8 +17,12 @@
 
 import { stat } from 'fs/promises'
 import { execFileNoThrowWithCwd } from '../execFileNoThrow.js'
-import { logForDebugging } from '../debug.js'
 import { gitExe } from '../git.js'
+import {
+  formatArgsDiagnostic,
+  logCheckpointDiagnostic,
+  quoteDiagnostic,
+} from './diagnostics.js'
 import {
   checkpointGitEnv,
   checkpointInitEnv,
@@ -62,6 +66,7 @@ export type CheckpointGitResult =
       stderr: string
       message: string
     }
+type CheckpointGitFailure = Extract<CheckpointGitResult, { ok: false }>
 
 export interface RunCheckpointGitOptions extends CheckpointGitEnvOptions {
   /** Override default 30s timeout. */
@@ -85,6 +90,32 @@ export interface RunCheckpointGitOptions extends CheckpointGitEnvOptions {
   allowedExitCodes?: ReadonlySet<number>
   /** Stdin to feed the process. Only used for a couple of plumbing paths. */
   input?: string
+}
+
+function logCheckpointGitFailure(params: {
+  args: readonly string[]
+  result: CheckpointGitFailure
+  cwd: string | undefined
+  timeoutMs: number
+  store: string | undefined
+  workTree: string | undefined
+  indexFile: string | undefined
+}): void {
+  logCheckpointDiagnostic(() => {
+    const stderr = params.result.stderr
+    const stdout = params.result.stdout
+    return (
+      `git failed args=[${formatArgsDiagnostic(params.args)}] ` +
+      `reason=${params.result.reason} code=${params.result.code} ` +
+      `timeoutMs=${params.timeoutMs} cwd=${quoteDiagnostic(params.cwd)} ` +
+      `store=${quoteDiagnostic(params.store)} ` +
+      `workTree=${quoteDiagnostic(params.workTree)} ` +
+      `indexFile=${quoteDiagnostic(params.indexFile)} ` +
+      `message=${quoteDiagnostic(params.result.message)}` +
+      (stderr ? ` stderr=${quoteDiagnostic(stderr)}` : '') +
+      (stdout ? ` stdout=${quoteDiagnostic(stdout)}` : '')
+    )
+  })
 }
 
 /**
@@ -111,7 +142,18 @@ export async function runCheckpointGit(
   // does not tilde-expand at the chdir syscall, so spawn would fail.
   const workTree = normalizePath(opts.workTree)
   const workdirCheck = await ensureWorkTree(workTree)
-  if (workdirCheck) return workdirCheck
+  if (workdirCheck) {
+    logCheckpointGitFailure({
+      args,
+      result: workdirCheck,
+      cwd: workTree,
+      timeoutMs: opts.timeoutMs ?? resolveTimeoutMs(),
+      store: opts.store,
+      workTree,
+      indexFile: opts.indexFile,
+    })
+    return workdirCheck
+  }
 
   const env = checkpointGitEnv({
     store: opts.store,
@@ -151,7 +193,7 @@ export async function runCheckpointGitInit(
  */
 async function ensureWorkTree(
   workTree: string,
-): Promise<CheckpointGitResult | null> {
+): Promise<CheckpointGitFailure | null> {
   try {
     const st = await stat(workTree)
     if (!st.isDirectory()) {
@@ -225,7 +267,24 @@ async function runWithEnv(
     reason = 'spawn-error'
   }
 
-  return { ok: false, reason, code, stdout, stderr, message }
+  const failure: CheckpointGitResult = {
+    ok: false,
+    reason,
+    code,
+    stdout,
+    stderr,
+    message,
+  }
+  logCheckpointGitFailure({
+    args,
+    result: failure,
+    cwd,
+    timeoutMs: timeout,
+    store: env.GIT_DIR,
+    workTree: env.GIT_WORK_TREE,
+    indexFile: env.GIT_INDEX_FILE,
+  })
+  return failure
 }
 
 /**
@@ -276,9 +335,10 @@ export async function probeGitAvailable(): Promise<boolean> {
   _gitAvailableCache = ok
 
   if (!ok) {
-    logForDebugging(
-      `Checkpoints disabled: git not found (probe code=${result.code}, ` +
-        `error=${result.error ?? 'none'})`,
+    logCheckpointDiagnostic(
+      () =>
+        `git probe failed code=${result.code} ` +
+        `error=${quoteDiagnostic(result.error ?? 'none')}`,
     )
   }
   return ok
