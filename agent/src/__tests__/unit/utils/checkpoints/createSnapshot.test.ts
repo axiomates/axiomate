@@ -14,7 +14,13 @@ import { runCheckpointGit } from '../../../../utils/checkpoints/git.js'
 import { indexPath, projectHash, projectMetaPath, refName } from '../../../../utils/checkpoints/paths.js'
 import { ensureStore } from '../../../../utils/checkpoints/store.js'
 import { parseCommitSubject } from '../../../../utils/checkpoints/reason.js'
-import { createSnapshot, MAX_FILE_SIZE_MB } from '../../../../utils/checkpoints/createSnapshot.js'
+import {
+  createSnapshot,
+  MAX_FILES,
+  MAX_FILES_CONFIG_LIMIT,
+  MAX_FILE_SIZE_MB,
+  normalizeConfiguredMaxFiles,
+} from '../../../../utils/checkpoints/createSnapshot.js'
 import {
   DEFAULT_GLOBAL_CONFIG,
   saveGlobalConfig,
@@ -231,6 +237,19 @@ describe('createSnapshot — skip paths', () => {
     expect(second.ok).toBe(false)
     if (second.ok === true) return
     expect(second.skipped).toBe('no-changes')
+  })
+})
+
+describe('createSnapshot — checkpointsMaxFiles config', () => {
+  test('normalizes the configured max file guard', () => {
+    expect(normalizeConfiguredMaxFiles(undefined)).toBe(MAX_FILES)
+    expect(normalizeConfiguredMaxFiles(Number.NaN)).toBe(MAX_FILES)
+    expect(normalizeConfiguredMaxFiles(-1)).toBe(MAX_FILES)
+    expect(normalizeConfiguredMaxFiles(0)).toBe(0)
+    expect(normalizeConfiguredMaxFiles(500_000)).toBe(500_000)
+    expect(normalizeConfiguredMaxFiles(10_000_000)).toBe(
+      MAX_FILES_CONFIG_LIMIT,
+    )
   })
 })
 

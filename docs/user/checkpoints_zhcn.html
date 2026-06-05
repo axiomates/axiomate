@@ -810,7 +810,7 @@ Roll back to a turn with /rewind (interactive selector).</code></pre>
       <tr>
         <td>Settings → Config 界面<br>或 <code>/config checkpointsMaxFiles N</code><br>或 <code>~/.axiomate.json</code></td>
         <td><code>checkpointsMaxFiles</code></td>
-        <td>单次快照前的工作目录文件数上限。范围 <strong>0..10000000</strong>，默认 <strong>200000</strong>；<strong>0</strong> 表示关闭这个文件数 guard。超过上限时只跳过这一次快照，主流程继续。</td>
+        <td>单次快照前的工作目录文件数上限。范围 <strong>0..1000000</strong>，默认 <strong>200000</strong>；<strong>0</strong> 表示关闭这个文件数 guard。超过上限时只跳过这一次快照，主流程继续。</td>
       </tr>
     </table>
 
@@ -837,7 +837,7 @@ Roll back to a turn with /rewind (interactive selector).</code></pre>
       <tr><td>保留天数（stale 阈值）</td><td>30 天</td><td><code>--retention-days N</code> &mdash; <strong>填 0 关掉 stale 这一遍</strong></td></tr>
       <tr><td>总大小上限</td><td>1 GB（1000 MB）</td><td><code>--max-size-mb N</code> &mdash; <strong>填 0 关掉 size-cap 这一遍</strong></td></tr>
       <tr><td>每个项目最多快照数</td><td>1000</td><td>通过 <code>/config</code> 设置 <code>checkpointsMaxSnapshotsPerProject</code>（范围 0..100000，0 = 关闭 ring buffer 上限）。Settings 档位为 100/300/500/1000/2000/5000/10000/0。写时和 prune 时都生效。</td></tr>
-      <tr><td>单次快照最多工作目录文件数</td><td>200,000</td><td>通过 <code>/config</code> 设置 <code>checkpointsMaxFiles</code>（范围 0..10000000，0 = 关闭文件数 guard）。Settings 档位为 50000/100000/200000/300000/500000/1000000/2000000/5000000/10000000/0。写快照前生效。</td></tr>
+      <tr><td>单次快照最多工作目录文件数</td><td>200,000</td><td>通过 <code>/config</code> 设置 <code>checkpointsMaxFiles</code>（范围 0..1000000，0 = 关闭文件数 guard）。Settings 档位为 50000/100000/200000/300000/500000/1000000/0。写快照前生效。</td></tr>
       <tr><td>会话锚定窗口</td><td>28 天，或保留期的 2 倍</td><td>不可配，硬上限</td></tr>
     </table>
   </section>

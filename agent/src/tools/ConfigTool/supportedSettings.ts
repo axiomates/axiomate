@@ -91,9 +91,9 @@ export const SUPPORTED_SETTINGS: Record<string, SettingConfig> = {
     source: 'global',
     type: 'number',
     description:
-      'Working-directory file-count cap for checkpoint snapshots. Snapshot creation skips before git add when this many files is exceeded. 0 disables this guard. Range 0..10000000.',
+      'Working-directory file-count cap for checkpoint snapshots. Snapshot creation skips before git add when this many files is exceeded. 0 disables this guard. Range 0..1000000.',
     min: 0,
-    max: 10_000_000,
+    max: 1_000_000,
   },
   showTurnDuration: {
     source: 'global',

@@ -115,6 +115,9 @@ fallback 默认值（globalConfig 未设时使用）。
 **用户可配置入口**：globalConfig `checkpointsMaxFiles`，通过 `/config`
 TUI 调整。createSnapshot 写快照前读取这个 config；设置 `0` 禁用文件数
 guard。
+配置范围是 `0..1,000,000`；为了兼容旧配置或手写 `~/.axiomate.json`，运行时会
+把超过 `1,000,000` 的正数压到 `MAX_FILES_CONFIG_LIMIT = 1,000,000`，但 `0`
+仍然保留为"不限制"。
 
 **跟随**：
 
@@ -125,6 +128,9 @@ guard。
   - `GlobalConfig.checkpointsMaxFiles` 类型字段
   - `getDefaults()` 默认值（必须 = MAX_FILES）
   - `GLOBAL_CONFIG_KEYS` 列表
+- `agent/src/utils/checkpoints/createSnapshot.ts`：
+  - `MAX_FILES_CONFIG_LIMIT` 上限（当前 1,000,000）
+  - `normalizeConfiguredMaxFiles()` 对旧的大值做 clamp，并保留 `0` 禁用语义
 - `agent/src/components/Settings/Config.tsx` 的 `checkpointsMaxFiles`
   enum option 列表 —— 跟 `checkpointsMaxSnapshotsPerProject` 同形循环菜单
 - `agent/src/tools/ConfigTool/supportedSettings.ts` 的

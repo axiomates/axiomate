@@ -67,6 +67,7 @@ import { touchProject } from './touchProject.js'
 // the agent" and changing them requires deliberation, not arguments.
 // MAX_FILES is the fallback for `globalConfig.checkpointsMaxFiles`.
 export const MAX_FILES = 200_000
+export const MAX_FILES_CONFIG_LIMIT = 1_000_000
 export const MAX_FILE_SIZE_MB = 50
 /**
  * Fallback per-project snapshot ring-buffer ceiling. Used only when the
@@ -359,13 +360,17 @@ async function _runCreateSnapshot(
 }
 
 function resolveMaxFiles(): number {
-  const configured = getGlobalConfig().checkpointsMaxFiles
+  return normalizeConfiguredMaxFiles(getGlobalConfig().checkpointsMaxFiles)
+}
+
+export function normalizeConfiguredMaxFiles(configured: unknown): number {
   if (
     typeof configured === 'number' &&
     Number.isFinite(configured) &&
     configured >= 0
   ) {
-    return configured
+    if (configured === 0) return 0
+    return Math.min(configured, MAX_FILES_CONFIG_LIMIT)
   }
   return MAX_FILES
 }
