@@ -20,6 +20,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  readdirSync,
   rmSync,
   writeFileSync,
   existsSync,
@@ -177,6 +178,12 @@ async function latestPreRewindHash(): Promise<string> {
   return anchor.gitHash
 }
 
+function rewindTempDirNames(): Set<string> {
+  return new Set(
+    readdirSync(tmpdir()).filter(name => name.startsWith('axiomate-rewind-')),
+  )
+}
+
 describe('fileHistoryEnabled', () => {
   test('on by default in test config', () => {
     expect(fileHistoryEnabled()).toBe(true)
@@ -199,6 +206,45 @@ describe('rewind — restore content at the chosen turn', () => {
 
     await fileHistoryRewind(holder.updater, await hashFor(m1))
     expect(readFileSync(a, 'utf-8')).toBe('v1')
+  })
+
+  gitBackedTest('cleans up rewind pathspec temp directories after success', async () => {
+    const before = rewindTempDirNames()
+    const a = join(workTree, 'a.txt')
+    writeFileSync(a, 'v1')
+    const holder = makeStateHolder()
+    const m1 = await turn(holder, [a])
+    writeFileSync(a, 'v2')
+    await turn(holder, [a])
+
+    await fileHistoryRewind(holder.updater, await hashFor(m1))
+
+    const after = rewindTempDirNames()
+    for (const name of after) {
+      expect(before.has(name)).toBe(true)
+    }
+  })
+
+  gitBackedTest('does not reuse or leave pathspec temp directories across consecutive rewinds', async () => {
+    const before = rewindTempDirNames()
+    const a = join(workTree, 'a.txt')
+    writeFileSync(a, 'v1')
+    const holder = makeStateHolder()
+    const m1 = await turn(holder, [a])
+    writeFileSync(a, 'v2')
+    const m2 = await turn(holder, [a])
+    writeFileSync(a, 'v3')
+    await turn(holder, [a])
+
+    await fileHistoryRewind(holder.updater, await hashFor(m1))
+    expect(readFileSync(a, 'utf-8')).toBe('v1')
+    await fileHistoryRewind(holder.updater, await hashFor(m2))
+    expect(readFileSync(a, 'utf-8')).toBe('v2')
+
+    const after = rewindTempDirNames()
+    for (const name of after) {
+      expect(before.has(name)).toBe(true)
+    }
   })
 
   gitBackedTest('restores multiple files in one rewind, each to its turn-1 content', async () => {

@@ -33,7 +33,7 @@
 
 import type { UUID } from 'crypto'
 import { randomUUID } from 'crypto'
-import { mkdtemp, readFile, rm, rmdir, unlink, writeFile } from 'fs/promises'
+import { mkdtemp, rm, rmdir, unlink } from 'fs/promises'
 import { tmpdir } from 'os'
 import { dirname, isAbsolute, join, relative } from 'path'
 import { getOriginalCwd } from '../bootstrap/state.js'
@@ -60,6 +60,10 @@ import { logForDebugging } from './debug.js'
 import { isEnvTruthy } from './envUtils.js'
 import { isENOENT } from './errors.js'
 import { logError } from './log.js'
+import {
+  readNulPathspecFile,
+  streamGitPathspecFromDiff,
+} from './fileHistoryRewindPathspec.js'
 import { recordFileHistorySnapshot } from './sessionStorage.js'
 
 export type FileHistorySnapshot = {
@@ -957,23 +961,15 @@ async function writePathspecFromDiff(args: {
   args: string[]
   pathspecFile: string
 }): Promise<number> {
-  const diff = await runCheckpointGit(args.args, {
+  const diff = await streamGitPathspecFromDiff({
     store: args.store,
     workTree: args.workdir,
     indexFile: args.indexFile,
+    gitArgs: args.args,
+    pathspecFile: args.pathspecFile,
   })
   if (diff.ok === false) throw new Error(`diff: ${diff.message}`)
-  await writeFile(args.pathspecFile, diff.stdout, 'utf-8')
-  return countNulPaths(diff.stdout)
-}
-
-function countNulPaths(value: string): number {
-  if (value.length === 0) return 0
-  let count = 0
-  for (const part of value.split('\0')) {
-    if (part.length > 0) count++
-  }
-  return count
+  return diff.count
 }
 
 async function applyRewindExecutionPlan(plan: RewindExecutionPlan): Promise<void> {
@@ -1004,9 +1000,7 @@ async function applyRewindExecutionPlan(plan: RewindExecutionPlan): Promise<void
 
 async function deletePathspecPaths(plan: RewindExecutionPlan): Promise<void> {
   if (plan.deleteCount === 0) return
-  const raw = await readFile(plan.deletePathspecFile, 'utf-8')
-  const paths = raw.split('\0').filter(s => s.length > 0)
-  for (const rel of paths) {
+  for await (const rel of readNulPathspecFile(plan.deletePathspecFile)) {
     const abs = join(plan.workdir, rel)
     try {
       await unlink(abs)
