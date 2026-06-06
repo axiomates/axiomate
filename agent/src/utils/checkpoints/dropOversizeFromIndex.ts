@@ -1,6 +1,7 @@
 /**
  * `dropOversizeFromIndex` — remove staged files larger than the cap from
- * the per-project index, after `git add -A` but before `git write-tree`.
+ * the per-project index, after filesystem snapshot staging and before
+ * `git write-tree`.
  *
  * Direct port of Hermes `_drop_oversize_from_index` (`tools/checkpoint_manager.py::CheckpointManager._drop_oversize_from_index`).
  * The point: let the agent keep snapshotting source code while refusing
@@ -9,11 +10,11 @@
  * provide zero rewind value.
  *
  * Why post-stage rather than pre-stage:
- *   - We already pay the `git add -A` cost; the index now has authoritative
- *     entries for everything. Walking those is cheaper and more accurate
- *     than re-walking the workdir with separate ignore matching.
+ *   - Snapshot staging has already rebuilt the index from the filesystem.
+ *     Walking those accepted entries is cheaper and more accurate than
+ *     re-walking the workdir for a second policy pass.
  *   - `git ls-files --cached -z` gives us the exact set git would commit,
- *     which already accounts for `info/exclude`, `.gitignore`, attributes.
+ *     which already accounts for our snapshot ignore policy.
  *   - Stat is racy in either approach; doing it after stage means we
  *     don't double-stat any file we already accepted.
  *

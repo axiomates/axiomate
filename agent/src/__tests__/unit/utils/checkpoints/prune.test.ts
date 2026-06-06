@@ -36,6 +36,7 @@ import {
 import { pruneCheckpoints, MIN_INTERVAL_HOURS } from '../../../../utils/checkpoints/prune.js'
 import { ensureStore } from '../../../../utils/checkpoints/store.js'
 import { touchProject } from '../../../../utils/checkpoints/touchProject.js'
+import { gitExe } from '../../../../utils/git.js'
 import { buildFixtureCommit } from './fixtures.js'
 
 let tmpRoot: string
@@ -75,17 +76,21 @@ afterEach(() => {
 
 describe('pruneCheckpoints — entry contract', () => {
   test('returns gitMissing=true when git probe fails (without throwing)', async () => {
-    // Force probe failure by pointing to a nonexistent git binary.
-    const pathBefore = process.env.PATH
-    process.env.PATH = ''
+    // Force probe failure by making PATH empty and clearing gitExe()'s
+    // memoized lookup. Without the cache clear, this test depends on
+    // running before any other test in this file resolves git.
+    const pathBefore = snapshotPathEnv()
+    setPathEnv('')
     try {
+      gitExe.cache.clear()
       _resetGitAvailableCacheForTesting()
       const r = await pruneCheckpoints({})
       expect(r.gitMissing).toBe(true)
       expect(r.skipped).toBe(false)
       expect(r.errors).toEqual([])
     } finally {
-      process.env.PATH = pathBefore
+      restorePathEnv(pathBefore)
+      gitExe.cache.clear()
       _resetGitAvailableCacheForTesting()
     }
   })
@@ -191,6 +196,42 @@ describe('pruneCheckpoints — entry contract', () => {
     expect(r.staleRefsRemoved).toBe(0)
   })
 })
+
+function snapshotPathEnv(): Map<string, string | undefined> {
+  const snapshot = new Map<string, string | undefined>()
+  for (const key of Object.keys(process.env)) {
+    if (key.toLowerCase() === 'path') {
+      snapshot.set(key, process.env[key])
+    }
+  }
+  if (!snapshot.has('PATH')) {
+    snapshot.set('PATH', process.env.PATH)
+  }
+  return snapshot
+}
+
+function setPathEnv(value: string): void {
+  const keys = Object.keys(process.env).filter(key => key.toLowerCase() === 'path')
+  if (keys.length === 0) {
+    process.env.PATH = value
+    return
+  }
+  for (const key of keys) {
+    process.env[key] = value
+  }
+}
+
+function restorePathEnv(snapshot: Map<string, string | undefined>): void {
+  for (const key of Object.keys(process.env)) {
+    if (key.toLowerCase() === 'path' && !snapshot.has(key)) {
+      delete process.env[key]
+    }
+  }
+  for (const [key, value] of snapshot) {
+    if (value === undefined) delete process.env[key]
+    else process.env[key] = value
+  }
+}
 
 /**
  * Build a fully-populated project: real workdir on disk, real ref with
@@ -700,9 +741,10 @@ describe('pruneCheckpoints — size cap pass', () => {
     const N = 256 * 1024
     const blob = randomBytes(N)
     writeFileSync(join(proj.workdir, 'big.bin'), blob)
-    // Empty files: the `git add -A` inside buildFixtureCommit picks up
-    // big.bin from the workdir as-written. Passing it via the `files`
-    // map would re-write it through utf-8 conversion and shrink it.
+    // Empty files: buildFixtureCommit stages the current filesystem, so
+    // big.bin is picked up from the workdir as-written. Passing it via
+    // the `files` map would re-write it through utf-8 conversion and
+    // shrink it.
     await buildFixtureCommit({
       store: e.store,
       workTree: proj.workdir,

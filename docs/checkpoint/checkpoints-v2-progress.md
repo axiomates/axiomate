@@ -15,7 +15,14 @@
 
 ## Immediate next action
 
-→ **Phase 5 done (2026-05-22)**: all five steps shipped. Anchor tests landed first (#67), then `storeStatus` + `clearAll` helpers (#68), then `/checkpoints` slash command (#69), then `axiomate checkpoints` CLI subcommand (#70), then verification + smoke (#71). 1370/1370 tests passing; `tsc --noEmit` clean; Bun build succeeds; all four CLI subcommands smoked on Windows.
+→ **Checkpoint scanner update done (2026-06-06)**: staging no longer uses production `git add -A`. Current path is `collectCheckpointFiles` + `git read-tree --empty` + `git update-index --add -z --stdin`, with Git still providing ignore semantics through `git check-ignore --stdin -z --no-index`. Checkpoint tests and shuffled checkpoint tests pass on Windows; typecheck is clean.
+
+Checkpoint scanner update (2026-06-06):
+- Replaced production staging via `git add -A` with explicit filesystem snapshot staging. Nested repositories, submodules, and worktrees now contribute ordinary files by current disk bytes; VCS metadata entries (`.git`, `.hg`, `.svn`) are skipped.
+- User ignore rules still come from Git: the scanner batches file and directory probes through `git check-ignore --stdin -z --no-index`, so nested `.gitignore` scope, anchored rules, negations, and directory rules follow Git semantics without hand-rolling a parser. Embedded repositories reset the ignore root at their own `.git` directory/file, so parent `.gitignore` rules do not leak into child repo files; parent rules still decide whether the child repo directory itself is traversed.
+- `DEFAULT_EXCLUDES` was reduced to tiny checkpoint-owned defaults: `.git/`, `.hg/`, `.svn/`, `node_modules/`, `.DS_Store`, `Thumbs.db`, `desktop.ini`. `.env*`, `*.log`, `.next/`, `build/`, `bin/`, `obj/`, `.vs/`, lockfiles, language artifacts, and framework outputs are included unless the user ignores them.
+- `store/info/exclude` is rewritten by `ensureStore()` so deleting `~/.axiomate/checkpoints` or reusing an old store gets the current tiny defaults. The store file is not a supported user extension point.
+- Validation added: Git `add -A` differential oracle for ordinary trees, composed per-repository `git add -A` oracle for embedded repos, no-parent-ignore-leak tests for child repos with and without their own `.gitignore`, embedded repo/submodule `.git` directory/file tests, root and nested dirty/staged/untracked/deleted-state tests, parent gitlink avoidance, Windows-safe `-z` paths, empty-index delete semantics, retry-after-race, and update-index stdin batching.
 
 Phase 5 follow-up resolved (2026-05-22):
 - `pruneCheckpoints` on a fresh-install store (no `store/` dir yet) used to report two cosmetic `git reflog expire` / `git gc` errors. Fixed in `prune.ts:runReflogExpireAndGc` with an `existsSync(store)` early-return that skips both subcommands when the shadow-git dir hasn't been created yet — the call becomes a no-op (no error pushed, no `gcInvocations` increment) instead of polluting `report.errors` and making the CLI exit 1. Regression test added in `prune.test.ts`.
@@ -39,8 +46,8 @@ Phase 5 step 2 (2026-05-21):
 
 Phase 1-4 audit follow-up (2026-05-21): the codebase had three places carrying Hermes-style "pre-Phase-3 file-copy backend" framing. axiomate has no v1 release, so no real user can have any legacy file-copy directory. Fixed: (F1) `fileHistory.ts` `droppedLegacy` filter reframed as defensive malformed-entry skip, log+counter dropped; (F2) `__tests__/fileHistory.test.ts` T6 deleted (premise was false); (F3) `cleanup.ts` `cleanupOldFileHistoryBackups()` deleted entirely along with its caller. JSDoc tightened in `fileHistory.ts:15-30, 128-133` and `store.ts:10-19`.
 
-Phase 1 done (2026-05-20):
-- 4 source files: `paths.ts` (with `DEFAULT_EXCLUDES` covering VS C++/C#, Python, JS/Bun, Rust, Java, iOS, Android), `validate.ts` (commit-hash + path-traversal guards), `gitEnv.ts` (GIT_DIR/WORK_TREE/INDEX_FILE + mute global/system gitconfig), `git.ts` (typed `runCheckpointGit` wrapper, never throws).
+Phase 1 done (2026-05-20; defaults superseded 2026-06-06):
+- 4 source files: `paths.ts` (then with broad `DEFAULT_EXCLUDES`; now reduced to tiny checkpoint-owned defaults), `validate.ts` (commit-hash + path-traversal guards), `gitEnv.ts` (GIT_DIR/WORK_TREE/INDEX_FILE + mute global/system gitconfig), `git.ts` (typed `runCheckpointGit` wrapper, never throws).
 - 3 test files: 44/44 passing in 2.4s. `tsc --noEmit` clean.
 - Honest scope: Phase 1 tests are pure-function (env composition, validation, paths). Real git-spawn behavior is exercised end-to-end in Phase 2 against a real on-disk store.
 
@@ -62,7 +69,7 @@ Phase 0 review answers (locked):
 - Snapshot only state affecting agent continuity; exclude build artifacts and dependency locks. Specifically include `agent/.axiomate/settings.local.json` (anchored `/.axiomate/` exclusion). Cargo.lock kept (binary-crate reproducibility).
 - Defaults `retentionDays = 14`, `maxTotalSizeMb = 500`. Match Hermes.
 - Phase sequencing 1→2→3→4→5 confirmed.
-- User `.gitignore` honored automatically (`git add -A` default behavior); global gitconfig muted by `GIT_CONFIG_GLOBAL=/dev/null`.
+- User `.gitignore` honored automatically (originally via `git add -A`; now via `git check-ignore --stdin -z --no-index`); global gitconfig muted by `GIT_CONFIG_GLOBAL=/dev/null`.
 
 ---
 
@@ -160,13 +167,12 @@ Internal helper `formatCommitSubject({messageId, label}) = \`axiomate:${messageI
 2. **Broad-dir guard**: skip if `workdir` is `/`, `~`, `C:\`, drive root (Hermes 643-648). Return `{ skipped: 'workdir-too-broad' }`.
 3. **Per-turn dedup**: caller's responsibility — `fileHistory.ts:189` already keys on `messageId`. We don't reimplement Hermes' `_checkpointed_dirs` set.
 4. **Touch project metadata** (Hermes `_touch_project` 849, called *before* file-count guard so even skipped snapshots register the project): write `projects/<hash16>.json` `last_touch = now`, preserve `created_at` if present. **Type guard** (Hermes test `test_non_dict_meta_does_not_raise`): if parsed value is not a plain object, treat as missing. Direct write (no temp+rename — Hermes accepts the corruption risk). Wrap in try/catch; failure logged at debug, snapshot continues.
-5. **File-count guard** via fs walk (Decision #13): walk workdir respecting `DEFAULT_EXCLUDES` + `.gitignore` (read once into a `Minimatch` set), abort the walk once count > `MAX_FILES`. If exceeded → `{ skipped: 'too-many-files' }` (Hermes 852-854). Walk is breadth-first with early-abort so the cost is bounded by `MAX_FILES + 1` `readdir` calls, not the full tree.
+5. **File-count guard** via `collectCheckpointFiles`: walk the same candidate set used by staging, with tiny `DEFAULT_EXCLUDES`, Git-backed `.gitignore` evaluation, nested-repo filesystem semantics, and early abort once count > `MAX_FILES`. Embedded repositories reset ignore scope at their own `.git` marker; parent ignore rules do not affect files inside the child repo once traversed. If exceeded → `{ skipped: 'too-many-files' }` (Hermes 852-854).
 6. **Set up per-project state**: `hash16 = projectHash(normalizePath(workdir))`; `indexFile = indexPath(hash16)`; `ref = refName(hash16)`. **Canonicalization happens at this boundary** via the Phase-1 `normalizePath` helper (tilde-expand + resolve). `projectHash` itself stays pure.
-7. **Seed the index** (Hermes 863-884):
+7. **Resolve the previous tip**:
    - `git rev-parse --verify <ref>^{commit}` with `allowedExitCodes: {128}` to detect "ref doesn't exist yet" (`hasRef = ok && stdout.trim() !== ''`).
-   - If `hasRef`: `git read-tree <refCommit>` so subsequent `diff-index` only shows real deltas.
-   - If `!hasRef`: delete the stale index file if present, let `git add -A` create fresh.
-8. **Stage**: `git add -A` with `timeoutMs: DEFAULT_CHECKPOINT_GIT_TIMEOUT_MS * 2` (Hermes 890-896 uses 2× timeout for staging large trees).
+   - The ref commit is only used for parentage and no-change detection; the index is rebuilt from the current filesystem.
+8. **Stage**: `git read-tree --empty`, then `collectCheckpointFiles`, then `git update-index --add -z --stdin` in batches. This intentionally does not use `git add -A`, because Git treats embedded repositories as gitlinks while checkpoints need ordinary file bytes below them. Correctness oracle: ordinary trees match `git add -A`; embedded trees match the union of each repository's own `git add -A` result with gitlinks removed and nested paths prefixed into the outer snapshot.
 9. **Drop oversize files** (`_dropOversizeFromIndex`, Hermes 974-1018):
    - `git ls-files --cached -z` — NUL-separated for spaces/special chars. Parse on `\0`.
    - For each path, `fs.stat(join(workdir, path))`, collect those over `MAX_FILE_SIZE_MB * 1024 * 1024`.
@@ -384,7 +390,7 @@ Read-only audit of Phases 1-3 against `hermes-agent/tools/checkpoint_manager.py`
 
 | ID | File | Issue | Resolution |
 |---|---|---|---|
-| A | `store.ts:70-78` | Top-doc said `info/exclude` is rewritten every `ensureStore` call. Actually only on first init (the whole `mkdir + writeFile` block sits inside the post-`git init` branch, after the HEAD-existence early-return). | Rewrote the docstring to reflect first-init-only and call out the implication: user edits are preserved; new excludes need a versioned bump |
+| A | `store.ts:70-78` | Superseded 2026-06-06. Earlier audit found `info/exclude` was first-init-only; current checkpoint scanner intentionally rewrites it on each `ensureStore()` so Git ignore probes see the current tiny defaults. | Current tests pin rewrite and recreate behavior. |
 | B | `createSnapshot.ts` top-doc | Stricter-than-Hermes rev-parse handling was undocumented. We return `transient-error` on rev-parse failure (other than allowed 128); Hermes `_take:904-909` falls through to fresh-root commit, silently orphaning prior chain. | Added a "Stricter-than-Hermes behavior — flagged so future maintainers don't read it as a bug" block to the top-doc |
 
 ### Deferred (no code change; documented divergences)
@@ -397,9 +403,9 @@ Read-only audit of Phases 1-3 against `hermes-agent/tools/checkpoint_manager.py`
 
 **D — `countFilesUnder` honors `.gitignore`; Hermes does not** (`countFiles.ts` vs `_dir_file_count`)
 - Hermes uses raw `Path.rglob('*')` — counts every file including ones that would be ignored by `git add -A`. A 100k-file monorepo with 80k inside `node_modules/` would hit the 50k cap and skip the snapshot, despite only ~20k files actually being staged.
-- Axiomate counts only what would be staged (post-ignore).
-- **Sub-divergence (F3, recorded 2026-05-21)**: even on the same input set, the count differs. Hermes' `rglob('*')` yields both files AND directories and `count += 1` runs for each (`checkpoint_manager.py::_dir_file_count`). Axiomate counts files only (`countFiles.ts:91-95`, gated by `!entry.isDirectory()`). On a deeply nested workdir Axiomate's effective threshold is therefore higher — the `MAX_FILES = 50_000` constant is "files" for us and "files + dirs" for Hermes. Same direction as the gitignore divergence (cap what `git add -A` actually pays for), no behavior bug. Recorded only so the parity claim in the JSDoc isn't read as exact.
-- **Why deferred**: this is intentional and behaviorally better. Already documented as above-Hermes in `countFiles.ts` JSDoc. Listed here only so the audit trail is complete.
+- Axiomate counts only what checkpoint staging would include: ordinary files after tiny defaults, Git `.gitignore` evaluation, and nested-repo metadata skipping.
+- **Sub-divergence (F3, recorded 2026-05-21; updated 2026-06-06)**: even on the same input set, the count differs. Hermes' `rglob('*')` yields both files AND directories and `count += 1` runs for each (`checkpoint_manager.py::_dir_file_count`). Axiomate counts files only. On a deeply nested workdir Axiomate's effective threshold is therefore higher — the `MAX_FILES` constant is "files" for us and "files + dirs" for Hermes.
+- **Why deferred**: this is intentional and behaviorally better. Listed here only so the audit trail is complete.
 - **When to revisit**: never, unless we decide to match Hermes exactly for some unforeseen reason.
 
 **E — `store.ts:130-135` config writes use `workTree: store`** ✅ resolved (2026-05-22)
@@ -667,9 +673,9 @@ This is the concrete modification plan executed in three steps per the user's ma
 
 ### Behavior anchors landed (commit `832a9837`)
 
-Two new tests in `__tests__/store.test.ts` pin Phase 4-adjacent assumptions before any refactor:
+Two tests in `__tests__/store.test.ts` pin Phase 4-adjacent assumptions:
 
-1. `info/exclude` is first-init-only — second `ensureStore()` call does NOT overwrite user edits, AND does NOT recreate the file if the user deleted it. Audit finding A documented this; now test-pinned.
+1. `info/exclude` is checkpoint-managed — second `ensureStore()` call rewrites user edits to current `DEFAULT_EXCLUDES`, and recreates the file if deleted. This was updated on 2026-06-06 so `git check-ignore` always sees current tiny defaults.
 2. `for-each-ref refs/axiomate/*` enumerates the per-project ref after a fixture commit — pins the prefix Phase 4 size-cap pass will use.
 
 Existing 173-test suite is the broader anchor — Phase 4 must not regress any of them.
@@ -812,7 +818,7 @@ Three parallel sub-agents audited Phases 1, 2, and 3+4 against Hermes. Each find
 |---|---|---|---|
 | F4 | `git.ts:50` | Timeout clamp `[10, 600]` seconds vs Hermes' `[10, 60]`. Intentional drift — `gc` paths use 3× the default and Hermes' 60s ceiling was hit in practice on large stores. Already in effect; not a regression. | Touch only if a future audit asks why. |
 | F5 | `git.ts:212` | `git-not-found` reason inferred via stringy `lower.includes('enoent')` match on execa's shortMessage. Brittle vs Hermes' typed `FileNotFoundError(filename="git")` catch (322-326). Works in practice; execa 5+ shortMessage stably contains "ENOENT". | Defer until execa output format actually shifts. |
-| F6 | `paths.ts:83-91` | `DEFAULT_EXCLUDES` includes `bin/` which is broader than Hermes — could shadow user-written `bin/` script directories in projects that aren't C/C++/Java. | Product call, not a port concern. Defer until a user complaint. |
+| ~~F6~~ | `paths.ts:83-91` | ✅ closed 2026-06-06 — `DEFAULT_EXCLUDES` no longer includes `bin/`, `obj/`, `.vs/`, logs, env files, or build outputs. These are now user `.gitignore` decisions. | N/A |
 | F7 | `createSnapshot.ts:355-357` | First-snapshot create-without-CAS race hole. Two concurrent worktrees racing on the very first ref creation can silently clobber each other. Hermes 954 has the same hole. | Hermes-parity — both impls accept this. Two-year Hermes runtime hasn't surfaced it. Fix when a user reports it. |
 | F8 | `prune.ts:346-359` | `runReflogExpireAndGc` 3× timeout applied to BOTH reflog and gc. Hermes 1381 only triple-times the gc; reflog uses default. Cosmetic over-budget — generous, not wrong. | Touch only if a future audit asks why. |
 | F9 | `createSnapshot.ts:366` | `update-ref` CAS-failure exit code may be 1 OR 128 depending on git version/locale. Code-1 path is read as `'race'`, code-128 path falls through to `'transient-error'`. | Low risk; revisit if cross-platform CI surfaces a misclassification. |

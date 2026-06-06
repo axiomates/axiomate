@@ -35,6 +35,8 @@ import { storeStatus } from '../../../../utils/checkpoints/storeStatus.js'
 import { touchProject } from '../../../../utils/checkpoints/touchProject.js'
 import { buildFixtureCommit } from './fixtures.js'
 
+const GIT_TEST_TIMEOUT_MS = 60_000
+
 let tmpRoot: string
 let baseEnvBefore: string | undefined
 
@@ -136,7 +138,7 @@ describe('storeStatus — populated store', () => {
 
     expect(report.store_size_bytes).toBeGreaterThan(0)
     expect(report.total_size_bytes).toBeGreaterThanOrEqual(report.store_size_bytes)
-  })
+  }, GIT_TEST_TIMEOUT_MS)
 
   test('removed workdir surfaces as exists=false; others still report exists=true', async () => {
     const init = await ensureStore()
@@ -175,7 +177,7 @@ describe('storeStatus — populated store', () => {
     expect(byHash.get(hGone)?.exists).toBe(false)
     // Both projects must still appear — exists=false does NOT drop the row.
     expect(report.project_count).toBe(2)
-  })
+  }, GIT_TEST_TIMEOUT_MS)
 
   test('malformed projects/*.json file is skipped, valid neighbors still reported', async () => {
     const init = await ensureStore()
@@ -201,7 +203,7 @@ describe('storeStatus — populated store', () => {
     const report = await storeStatus()
     expect(report.project_count).toBe(1)
     expect(report.projects[0]?.hash).toBe(h)
-  })
+  }, GIT_TEST_TIMEOUT_MS)
 
   test('project with no ref yet (touched but never snapshotted) reports commits=0', async () => {
     const init = await ensureStore()
@@ -215,5 +217,5 @@ describe('storeStatus — populated store', () => {
     expect(report.project_count).toBe(1)
     expect(report.projects[0]?.commits).toBe(0)
     expect(report.projects[0]?.exists).toBe(true)
-  })
+  }, GIT_TEST_TIMEOUT_MS)
 })

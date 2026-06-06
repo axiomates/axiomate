@@ -18,8 +18,8 @@
  *
  * Three injection scenarios:
  *   1. rev-parse returns code 2 (unallowed) → transient-error.
- *   2. read-tree spawn-error → transient-error.
- *   3. add returns timeout → transient-error.
+ *   2. read-tree spawn-error while clearing the index → transient-error.
+ *   3. update-index returns timeout → transient-error.
  *
  * In every case we assert: result.ok === false, result.skipped ===
  * 'transient-error', no exception escaped, the promise resolved.
@@ -127,17 +127,7 @@ describe('createSnapshot — transient-error fail-open', () => {
     expect(INJECT.hits).toBeGreaterThanOrEqual(1)
   })
 
-  test('T5b: read-tree spawn-error → transient-error', async () => {
-    // First snapshot lands normally to create the ref so step 7 reaches
-    // the read-tree branch on the next call.
-    const first = await createSnapshot(workTree, {
-      messageId: 'msg-pre',
-      label: 'pre',
-    })
-    if (first.ok === false) throw new Error('precondition snapshot failed')
-
-    writeFileSync(join(workTree, 'a.txt'), 'modified')
-
+  test('T5b: read-tree spawn-error while clearing index → transient-error', async () => {
     INJECT.matcher = args => args[0] === 'read-tree'
     INJECT.result = {
       ok: false,
@@ -159,15 +149,16 @@ describe('createSnapshot — transient-error fail-open', () => {
     expect(INJECT.hits).toBeGreaterThanOrEqual(1)
   })
 
-  test('T5c: add timeout → transient-error', async () => {
-    INJECT.matcher = args => args[0] === 'add' && args.includes('-A')
+  test('T5c: update-index timeout → transient-error', async () => {
+    INJECT.matcher = args =>
+      args[0] === 'update-index' && args.includes('--stdin')
     INJECT.result = {
       ok: false,
       reason: 'timeout',
       code: -1,
       stdout: '',
       stderr: '',
-      message: 'add: timed out after 60000ms',
+      message: 'update-index: timed out after 60000ms',
     }
 
     const r = await createSnapshot(workTree, {

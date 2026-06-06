@@ -17,8 +17,8 @@
  *   4.  touch project metadata BEFORE file-count guard (orphan tracking)
  *   5.  file-count guard via fs walk
  *   6.  set up per-project state (hash, ref, indexFile)
- *   7.  seed the index from existing ref tip
- *   8.  git add -A
+ *   7.  resolve existing ref tip for parentage/diff
+ *   8.  stage filesystem snapshot into an empty index
  *   9.  drop oversize files from index
  *   10. no-changes detection (skip empty commits)
  *   11. commit via write-tree + commit-tree + update-ref CAS
@@ -36,8 +36,6 @@
  */
 
 import { homedir } from 'os'
-import { unlink } from 'fs/promises'
-import { existsSync } from 'fs'
 import { getGlobalConfig } from '../config.js'
 import { logForDebugging } from '../debug.js'
 import { countFilesUnder } from './countFiles.js'
@@ -63,6 +61,7 @@ import {
 } from './paths.js'
 import { pruneRefToMaxN } from './pruneRefToMaxN.js'
 import { formatCommitSubject } from './reason.js'
+import { stageWorktreeSnapshotIndex } from './snapshotIndex.js'
 import { ensureStore } from './store.js'
 import { touchProject } from './touchProject.js'
 
@@ -283,10 +282,16 @@ async function _runCreateSnapshot(
 
   // 5. File-count guard. Reads `checkpointsMaxFiles` from globalConfig
   //     when set; otherwise falls back to MAX_FILES. `0` disables this
-  //     guard for users who accept the git-add cost on very large repos.
+  //     guard for users who accept snapshot staging on very large repos.
   const { maxFiles, epoch } = resolveMaxFilesPolicy()
   if (maxFiles > 0) {
-    const fileCountGuard = await checkTooManyFiles(canonical, maxFiles, epoch)
+    const fileCountGuard = await checkTooManyFiles({
+      canonical,
+      store,
+      indexFile,
+      maxFiles,
+      epoch,
+    })
     if (fileCountGuard.aborted) {
       logForDebugging(
         fileCountGuard.firstDetection
@@ -304,7 +309,9 @@ async function _runCreateSnapshot(
 
   // 6. Per-project state already computed above.
 
-  // 7. Seed the index from the existing ref tip (if any).
+  // 7. Resolve the existing ref tip (if any). The index is rebuilt from
+  //    the current filesystem in step 8; this commit is only used for
+  //    no-change detection and commit parentage.
   const refCommitResult = await runCheckpointGit(
     ['rev-parse', '--verify', `${ref}^{commit}`],
     {
@@ -319,33 +326,15 @@ async function _runCreateSnapshot(
   const refCommit = refCommitResult.stdout.trim()
   const hasRef = refCommit.length > 0
 
-  if (hasRef) {
-    const readTree = await runCheckpointGit(['read-tree', refCommit], {
-      store,
-      workTree: canonical,
-      indexFile,
-    })
-    if (readTree.ok === false) {
-      return TRANSIENT(`read-tree: ${readTree.message}`)
-    }
-  } else if (existsSync(indexFile)) {
-    // Stale index from a deleted ref — clear so `git add -A` builds fresh.
-    try {
-      await unlink(indexFile)
-    } catch {
-      // Best-effort; if this fails git will likely complain at add time.
-    }
-  }
-
-  // 8. Stage everything. 2× timeout for very large trees (Hermes `_take`::891).
-  const addResult = await runCheckpointGit(['add', '-A'], {
+  // 8. Stage filesystem snapshot. 2× timeout for very large trees.
+  const stageResult = await stageWorktreeSnapshotIndex({
     store,
     workTree: canonical,
     indexFile,
     timeoutMs: 60_000,
   })
-  if (addResult.ok === false) {
-    return TRANSIENT(`add: ${addResult.message}`)
+  if (stageResult.ok === false) {
+    return TRANSIENT(`stage: ${stageResult.message}`)
   }
 
   // 9. Drop oversize files from the index.
@@ -469,10 +458,17 @@ function tooManyFilesCacheKey(
 }
 
 async function checkTooManyFiles(
-  canonical: string,
-  maxFiles: number,
-  epoch = maxFilesPolicyEpoch,
+  args: {
+    canonical: string
+    store: string
+    indexFile: string
+    maxFiles: number
+    epoch?: number
+  },
 ): Promise<TooManyFilesCheckResult> {
+  const epoch = args.epoch ?? maxFilesPolicyEpoch
+  const maxFiles = args.maxFiles
+  const canonical = args.canonical
   const key = tooManyFilesCacheKey(canonical, maxFiles, epoch)
   if (confirmedTooManyFilesCache.has(key)) {
     return { aborted: true, firstDetection: false }
@@ -487,7 +483,11 @@ async function checkTooManyFiles(
   }
 
   const check = (async (): Promise<TooManyFilesCheckResult> => {
-    const counted = await countFilesUnder(canonical, { max: maxFiles })
+    const counted = await countFilesUnder(canonical, {
+      store: args.store,
+      indexFile: args.indexFile,
+      max: maxFiles,
+    })
     if (!counted.aborted) {
       return { aborted: false, firstDetection: false }
     }
@@ -501,6 +501,23 @@ async function checkTooManyFiles(
   } finally {
     inFlightTooManyFilesChecks.delete(key)
   }
+}
+
+async function checkTooManyFilesForTesting(
+  canonical: string,
+  maxFiles: number,
+): Promise<TooManyFilesCheckResult> {
+  const storeResult = await ensureStore()
+  if (storeResult.ok === false) {
+    return { aborted: false, firstDetection: false }
+  }
+  const hash = projectHash(canonical)
+  return checkTooManyFiles({
+    canonical,
+    store: storeResult.store,
+    indexFile: indexPath(hash),
+    maxFiles,
+  })
 }
 
 function rememberTooManyFiles(
@@ -527,7 +544,7 @@ export function _resetTooManyFilesCacheForTesting(): void {
 }
 
 export const _tooManyFilesCacheForTesting = {
-  check: checkTooManyFiles,
+  check: checkTooManyFilesForTesting,
   isKnown: isTooManyFilesKnown,
   remember: rememberTooManyFiles,
 }

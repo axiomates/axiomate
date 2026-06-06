@@ -160,38 +160,34 @@ describe('ensureStore — error handling', () => {
 /**
  * Phase 4 anchor: pins behaviors that Phase 4 might inadvertently change.
  *
- * 1. `info/exclude` first-init-only — audit finding A documented this in
- *    docs but not in a test. A refactor that "fixes" the docstring's old
- *    claim by rewriting on every call would silently destroy user edits.
+ * 1. `info/exclude` is managed by checkpoint code so `git check-ignore`
+ *    sees the current tiny DEFAULT_EXCLUDES, even after store reuse.
  * 2. `for-each-ref refs/axiomate/*` enumerability — Phase 4 size-cap
  *    pass 3 enumerates refs via this exact prefix query (Hermes
  *    `_enforce_size_cap:1102-1106`). If a future refactor moves ref
  *    location, this query goes silently empty and size-cap zero-ops.
  */
 describe('ensureStore — Phase 4 behavior anchors', () => {
-  test('does not rewrite info/exclude on a second call (audit A)', async () => {
+  test('rewrites info/exclude on a second call to current defaults', async () => {
     await ensureStore()
     const path = infoExcludePath()
 
-    // Simulate a user edit to info/exclude after first init.
-    const userEdit =
-      DEFAULT_EXCLUDES.join('\n') + '\nuser-added-pattern/\n'
-    writeFileSync(path, userEdit, 'utf-8')
+    writeFileSync(path, 'user-added-pattern/\n', 'utf-8')
 
     await ensureStore()
-    expect(readFileSync(path, 'utf-8')).toBe(userEdit)
+    expect(readFileSync(path, 'utf-8')).toBe(
+      DEFAULT_EXCLUDES.join('\n') + '\n',
+    )
   })
 
-  test('does not recreate info/exclude after user deletion', async () => {
-    // Mirror image of the above: if the user deletes the file (or it
-    // never made it through a botched first init), the *current*
-    // contract is to leave it absent on subsequent calls. Phase 4
-    // must not change this without an explicit decision.
+  test('recreates info/exclude after deletion', async () => {
     await ensureStore()
     unlinkSync(infoExcludePath())
 
     await ensureStore()
-    expect(existsSync(infoExcludePath())).toBe(false)
+    expect(readFileSync(infoExcludePath(), 'utf-8')).toBe(
+      DEFAULT_EXCLUDES.join('\n') + '\n',
+    )
   })
 })
 

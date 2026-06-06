@@ -3,26 +3,47 @@ import { tmpdir } from 'os'
 import { dirname, join } from 'path'
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
 import { countFilesUnder } from '../../../../utils/checkpoints/countFiles.js'
+import { indexPath, projectHash } from '../../../../utils/checkpoints/paths.js'
+import { ensureStore } from '../../../../utils/checkpoints/store.js'
 
 let tmpRoot: string
+let workTree: string
+let storeDir: string
+let originalBase: string | undefined
 
-beforeEach(() => {
+beforeEach(async () => {
+  originalBase = process.env.AXIOMATE_CHECKPOINT_BASE
   tmpRoot = mkdtempSync(join(tmpdir(), 'axiomate-count-'))
+  process.env.AXIOMATE_CHECKPOINT_BASE = join(tmpRoot, 'cp')
+  workTree = mkdtempSync(join(tmpRoot, 'wt-'))
+  const r = await ensureStore()
+  if (r.ok === false) throw new Error(`ensureStore failed: ${r.reason}`)
+  storeDir = r.store
 })
 
 afterEach(() => {
   rmSync(tmpRoot, { recursive: true, force: true })
+  if (originalBase === undefined) delete process.env.AXIOMATE_CHECKPOINT_BASE
+  else process.env.AXIOMATE_CHECKPOINT_BASE = originalBase
 })
 
 function touch(rel: string, content = ''): void {
-  const full = join(tmpRoot, rel)
+  const full = join(workTree, rel)
   mkdirSync(dirname(full), { recursive: true })
   writeFileSync(full, content)
 }
 
+function count(max: number) {
+  return countFilesUnder(workTree, {
+    max,
+    store: storeDir,
+    indexFile: indexPath(projectHash(workTree)),
+  })
+}
+
 describe('countFilesUnder — basics', () => {
   test('empty directory → count 0, not aborted', async () => {
-    const r = await countFilesUnder(tmpRoot, { max: 10 })
+    const r = await count(10)
     expect(r).toEqual({ count: 0, aborted: false })
   })
 
@@ -30,23 +51,23 @@ describe('countFilesUnder — basics', () => {
     touch('a.txt')
     touch('sub/b.txt')
     touch('sub/deep/c.txt')
-    const r = await countFilesUnder(tmpRoot, { max: 100 })
+    const r = await count(100)
     expect(r).toEqual({ count: 3, aborted: false })
   })
 
   test('does not count directories themselves', async () => {
     touch('sub/sub2/keep.txt')
-    const r = await countFilesUnder(tmpRoot, { max: 100 })
+    const r = await count(100)
     expect(r.count).toBe(1)
   })
 })
 
-describe('countFilesUnder — DEFAULT_EXCLUDES applied', () => {
+describe('countFilesUnder — tiny defaults applied', () => {
   test('skips node_modules/ entirely', async () => {
     touch('src/a.ts')
     touch('node_modules/foo/index.js')
     touch('node_modules/foo/bar/baz.js')
-    const r = await countFilesUnder(tmpRoot, { max: 100 })
+    const r = await count(100)
     expect(r.count).toBe(1)
   })
 
@@ -54,33 +75,31 @@ describe('countFilesUnder — DEFAULT_EXCLUDES applied', () => {
     touch('a.ts')
     touch('.git/HEAD')
     touch('.git/objects/ab/cd')
-    const r = await countFilesUnder(tmpRoot, { max: 100 })
+    const r = await count(100)
     expect(r.count).toBe(1)
   })
 
-  test('skips .env and .env.* secrets', async () => {
+  test('does not skip .env files by default', async () => {
     touch('a.ts')
     touch('.env')
     touch('.env.production')
-    const r = await countFilesUnder(tmpRoot, { max: 100 })
-    expect(r.count).toBe(1)
+    const r = await count(100)
+    expect(r.count).toBe(3)
   })
 
-  test('skips Visual Studio bin/ and obj/', async () => {
+  test('does not skip Visual Studio bin/ and obj/ by default', async () => {
     touch('Foo.csproj')
     touch('bin/Debug/Foo.dll')
     touch('obj/Debug/Foo.pdb')
-    const r = await countFilesUnder(tmpRoot, { max: 100 })
-    expect(r.count).toBe(1)
+    const r = await count(100)
+    expect(r.count).toBe(3)
   })
 
-  test('skips top-level /.axiomate/ but keeps nested agent/.axiomate/', async () => {
-    // Anchor matters — /.axiomate/ is rooted, agent/.axiomate/ is not
-    // (and so should be tracked, since it's the user-facing settings dir).
+  test('does not skip .axiomate/ by default', async () => {
     touch('agent/.axiomate/settings.local.json')
     touch('.axiomate/state.json')
-    const r = await countFilesUnder(tmpRoot, { max: 100 })
-    expect(r.count).toBe(1) // only the agent/.axiomate file survives
+    const r = await count(100)
+    expect(r.count).toBe(2)
   })
 })
 
@@ -89,7 +108,7 @@ describe('countFilesUnder — .gitignore at root', () => {
     touch('keep.ts')
     touch('skipme.log')
     touch('.gitignore', '*.log\n')
-    const r = await countFilesUnder(tmpRoot, { max: 100 })
+    const r = await count(100)
     // .gitignore itself is a regular file → counts.
     expect(r.count).toBe(2) // keep.ts + .gitignore
   })
@@ -99,14 +118,14 @@ describe('countFilesUnder — .gitignore at root', () => {
     touch('keep.ts')
     touch('build/output.bin')
     touch('build/nested/more.bin')
-    const r = await countFilesUnder(tmpRoot, { max: 100 })
+    const r = await count(100)
     expect(r.count).toBe(2) // keep.ts + .gitignore
   })
 
   test('absent .gitignore is fine — DEFAULT_EXCLUDES still applies', async () => {
     touch('a.ts')
     touch('node_modules/foo.js')
-    const r = await countFilesUnder(tmpRoot, { max: 100 })
+    const r = await count(100)
     expect(r.count).toBe(1)
   })
 })
@@ -114,32 +133,33 @@ describe('countFilesUnder — .gitignore at root', () => {
 describe('countFilesUnder — early-abort', () => {
   test('aborts once count exceeds max — does NOT walk full tree', async () => {
     for (let i = 0; i < 50; i++) touch(`f${i}.txt`)
-    const r = await countFilesUnder(tmpRoot, { max: 10 })
+    const r = await count(10)
     expect(r.aborted).toBe(true)
     expect(r.count).toBe(11) // exactly cap + 1, the moment we crossed
   })
 
   test('exactly at the cap → not aborted', async () => {
     for (let i = 0; i < 5; i++) touch(`f${i}.txt`)
-    const r = await countFilesUnder(tmpRoot, { max: 5 })
+    const r = await count(5)
     expect(r).toEqual({ count: 5, aborted: false })
   })
 
-  test('extraExcludes are honored', async () => {
+  test('new .gitignore rules are honored', async () => {
     touch('a.ts')
     touch('skip-me.txt')
-    const r = await countFilesUnder(tmpRoot, {
-      max: 100,
-      extraExcludes: ['skip-me.txt'],
-    })
-    expect(r.count).toBe(1)
+    touch('.gitignore', 'skip-me.txt\n')
+    const r = await count(100)
+    expect(r.count).toBe(2) // a.ts + .gitignore
   })
 })
 
 describe('countFilesUnder — robustness', () => {
   test('does not throw on a missing root (returns count: 0, aborted: false)', async () => {
-    const r = await countFilesUnder(join(tmpRoot, 'does-not-exist'), {
+    const missing = join(tmpRoot, 'does-not-exist')
+    const r = await countFilesUnder(missing, {
       max: 100,
+      store: storeDir,
+      indexFile: indexPath(projectHash(missing)),
     })
     expect(r).toEqual({ count: 0, aborted: false })
   })

@@ -184,192 +184,39 @@ export function projectMetaPath(hash: string): string {
 }
 
 /**
- * `info/exclude` is git's per-repo gitignore equivalent. We write the
- * `DEFAULT_EXCLUDES` list here every `ensureStore()` call so the file is
- * authoritative — users editing the store directly is not a supported
- * workflow.
+ * `info/exclude` is git's per-repo gitignore equivalent. It intentionally
+ * contains only the tiny defaults below so `git check-ignore` can evaluate
+ * user `.gitignore` files without reintroducing broad checkpoint-specific
+ * exclusions.
  */
 export function infoExcludePath(): string {
   return join(getStoreDir(), INFO_DIRNAME, EXCLUDE_FILENAME)
 }
 
 /**
- * Default `info/exclude` patterns for the shadow store.
+ * Minimal default exclude patterns for the shadow store.
  *
- * Policy (locked in design memo): snapshot only state that affects agent
- * continuity. Exclude build artifacts, caches, dependency locks, native
- * binaries, virtualenvs, secrets, and OS/IDE junk. Settings files like
- * `agent/.axiomate/settings.local.json` are deliberately *not* excluded
- * here — they are user-facing config and should be rewindable.
+ * Policy: checkpointing primarily follows the user's own `.gitignore`.
+ * These defaults only cover VCS metadata, dependency trees that are almost
+ * never useful for rewind, and tiny OS junk files. Build outputs, logs,
+ * framework caches, lockfiles, secrets, and language-specific artifacts are
+ * included unless the user explicitly ignores them.
  *
  * Format: gitignore-style. One pattern per line. Trailing slash means
  * directory-only. `*.ext` matches at any depth (gitignore default).
- *
- * Ported from Hermes `tools/checkpoint_manager.py:DEFAULT_EXCLUDES` and
- * extended for Visual Studio C++/C#, Rust, Java/Gradle/Maven, iOS/Xcode,
- * Android/Gradle, Bun/JS toolchains, and lockfiles that aren't part of
- * agent continuity.
  */
 export const DEFAULT_EXCLUDES: readonly string[] = [
-  // VCS — never snapshot the user's own .git/
+  // VCS metadata — skipped by collectCheckpointFiles as hard metadata too.
   '.git/',
   '.hg/',
   '.svn/',
 
-  // Dependency / package managers
+  // Dependency trees. Project-specific generated outputs should live in
+  // the user's own .gitignore instead of this global checkpoint list.
   'node_modules/',
-  'bower_components/',
-  'jspm_packages/',
-  'vendor/',
-  '.pnpm-store/',
-  '.yarn/',
-
-  // Generic build output
-  'dist/',
-  'build/',
-  'out/',
-  'target/',
-  '.next/',
-  '.nuxt/',
-  '.svelte-kit/',
-  '.turbo/',
-  '.parcel-cache/',
-  '.vite/',
-
-  // Visual Studio (C++ / C# / .NET) — important for Windows users
-  'bin/',
-  'obj/',
-  '.vs/',
-  '*.pdb',
-  '*.ilk',
-  '*.idb',
-  '*.tlog',
-  '*.exp',
-  '*.lib',
-  '*.cache',
-  '*.suo',
-  '*.user',
-  '*.userosscache',
-  '*.sln.docstates',
-  // NuGet
-  'packages/',
-  '*.nupkg',
-  '*.nuget.props',
-  '*.nuget.targets',
-  // ReSharper
-  '_ReSharper*/',
-  '*.[Rr]e[Ss]harper',
-  '*.DotSettings.user',
-
-  // Rust / Cargo
-  // (target/ already covered above)
-  // Cargo.lock NOT excluded — for binary crates it's part of reproducibility
-
-  // Java / Gradle / Maven
-  '.gradle/',
-  '*.class',
-  '*.jar',
-  '*.war',
-  '*.ear',
-  '.mvn/',
-
-  // Python
-  '__pycache__/',
-  '*.pyc',
-  '*.pyo',
-  '*.pyd',
-  '.pytest_cache/',
-  '.mypy_cache/',
-  '.ruff_cache/',
-  '.tox/',
-  '*.egg-info/',
-  '.eggs/',
-  // Virtualenvs
-  '.venv/',
-  'venv/',
-  'env/',
-  '.python-version',
-
-  // Caches / coverage
-  '.cache/',
-  'coverage/',
-  '.coverage',
-  '.nyc_output/',
-  'htmlcov/',
-
-  // iOS / Xcode
-  '*.xcworkspace/xcuserdata/',
-  '*.xcodeproj/xcuserdata/',
-  'DerivedData/',
-  'Pods/',
-
-  // Android / Gradle
-  'app/build/',
-  '*.apk',
-  '*.aab',
-  '*.dex',
-
-  // Native compiled binaries (cross-language)
-  '*.so',
-  '*.dylib',
-  '*.dll',
-  '*.o',
-  '*.a',
-  '*.exe',
-  '*.obj',
-
-  // Media / large binaries — bloat the store, not part of agent continuity
-  '*.mp4',
-  '*.mov',
-  '*.mkv',
-  '*.webm',
-  '*.avi',
-  '*.zip',
-  '*.tar',
-  '*.tar.gz',
-  '*.tgz',
-  '*.7z',
-  '*.rar',
-  '*.iso',
-  '*.dmg',
-
-  // Lockfiles — regenerable from manifests; not agent-continuity state
-  'package-lock.json',
-  'pnpm-lock.yaml',
-  'yarn.lock',
-  'bun.lockb',
-  'composer.lock',
-  // Note: Cargo.lock and Gemfile.lock are intentionally NOT excluded —
-  // for application-level projects they are part of reproducibility
-
-  // Secrets (defense in depth — agent should never write these anyway)
-  '.env',
-  '.env.*',
-  '.env.local',
-  '.env.*.local',
 
   // OS / editor junk
   '.DS_Store',
   'Thumbs.db',
   'desktop.ini',
-  '*.swp',
-  '*.swo',
-  '*~',
-  '.idea/',
-  '.vscode/',
-
-  // Logs
-  '*.log',
-  'logs/',
-
-  // Hermes-style worktree convention — don't recursively snapshot siblings
-  '.worktrees/',
-
-  // Axiomate's own per-project agent state — not user worktree continuity.
-  // Note: agent/.axiomate/settings.local.json IS rewindable (locked decision)
-  // because it lives under the project's own agent/ subtree, not at root.
-  // The pattern below only excludes a top-level .axiomate/ if the project
-  // root happens to be Axiomate itself.
-  '/.axiomate/',
 ] as const
-

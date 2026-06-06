@@ -290,7 +290,11 @@
       </div>
       <div class="card">
         <h4>遵守 .gitignore</h4>
-        <p>遍历工作目录时，像 <code>node_modules/</code> 这种被忽略的目录不会被拍进快照。</p>
+        <p>遍历工作目录时，用户 <code>.gitignore</code> 会生效；Axiomate 只拍最终未被忽略的普通文件。</p>
+      </div>
+      <div class="card">
+        <h4>支持嵌套 Git 仓库</h4>
+        <p>子目录里有自己的 <code>.git</code> 时，普通文件按当前磁盘内容保存，<code>.git/</code> 元数据本身不保存。</p>
       </div>
     </div>
 
@@ -874,8 +878,8 @@ Roll back to a turn with /rewind (interactive selector).</code></pre>
     </p>
     <ul>
       <li>系统里没装 git → 整个子系统 no-op，不报错。</li>
-      <li>git 命令失败（EBUSY、超时、工作目录里有未正常 checkout 的嵌套 Git 仓库等） → 这一次跳过，下一回合自动重试。</li>
-      <li>工作目录文件数超过 <code>checkpointsMaxFiles</code>（默认 200,000） → 跳过，避免 git add 卡死；当前运行内会缓存这个结果，配置变化或重启后重新检测。</li>
+      <li>git 命令失败（EBUSY、超时、权限问题、文件在扫描和写入 index 之间变化等） → 这一次跳过，下一回合自动重试。</li>
+      <li>工作目录文件数超过 <code>checkpointsMaxFiles</code>（默认 200,000） → 跳过，避免快照扫描成本过高；当前运行内会缓存这个结果，配置变化或重启后重新检测。</li>
       <li>磁盘满 / 权限不足 → 错误进 <code>logForDebugging</code>，对话继续。</li>
     </ul>
 
@@ -888,37 +892,27 @@ Roll back to a turn with /rewind (interactive selector).</code></pre>
     <p>
       如果使用 <code>axiomate --debug</code> 启动，可以在 debug log 里搜索
       <code>[checkpoint-diagnostics]</code>。这类日志只在 debug 模式下输出，
-      正常启动时不会做额外的大量诊断扫描。典型行如下：
+      正常启动时不会做额外的大量诊断扫描。常见失败点包括
+      <code>check-ignore</code>、<code>update-index</code>、<code>write-tree</code>
+      和 <code>commit-tree</code>。这些错误通常表示文件系统正在变化、文件被锁、
+      权限不足、磁盘不足，或 Git 写入 shadow store 超时。
     </p>
-    <pre><code>[DEBUG] [checkpoint-diagnostics] git failed args=["add" "-A"] reason=non-zero-exit code=128 ... stderr="error: 'code_test/' does not have a commit checked out\nfatal: adding files failed"
-[DEBUG] [checkpoint-diagnostics] snapshot skipped skipped=transient-error ... message="add: Command failed with exit code 128: ... git.exe add -A"</code></pre>
+
+    <h3>嵌套 Git 仓库怎么处理</h3>
     <p>
-      上面这个例子不是 Axiomate 自己的 store 损坏，而是当前 checkpoint
-      的工作目录里有一个嵌套 Git 仓库 <code>code_test/.git</code>，但这个
-      嵌套仓库没有可解析的 checked-out commit。Git 从父目录执行
-      <code>git add -A</code> 时会把 <code>code_test/</code> 识别成 embedded
-      repository；如果这个嵌套仓库的 HEAD 还指不到任何 commit，就会报
-      <code>does not have a commit checked out</code>，导致这次快照跳过。
+      Axiomate 不再从父目录执行 <code>git add -A</code> 来拍快照。它会自己遍历
+      文件系统，用 Git 的 <code>check-ignore</code> 判断忽略规则，最后用
+      <code>update-index</code> 写入影子仓库。因此嵌套 Git 仓库不会因为没有
+      commit、HEAD 异常、submodule 半初始化等状态而被当作 gitlink 阻塞快照。
+      <code>.git</code> / <code>.hg</code> / <code>.svn</code> 元数据永远不保存，
+      但这些目录下面的普通文件会按当前磁盘内容保存。
     </p>
     <p>
-      这不表示所有嵌套 <code>.git/</code> 都不支持。正常 clone、正常 checkout
-      到某个 commit 的嵌套仓库通常不会触发这个错误；真正危险的是
-      <code>git init</code> 后还没第一次 commit、<code>git switch --orphan</code>
-      后还没 commit、clone/checkout 中断、误复制了不完整 <code>.git/</code>
-      目录，或 submodule 半初始化这类状态。
-    </p>
-    <div class="callout warn">
-      <strong>处理办法：</strong>进入报错的嵌套仓库，确认它是你需要保留的项目。
-      如果是，先让它处于正常 Git 状态（例如完成 clone、checkout 到一个分支
-      或提交一次初始 commit）；如果它只是误生成的 <code>.git/</code> 目录，
-      可以删除那个嵌套 <code>.git/</code>。另一种办法是从更窄的项目目录启动
-      Axiomate，避免 checkpoint 扫描到不相关的父目录。
-    </div>
-    <p>
-      只把 <code>.git/</code> 写进 ignore/exclude 并不足以解决这个父目录场景：
-      Git 在递归普通文件之前已经把带 <code>.git/</code> 的子目录识别成嵌套
-      仓库。要保留里面的普通文件内容，通常需要把 checkpoint 的工作目录
-      直接设在那个项目自身，或者先修好 / 移除异常的嵌套仓库元数据。
+      子仓库的 ignore 范围从子仓库目录重新开始。父目录的 <code>.gitignore</code>
+      不会影响子仓库内部文件；如果子仓库没有自己的 <code>.gitignore</code>，
+      就不会继承父级规则。边界是：如果父级 <code>.gitignore</code> 直接忽略了
+      子仓库目录本身，例如 <code>child/</code>，Axiomate 会尊重这个目录级忽略，
+      不再进入该目录扫描。
     </p>
 
     <h3><code>too-many-files</code> 和文件数看起来不一致</h3>
@@ -998,21 +992,17 @@ Roll back to a turn with /rewind (interactive selector).</code></pre>
       的输出，不要只依赖 checkpoint。
     </p>
 
-    <h3>为什么有问题的嵌套 <code>.git/</code> 不能只忽略元数据、保留文件内容？</h3>
+    <h3>父级 <code>.gitignore</code> 会影响子仓库吗？</h3>
     <p>
-      从父目录执行 <code>git add -A</code> 时，Git 会先把含有
-      <code>.git/</code> 的子目录当成 embedded repository 处理，而不是普通
-      文件夹递归。此时 <code>.git/</code> ignore/exclude 规则已经来不及把它
-      变回普通目录。正常的嵌套仓库可以作为 gitlink 被父级 Git 处理；问题是
-      那个嵌套仓库没有可解析的当前 commit 时，Git 无法记录这个 gitlink，
-      于是触发 <code>does not have a commit checked out</code>。最稳的用户侧
-      处理是：修好那个嵌套仓库、删除误生成的 <code>.git/</code>，或从更具体
-      的项目目录启动 Axiomate。
+      不会影响子仓库内部文件。进入带 <code>.git</code> 的子目录后，Axiomate
+      会从该子目录重新评估 ignore 规则，行为等价于在子仓库里单独看它自己的
+      <code>.gitignore</code>。不过父级规则仍然可以忽略子仓库目录本身；如果
+      父级写了 <code>child/</code>，这个目录会被整体跳过。
     </p>
   </section>
 
   <footer>
-    Axiomate · Checkpoints v2 · 文档随实现迭代，最后更新 2026-06-05
+    Axiomate · Checkpoints v2 · 文档随实现迭代，最后更新 2026-06-06
   </footer>
 
 </div>

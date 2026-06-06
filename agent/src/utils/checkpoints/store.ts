@@ -70,15 +70,9 @@ export type EnsureStoreResult =
  *          them when no global config is readable, and we've muted the
  *          global config. Distinct values from Hermes (`hermes@local`)
  *          so we can recognize axiomate commits in shared dev repos.
- *   5. `info/exclude` — write the full DEFAULT_EXCLUDES list ONCE on
- *      first init only (this whole `try { mkdir + writeFile }` block is
- *      gated by the HEAD-existence check above). Subsequent ensureStore
- *      calls early-return at step 2 and never touch the file. Matches
- *      Hermes (line 445-447 also runs only inside `_init_store`'s post-
- *      `git init` path). Implication: user edits to `info/exclude` are
- *      preserved; if we ever want to roll out new excludes, we'll need
- *      a versioned bump (excluded for now — `DEFAULT_EXCLUDES` is the
- *      one-and-only source).
+ *   5. `info/exclude` — write the tiny DEFAULT_EXCLUDES list. The new
+ *      snapshot scanner owns checkpoint inclusion policy; this file only
+ *      keeps `git check-ignore` aligned with those tiny built-in defaults.
  *
  * Returns `{ ok: true, store }` on success, `{ ok: false, reason }` on
  * any failure. Caller logs and proceeds without checkpoints for that
@@ -111,6 +105,8 @@ export async function ensureStore(): Promise<EnsureStoreResult> {
   // the prior init completed cleanly (vs. a half-initialized store
   // where init was interrupted between mkdir and HEAD write).
   if (existsSync(join(store, 'HEAD'))) {
+    const infoResult = await ensureInfoExclude(infoDir)
+    if (infoResult.ok === false) return infoResult
     return { ok: true, store }
   }
 
@@ -181,13 +177,19 @@ export async function ensureStore(): Promise<EnsureStoreResult> {
     }
   }
 
+  const infoResult = await ensureInfoExclude(infoDir)
+  if (infoResult.ok === false) return infoResult
+
+  logForDebugging(`Initialized checkpoint store at ${store}`)
+  return { ok: true, store }
+}
+
+async function ensureInfoExclude(
+  infoDir: string,
+): Promise<{ ok: true } | { ok: false; reason: string }> {
   try {
     await mkdir(infoDir, { recursive: true })
-    await writeFile(
-      infoExcludePath(),
-      DEFAULT_EXCLUDES.join('\n') + '\n',
-      'utf-8',
-    )
+    await writeFile(infoExcludePath(), DEFAULT_EXCLUDES.join('\n') + '\n', 'utf-8')
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     logForDebugging(`ensureStore: info/exclude write failed: ${msg}`)
@@ -198,7 +200,5 @@ export async function ensureStore(): Promise<EnsureStoreResult> {
     )
     return { ok: false, reason: `info/exclude write failed: ${msg}` }
   }
-
-  logForDebugging(`Initialized checkpoint store at ${store}`)
-  return { ok: true, store }
+  return { ok: true }
 }

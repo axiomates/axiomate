@@ -14,8 +14,9 @@
  *
  * Storage model: each turn produces ONE commit in the shared shadow store
  * at `~/.axiomate/checkpoints/store/`, keyed by the per-project ref. The
- * commit captures the full workdir (minus DEFAULT_EXCLUDES). Rewind
- * restores the workdir to match the target snapshot's tree exactly.
+ * commit captures the full workdir as a filesystem snapshot, excluding
+ * VCS metadata, tiny defaults, and paths ignored by the user's `.gitignore`.
+ * Rewind restores the workdir to match the target snapshot's tree exactly.
  *
  * Source of truth (Phase 1 of disk-as-source migration): the per-project
  * git ref is the single source for "what anchors exist". Picker, chooser,
@@ -48,6 +49,7 @@ import {
   formatCommitSubject,
   LABEL_PRE_REWIND,
 } from './checkpoints/reason.js'
+import { stageWorktreeSnapshotIndex } from './checkpoints/snapshotIndex.js'
 import { ensureStore } from './checkpoints/store.js'
 import { getGlobalConfig } from './config.js'
 import { logForDebugging } from './debug.js'
@@ -477,7 +479,7 @@ async function verifyDiskMatchesTree(gitHash: string): Promise<boolean> {
   const canonical = normalizePath(getOriginalCwd())
   const indexFile = indexPath(projectHash(canonical))
 
-  const stage = await runCheckpointGit(['add', '-A'], {
+  const stage = await stageWorktreeSnapshotIndex({
     store: storeResult.store,
     workTree: canonical,
     indexFile,
@@ -825,7 +827,7 @@ async function stageWorkdir(
   workTree: string,
   indexFile: string,
 ): Promise<void> {
-  const result = await runCheckpointGit(['add', '-A'], {
+  const result = await stageWorktreeSnapshotIndex({
     store,
     workTree,
     indexFile,

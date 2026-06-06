@@ -6,6 +6,7 @@ import { runCheckpointGit } from '../../../../utils/checkpoints/git.js'
 import { indexPath, projectHash } from '../../../../utils/checkpoints/paths.js'
 import { ensureStore } from '../../../../utils/checkpoints/store.js'
 import { dropOversizeFromIndex } from '../../../../utils/checkpoints/dropOversizeFromIndex.js'
+import { stageWorktreeSnapshotIndex } from '../../../../utils/checkpoints/snapshotIndex.js'
 
 let tmpRoot: string
 let workTree: string
@@ -37,12 +38,12 @@ afterEach(() => {
 })
 
 async function stageAll(): Promise<void> {
-  const r = await runCheckpointGit(['add', '-A'], {
+  const r = await stageWorktreeSnapshotIndex({
     store: storeDir,
     workTree,
     indexFile,
   })
-  if (r.ok === false) throw new Error(`git add -A failed: ${r.message}`)
+  if (r.ok === false) throw new Error(`stage failed: ${r.message}`)
 }
 
 async function lsCached(): Promise<string[]> {

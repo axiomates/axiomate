@@ -492,8 +492,8 @@ describe('createSnapshot — oversize files dropped from index', () => {
   })
 })
 
-describe('createSnapshot — index seeding from existing ref', () => {
-  test('second snapshot only adds new file (does not re-add unchanged ones)', async () => {
+describe('createSnapshot — rebuilding index from filesystem', () => {
+  test('second snapshot keeps unchanged file and adds new file', async () => {
     writeFileSync(join(workTree, 'a.txt'), 'unchanged across turns')
     const first = await createSnapshot(workTree, {
       messageId: 'msg-001',
@@ -501,8 +501,8 @@ describe('createSnapshot — index seeding from existing ref', () => {
     })
     if (first.ok === false) throw new Error('first failed')
 
-    // Add a new file. The seeded index should already contain a.txt's
-    // entry; `git add -A` will pick up b.txt only.
+    // Add a new file. The snapshot index is rebuilt from the current
+    // filesystem, so both the unchanged and new files remain present.
     writeFileSync(join(workTree, 'b.txt'), 'new')
     const second = await createSnapshot(workTree, {
       messageId: 'msg-002',

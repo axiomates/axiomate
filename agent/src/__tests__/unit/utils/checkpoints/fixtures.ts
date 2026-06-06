@@ -7,8 +7,8 @@
  * Lives in __tests__/ so it's never imported by production code.
  */
 
-import { writeFileSync } from 'fs'
-import { join } from 'path'
+import { mkdirSync, readdirSync, writeFileSync } from 'fs'
+import { dirname, join, relative, sep } from 'path'
 import { runCheckpointGit } from '../../../../utils/checkpoints/git.js'
 
 export interface FixtureCommitOpts {
@@ -34,7 +34,9 @@ export async function buildFixtureCommit(
   opts: FixtureCommitOpts,
 ): Promise<string> {
   for (const [rel, content] of Object.entries(opts.files)) {
-    writeFileSync(join(opts.workTree, rel), content)
+    const full = join(opts.workTree, rel)
+    mkdirSync(dirname(full), { recursive: true })
+    writeFileSync(full, content)
   }
 
   const env = {
@@ -43,8 +45,7 @@ export async function buildFixtureCommit(
     indexFile: opts.indexFile,
   }
 
-  const add = await runCheckpointGit(['add', '-A'], env)
-  if (add.ok === false) throw new Error(`fixture add failed: ${add.message}`)
+  await stageFixtureWorktree(env)
 
   const writeTree = await runCheckpointGit(['write-tree'], env)
   if (writeTree.ok === false) {
@@ -87,4 +88,55 @@ export async function buildFixtureCommit(
   }
 
   return newSha
+}
+
+async function stageFixtureWorktree(env: {
+  store: string
+  workTree: string
+  indexFile: string
+}): Promise<void> {
+  const clear = await runCheckpointGit(['read-tree', '--empty'], env)
+  if (clear.ok === false) {
+    throw new Error(`fixture read-tree failed: ${clear.message}`)
+  }
+
+  const paths = collectFixtureFiles(env.workTree)
+  if (paths.length === 0) return
+
+  const update = await runCheckpointGit(
+    ['update-index', '--add', '-z', '--stdin'],
+    {
+      ...env,
+      input: Buffer.from(`${paths.join('\0')}\0`, 'utf-8'),
+    },
+  )
+  if (update.ok === false) {
+    throw new Error(`fixture update-index failed: ${update.message}`)
+  }
+}
+
+function collectFixtureFiles(root: string): string[] {
+  const out: string[] = []
+  const queue = [root]
+
+  while (queue.length > 0) {
+    const dir = queue.shift()
+    if (!dir) continue
+
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (entry.name === '.git' || entry.name === '.hg' || entry.name === '.svn') {
+        continue
+      }
+
+      const full = join(dir, entry.name)
+      if (entry.isDirectory()) {
+        queue.push(full)
+      } else if (entry.isFile() || entry.isSymbolicLink()) {
+        const rel = relative(root, full)
+        out.push(sep === '/' ? rel : rel.split(sep).join('/'))
+      }
+    }
+  }
+
+  return out.sort()
 }

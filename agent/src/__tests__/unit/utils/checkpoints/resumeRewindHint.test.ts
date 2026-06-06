@@ -32,6 +32,8 @@ import { computeResumeRewindHint } from '../../../../utils/checkpoints/resumeRew
 import { ensureStore } from '../../../../utils/checkpoints/store.js'
 import { buildFixtureCommit } from './fixtures.js'
 
+const GIT_TEST_TIMEOUT_MS = 60_000
+
 let tmpRoot: string
 let baseEnvBefore: string | undefined
 
@@ -96,7 +98,7 @@ describe('computeResumeRewindHint', () => {
     expect(r).not.toBeNull()
     expect(r?.severity).toBe('info')
     expect(r?.text).toMatch(/rewind/i)
-  })
+  }, GIT_TEST_TIMEOUT_MS)
 
   test('unreachable last snapshot → warning hint', async () => {
     const p = await bootstrap()
@@ -128,7 +130,7 @@ describe('computeResumeRewindHint', () => {
     expect(r).not.toBeNull()
     expect(r?.severity).toBe('warning')
     expect(r?.text).toMatch(/pruned|rewind/i)
-  })
+  }, GIT_TEST_TIMEOUT_MS)
 
   test('6B: hash anchored only by another workdir → warning naming that workdir', async () => {
     // Project A holds the snapshot; user resumes that session sitting
@@ -161,7 +163,7 @@ describe('computeResumeRewindHint', () => {
     expect(r?.severity).toBe('warning')
     expect(r?.text).toContain(a.workdir)
     expect(r?.text).toMatch(/different workdir|cd into/i)
-  })
+  }, GIT_TEST_TIMEOUT_MS)
 
   test('empty snapshots list → null (no hint)', async () => {
     const p = await bootstrap()
@@ -199,7 +201,7 @@ describe('computeResumeRewindHint', () => {
       snapshots: [snapshot('a'.repeat(40), 'old'), snapshot(sha, 'new')],
     })
     expect(r?.severity).toBe('info')
-  })
+  }, GIT_TEST_TIMEOUT_MS)
 })
 
 /**

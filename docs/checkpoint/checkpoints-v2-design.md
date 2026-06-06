@@ -60,7 +60,7 @@ GIT_CONFIG_SYSTEM   = /dev/null  (NUL on Windows)       ← mute /etc/gitconfig
 GIT_CONFIG_NOSYSTEM = 1
 ```
 
-`info/exclude` lists `.git/`, so the user's repository state is never staged into the shadow store.
+The scanner hard-skips VCS metadata (`.git`, `.hg`, `.svn`) and `info/exclude` also carries those tiny defaults, so the user's repository metadata is never staged into the shadow store.
 
 **Result**: `git status`, `git log`, `git stash`, `git reset` in the user's project all behave exactly as today. The user's `.git/` directory is untouched. No GPG prompts. No credential helper invocations. The shadow store is a fully isolated parallel universe.
 
@@ -97,29 +97,22 @@ Snapshot/prune failures are **fail-open**: log via `logForDebugging`, skip the o
 
 ## Resolved decisions (locked 2026-05-20)
 
-1. **`info/exclude` policy**: snapshot only state that affects agent continuity; exclude build artifacts and dependency locks. The authoritative list lives at `agent/src/utils/checkpoints/paths.ts:DEFAULT_EXCLUDES` and covers:
-   - **VCS**: `.git/`, `.hg/`, `.svn/`
-   - **Visual Studio (C++ / C# / .NET)**: `bin/`, `obj/`, `.vs/`, `*.pdb`, `*.ilk`, `*.idb`, `*.tlog`, `*.exp`, `*.lib`, `*.suo`, `*.user`, NuGet `packages/` + `*.nupkg`, ReSharper caches
-   - **JS/TS/Bun**: `node_modules/`, `dist/`, `build/`, `.next/`, `.nuxt/`, `.svelte-kit/`, `.turbo/`, `.parcel-cache/`, `.vite/`, `.pnpm-store/`, `.yarn/`
-   - **Python**: `__pycache__/`, `*.pyc`, `.venv/`, `venv/`, `env/`, `.pytest_cache/`, `.mypy_cache/`, `.ruff_cache/`, `.tox/`, `*.egg-info/`
-   - **Rust**: `target/` (Cargo.lock intentionally **kept** — part of binary-crate reproducibility)
-   - **Java/Gradle/Maven**: `.gradle/`, `*.class`, `*.jar`, `*.war`, `.mvn/`
-   - **iOS/Xcode**: `*.xcworkspace/xcuserdata/`, `*.xcodeproj/xcuserdata/`, `DerivedData/`, `Pods/`
-   - **Android**: `app/build/`, `*.apk`, `*.aab`, `*.dex`
-   - **Native binaries**: `*.so`, `*.dylib`, `*.dll`, `*.o`, `*.a`, `*.exe`, `*.obj`
-   - **Large media**: `*.mp4`, `*.mov`, `*.zip`, `*.tar*`, `*.7z`, `*.iso`, `*.dmg`
-   - **Lockfiles** (regenerable): `package-lock.json`, `pnpm-lock.yaml`, `yarn.lock`, `bun.lockb`, `composer.lock`
-   - **Secrets**: `.env`, `.env.*`
-   - **OS/editor junk**: `.DS_Store`, `Thumbs.db`, `desktop.ini`, `*.swp`, `*~`, `.idea/`, `.vscode/`
-   - **Logs**: `*.log`, `logs/`
-   - **Top-level Axiomate state**: `/.axiomate/` (anchored — does *not* match nested `agent/.axiomate/`, so the user's `agent/.axiomate/settings.local.json` is rewindable as intended)
+1. **`info/exclude` policy**: checkpoint-owned defaults are intentionally tiny. The authoritative list lives at `agent/src/utils/checkpoints/paths.ts:DEFAULT_EXCLUDES` and covers only:
+   - **VCS metadata**: `.git/`, `.hg/`, `.svn/`
+   - **Dependency tree**: `node_modules/`
+   - **OS junk files**: `.DS_Store`, `Thumbs.db`, `desktop.ini`
+
+   Everything else is included unless the user ignores it. In particular, `.env`, `.env.local`, `.env.*.local`, `*.log`, `.next/`, `build/`, `bin/`, `obj/`, `.vs/`, lockfiles, and language artifacts are not checkpoint defaults.
 2. **Default caps**: `retentionDays = 14`, `maxTotalSizeMb = 500` — same shape as Hermes' production defaults; configurable via Phase 5 CLI flags.
 3. **Phase sequencing**: Phase 1 → 2 → 3 → 4 → 5 confirmed. Each phase independently shippable; rollback is `git revert` on agent code.
-4. **User `.gitignore` is honored automatically**: `createSnapshot` calls plain `git add -A` (no flag to disable gitignore), matching Hermes' approach (`tools/checkpoint_manager.py::CheckpointManager._take`). Effective exclusion is the **union** of three layers:
-   - **`info/exclude`** — our `DEFAULT_EXCLUDES` (the safety net for users with no `.gitignore`)
-   - **Worktree `.gitignore` files** — user's own ignore rules at any depth, auto-respected by `git add`
+4. **User `.gitignore` is honored through Git, but staging does not use `git add -A`**: `collectCheckpointFiles` walks the filesystem and asks `git check-ignore --stdin -z --no-index` to classify file and directory probes. Ordinary non-embedded trees are validated against a real `git add -A` oracle with the same ignore inputs. Embedded repositories are validated against a composed oracle: run `git add -A` inside each repository, drop gitlinks, then prefix the nested file paths back into the outer filesystem snapshot. Effective exclusion is the **union** of four layers:
+   - **Hard VCS metadata skip** — entries named `.git`, `.hg`, `.svn` are never staged.
+   - **`info/exclude`** — our tiny `DEFAULT_EXCLUDES` safety net.
+   - **Worktree `.gitignore` files** — user's own ignore rules at any depth, scoped by Git's own parser. When the scanner enters a directory that contains `.git` (directory, file, or symlink), ignore evaluation resets to that directory. Parent `.gitignore` rules do not leak into the embedded repository's files; if the embedded repository has no `.gitignore`, it has no inherited parent rules.
    - **`core.excludesFile` (global gitignore)** — *not* honored, because `GIT_CONFIG_GLOBAL=/dev/null` mutes user config. Acceptable trade-off — global gitignore is typically `.DS_Store`/`Thumbs.db` which we cover already, and the muting is necessary to avoid GPG pinentry mid-session.
 
    Two consequences worth knowing:
-   - **Tracked-but-since-ignored files**: in a normal repo, files already committed remain tracked even after being added to `.gitignore`. The shadow store starts from empty refs every project, so it has no "already tracked" concept — purely ignore-rule-driven, which is the cleaner behavior for our use case.
+   - **Nested repositories/submodules are filesystem snapshots**: ordinary files below embedded `.git` directories or `.git` files are included by current disk bytes; only the VCS metadata entry itself is skipped. Nested repo dirty/staged/untracked/deleted state is ignored.
+   - **Parent ignore boundary**: the parent ignore scope still decides whether the embedded repository directory itself is traversed. If the parent `.gitignore` ignores `child/`, the scanner prunes `child/` before it can reset scope inside that repository. Once traversed, however, files inside `child/` are evaluated only under `child/`'s own ignore root.
+   - **Tracked-but-since-ignored files**: the shadow index is rebuilt from `git read-tree --empty`, then populated by `git update-index --add -z --stdin`, so there is no "already tracked" exception. Ignore rules apply to the current filesystem candidate set.
    - **`.gitignore` changes apply immediately**: if the user edits `.gitignore`, the next snapshot reflects it. We don't cache or freeze the rules.

@@ -35,8 +35,8 @@ import { normalizePath } from './paths.js'
  *
  * 30s matches Hermes' `_GIT_TIMEOUT` default. Most operations complete in
  * tens of ms; the timeout exists for AV-scan stalls on Windows, slow disks,
- * and the rare large-monorepo `git add -A`. `git gc` callers should pass
- * a longer timeout explicitly.
+ * and large filesystem snapshot staging. `git gc` callers should pass a
+ * longer timeout explicitly.
  */
 export const DEFAULT_CHECKPOINT_GIT_TIMEOUT_MS = 30_000
 
@@ -89,7 +89,7 @@ export interface RunCheckpointGitOptions extends CheckpointGitEnvOptions {
    */
   allowedExitCodes?: ReadonlySet<number>
   /** Stdin to feed the process. Only used for a couple of plumbing paths. */
-  input?: string
+  input?: string | Buffer
 }
 
 function logCheckpointGitFailure(params: {
@@ -225,7 +225,7 @@ async function runWithEnv(
   opts: {
     timeoutMs?: number
     allowedExitCodes?: ReadonlySet<number>
-    input?: string
+    input?: string | Buffer
   },
   cwd: string | undefined,
 ): Promise<CheckpointGitResult> {

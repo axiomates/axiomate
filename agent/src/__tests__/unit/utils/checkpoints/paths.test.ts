@@ -180,48 +180,34 @@ describe('AXIOMATE_CHECKPOINT_BASE override (Decision #12)', () => {
 })
 
 describe('DEFAULT_EXCLUDES invariants', () => {
-  test('always excludes the user .git/', () => {
-    expect(DEFAULT_EXCLUDES).toContain('.git/')
+  test('keeps only tiny checkpoint-owned defaults', () => {
+    expect(DEFAULT_EXCLUDES).toEqual([
+      '.git/',
+      '.hg/',
+      '.svn/',
+      'node_modules/',
+      '.DS_Store',
+      'Thumbs.db',
+      'desktop.ini',
+    ])
   })
 
-  test('always excludes secrets', () => {
-    expect(DEFAULT_EXCLUDES).toContain('.env')
-    expect(DEFAULT_EXCLUDES).toContain('.env.*')
+  test('does not default-exclude secrets, logs, build outputs, or language artifacts', () => {
+    expect(DEFAULT_EXCLUDES).not.toContain('.env')
+    expect(DEFAULT_EXCLUDES).not.toContain('.env.*')
+    expect(DEFAULT_EXCLUDES).not.toContain('*.log')
+    expect(DEFAULT_EXCLUDES).not.toContain('bin/')
+    expect(DEFAULT_EXCLUDES).not.toContain('obj/')
+    expect(DEFAULT_EXCLUDES).not.toContain('.vs/')
+    expect(DEFAULT_EXCLUDES).not.toContain('__pycache__/')
+    expect(DEFAULT_EXCLUDES).not.toContain('.venv/')
+    expect(DEFAULT_EXCLUDES).not.toContain('.next/')
+    expect(DEFAULT_EXCLUDES).not.toContain('build/')
   })
 
-  test('covers Visual Studio C++/C# ecosystem', () => {
-    expect(DEFAULT_EXCLUDES).toContain('bin/')
-    expect(DEFAULT_EXCLUDES).toContain('obj/')
-    expect(DEFAULT_EXCLUDES).toContain('.vs/')
-    expect(DEFAULT_EXCLUDES).toContain('*.pdb')
-  })
-
-  test('covers Python ecosystem', () => {
-    expect(DEFAULT_EXCLUDES).toContain('__pycache__/')
-    expect(DEFAULT_EXCLUDES).toContain('.venv/')
-  })
-
-  test('covers JS/Bun ecosystem', () => {
+  test('keeps node_modules as the only dependency tree default', () => {
     expect(DEFAULT_EXCLUDES).toContain('node_modules/')
-    expect(DEFAULT_EXCLUDES).toContain('bun.lockb')
-  })
-
-  test('top-level Axiomate state is anchored (so nested agent/.axiomate/ stays rewindable)', () => {
-    // The slash prefix on `/.axiomate/` is the load-bearing detail —
-    // gitignore's anchor semantics mean it ONLY matches at the project root,
-    // not at any depth. This is what keeps `agent/.axiomate/settings.local.json`
-    // (a user-facing settings file Axiomate edits) snapshot-able.
-    expect(DEFAULT_EXCLUDES).toContain('/.axiomate/')
-    expect(DEFAULT_EXCLUDES).not.toContain('.axiomate/') // the unanchored form would leak
-  })
-
-  test('does not mistakenly include settings.local.json', () => {
-    // Sanity check — settings files must remain rewindable.
-    expect(DEFAULT_EXCLUDES).not.toContain('settings.local.json')
-    expect(DEFAULT_EXCLUDES).not.toContain('agent/.axiomate/')
-  })
-
-  test('keeps Cargo.lock rewindable (binary-crate reproducibility)', () => {
+    expect(DEFAULT_EXCLUDES).not.toContain('bun.lockb')
     expect(DEFAULT_EXCLUDES).not.toContain('Cargo.lock')
   })
 })

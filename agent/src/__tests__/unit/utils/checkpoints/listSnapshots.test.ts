@@ -11,11 +11,20 @@ import {
   test,
 } from 'vitest'
 import { createSnapshot } from '../../../../utils/checkpoints/createSnapshot.js'
+import { runCheckpointGit } from '../../../../utils/checkpoints/git.js'
+import {
+  indexPath,
+  projectHash,
+  refName,
+} from '../../../../utils/checkpoints/paths.js'
 import { ensureStore } from '../../../../utils/checkpoints/store.js'
 import { listSnapshots } from '../../../../utils/checkpoints/listSnapshots.js'
 
+const GIT_TEST_TIMEOUT_MS = 60_000
+
 let tmpRoot: string
 let workTree: string
+let storeDir: string
 let originalBase: string | undefined
 
 beforeAll(() => {
@@ -33,11 +42,43 @@ beforeEach(async () => {
   workTree = mkdtempSync(join(tmpRoot, 'wt-'))
   const r = await ensureStore()
   if (r.ok === false) throw new Error(`ensureStore failed: ${r.reason}`)
+  storeDir = r.store
 })
 
 afterEach(() => {
-  rmSync(tmpRoot, { recursive: true, force: true })
+  rmSync(tmpRoot, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 })
 })
+
+async function buildSingleFileCommit(subject: string, content: string): Promise<void> {
+  const hash = projectHash(workTree)
+  const ref = refName(hash)
+  const indexFile = indexPath(hash)
+  const env = { store: storeDir, workTree, indexFile }
+
+  writeFileSync(join(workTree, 'a.txt'), content)
+
+  const clear = await runCheckpointGit(['read-tree', '--empty'], env)
+  if (clear.ok === false) throw new Error(`read-tree failed: ${clear.message}`)
+  const update = await runCheckpointGit(['update-index', '--add', 'a.txt'], env)
+  if (update.ok === false) throw new Error(`update-index failed: ${update.message}`)
+  const writeTree = await runCheckpointGit(['write-tree'], env)
+  if (writeTree.ok === false) throw new Error(`write-tree failed: ${writeTree.message}`)
+
+  const parentResult = await runCheckpointGit(
+    ['rev-parse', '--verify', ref],
+    { ...env, allowedExitCodes: new Set([128]) },
+  )
+  if (parentResult.ok === false) throw new Error(`rev-parse failed: ${parentResult.message}`)
+  const parent = parentResult.stdout.trim()
+  const commitArgs =
+    parent.length > 0
+      ? ['commit-tree', writeTree.stdout.trim(), '-p', parent, '-m', subject, '--no-gpg-sign']
+      : ['commit-tree', writeTree.stdout.trim(), '-m', subject, '--no-gpg-sign']
+  const commit = await runCheckpointGit(commitArgs, env)
+  if (commit.ok === false) throw new Error(`commit-tree failed: ${commit.message}`)
+  const updateRef = await runCheckpointGit(['update-ref', ref, commit.stdout.trim()], env)
+  if (updateRef.ok === false) throw new Error(`update-ref failed: ${updateRef.message}`)
+}
 
 describe('listSnapshots — empty / missing-state paths', () => {
   test('returns [] when store has no HEAD yet', async () => {
@@ -104,11 +145,7 @@ describe('listSnapshots — one snapshot', () => {
 describe('listSnapshots — many snapshots', () => {
   test('returns newest-first', async () => {
     for (let i = 0; i < 5; i++) {
-      writeFileSync(join(workTree, 'a.txt'), `content-${i}`)
-      await createSnapshot(workTree, {
-        messageId: `m${i}`,
-        label: `turn ${i}`,
-      })
+      await buildSingleFileCommit(`axiomate:m${i}:turn ${i}`, `content-${i}`)
     }
 
     const list = await listSnapshots(workTree)
@@ -118,15 +155,11 @@ describe('listSnapshots — many snapshots', () => {
     )
     // newest first → m4, m3, m2, m1, m0
     expect(messageIds).toEqual(['m4', 'm3', 'm2', 'm1', 'm0'])
-  })
+  }, GIT_TEST_TIMEOUT_MS)
 
   test('respects limit', async () => {
     for (let i = 0; i < 5; i++) {
-      writeFileSync(join(workTree, 'a.txt'), `content-${i}`)
-      await createSnapshot(workTree, {
-        messageId: `m${i}`,
-        label: `turn ${i}`,
-      })
+      await buildSingleFileCommit(`axiomate:m${i}:turn ${i}`, `content-${i}`)
     }
     const list = await listSnapshots(workTree, { limit: 2 })
     expect(list.length).toBe(2)
@@ -134,7 +167,7 @@ describe('listSnapshots — many snapshots', () => {
       e.reason.kind === 'axiomate' ? e.reason.messageId : 'raw',
     )
     expect(messageIds).toEqual(['m4', 'm3'])
-  })
+  }, GIT_TEST_TIMEOUT_MS)
 
   test('stat fields populated for non-root commits', async () => {
     writeFileSync(join(workTree, 'a.txt'), 'one\n')
@@ -158,7 +191,7 @@ describe('listSnapshots — many snapshots', () => {
     // left stats at 0. The new value is more informative.
     expect(m0.filesChanged).toBe(1)
     expect(m0.insertions).toBe(1)
-  })
+  }, GIT_TEST_TIMEOUT_MS)
 
   test('withStats: false skips per-commit diff invocations', async () => {
     writeFileSync(join(workTree, 'a.txt'), 'one\n')
@@ -193,6 +226,7 @@ describe('listSnapshots — subject parsing edge cases', () => {
     // Bypass createSnapshot — write a raw subject directly via plumbing.
     const { runCheckpointGit } = await import('../../../../utils/checkpoints/git.js')
     const { projectHash, refName, indexPath } = await import('../../../../utils/checkpoints/paths.js')
+    const { stageWorktreeSnapshotIndex } = await import('../../../../utils/checkpoints/snapshotIndex.js')
     const hash = projectHash(workTree)
     const ref = refName(hash)
     const indexFile = indexPath(hash)
@@ -201,12 +235,12 @@ describe('listSnapshots — subject parsing edge cases', () => {
     const store = r.store
 
     writeFileSync(join(workTree, 'a.txt'), '1')
-    const add = await runCheckpointGit(['add', '-A'], {
+    const stage = await stageWorktreeSnapshotIndex({
       store,
       workTree,
       indexFile,
     })
-    if (add.ok === false) throw new Error('add failed')
+    if (stage.ok === false) throw new Error('stage failed')
     const writeTree = await runCheckpointGit(['write-tree'], {
       store,
       workTree,
@@ -475,11 +509,7 @@ describe('listSnapshots — performance', () => {
     '100 anchors return in well under one second',
     async () => {
       for (let i = 0; i < 100; i++) {
-        writeFileSync(join(workTree, 'a.txt'), `content-${i}`)
-        await createSnapshot(workTree, {
-          messageId: `m${i}`,
-          label: `turn ${i}`,
-        })
+        await buildSingleFileCommit(`axiomate:m${i}:turn ${i}`, `content-${i}`)
       }
 
       const start = Date.now()

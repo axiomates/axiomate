@@ -20,7 +20,7 @@ type ExecFileOptions = {
   useCwd?: boolean
   env?: NodeJS.ProcessEnv
   stdin?: 'ignore' | 'inherit' | 'pipe'
-  input?: string
+  input?: string | Buffer
 }
 
 export function execFileNoThrow(
@@ -52,7 +52,7 @@ type ExecFileWithCwdOptions = {
   env?: NodeJS.ProcessEnv
   shell?: boolean | string | undefined
   stdin?: 'ignore' | 'inherit' | 'pipe'
-  input?: string
+  input?: string | Buffer
 }
 
 type ExecaResultWithError = {

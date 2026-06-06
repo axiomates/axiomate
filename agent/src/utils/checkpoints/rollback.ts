@@ -20,9 +20,9 @@
  *   7.  `git checkout <hash> -- <paths|.>` with the per-project index
  *       file. 60s timeout (2× default; Hermes `restore`::795). The per-project
  *       indexFile is critical: checkout writes index entries, and we
- *       want those entries to live in our shadow index (so the next
- *       createSnapshot's `add -A` sees the post-rollback baseline)
- *       not the user's `.git/index`.
+ *       want those entries to live in our shadow index, not the user's
+ *       `.git/index`. The next createSnapshot rebuilds that index from
+ *       the restored filesystem state.
  *   8.  Read the restored commit's subject for the result envelope.
  *
  * Returns a discriminated union; never throws. Failure paths align
@@ -178,8 +178,8 @@ export async function rollback(
   }
 
   // 7. Per-project index file — checkout writes here, not the user's
-  //    .git/index. After a successful restore the next createSnapshot's
-  //    `add -A` will see the freshly-checked-out tree as the baseline.
+  //    .git/index. After a successful restore the next createSnapshot
+  //    rebuilds the index from the freshly-checked-out filesystem.
   const hash = projectHash(canonical)
   const indexFile = indexPath(hash)
 

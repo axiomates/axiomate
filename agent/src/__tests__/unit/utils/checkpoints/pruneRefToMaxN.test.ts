@@ -8,6 +8,8 @@ import { ensureStore } from '../../../../utils/checkpoints/store.js'
 import { pruneRefToMaxN } from '../../../../utils/checkpoints/pruneRefToMaxN.js'
 import { buildFixtureCommit } from './fixtures.js'
 
+const GIT_TEST_TIMEOUT_MS = 60_000
+
 let tmpRoot: string
 let workTree: string
 let storeDir: string
@@ -37,7 +39,7 @@ beforeEach(async () => {
 })
 
 afterEach(() => {
-  rmSync(tmpRoot, { recursive: true, force: true })
+  rmSync(tmpRoot, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 })
 })
 
 async function commitCount(): Promise<number> {
@@ -95,7 +97,7 @@ describe('pruneRefToMaxN — short-circuits', () => {
     })
     expect(result).toBeNull()
     expect(await commitCount()).toBe(5)
-  })
+  }, GIT_TEST_TIMEOUT_MS)
 
   test('returns null when count is below the cap', async () => {
     await makeNCommits(3)
@@ -107,7 +109,7 @@ describe('pruneRefToMaxN — short-circuits', () => {
     })
     expect(result).toBeNull()
     expect(await commitCount()).toBe(3)
-  })
+  }, GIT_TEST_TIMEOUT_MS)
 
   test('returns null when maxN <= 0 (no rebuild to empty)', async () => {
     await makeNCommits(5)
@@ -119,7 +121,7 @@ describe('pruneRefToMaxN — short-circuits', () => {
     })
     expect(result).toBeNull()
     expect(await commitCount()).toBe(5)
-  })
+  }, GIT_TEST_TIMEOUT_MS)
 })
 
 describe('pruneRefToMaxN — actual prune', () => {
@@ -140,7 +142,7 @@ describe('pruneRefToMaxN — actual prune', () => {
     const after = await commitSubjects()
     // Subjects should be the LAST 4 of the original 10, in chronological order.
     expect(after).toEqual(before.slice(-4))
-  }, 60_000)
+  }, GIT_TEST_TIMEOUT_MS)
 
   test('preserves subject content (so messageId parsing still works)', async () => {
     // The whole point of structured subjects (Decision #14) — prune
@@ -155,7 +157,7 @@ describe('pruneRefToMaxN — actual prune', () => {
       'axiomate:m6:turn 6',
       'axiomate:m7:turn 7',
     ])
-  })
+  }, GIT_TEST_TIMEOUT_MS)
 
   test('chain after prune is linear (each commit has exactly one parent except the first)', async () => {
     await makeNCommits(7)
@@ -177,7 +179,7 @@ describe('pruneRefToMaxN — actual prune', () => {
     expect(parents[0]).toBe('')
     expect(parents[1].split(' ').length).toBe(1)
     expect(parents[2].split(' ').length).toBe(1)
-  })
+  }, GIT_TEST_TIMEOUT_MS)
 
   test('tree blobs are reused (no duplicate blob creation in rebuild)', async () => {
     // Each commit's tree references the SAME content-addressed blob
@@ -206,5 +208,5 @@ describe('pruneRefToMaxN — actual prune', () => {
     expect(newTip.ok).toBe(true)
     if (newTip.ok === false) return
     expect(newTip.stdout.trim()).toBe(oldTreeSha)
-  })
+  }, GIT_TEST_TIMEOUT_MS)
 })

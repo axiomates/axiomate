@@ -579,8 +579,9 @@ export type GlobalConfig = {
   checkpointsMaxSnapshotsPerProject: number
 
   // Working-directory file-count guard for checkpoint snapshots.
-  // createSnapshot.ts counts files before `git add -A` and skips the
-  // snapshot once this cap is exceeded. 0 disables the file-count guard.
+  // createSnapshot.ts counts files with the same filesystem snapshot
+  // scanner used for staging and skips once this cap is exceeded.
+  // 0 disables the file-count guard.
   // Range 0..10_000_000.
   checkpointsMaxFiles: number
 
