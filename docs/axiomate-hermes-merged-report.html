@@ -258,8 +258,8 @@
     <section class="hero">
       <div class="eyebrow">Comparative Report · Current Gap · Priority Plan</div>
       <h1>Axiomate vs Hermes Agent 当前能力差距与优先事项报告</h1>
-      <p>报告聚焦三个问题：当前差距在哪里、哪些差距真的影响产品、Axiomate 下一步优先补什么。关键判断是：API harness 与 file harness 基础短板已经补齐；下一版最该做的是从 Claude Code 2.1.88 之后补 context/memory lifecycle，再补少量 Hermes runtime hygiene。</p>
-      <div class="meta">评估时间：2026-06-02 · 左仓库：C:\public\workspace\axiomate (main @ bb8562a8) · 右仓库：C:\public\workspace\hermes-agent (main @ 5f84c9144，已 git fetch/pull --ff-only) · Claude Code 基线：C:\public\workspace\claude-code-sourcemap (2.1.88 @ a8a678c) · 统计口径：tracked-file-only cloc · 外部核对：Claude Code memory/context 与 Managed Agents memory/dreams 官方资料</div>
+      <p>报告聚焦三个问题：当前差距在哪里、哪些差距真的影响产品、Axiomate 下一步优先补什么。关键判断是：API harness、file harness 与 checkpoint filesystem snapshot 基础短板已经补齐；下一版最该做的是从 Claude Code 2.1.88 之后补 context/memory lifecycle，再补少量 Hermes runtime hygiene。</p>
+      <div class="meta">评估时间：2026-06-06 · 左仓库：C:\public\workspace\axiomate (main @ aa2d233c) · 右仓库：C:\public\workspace\hermes-agent (main @ 56236b16e，已 git fetch/pull --ff-only) · Claude Code 基线：C:\public\workspace\claude-code-sourcemap (2.1.88 @ a8a678c) · 统计口径：tracked-file-only cloc · 外部核对：Claude Code memory/context 与 Managed Agents memory/dreams 官方资料</div>
     </section>
 
     <section class="grid-4">
@@ -270,13 +270,13 @@
       </article>
       <article class="card">
         <div class="stat-label">Axiomate 已补齐</div>
-        <div class="stat-value">API + File Harness</div>
-        <div class="muted">API O-D-E、/doctor api 与 file harness read/write/edit/notebook/sibling/path-lock 防线均已落地；file harness 已完成第二轮烧测。</div>
+        <div class="stat-value">API + File + Checkpoint</div>
+        <div class="muted">API O-D-E、/doctor api、file harness 防线与 checkpoint filesystem snapshot 均已落地；嵌套 Git 现在按普通文件拍当前磁盘字节。</div>
       </article>
       <article class="card">
         <div class="stat-label">Hermes 最新压力</div>
         <div class="stat-value">Ops + Context Hygiene</div>
-        <div class="muted">05-27 之后 Hermes 继续补 prompt-size diagnostic、/compress here、atomic write/patch、BOM、MCP startup isolation、process-group reap、FTS degradation 与 kanban breaker。</div>
+        <div class="muted">05-27 之后 Hermes 继续补 prompt-size、/compress here、file-ops hygiene、MCP/process cleanup、FTS degrade；06-05/06 又推进 desktop steer、credits 与 Skills hub。</div>
       </article>
       <article class="card">
         <div class="stat-label">优先路线</div>
@@ -295,21 +295,21 @@
       <div class="grid-2">
         <div>
           <p><strong>Axiomate 已经实现 persistent goals。</strong> 代码与文档显示它具备 Ralph-loop 风格 <code>/goal</code>：<code>GoalManager</code>、JSONL <code>goal-state</code> 持久化、turn-end judge、<code>/subgoal</code> 附加准则、Ctrl+C pause、turn budget、parse-failure backstop、footer GoalIndicator、<code>/resume</code>/<code>--continue</code>/compact resume 状态恢复，以及用户文档 <code>docs/user/goals_zhcn.html</code>。这是一等控制原语，不是待补功能。</p>
-          <p><strong>API harness 和 file harness 都不再是 Axiomate 的基础短板。</strong> 05-27 之后的代码和文档显示，API 失败恢复已收敛到 observe → decide → execute；file harness 已覆盖 read-before-write、stale guard、registry/lock、file-tool strict atomic write、BOM/CRLF、failure taxonomy、edit/read escalation，并在 2026-06-01 修复 Write/Edit resume reconstruction、atomic helper scope、NotebookEdit mtime fallback、file-harness throw runner 边界、Bash simulated sed guard、registry/path lock alias、path-lock reentry fail-fast 与 killed/failed subagent reminder。随后第二轮烧测又修复了空文件 Edit validation 提前放行和 notebook Read offset/limit 状态误标两个边界问题。当前结论是核心 file harness 完成；不做 file harness telemetry/UI 统计，剩余只是已接受的跨进程/任意 shell/硬链接边界和低优先级开发观察。</p>
+          <p><strong>API harness、file harness 和 checkpoint snapshot 都不再是 Axiomate 的基础短板。</strong> 05-27 之后的代码和文档显示，API 失败恢复已收敛到 observe → decide → execute；file harness 已覆盖 read-before-write、stale guard、registry/lock、file-tool strict atomic write、BOM/CRLF、failure taxonomy、edit/read escalation，并在 2026-06-01 后完成第二轮烧测。2026-06-06 的 checkpoint 改动把生产 staging 从父仓库 <code>git add -A</code> 改成 <code>collectCheckpointFiles</code> + <code>git update-index --add -z --stdin</code>：普通树用 fresh-index <code>git add -A</code> 做正确性 oracle，嵌套 Git/submodule 则按当前文件系统普通文件拍摄，跳过 VCS metadata。</p>
           <p><strong>Context/memory 的基线必须按 Claude Code 2.1.88 切开。</strong> Axiomate fork 自 Claude Code CLI 2.1.88；本次参考的 <code>C:\public\workspace\claude-code-sourcemap</code> README 说明该仓库从公开 npm 包 <code>@anthropic-ai/claude-code</code> 的 <code>cli.js.map</code> 还原，版本为 <code>2.1.88</code>。Axiomate 的 <code>memdir</code>、extractMemories、SessionMemory、autoDream、compact 等核心 context/memory 系统仍是这套基线的延续，主要差异是品牌、路径和 Anthropic 私有 gate 的删减。因此报告里的“已有什么”应理解为继承了 2.1.88 之前的 Claude Code 系统；2.1.88 之后 Claude Code 不再有可用开源基线，只能通过官方文档、博客和行为描述补差。</p>
           <p><strong>Hermes 的领先仍然真实，但领先点转为 runtime 与运维厚度。</strong> 它不是因为单次 API retry 更强而领先，而是把 long-running agent 做成平台 runtime：durable kanban、Curator/background review、MemoryProvider/ProviderProfile/ContextEngine plugin ABI、gateway/delivery/restart、s6/service supervision、security hardening、TUI session orchestrator 与跨入口 session continuity。05-27 之后新增的 prompt-size diagnostic、/compress here、atomic file operations、MCP isolation、FTS degradation 和 kanban breaker 修复继续强化这些面。</p>
           <p><strong>Axiomate 的下一版不应复制 Hermes 的 RAG memory 插件路线。</strong> 官方 Claude Code memory 文档显示 Claude Code 依赖 <code>CLAUDE.md</code>、作用域 memory 文件和递归导入；Managed Agents memory/dreams 文档把 memory stores 挂载成 filesystem 目录，再用 dreams 异步合并重复、替换陈旧和提炼新洞见。对 coding agent 来说，这比默认向量化切碎代码更符合 Axiomate 的本地执行路线。</p>
         </div>
         <div class="callout">
           <strong>一句话判断：</strong>
-          当前差距不是“缺 API harness / 缺 file harness / 缺 goal / 缺 checkpoint”，而是“需要从 Claude Code 2.1.88 的继承基线继续补 context/memory 生命周期”。Axiomate 下一轮优先级应是 Claude-style memory + dream + prompt-size/compression + session search，然后做 MCP/process hygiene、guardrails 和轻量 durable task runtime；file harness 已从主线待补项移出。
+          当前差距不是“缺 API harness / 缺 file harness / 缺 goal / 缺 checkpoint”，而是“需要从 Claude Code 2.1.88 的继承基线继续补 context/memory 生命周期”。Axiomate 下一轮优先级应是 Claude-style memory + dream + prompt-size/compression + session search，然后做 MCP/process hygiene、guardrails 和轻量 durable task runtime；file harness 与 checkpoint filesystem snapshot 已从主线待补项移出。
         </div>
       </div>
       <div class="pill-row">
         <span class="pill good">Axiomate /goal 已实现</span>
         <span class="pill good">API O-D-E + /doctor 已落地</span>
         <span class="pill good">File harness 已烧测完成</span>
-        <span class="pill good">Checkpoint + conversation rewind 仍是优势项</span>
+        <span class="pill good">Checkpoint filesystem snapshot 已支持嵌套 Git</span>
         <span class="pill good">rtk-axiomate 是产品级 token 经济</span>
         <span class="pill warn">Hermes 5/27 后增强 context/ops hygiene</span>
         <span class="pill danger">最高风险：context lifecycle 没有产品级闭环</span>
@@ -323,36 +323,36 @@
           <h2>代码行数对比</h2>
         </div>
       </div>
-      <p class="muted">统计口径：<code>git ls-files</code> tracked-file-only cloc，排除未跟踪文件。Hermes 的 Markdown 体量包含 release notes、多语言文档、skills/optional-skills 文档；不能直接等同于核心逻辑代码。</p>
+      <p class="muted">统计口径：<code>git ls-files</code> tracked-file-only cloc，排除未跟踪文件；卡片里的文件数是 cloc 实际计数文件数。Hermes 的 Markdown 体量包含网站、多语言文档、skills/optional-skills 文档；不能直接等同于核心逻辑代码。</p>
       <div class="grid-2">
         <article class="subcard">
           <h4>Axiomate</h4>
           <div class="stats-grid">
-            <div><div class="stat-label">代码行</div><div class="stat-value-sm">408,841</div></div>
-            <div><div class="stat-label">注释行</div><div class="stat-value-sm">87,080</div></div>
-            <div><div class="stat-label">空白行</div><div class="stat-value-sm">45,632</div></div>
-            <div><div class="stat-label">已跟踪文件</div><div class="stat-value-sm">2,137</div></div>
+            <div><div class="stat-label">代码行</div><div class="stat-value-sm">415,515</div></div>
+            <div><div class="stat-label">注释行</div><div class="stat-value-sm">86,991</div></div>
+            <div><div class="stat-label">空白行</div><div class="stat-value-sm">46,263</div></div>
+            <div><div class="stat-label">cloc 文件</div><div class="stat-value-sm">2,144</div></div>
           </div>
           <ul>
-            <li>TypeScript 381,321 code</li>
+            <li>TypeScript 385,211 code</li>
             <li>Rust 7,026 code，集中在多个 napi/本地子包</li>
-            <li>HTML 8,914 code，含用户文档与报告</li>
-            <li>Markdown 5,614 code</li>
+            <li>HTML 11,507 code，含用户文档与报告</li>
+            <li>Markdown 7,457 code</li>
           </ul>
         </article>
         <article class="subcard">
           <h4>Hermes Agent</h4>
           <div class="stats-grid">
-            <div><div class="stat-label">代码行</div><div class="stat-value-sm">1,160,068</div></div>
-            <div><div class="stat-label">注释行</div><div class="stat-value-sm">164,191</div></div>
-            <div><div class="stat-label">空白行</div><div class="stat-value-sm">282,643</div></div>
-            <div><div class="stat-label">已跟踪文件</div><div class="stat-value-sm">4,203</div></div>
+            <div><div class="stat-label">代码行</div><div class="stat-value-sm">1,268,809</div></div>
+            <div><div class="stat-label">注释行</div><div class="stat-value-sm">187,037</div></div>
+            <div><div class="stat-label">空白行</div><div class="stat-value-sm">301,480</div></div>
+            <div><div class="stat-label">cloc 文件</div><div class="stat-value-sm">4,579</div></div>
           </div>
           <ul>
-            <li>Python 658,643 code，覆盖 agent/gateway/hermes_cli/plugins/tools</li>
-            <li>Markdown 327,112 code，含 release notes 与 skills 文档</li>
-            <li>TypeScript 72,444 code，TUI/web/tui_gateway 相关</li>
-            <li>JSON 43,835 code，含 registry/locales/catalog</li>
+            <li>Python 695,309 code，覆盖 agent/gateway/hermes_cli/plugins/tools</li>
+            <li>Markdown 319,050 code，含网站、skills 与历史文档</li>
+            <li>TypeScript 137,721 code，desktop/TUI/web/tui_gateway 相关</li>
+            <li>JSON 49,226 code，含 registry/locales/catalog</li>
           </ul>
         </article>
       </div>
@@ -402,7 +402,7 @@
             <td><span class="score-badge s5">5/5</span></td>
             <td><span class="score-badge s5">5/5</span></td>
             <td>互有强项</td>
-            <td>Axiomate request-level API harness、file checkpoint + conversation rewind、核心 file harness 已经领先或追平；Hermes 仍强在 gateway/restart-pending、s6/service supervision、container lifecycle、process-level resume 与平台化运维。</td>
+            <td>Axiomate request-level API harness、filesystem checkpoint + nested Git/submodule ordinary-file snapshot、conversation rewind 与核心 file harness 已经领先或追平；Hermes 仍强在 gateway/restart-pending、s6/service supervision、container lifecycle、process-level resume 与平台化运维。</td>
           </tr>
           <tr>
             <td>5. Validation / Security guardrails</td>
@@ -483,9 +483,10 @@
         <article class="subcard">
           <h4>Checkpoint + Conversation Rewind</h4>
           <ul>
-            <li>File tab 与 Conversation tab 双轴脱钩。</li>
-            <li>Conversation head 写 JSONL，未来节点 dim 显示，selection/head 双游标。</li>
-            <li>pre-rewind 安全网、hash-chain 嵌套显示、event-aligned stats、newest-first picker 与更激进默认值。</li>
+            <li>File tab 与 Conversation tab 双轴脱钩；Conversation head 写 JSONL，未来节点 dim 显示，selection/head 双游标。</li>
+            <li>生产 staging 使用 <code>collectCheckpointFiles</code> + <code>git read-tree --empty</code> + <code>git update-index --add -z --stdin</code>，不从父仓库执行 <code>git add -A</code>。</li>
+            <li>嵌套 <code>.git</code> 目录/文件/symlink 会作为新的 scan root 进入；<code>.git</code>/<code>.hg</code>/<code>.svn</code> metadata 跳过，普通文件按当前磁盘字节保存。</li>
+            <li>用户 <code>.gitignore</code> 由 Git 自己解析；父级规则只决定能否走到子仓库边界，进入后子仓库 ignore scope 重新开始。</li>
           </ul>
         </article>
         <article class="subcard">
@@ -519,7 +520,7 @@
       <div class="section-title">
         <div>
           <div class="section-kicker">Recent Signals</div>
-          <h2>Hermes 2026-05-27 之后的新信号如何影响评估</h2>
+          <h2>Hermes 2026-05-27 至 2026-06-06 的新信号如何影响评估</h2>
         </div>
       </div>
       <p class="muted">只列会改变能力判断的信号，不按时间线复述提交过程。</p>
@@ -554,6 +555,14 @@
             <li><code>40fcb9658</code> / <code>622e53437</code> 修 custom-provider auxiliary routing，确保 base_url / api_key / api_mode 进入 runtime main。</li>
             <li><code>8e5a6854c</code> / <code>6ab71d3bb</code> 修 kanban breaker failure_limit 和 worker iteration budget 死循环。</li>
             <li><code>5ad2b4c6d</code> / <code>97ecfa0fc</code> 让 SQLite 缺 FTS5 / trigram CJK index 时可降级，不让 session search 故障拖垮启动或恢复。</li>
+          </ul>
+        </article>
+        <article class="subcard">
+          <h4>Desktop / control plane 继续变厚</h4>
+          <ul>
+            <li><code>40aef6af9</code> 让 desktop composer 能 mid-run steer；<code>ce5003063</code> 把 arrow history 接入 message queue。</li>
+            <li><code>fcb1944b4</code> 增加 usage-aware credits 与 <code>/usage</code> view，把成本反馈做进会话。</li>
+            <li><code>56236b16e</code> 重做 Skills hub browser：connected hubs、featured、preview 与 security scan，继续强化平台控制面。</li>
           </ul>
         </article>
       </div>
@@ -1006,8 +1015,8 @@
         <article class="gap-item">
           <div class="gap-head">
             <div>
-              <h3>12. Checkpoint + Rewind：Axiomate 是优势项，但还要升到 runtime 层</h3>
-              <div class="muted">Axiomate 当前强于 Hermes 文件回滚轴，并新增 conversation 轴。</div>
+              <h3>12. Checkpoint + Rewind：Axiomate 的嵌套 Git filesystem snapshot 已成优势项</h3>
+              <div class="muted">Axiomate 当前强于 Hermes 文件回滚轴，并新增 conversation 轴；2026-06-06 后 checkpoint staging 明确按文件系统快照语义处理嵌套仓库。</div>
             </div>
             <span class="pill good">优势项</span>
           </div>
@@ -1016,9 +1025,10 @@
               <div class="subcard">
                 <h4>Axiomate 强项</h4>
                 <ul>
-                  <li>File tab + Conversation tab 双轴脱钩。</li>
-                  <li>conversation head JSONL 持久化、未来节点 dim、双游标。</li>
-                  <li>pre-rewind 安全网、hash-chain、event-aligned stats、1GB/30d 产品化默认值。</li>
+                  <li>File tab + Conversation tab 双轴脱钩；conversation head JSONL 持久化、未来节点 dim、双游标。</li>
+                  <li><code>collectCheckpointFiles</code> 发现最终普通文件，<code>git read-tree --empty</code> 清空 shadow index，<code>git update-index --add -z --stdin</code> 批量写入。</li>
+                  <li><code>.git</code> 目录/文件/symlink 标记 embedded repository 边界；进入后作为新 scan root，VCS metadata 跳过，dirty/staged/untracked/deleted 状态不参与判断。</li>
+                  <li>普通无嵌套树与 fresh-index <code>git add -A</code> 对齐；嵌套树与“每个仓库 fresh-index add 后合并普通文件”的 composed oracle 对齐。</li>
                 </ul>
               </div>
               <div class="subcard">
@@ -1026,6 +1036,7 @@
                 <ul>
                   <li>checkpoint 与 gateway/restart-pending/process-level resume 的测试和路径。</li>
                   <li>让恢复能力服务后台 agent、gateway delivery、TUI session，而不是只服务交互 REPL。</li>
+                  <li>保留对长任务恢复链路的运行时可观测性：checkpoint 是否可达、恢复后 pending queue 是否一致、失败原因是否能反馈到控制面。</li>
                 </ul>
               </div>
               <div class="subcard">
@@ -1033,10 +1044,11 @@
                 <ul>
                   <li>不需要回头补 Hermes 只有的 file rollback 体验，Axiomate 已超。</li>
                   <li>需要把状态机制给 daemon/gateway/cron/subagent 用。</li>
-                  <li>补 runtime resume 测试族：goal、conversation head、file checkpoint、pending task。</li>
+                  <li>补 runtime resume 测试族：goal、conversation head、file checkpoint、pending task，并保留嵌套仓库扫描的性能 telemetry。</li>
                 </ul>
               </div>
             </div>
+            <p><strong>性能尺度：</strong>普通 5k 文件树约 2122ms，对 fresh-index <code>git add -A</code> 的 1991ms 是 +131ms；ignore-heavy 树约 2292ms，对 2088ms 是 +204ms；8 个嵌套仓库 × 500 文件约 3022ms，对 composed fresh-index oracle 的 1037ms 是 +1985ms。这个回退主要换来父仓库 <code>git add -A</code> 没有的语义：不存 gitlink，而是拍子仓库普通文件。</p>
           </div>
         </article>
       </div>
@@ -1136,9 +1148,9 @@
           <h2>最终判断</h2>
         </div>
       </div>
-      <p>Hermes Agent 当前仍是更成熟的平台 runtime：durable kanban、curator review、plugin ABI、gateway/delivery/restart、security hardening、TUI/session orchestrator 与 service supervision 形成了系统优势。05-27 之后的提交没有推翻这个判断，但新增压力主要来自 context/ops hygiene，而不是 API harness。</p>
-      <p>Axiomate 的强项集中在 API O-D-E recovery、persistent goal、checkpoint/rewind、conversation rewind 持久化、双轴 picker、rtk-axiomate、本地 CDP/napi 执行线。这些是 Hermes 没有正面对位的强项。</p>
-      <p>因此新版结论是：Axiomate 不是“基础层全面落后”。API harness 和核心 file harness 已经补到可发布水平，并且 file harness 已完成第二轮烧测审计；下个版本最该做的是 Claude-style context lifecycle，其次补 Hermes 最近展示出来的基础 hygiene：prompt-size、/compress here、MCP/process cleanup、guardrails 和轻量 durable task runtime。</p>
+      <p>Hermes Agent 当前仍是更成熟的平台 runtime：durable kanban、curator review、plugin ABI、gateway/delivery/restart、security hardening、TUI/session orchestrator 与 service supervision 形成了系统优势。05-27 至 06-06 的提交没有推翻这个判断，但新增压力主要来自 context/ops/control-plane hygiene，而不是 API harness。</p>
+      <p>Axiomate 的强项集中在 API O-D-E recovery、persistent goal、checkpoint/rewind、嵌套 Git filesystem snapshot、conversation rewind 持久化、双轴 picker、rtk-axiomate、本地 CDP/napi 执行线。这些是 Hermes 没有正面对位的强项。</p>
+      <p>因此新版结论是：Axiomate 不是“基础层全面落后”。API harness、核心 file harness 与 checkpoint snapshot 都已经补到可发布水平，并且 file harness / checkpoint 均有 focused tests 和对照验证；下个版本最该做的是 Claude-style context lifecycle，其次补 Hermes 最近展示出来的基础 hygiene：prompt-size、/compress here、MCP/process cleanup、guardrails 和轻量 durable task runtime。</p>
     </section>
 
     <section class="card">
@@ -1151,8 +1163,8 @@
       <div class="source-list">
         <div class="source-item">
           <strong>Axiomate 本地代码与结构证据</strong>
-          <div class="code">Repo: C:\public\workspace\axiomate (branch main @ bb8562a8)
-Tracked-file-only cloc: 2,137 tracked files / 408,841 code
+          <div class="code">Repo: C:\public\workspace\axiomate (branch main @ aa2d233c)
+Tracked-file-only cloc: 2,144 cloc-counted files / 415,515 code / 86,991 comment / 46,263 blank
 Goal implementation:
   agent/src/utils/goal/{goalManager,goalStore,goalState,goalJudge,continuation}.ts
   agent/src/commands/goal/goal.tsx; agent/src/commands/subgoal/subgoal.tsx
@@ -1161,8 +1173,17 @@ Goal implementation:
   agent/src/types/logs.ts (GoalStateEntry); agent/src/utils/sessionStorage.ts (goal-state)
   docs/user/goals_zhcn.html
 Checkpoint/Rewind:
-  agent/src/utils/checkpoints/*; agent/src/utils/fileHistory.ts
+  agent/src/utils/checkpoints/{snapshotIndex,countFiles,createSnapshot,store,paths}.ts
+  agent/src/utils/fileHistory.ts
   agent/src/utils/conversationBranches.ts; agent/src/components/MessageSelector.tsx
+  agent/src/__tests__/unit/utils/checkpoints/{snapshotIndex,countFiles,snapshotIndex.race,createSnapshot}.test.ts
+  docs/checkpoint/checkpoints-v2-design.md; docs/checkpoint/checkpoints-v2-progress.md; docs/user/checkpoints_zhcn.html
+  Production staging: collectCheckpointFiles + git read-tree --empty + git update-index --add -z --stdin.
+  Discovery: git check-ignore --stdin -z --no-index for directory probes; git ls-files --others --exclude-standard -z per scan root with an empty discovery index.
+  Nested Git/submodule semantics: embedded .git directories/files/symlinks reset scan roots; VCS metadata is skipped; child repository dirty/staged/untracked/deleted status is ignored; current filesystem bytes are captured.
+  Ignore semantics: tiny DEFAULT_EXCLUDES only (.git/.hg/.svn/node_modules/.DS_Store/Thumbs.db/desktop.ini); .env*, *.log, .next, build, bin, obj, .vs are included unless user .gitignore excludes them.
+  Validation: ordinary trees compared to fresh-index git add -A; embedded repositories compared to composed per-repo fresh-index add oracle. Full checkpoint suite passed: pnpm --filter ./agent exec vitest run src/__tests__/unit/utils/checkpoints (25 files, 326 tests); typecheck passed.
+  Performance (2026-06-06): ordinary 5k 2122ms vs git add -A 1991ms (+131ms, 1.07x); ignore-heavy 2292ms vs 2088ms (+204ms, 1.10x); embedded 8x500 3022ms vs composed oracle 1037ms (+1985ms, 2.92x).
 Local execution / token economy:
   computer-use-mac-napi-axiomate; computer-use-win-napi-axiomate; browser-bridge-axiomate
   audio-capture-axiomate; clipboard-axiomate; modifiers-mac-napi-axiomate; url-handler-mac-napi-axiomate
@@ -1196,7 +1217,12 @@ Recent Axiomate commits after 2026-05-27:
   f2febcd1 fix: canonicalize file registry paths
   172f38de fix: harden file harness registry flows
   ea9adba2 fix: tighten file harness edge cases
-  bb8562a8 docs: organize file harness reports</div>
+  bb8562a8 docs: organize file harness reports
+  22117e5b fix(checkpoints): stage filesystem snapshots with update-index
+  e0011fdc fix(checkpoints): optimize filesystem snapshot discovery
+  b9c1241f docs(checkpoints): clarify nested git ignore behavior
+  7d6e0141 docs(checkpoints): add nested git performance comparison
+  aa2d233c Update version to 0.6.11</div>
         </div>
         <div class="source-item">
           <strong>Claude Code 2.1.88 sourcemap 基线</strong>
@@ -1217,8 +1243,8 @@ Local no-index spot check:
         </div>
         <div class="source-item">
           <strong>Hermes Agent 本地代码与结构证据</strong>
-          <div class="code">Repo: C:\public\workspace\hermes-agent (branch main @ 5f84c9144, fetched/pulled 2026-05-30)
-Tracked-file-only cloc: 4,203 tracked files / 1,160,068 code
+          <div class="code">Repo: C:\public\workspace\hermes-agent (branch main @ 56236b16e, fetched/pulled 2026-06-06)
+Tracked-file-only cloc: 4,579 cloc-counted files / 1,268,809 code / 187,037 comment / 301,480 blank
 Runtime / orchestration:
   plugins/kanban/; hermes_cli/kanban*.py; hermes_cli/goals.py
   agent/curator.py; agent/background_review.py; hermes_cli/curator.py
@@ -1231,6 +1257,10 @@ Security / guardrails:
   agent/tool_dispatch_helpers.py; tools/threat_patterns.py; tools/file_tools.py; tools/skills_hub.py
   gateway/platforms/*; hermes_cli/web_server.py; hermes_cli/profile_distribution.py
 Recent Hermes commits after 2026-05-27:
+  56236b16e feat(dashboard): rehaul Skills hub browser — connected hubs, featured, preview + security scan
+  fcb1944b4 feat(credits): usage-aware credits
+  40aef6af9 feat(desktop): steer the live run from the composer
+  ce5003063 feat(desktop): integrate arrow history with the message queue
   61268ff7a feat(cli): add hermes prompt-size diagnostic
   bcc830100 Inspired by Claude Code: /compress here [N]
   39f6b6e9d / 5f84c9144 atomic write/patch and UTF-8 BOM handling
@@ -1241,12 +1271,9 @@ Recent Hermes commits after 2026-05-27:
         </div>
         <div class="source-item">
           <strong>Release、官方资料与外部核对</strong>
-          <div class="code">Hermes release files in repo:
-  RELEASE_v0.10.0.md — Tool Gateway
-  RELEASE_v0.11.0.md — Transport Layer ABC
-  RELEASE_v0.12.0.md — Curator & Self-Improvement Loop
-  RELEASE_v0.13.0.md — Durable Kanban, Checkpoints v2, Providers as plugins, Memory per session
-  RELEASE_v0.14.0.md — Native Windows beta + Performance Wave
+          <div class="code">Hermes release evidence:
+  Root RELEASE_v*.md changelog files were removed from the current repo in 64202200a.
+  Current release/update workflow evidence: scripts/release.py, .github/workflows/history-check.yml, tests/scripts/test_release_acp_registry.py.
 Claude Code / Anthropic context & memory sources checked:
   https://docs.claude.com/en/docs/claude-code/memory
   https://code.claude.com/docs/en/memory
@@ -1266,13 +1293,13 @@ GitHub remote page checked:
 Skill artifacts:
   C:\Users\kiro\.codex\skills\agent-codebase-comparison\scripts\prepare-comparison.mjs
   C:\Users\kiro\.codex\skills\agent-codebase-comparison\scripts\analyze-signals.mjs
-  Temp dossier: C:\tmp\axiomate-hermes-compare-20260530</div>
+  Temp dossier: C:\tmp\axiomate-hermes-compare-20260606</div>
         </div>
       </div>
     </section>
 
     <footer>
-      Axiomate vs Hermes Agent · 当前能力差距与优先事项报告 · 更新于 2026-06-02
+      Axiomate vs Hermes Agent · 当前能力差距与优先事项报告 · 更新于 2026-06-06
     </footer>
   </div>
 </body>
