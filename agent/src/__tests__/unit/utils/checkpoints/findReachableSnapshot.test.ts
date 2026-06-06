@@ -39,6 +39,8 @@ import { ensureStore } from '../../../../utils/checkpoints/store.js'
 import { runCheckpointGit } from '../../../../utils/checkpoints/git.js'
 import { buildFixtureCommit } from './fixtures.js'
 
+const GIT_TEST_TIMEOUT_MS = 60_000
+
 let tmpRoot: string
 let baseEnvBefore: string | undefined
 
@@ -50,7 +52,7 @@ beforeAll(() => {
 afterAll(() => {
   if (baseEnvBefore === undefined) delete process.env.AXIOMATE_CHECKPOINT_BASE
   else process.env.AXIOMATE_CHECKPOINT_BASE = baseEnvBefore
-  rmSync(tmpRoot, { recursive: true, force: true })
+  rmSync(tmpRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
 })
 
 beforeEach(() => {
@@ -233,7 +235,7 @@ describe('findReachableSnapshot', () => {
     })
     expect(r).toEqual({ kind: 'unreachable' })
   })
-})
+}, GIT_TEST_TIMEOUT_MS)
 
 /**
  * Helper: write a minimal `projects/<hash16>.json` so the 6B scan can

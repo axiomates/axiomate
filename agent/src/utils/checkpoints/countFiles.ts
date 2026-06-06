@@ -24,7 +24,7 @@ export interface CountFilesResult {
 export interface CountFilesOptions {
   /** Hard cap. Walk aborts once `count > max`. */
   max: number
-  /** Absolute shadow store path, required so git check-ignore can run. */
+  /** Absolute shadow store path, required for Git-backed file discovery. */
   store: string
   /** Per-project index file. Used only for git command isolation. */
   indexFile?: string

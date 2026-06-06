@@ -130,6 +130,19 @@ describe('countFilesUnder — .gitignore at root', () => {
   })
 })
 
+describe('countFilesUnder — embedded repositories', () => {
+  test('parent file-level ignores do not hide embedded repo files', async () => {
+    touch('.gitignore', 'nested/*\n')
+    touch('nested/.git/HEAD', 'ref: refs/heads/main\n')
+    touch('nested/.gitignore', 'ignored.txt\n')
+    touch('nested/ignored.txt', 'ignored by child')
+    touch('nested/kept.txt', 'kept by child scope')
+
+    const r = await count(100)
+    expect(r).toEqual({ count: 3, aborted: false })
+  })
+})
+
 describe('countFilesUnder — early-abort', () => {
   test('aborts once count exceeds max — does NOT walk full tree', async () => {
     for (let i = 0; i < 50; i++) touch(`f${i}.txt`)

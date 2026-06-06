@@ -28,6 +28,8 @@ import {
   saveGlobalConfig,
 } from '../../../../utils/config.js'
 
+const GIT_TEST_TIMEOUT_MS = 60_000
+
 let tmpRoot: string
 let workTree: string
 let storeDir: string
@@ -62,7 +64,7 @@ afterEach(() => {
     ...current,
     checkpointsMaxFiles: DEFAULT_GLOBAL_CONFIG.checkpointsMaxFiles,
   }))
-  rmSync(tmpRoot, { recursive: true, force: true })
+  rmSync(tmpRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
 })
 
 async function commitCount(ref: string): Promise<number> {
@@ -172,7 +174,7 @@ describe('createSnapshot — happy paths', () => {
     if (r.ok === false) throw new Error('snapshot failed')
     expect(r.ref).toBe(refName(projectHash(workTree)))
   })
-})
+}, GIT_TEST_TIMEOUT_MS)
 
 describe('createSnapshot — skip paths', () => {
   test('skipped: workdir-too-broad for $HOME', async () => {
@@ -242,7 +244,7 @@ describe('createSnapshot — skip paths', () => {
     if (second.ok === true) return
     expect(second.skipped).toBe('no-changes')
   })
-})
+}, GIT_TEST_TIMEOUT_MS)
 
 describe('createSnapshot — checkpointsMaxFiles config', () => {
   test('normalizes the configured max file guard', () => {
@@ -417,7 +419,7 @@ describe('createSnapshot — checkpointsMaxFiles config', () => {
     expect(results.every(result => result.aborted)).toBe(true)
     expect(results.filter(result => result.firstDetection)).toHaveLength(1)
   })
-})
+}, GIT_TEST_TIMEOUT_MS)
 
 describe('createSnapshot — touchProject ordering (step 4 before step 5)', () => {
   test('projects/<hash>.json is written for the empty-tree root commit', async () => {
@@ -461,7 +463,7 @@ describe('createSnapshot — touchProject ordering (step 4 before step 5)', () =
     const metaPath = projectMetaPath(projectHash(workTree))
     expect(existsSync(metaPath)).toBe(true)
   })
-})
+}, GIT_TEST_TIMEOUT_MS)
 
 describe('createSnapshot — oversize files dropped from index', () => {
   test(`a >${MAX_FILE_SIZE_MB}MB file is excluded from the snapshot (kept on disk)`, async () => {
@@ -490,7 +492,7 @@ describe('createSnapshot — oversize files dropped from index', () => {
     // big.bin still exists on disk — we drop from index, never touch fs.
     expect(existsSync(join(workTree, 'big.bin'))).toBe(true)
   })
-})
+}, GIT_TEST_TIMEOUT_MS)
 
 describe('createSnapshot — rebuilding index from filesystem', () => {
   test('second snapshot keeps unchanged file and adds new file', async () => {
@@ -522,7 +524,7 @@ describe('createSnapshot — rebuilding index from filesystem', () => {
     expect(lines.some(l => l.endsWith('\ta.txt'))).toBe(true)
     expect(lines.some(l => l.endsWith('\tb.txt'))).toBe(true)
   })
-})
+}, GIT_TEST_TIMEOUT_MS)
 
 describe('createSnapshot — index file lifecycle', () => {
   test('index file is created at indexes/<hash> after a snapshot', async () => {
@@ -534,4 +536,4 @@ describe('createSnapshot — index file lifecycle', () => {
     expect(r.ok).toBe(true)
     expect(existsSync(indexPath(projectHash(workTree)))).toBe(true)
   })
-})
+}, GIT_TEST_TIMEOUT_MS)

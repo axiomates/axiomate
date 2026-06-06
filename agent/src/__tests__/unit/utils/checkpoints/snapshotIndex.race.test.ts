@@ -24,12 +24,14 @@ const INJECT: {
   deleteBeforeFailure: string | null
   shortCircuitUpdateIndex: boolean
   checkIgnoreHits: number
+  lsFilesHits: number
   updateIndexHits: number
 } = {
   failFirstUpdateIndex: false,
   deleteBeforeFailure: null,
   shortCircuitUpdateIndex: false,
   checkIgnoreHits: 0,
+  lsFilesHits: 0,
   updateIndexHits: 0,
 }
 
@@ -42,6 +44,9 @@ vi.mock('../../../../utils/checkpoints/git.js', async () => {
     runCheckpointGit: vi.fn(async (args: string[], opts: unknown) => {
       if (args[0] === 'check-ignore' && args.includes('--stdin')) {
         INJECT.checkIgnoreHits++
+      }
+      if (args[0] === 'ls-files' && args.includes('--others')) {
+        INJECT.lsFilesHits++
       }
       if (args[0] === 'update-index' && args.includes('--stdin')) {
         INJECT.updateIndexHits++
@@ -110,6 +115,7 @@ afterEach(() => {
   INJECT.deleteBeforeFailure = null
   INJECT.shortCircuitUpdateIndex = false
   INJECT.checkIgnoreHits = 0
+  INJECT.lsFilesHits = 0
   INJECT.updateIndexHits = 0
   rmSync(tmpRoot, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 })
 })
@@ -151,7 +157,8 @@ describe('stageWorktreeSnapshotIndex — filesystem races', () => {
 
     expect(r.ok).toBe(true)
     if (r.ok === false) return
-    expect(INJECT.checkIgnoreHits).toBe(3)
+    expect(INJECT.checkIgnoreHits).toBe(1)
+    expect(INJECT.lsFilesHits).toBe(1)
     expect(INJECT.updateIndexHits).toBe(2)
     expect(r.paths).toHaveLength(4097)
     expect(r.paths.sort()[0]).toBe('many/file-0000.txt')

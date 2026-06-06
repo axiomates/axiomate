@@ -147,7 +147,26 @@ function writeDefaultExclude(repo: string): void {
   )
 }
 
-function gitAddOracle(cwd: string): Map<string, string> {
+function gitAddOracle(cwd: string, indexName = 'oracle.index'): Map<string, string> {
+  const index = join(cwd, '.git', indexName)
+  execFileSync('git', ['-C', cwd, 'read-tree', '--empty'], {
+    env: { ...isolatedGitEnv(), GIT_INDEX_FILE: index },
+    stdio: 'pipe',
+  })
+  execFileSync('git', ['-C', cwd, 'add', '-A'], {
+    env: { ...isolatedGitEnv(), GIT_INDEX_FILE: index },
+    stdio: 'pipe',
+  })
+  return parseObjectMap(
+    execFileSync('git', ['-C', cwd, 'ls-files', '-s', '-z'], {
+      encoding: 'utf-8',
+      env: { ...isolatedGitEnv(), GIT_INDEX_FILE: index },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    }),
+  )
+}
+
+function liveGitAddOracle(cwd: string): Map<string, string> {
   git(cwd, ['add', '-A'])
   return parseObjectMap(gitOutput(cwd, ['ls-files', '-s', '-z']))
 }
@@ -312,7 +331,7 @@ describe('collectCheckpointFiles', () => {
     ])
   })
 
-  test('matches git add -A for ordinary non-embedded trees with the same ignore inputs', async () => {
+  test('matches fresh-index git add -A for ordinary non-embedded trees with the same ignore inputs', async () => {
     touch(
       '.gitignore',
       [
@@ -358,7 +377,28 @@ describe('collectCheckpointFiles', () => {
     )
   })
 
-  test('matches a composed git add -A oracle for embedded repositories', async () => {
+  test('does not keep tracked-but-now-ignored files from the user repository index', async () => {
+    git(workTree, ['init'])
+    writeDefaultExclude(workTree)
+    touch('tracked-then-ignored.txt', 'initial')
+    git(workTree, ['add', 'tracked-then-ignored.txt'])
+    gitCommit(workTree, 'track file before ignore')
+
+    touch('.gitignore', 'tracked-then-ignored.txt\n')
+    touch('tracked-then-ignored.txt', 'current disk bytes')
+    const userGitAddResult = liveGitAddOracle(workTree)
+    expect(userGitAddResult.has('tracked-then-ignored.txt')).toBe(true)
+
+    const r = await stageWorktreeSnapshotIndex({
+      store: storeDir,
+      workTree,
+      indexFile,
+    })
+    expect(r.ok).toBe(true)
+    expect(await stagedTreePaths()).toEqual(['.gitignore'])
+  })
+
+  test('matches a composed fresh-index git add -A oracle for embedded repositories', async () => {
     git(workTree, ['init'])
     writeDefaultExclude(workTree)
     touch(
@@ -456,7 +496,7 @@ describe('collectCheckpointFiles', () => {
 
     // Root Git sees `vendor/child` as an embedded repository. Child Git sees
     // `grand` the same way. The checkpoint oracle is therefore the union of
-    // each repository's own `git add -A` file tree, with gitlinks removed and
+    // each repository's own fresh-index `git add -A` file tree, with gitlinks removed and
     // nested results prefixed back into the outer filesystem snapshot.
     const oracle = mergeOracles(
       gitAddOracle(workTree),
@@ -519,12 +559,52 @@ describe('collectCheckpointFiles', () => {
     ])
   })
 
+  test('does not let parent file-level ignores hide .git-directory embedded repos', async () => {
+    touch('.gitignore', 'nested/*\n')
+    touch('root.txt', 'root')
+    mkdirSync(join(workTree, 'nested/.git'), { recursive: true })
+    touch('nested/.git/HEAD', 'ref: refs/heads/main\n')
+    touch('nested/.gitignore', 'ignored.txt\n')
+    touch('nested/ignored.txt', 'ignored by child')
+    touch('nested/kept.txt', 'kept by child scope')
+
+    const r = await stageWorktreeSnapshotIndex({
+      store: storeDir,
+      workTree,
+      indexFile,
+    })
+    expect(r.ok).toBe(true)
+    expect(await stagedTreePaths()).toEqual([
+      '.gitignore',
+      'nested/.gitignore',
+      'nested/kept.txt',
+      'root.txt',
+    ])
+    expect(await showIndexPath('nested/kept.txt')).toBe('kept by child scope')
+  })
+
   test('respects parent .gitignore when it ignores the embedded repo directory itself', async () => {
     touch('.gitignore', 'nested/\n')
     mkdirSync(join(workTree, 'nested/.git'), { recursive: true })
     touch('nested/.git/HEAD', 'ref: refs/heads/main\n')
     touch('nested/kept-by-child.txt', 'not reached')
     touch('root.txt', 'root')
+
+    const r = await stageWorktreeSnapshotIndex({
+      store: storeDir,
+      workTree,
+      indexFile,
+    })
+    expect(r.ok).toBe(true)
+    expect(await stagedTreePaths()).toEqual(['.gitignore', 'root.txt'])
+  })
+
+  test('respects parent file-level ignores that block deeper embedded repo boundaries', async () => {
+    touch('.gitignore', 'vendor/*\n')
+    touch('root.txt', 'root')
+    mkdirSync(join(workTree, 'vendor/child/.git'), { recursive: true })
+    touch('vendor/child/.git/HEAD', 'ref: refs/heads/main\n')
+    touch('vendor/child/kept.txt', 'not reached')
 
     const r = await stageWorktreeSnapshotIndex({
       store: storeDir,
@@ -554,6 +634,29 @@ describe('collectCheckpointFiles', () => {
       'sibling/ignored.txt',
     ])
     expect(await showIndexPath('module/kept.txt')).toBe('kept')
+  })
+
+  test('does not let parent file-level ignores leak into .git-file embedded repos', async () => {
+    touch('.gitignore', 'module/*\n')
+    touch('module/.git', 'gitdir: ../.git/modules/module\n')
+    touch('module/.gitignore', 'ignored.txt\n')
+    touch('module/ignored.txt', 'ignored by child')
+    touch('module/kept.txt', 'kept by child scope')
+    touch('root.txt', 'root')
+
+    const r = await stageWorktreeSnapshotIndex({
+      store: storeDir,
+      workTree,
+      indexFile,
+    })
+    expect(r.ok).toBe(true)
+    expect(await stagedTreePaths()).toEqual([
+      '.gitignore',
+      'module/.gitignore',
+      'module/kept.txt',
+      'root.txt',
+    ])
+    expect(await showIndexPath('module/kept.txt')).toBe('kept by child scope')
   })
 
   test('stages Windows-safe paths with spaces, punctuation, and unicode through -z stdin', async () => {
