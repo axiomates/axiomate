@@ -96,6 +96,20 @@ function isSummarizeOption(
   return option === 'summarize' || option === 'summarize_up_to'
 }
 
+function restoringStatusText(option: RestoreOption | null): string {
+  switch (option) {
+    case 'file':
+      return 'Restoring files… This may take a moment.'
+    case 'conversation':
+      return 'Restoring conversation…'
+    case 'summarize':
+    case 'summarize_up_to':
+      return 'Summarizing…'
+    default:
+      return 'Restoring…'
+  }
+}
+
 type Props = {
   messages: Message[]
   onPreRestore: () => void
@@ -930,6 +944,7 @@ export function MessageSelector({
 
     onPreRestore()
     setIsRestoring(true)
+    setRestoringOption(option)
     setError(undefined)
 
     let codeError: Error | null = null
@@ -964,6 +979,7 @@ export function MessageSelector({
     }
 
     setIsRestoring(false)
+    setRestoringOption(null)
     setMessageToRestore(undefined)
 
     // Handle errors
@@ -984,13 +1000,14 @@ export function MessageSelector({
   const exitState = useExitOnCtrlCDWithKeybindings()
 
   const handleEscape = useCallback(() => {
+    if (isRestoring) return
     if (messageToRestore && !preselectedMessage) {
       // Go back to message list instead of closing entirely
       setMessageToRestore(undefined)
       return
     }
     onClose()
-  }, [onClose, messageToRestore, preselectedMessage])
+  }, [onClose, messageToRestore, preselectedMessage, isRestoring])
 
   const moveUp = useCallback(
     () => setSelectedIndex(prev => Math.max(0, prev - 1)),
@@ -1192,14 +1209,13 @@ export function MessageSelector({
               canRestoreCode={!!canRestoreCode}
               diffStatsForRestore={diffStatsForRestore}
             />
-            {isRestoring && isSummarizeOption(restoringOption) ? (
+            {isRestoring ? (
               <Box flexDirection="row" gap={1}>
                 <Spinner />
-                <Text>Summarizing…</Text>
+                <Text>{restoringStatusText(restoringOption)}</Text>
               </Box>
             ) : (
               <Select
-                isDisabled={isRestoring}
                 options={getRestoreOptions(
                   !!canRestoreCode,
                   activeTab === 'code' && !messages.includes(messageToRestore),
