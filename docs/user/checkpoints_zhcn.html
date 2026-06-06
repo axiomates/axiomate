@@ -924,6 +924,47 @@ Roll back to a turn with /rewind (interactive selector).</code></pre>
       <li>目录入口用 Git 的 <code>check-ignore</code> 判断；最终文件用独立空 index 下的 <code>ls-files --others --exclude-standard</code> 枚举。</li>
       <li>写入 checkpoint shadow index 时使用 <code>update-index</code>，不读取用户仓库自己的 index 状态。</li>
     </ul>
+    <h4>性能对比</h4>
+    <p>
+      这套算法比直接跑父仓库 <code>git add -A</code> 多做了“寻找嵌套仓库边界”和
+      “把子仓库当普通文件拍”的工作。Windows warm median 实测如下：
+    </p>
+    <table>
+      <thead>
+        <tr>
+          <th>场景</th>
+          <th>Axiomate</th>
+          <th>对照</th>
+          <th>回退</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>普通 5k 文件</td>
+          <td>2122ms</td>
+          <td><code>git add -A</code> 1991ms</td>
+          <td>1.07x，多 131ms</td>
+        </tr>
+        <tr>
+          <td>大量被 <code>.gitignore</code> 忽略的文件/目录</td>
+          <td>2292ms</td>
+          <td><code>git add -A</code> 2088ms</td>
+          <td>1.10x，多 204ms</td>
+        </tr>
+        <tr>
+          <td>8 个嵌套仓库，每个 500 文件</td>
+          <td>3022ms</td>
+          <td>每个仓库分别 fresh-index <code>git add -A</code> 后合并，1037ms</td>
+          <td>2.92x，多 1985ms</td>
+        </tr>
+      </tbody>
+    </table>
+    <p>
+      读法：比例只说明相对回退，绝对时间更能说明体感。普通项目和大量 ignored
+      文件场景只多约 0.1-0.2 秒；嵌套仓库场景多约 2 秒，因为 Git 的父仓库语义
+      倾向于把子仓库当 gitlink，而 Axiomate 必须进入子仓库并保存里面的普通文件。
+      这是为了保证 rewind 能恢复嵌套仓库里的当前磁盘内容。
+    </p>
     <p>
       默认排除只有 Axiomate 自己管理的一小组：<code>.git/</code>、
       <code>.hg/</code>、<code>.svn/</code>、<code>node_modules/</code>、
