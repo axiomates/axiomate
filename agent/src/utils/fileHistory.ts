@@ -40,12 +40,14 @@ import { getOriginalCwd } from '../bootstrap/state.js'
 import {
   createSnapshot,
   createSnapshotFromTree,
+  MAX_FILE_SIZE_MB,
   prepareSnapshotTree,
 } from './checkpoints/createSnapshot.js'
 import {
   logCheckpointDiagnostic,
   quoteDiagnostic,
 } from './checkpoints/diagnostics.js'
+import { dropOversizeFromIndex } from './checkpoints/dropOversizeFromIndex.js'
 import { runCheckpointGit } from './checkpoints/git.js'
 import { indexPath, normalizePath, projectHash } from './checkpoints/paths.js'
 import {
@@ -122,6 +124,17 @@ type RewindExecutionPlan = {
   checkoutCount: number
   deleteCount: number
   touchedCount: number
+}
+
+type RewindTestHooks = {
+  afterApply?: () => void | Promise<void>
+  afterTouchedVerify?: () => void | Promise<void>
+}
+
+let rewindTestHooks: RewindTestHooks | undefined
+
+export function _setRewindTestHooksForTesting(hooks: RewindTestHooks | undefined): void {
+  rewindTestHooks = hooks
 }
 
 export function fileHistoryEnabled(): boolean {
@@ -491,19 +504,18 @@ export async function fileHistoryRewind(
       )
     }
 
-    const verified = await verifyRewindTouchedPaths(plan)
-    if (!verified) {
-      logError(
-        new Error(
-          `FileHistory: [Rewind] verification failed — disk does not match ` +
-            `target tree ${gitHash.slice(0, 8)} after restore`,
-        ),
-      )
-      throw new Error(
-        `Rewind completed but disk does not match the target. Some files ` +
-          `may be locked by another process. Open /rewind, select ` +
-          `"↶ Rewind" to recover, then retry.`,
-      )
+    await rewindTestHooks?.afterApply?.()
+
+    const touchedVerified = await verifyRewindTouchedPaths(plan)
+    if (!touchedVerified) {
+      throwRewindVerificationError(gitHash)
+    }
+
+    await rewindTestHooks?.afterTouchedVerify?.()
+
+    const fullVerified = await verifyRewindFullTree(plan)
+    if (!fullVerified) {
+      throwRewindVerificationError(gitHash)
     }
 
     logForDebugging(
@@ -1051,6 +1063,58 @@ async function verifyRewindTouchedPaths(plan: RewindExecutionPlan): Promise<bool
     if (diff.code === 1) return false
   }
   return true
+}
+
+async function verifyRewindFullTree(plan: RewindExecutionPlan): Promise<boolean> {
+  const stage = await stageWorktreeSnapshotIndex({
+    store: plan.store,
+    workTree: plan.workdir,
+    indexFile: plan.indexFile,
+  })
+  if (stage.ok === false) {
+    logForDebugging(
+      `FileHistory: [Rewind] final full-tree verification stage failed (${stage.message}); treating as inconclusive`,
+    )
+    return true
+  }
+
+  await dropOversizeFromIndex({
+    store: plan.store,
+    workTree: plan.workdir,
+    indexFile: plan.indexFile,
+    maxFileSizeMb: MAX_FILE_SIZE_MB,
+  })
+
+  const diff = await runCheckpointGit(
+    ['diff', '--cached', '--quiet', plan.targetHash, '--'],
+    {
+      store: plan.store,
+      workTree: plan.workdir,
+      indexFile: plan.indexFile,
+      allowedExitCodes: DIFF_HAS_CHANGES,
+    },
+  )
+  if (diff.ok === false) {
+    logForDebugging(
+      `FileHistory: [Rewind] final full-tree verification diff failed (${diff.message}); treating as inconclusive`,
+    )
+    return true
+  }
+  return diff.code === 0
+}
+
+function throwRewindVerificationError(gitHash: string): never {
+  logError(
+    new Error(
+      `FileHistory: [Rewind] verification failed — disk does not match ` +
+        `target tree ${gitHash.slice(0, 8)} after restore`,
+    ),
+  )
+  throw new Error(
+    `Rewind completed but disk does not match the target. Some files ` +
+      `may be locked by another process. Open /rewind, select ` +
+      `"↶ Rewind" to recover, then retry.`,
+  )
 }
 
 async function cleanupRewindExecutionPlan(plan: RewindExecutionPlan): Promise<void> {

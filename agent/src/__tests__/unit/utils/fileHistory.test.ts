@@ -50,6 +50,7 @@ import {
   fileHistoryRestoreStateFromLog,
   fileHistoryRewind,
   resetFileHistoryDraft,
+  _setRewindTestHooksForTesting,
   type FileHistorySnapshot,
   type FileHistoryState,
 } from '../../../utils/fileHistory.js'
@@ -91,6 +92,7 @@ afterEach(() => {
   setOriginalCwd(originalCwd)
   setIsInteractive(false)
   resetFileHistoryDraft()
+  _setRewindTestHooksForTesting(undefined)
   rmSync(tmpRoot, {
     recursive: true,
     force: true,
@@ -728,7 +730,7 @@ describe('rewind transaction — Phase 5 atomicity', () => {
   })
 
   gitBackedTest('verification passes for a successful rewind (positive case)', async () => {
-    // Round-trip the happy path through the new verifyDiskMatchesTree
+    // Round-trip the happy path through the final full-tree verification
     // gate to make sure it doesn't false-positive on a genuinely
     // successful restore.
     const a = join(workTree, 'a.txt')
@@ -740,6 +742,55 @@ describe('rewind transaction — Phase 5 atomicity', () => {
 
     await fileHistoryRewind(holder.updater, await hashFor(m1))
     expect(readFileSync(a, 'utf-8')).toBe('v1')
+    await expectWorktreeTreeEquals(await hashFor(m1))
+  })
+
+  gitBackedTest('final full-tree verification catches untouched path drift after touched verify passes', async () => {
+    const a = join(workTree, 'a.txt')
+    const untouched = join(workTree, 'untouched.txt')
+    writeFileSync(a, 'v1')
+    writeFileSync(untouched, 'stable')
+    const holder = makeStateHolder()
+    const m1 = await turn(holder, [a, untouched])
+    writeFileSync(a, 'v2')
+    writeFileSync(untouched, 'stable')
+    await turn(holder, [a])
+    writeFileSync(a, 'v3-dirty')
+
+    _setRewindTestHooksForTesting({
+      afterTouchedVerify: () => {
+        writeFileSync(untouched, 'external-change')
+      },
+    })
+
+    await expect(fileHistoryRewind(holder.updater, await hashFor(m1))).rejects.toThrow(
+      /disk does not match the target/i,
+    )
+    expect(readFileSync(a, 'utf-8')).toBe('v1')
+    expect(readFileSync(untouched, 'utf-8')).toBe('external-change')
+    await expect(latestPreRewindHash()).resolves.toBeTruthy()
+  })
+
+  gitBackedTest('final full-tree verification catches restored path corruption after apply', async () => {
+    const a = join(workTree, 'a.txt')
+    writeFileSync(a, 'v1')
+    const holder = makeStateHolder()
+    const m1 = await turn(holder, [a])
+    writeFileSync(a, 'v2')
+    await turn(holder, [a])
+    writeFileSync(a, 'v3-dirty')
+
+    _setRewindTestHooksForTesting({
+      afterApply: () => {
+        writeFileSync(a, 'corrupted-after-apply')
+      },
+    })
+
+    await expect(fileHistoryRewind(holder.updater, await hashFor(m1))).rejects.toThrow(
+      /disk does not match the target/i,
+    )
+    expect(readFileSync(a, 'utf-8')).toBe('corrupted-after-apply')
+    await expect(latestPreRewindHash()).resolves.toBeTruthy()
   })
 
   gitBackedTest('Phase 7: rewind on a missing hash throws refresh hint, NOT undo hint', async () => {
