@@ -1,5 +1,5 @@
 import { execFile } from 'child_process'
-import { mkdtempSync, rmSync, writeFileSync } from 'fs'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { promisify } from 'util'
@@ -175,11 +175,32 @@ describe('checkpoint CLI e2e', () => {
     await fileHistoryRewind(holder.updater, hash1!, 'create v1')
 
     // Sort.py should be back to v1
-    expect(require('fs').readFileSync(join(workTree, 'sort.py'), 'utf8')).toBe('v1\n')
+    expect(readFileSync(join(workTree, 'sort.py'), 'utf8')).toBe('v1\n')
 
     // CLI list should show the rewind-related anchors
     const { stdout, exitCode } = await cli(['checkpoints', 'list'])
     if (exitCode !== 0) return
     expect(stdout).toBeTruthy()
+  }, 60_000)
+
+  test('fileHistory rewind restores selected snapshot from picker path', async () => {
+    const holder = makeStateHolder()
+    const msg1 = randomUUID()
+
+    writeFileSync(join(workTree, 'sort.py'), 'v1\n')
+    await fileHistoryMakeSnapshot(holder.updater, msg1, 'file-history', 'create v1')
+
+    writeFileSync(join(workTree, 'sort.py'), 'v2\n')
+    writeFileSync(join(workTree, 'extra.txt'), 'extra\n')
+    await fileHistoryMakeSnapshot(holder.updater, randomUUID(), 'file-history', 'edit to v2')
+
+    const anchors = await listCodeAnchors(workTree, { withStats: false })
+    const hash1 = anchors.find(a => a.messageId === msg1)?.gitHash
+    expect(hash1).toBeDefined()
+
+    await fileHistoryRewind(holder.updater, hash1!, 'create v1')
+
+    expect(readFileSync(join(workTree, 'sort.py'), 'utf8')).toBe('v1\n')
+    await expectWorktreeTreeEquals(hash1!)
   }, 60_000)
 })

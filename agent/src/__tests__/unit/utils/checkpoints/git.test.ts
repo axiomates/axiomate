@@ -201,15 +201,16 @@ describe('allowedExitCodes ok-promotion', () => {
     }
   })
 
-  test('non-zero exit NOT in allowedExitCodes stays ok:false', async () => {
-    // Same command but without the allow: surfaces as a typed failure.
+  test('non-zero exit NOT in allowedExitCodes keeps stderr in the failure message', async () => {
     const r = await runCheckpointGit(
-      ['config', '--get', 'axiomate.this-key-does-not-exist'],
+      ['rev-parse', '--verify', 'definitely-not-a-ref'],
       { store: tmpRoot, workTree: tmpRoot },
     )
     expectFailure(r)
-    expect(r.code).toBe(1)
+    expect(r.code).toBe(128)
     expect(r.reason).toBe('non-zero-exit')
+    expect(r.message).toContain('Command failed with exit code 128')
+    expect(r.message).toContain('fatal:')
   })
 
   test('exit code 0 always passes through ok:true regardless of allowedExitCodes', async () => {

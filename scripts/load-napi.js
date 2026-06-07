@@ -17,7 +17,7 @@
  * whether to short-circuit by `process.platform` BEFORE invoking this
  * util. Cross-platform packages (audio-capture) just call it directly.
  */
-const { join, dirname } = require('node:path')
+const { join, dirname, basename } = require('node:path')
 const { existsSync } = require('node:fs')
 const Module = require('node:module')
 
@@ -27,13 +27,26 @@ function dlopen(filepath) {
   return m.exports
 }
 
-function loadNapiBinding(packageDir, packageName) {
+function isCompiledExe() {
+  const execBase = basename(process.execPath).toLowerCase()
+  return !/^(bun|node)(\.exe)?$/.test(execBase)
+}
+
+function getNapiSearchDirs(packageDir) {
   // In a Bun-compiled exe, __dirname is baked to the BUILD machine path.
-  // The .node files are actually copied next to the exe, so we also search
-  // dirname(process.execPath) as a fallback directory.
-  const searchDirs = [packageDir]
+  // Packaged folders must be relocatable, so never fall back to that absolute
+  // build path: native files are expected next to the executable.
   const exeDir = dirname(process.execPath)
-  if (exeDir !== packageDir) searchDirs.push(exeDir)
+  if (isCompiledExe()) return [exeDir]
+
+  // In interpreter/workspace package execution (pnpm/bun/node), prefer
+  // packageDir so workspace package tests and pnpm start use local builds.
+  const dirs = [packageDir, exeDir]
+  return dirs.filter((dir, index) => dirs.indexOf(dir) === index)
+}
+
+function loadNapiBinding(packageDir, packageName) {
+  const searchDirs = getNapiSearchDirs(packageDir)
 
   const suffixes = [
     `${packageName}.node`,
@@ -65,4 +78,4 @@ function loadNapiBinding(packageDir, packageName) {
   }
 }
 
-module.exports = { loadNapiBinding }
+module.exports = { loadNapiBinding, getNapiSearchDirs }

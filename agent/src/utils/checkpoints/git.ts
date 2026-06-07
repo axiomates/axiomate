@@ -185,6 +185,18 @@ export async function runCheckpointGitInit(
   return runWithEnv(args, env, opts, undefined)
 }
 
+function formatGitFailureMessage(args: {
+  error: string | undefined
+  stderr: string
+  code: number
+}): string {
+  const parts = [args.error, args.stderr]
+    .filter((part): part is string => Boolean(part?.trim()))
+    .map(part => part.trim())
+  if (parts.length > 0) return parts.join('\n')
+  return `git exited with code ${args.code}`
+}
+
 /**
  * Pre-flight check: workTree exists and is a directory. Returns null on
  * success, a typed failure result on missing/wrong-type. Hermes-style
@@ -254,7 +266,7 @@ async function runWithEnv(
   // killed-by-signal cases (most relevant: SIGTERM on timeout). It also
   // populates `error` with execa's shortMessage which contains "timed out"
   // or "ENOENT" wording we can pattern-match on.
-  const message = error || stderr || `git exited with code ${code}`
+  const message = formatGitFailureMessage({ error, stderr, code })
   const lower = message.toLowerCase()
 
   let reason: 'non-zero-exit' | 'timeout' | 'git-not-found' | 'spawn-error' =

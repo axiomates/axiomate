@@ -125,8 +125,8 @@ export async function applyWorktreeReconcilePlan(
     await removeCheckoutConflicts(plan)
     const checkout = await runCheckpointGit(
       [
-        'checkout',
-        plan.targetHash,
+        'restore',
+        `--source=${plan.targetHash}`,
         `--pathspec-from-file=${plan.checkoutPathspecFile}`,
         '--pathspec-file-nul',
       ],
