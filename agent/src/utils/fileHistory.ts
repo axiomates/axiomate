@@ -862,11 +862,15 @@ export async function buildRewindCodeRows(
   const rows: RewindCodeRow[] = []
   if (!fileHistoryEnabled() || anchors.length === 0) return rows
 
-  const realAnchors = anchors.filter(
-    a =>
-      classifyAnchor(a.subject) !== 'foreign' &&
-      (classifyAnchor(a.subject) === 'turn' || labelsByHash.has(a.gitHash)),
-  )
+  const originalIndexByHash = new Map<string, number>()
+  anchors.forEach((anchor, index) => {
+    originalIndexByHash.set(anchor.gitHash, index)
+  })
+
+  const realAnchors = anchors.filter(anchor => {
+    const kind = classifyAnchor(anchor.subject)
+    return kind !== 'foreign' && (kind === 'turn' || labelsByHash.has(anchor.gitHash))
+  })
   if (realAnchors.length === 0) return rows
 
   const storeResult = await ensureStore()
@@ -885,9 +889,10 @@ export async function buildRewindCodeRows(
   const diskTree = wt.stdout.trim()
   if (diskTree.length === 0) return rows
 
-  for (let i = 0; i < realAnchors.length; i++) {
-    const anchor = realAnchors[i]!
-    const compare = i === 0 ? diskTree : realAnchors[i - 1]!.gitHash
+  const diffInterval = async (
+    anchor: RewindCodeRowAnchor,
+    compare: string,
+  ): Promise<DiffStats | undefined> => {
     const diff = await runCheckpointGit(
       ['diff-tree', '--numstat', '-r', anchor.gitHash, compare, '--'],
       { store, workTree: canonical, indexFile },
@@ -896,10 +901,21 @@ export async function buildRewindCodeRows(
       logForDebugging(
         `FileHistory: [RewindRows] diff-tree failed hash=${anchor.gitHash.slice(0, 8)}: ${diff.message}`,
       )
-      continue
+      return undefined
     }
-    const diffStats = diffStatsFromNumstat(diff.stdout)
-    if (!diffStats.filesChanged || diffStats.filesChanged.length === 0) continue
+    return diffStatsFromNumstat(diff.stdout)
+  }
+
+  for (let i = 0; i < realAnchors.length; i++) {
+    const anchor = realAnchors[i]!
+    const compareAnchor = i === 0 ? undefined : realAnchors[i - 1]!
+    const diffStats = compareAnchor
+      ? originalIndexByHash.get(compareAnchor.gitHash) ===
+        (originalIndexByHash.get(anchor.gitHash) ?? -1) - 1
+        ? diffStatsFromAnchor(compareAnchor)
+        : await diffInterval(anchor, compareAnchor.gitHash)
+      : await diffInterval(anchor, diskTree)
+    if (!diffStats || diffStats.filesChanged.length === 0) continue
 
     const label = labelsByHash.get(anchor.gitHash) ?? labelFromAnchor(anchor)
     rows.push({

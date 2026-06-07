@@ -305,6 +305,153 @@ describe('file-history per-turn snapshot dedup', () => {
     expect(row!.labelPreview).toBe('sort after rewind')
     expect(row!.diffStats.filesChanged).toEqual([f])
   })
+
+  gitBackedTest('multiple no-changes labels on one hash collapse to one hash-keyed rewind row', async () => {
+    const f = join(workTree, 'sort.py')
+    const holder = makeStateHolder()
+
+    await fileHistoryMakeSnapshot(holder.updater, uuid())
+    writeFileSync(f, 'v1\n')
+    const beforeChange = uuid()
+    await fileHistoryMakeSnapshot(holder.updater, beforeChange, 'file-history', 'create sort')
+    const beforeHash = await hashFor(beforeChange)
+
+    const firstLabel = uuid()
+    await fileHistoryMakeSnapshot(holder.updater, firstLabel, 'file-history', 'first label')
+    const secondLabel = uuid()
+    await fileHistoryMakeSnapshot(holder.updater, secondLabel, 'file-history', 'second label')
+
+    writeFileSync(f, 'v2\n')
+
+    const anchors = await listCodeAnchors(workTree, { withStats: true, withBodies: true })
+    const rows = await buildRewindCodeRows(
+      anchors,
+      holder.state().checkpointLabelsByHash,
+    )
+
+    const rowsForHash = rows.filter(r => r.restoreHash === beforeHash)
+    expect(rowsForHash).toHaveLength(1)
+    expect(rowsForHash[0]!.rowId).toBe(beforeHash)
+    expect(rowsForHash[0]!.labelMessageId).toBe(secondLabel)
+    expect(rowsForHash[0]!.labelPreview).toBe('second label')
+    expect(rows.some(r => r.rowId === firstLabel)).toBe(false)
+    expect(rows.some(r => r.rowId === secondLabel)).toBe(false)
+  })
+
+  gitBackedTest('rewind code rows use checkpoint hashes for normal interval rows', async () => {
+    const f = join(workTree, 'sort.py')
+    const holder = makeStateHolder()
+
+    writeFileSync(f, 'v1\n')
+    const beforeChange = uuid()
+    await fileHistoryMakeSnapshot(holder.updater, beforeChange, 'file-history', 'create sort')
+    const beforeHash = await hashFor(beforeChange)
+    writeFileSync(f, 'v2\n')
+
+    const anchors = await listCodeAnchors(workTree, { withStats: true, withBodies: true })
+    const rows = await buildRewindCodeRows(
+      anchors,
+      holder.state().checkpointLabelsByHash,
+    )
+
+    const row = rows.find(r => r.restoreHash === beforeHash)
+    expect(row).toBeDefined()
+    expect(row!.rowId).toBe(beforeHash)
+    expect(row!.rowId).not.toBe(beforeChange)
+    expect(row!.labelMessageId).toBe(beforeChange)
+    expect(row!.diffStats.filesChanged).toEqual([f])
+  })
+
+  gitBackedTest('rewind code row stats for contiguous anchors match restoreHash to next checkpoint', async () => {
+    const f = join(workTree, 'sort.py')
+    const holder = makeStateHolder()
+
+    writeFileSync(f, 'v1\n')
+    const first = uuid()
+    await fileHistoryMakeSnapshot(holder.updater, first, 'file-history', 'create sort')
+    const firstHash = await hashFor(first)
+
+    writeFileSync(f, 'v2\n')
+    const second = uuid()
+    await fileHistoryMakeSnapshot(holder.updater, second, 'file-history', 'update sort')
+    writeFileSync(f, 'v3\n')
+
+    const anchors = await listCodeAnchors(workTree, { withStats: true, withBodies: true })
+    const rows = await buildRewindCodeRows(
+      anchors,
+      holder.state().checkpointLabelsByHash,
+    )
+
+    const nextCheckpoint = anchors.find(a => a.messageId === second)!
+    const row = rows.find(r => r.restoreHash === firstHash)
+    expect(row).toBeDefined()
+    expect(row!.diffStats).toEqual({
+      filesChanged: nextCheckpoint.filePaths.map(p => join(workTree, p)),
+      insertions: nextCheckpoint.insertions,
+      deletions: nextCheckpoint.deletions,
+    })
+  })
+
+  gitBackedTest('rewind code row stats span filtered anchor gaps', async () => {
+    const a = join(workTree, 'a.txt')
+    const b = join(workTree, 'b.txt')
+    const holder = makeStateHolder()
+
+    writeFileSync(a, 'base\n')
+    const oldest = uuid()
+    await fileHistoryMakeSnapshot(holder.updater, oldest, 'file-history', 'base')
+    const oldestHash = await hashFor(oldest)
+
+    writeFileSync(b, 'middle\n')
+    const filtered = uuid()
+    await fileHistoryMakeSnapshot(holder.updater, filtered, 'file-history', 'filtered')
+    const filteredHash = await hashFor(filtered)
+
+    writeFileSync(a, 'newer\n')
+    const newest = uuid()
+    await fileHistoryMakeSnapshot(holder.updater, newest, 'file-history', 'newer')
+
+    const anchors = await listCodeAnchors(workTree, { withStats: true, withBodies: true })
+    const anchorsWithFilteredGap = anchors.map(anchor =>
+      anchor.gitHash === filteredHash
+        ? { ...anchor, messageId: undefined, subject: 'foreign checkpoint' }
+        : anchor,
+    )
+    const rows = await buildRewindCodeRows(
+      anchorsWithFilteredGap,
+      holder.state().checkpointLabelsByHash,
+    )
+
+    const row = rows.find(r => r.restoreHash === oldestHash)
+    expect(row).toBeDefined()
+    expect(row!.diffStats.filesChanged).toEqual(expect.arrayContaining([a, b]))
+    expect(row!.diffStats.filesChanged).toHaveLength(2)
+  })
+
+  gitBackedTest('newest rewind code row compares restore hash to current disk', async () => {
+    const a = join(workTree, 'a.txt')
+    const b = join(workTree, 'b.txt')
+    const holder = makeStateHolder()
+
+    writeFileSync(a, 'v1\n')
+    const newest = uuid()
+    await fileHistoryMakeSnapshot(holder.updater, newest, 'file-history', 'before disk drift')
+    const newestHash = await hashFor(newest)
+
+    writeFileSync(a, 'v2\n')
+    writeFileSync(b, 'new file\n')
+
+    const anchors = await listCodeAnchors(workTree, { withStats: true, withBodies: true })
+    const rows = await buildRewindCodeRows(
+      anchors,
+      holder.state().checkpointLabelsByHash,
+    )
+
+    const row = rows.find(r => r.restoreHash === newestHash)
+    expect(row).toBeDefined()
+    expect(row!.diffStats.filesChanged).toEqual(expect.arrayContaining([a, b]))
+    expect(row!.diffStats.filesChanged).toHaveLength(2)
+  })
 })
 
 describe('rewind — restore content at the chosen turn', () => {
