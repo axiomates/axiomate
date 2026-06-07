@@ -56,6 +56,7 @@ import {
   formatCommitSubject,
   LABEL_PRE_REWIND,
   parseCommitBody,
+  parseCommitSubject,
 } from './checkpoints/reason.js'
 import { stageWorktreeSnapshotIndex } from './checkpoints/snapshotIndex.js'
 import { ensureStore } from './checkpoints/store.js'
@@ -123,13 +124,18 @@ export type CheckpointHashLabel = {
   timestamp: Date
 }
 
+export type RewindCodeRowKind = 'turn' | 'hash-label' | 'pre-rewind'
+
 export type RewindCodeRow = {
   rowId: string
+  kind: RewindCodeRowKind
   restoreHash: string
   labelMessageId?: UUID
   labelPreview?: string
+  labelText: string
   timestamp: Date
   diffStats: Exclude<DiffStats, undefined>
+  isSynthetic: boolean
 }
 
 const DIFF_HAS_CHANGES = new Set([0, 1])
@@ -869,11 +875,16 @@ export async function buildRewindCodeRows(
     originalIndexByHash.set(anchor.gitHash, index)
   })
 
-  const realAnchors = anchors.filter(anchor => {
+  const intervalAnchors = anchors.filter(anchor => classifyAnchor(anchor.subject) !== 'foreign')
+  const intervalAnchorHashes = new Set(intervalAnchors.map(anchor => anchor.gitHash))
+  const displayAnchors = anchors.filter(anchor => {
     const kind = classifyAnchor(anchor.subject)
-    return kind !== 'foreign' && (kind === 'turn' || labelsByHash.has(anchor.gitHash))
+    return (
+      kind !== 'foreign' &&
+      (kind === 'turn' || kind === 'pre-rewind' || labelsByHash.has(anchor.gitHash))
+    )
   })
-  if (realAnchors.length === 0) return rows
+  if (displayAnchors.length === 0) return rows
 
   const storeResult = await ensureStore()
   if (storeResult.ok === false) return rows
@@ -908,9 +919,18 @@ export async function buildRewindCodeRows(
     return diffStatsFromNumstat(diff.stdout)
   }
 
-  for (let i = 0; i < realAnchors.length; i++) {
-    const anchor = realAnchors[i]!
-    const compareAnchor = i === 0 ? undefined : realAnchors[i - 1]!
+  const nextIntervalAnchor = (anchor: RewindCodeRowAnchor): RewindCodeRowAnchor | undefined => {
+    const index = originalIndexByHash.get(anchor.gitHash)
+    if (index === undefined) return undefined
+    for (let i = index - 1; i >= 0; i--) {
+      const candidate = anchors[i]!
+      if (intervalAnchorHashes.has(candidate.gitHash)) return candidate
+    }
+    return undefined
+  }
+
+  for (const anchor of displayAnchors) {
+    const compareAnchor = nextIntervalAnchor(anchor)
     const diffStats = compareAnchor
       ? originalIndexByHash.get(compareAnchor.gitHash) ===
         (originalIndexByHash.get(anchor.gitHash) ?? -1) - 1
@@ -919,18 +939,62 @@ export async function buildRewindCodeRows(
       : await diffInterval(anchor, diskTree)
     if (!diffStats || diffStats.filesChanged.length === 0) continue
 
+    const role = classifyAnchor(anchor.subject)
     const label = labelsByHash.get(anchor.gitHash) ?? labelFromAnchor(anchor)
+    const kind: RewindCodeRowKind =
+      role === 'turn'
+        ? 'turn'
+        : labelsByHash.has(anchor.gitHash)
+          ? 'hash-label'
+          : 'pre-rewind'
     rows.push({
       rowId: anchor.gitHash,
+      kind,
       restoreHash: anchor.gitHash,
       labelMessageId: label?.messageId ?? anchor.messageId,
       labelPreview: label?.preview,
+      labelText: labelTextForRewindRow(anchor, label, kind),
       timestamp: label?.timestamp ?? anchor.timestamp,
       diffStats,
+      isSynthetic: kind === 'pre-rewind',
     })
   }
 
   return rows
+}
+
+function labelTextForRewindRow(
+  anchor: RewindCodeRowAnchor,
+  label: CheckpointHashLabel | undefined,
+  kind: RewindCodeRowKind,
+): string {
+  const hashTag = ` [${anchor.gitHash.slice(0, 7)}]`
+  if (kind === 'pre-rewind') {
+    const body = parseCommitBody(anchor.body)
+    const preview =
+      body.kind === 'target' || body.kind === 'prompt'
+        ? body.preview
+        : body.kind === 'unknown'
+          ? body.raw
+          : ''
+    const isHashRef = /^\[[0-9a-f]{7,8}\]$/i.test(preview)
+    if (isHashRef) return `↶ Before rewind ${preview.slice(1, -1)}${hashTag}`
+    if (preview.length > 0) return `↶ Before rewind "${preview}"${hashTag}`
+    const targetHash = targetHashFromPreRewindSubject(anchor.subject)
+    if (targetHash) return `↶ Before rewind ${targetHash}${hashTag}`
+    return `↶ Before rewind${hashTag}`
+  }
+  if (label?.preview) return `↶ Before "${label.preview}"`
+  return `↶ Before checkpoint ${anchor.gitHash.slice(0, 7)}`
+}
+
+function targetHashFromPreRewindSubject(subject: string): string | undefined {
+  const parsed = parseCommitSubject(subject)
+  if (parsed.kind !== 'axiomate') return undefined
+  const prefix = `${LABEL_PRE_REWIND}:`
+  if (!parsed.label.startsWith(prefix)) return undefined
+  const hash = parsed.label.slice(prefix.length)
+  return hash.length > 0 ? hash : undefined
 }
 
 function labelFromAnchor(

@@ -270,7 +270,7 @@ describe('file-history per-turn snapshot dedup', () => {
     expect(rows.some(row => row.labelPreview === 'run no-op')).toBe(false)
   })
 
-  gitBackedTest('pre-rewind safety anchor does not duplicate as a normal rewind code row', async () => {
+  gitBackedTest('pre-rewind safety anchor is an undo row and preserves target interval row', async () => {
     const f = join(workTree, 'sort.py')
     const holder = makeStateHolder()
 
@@ -290,7 +290,37 @@ describe('file-history per-turn snapshot dedup', () => {
       holder.state().checkpointLabelsByHash,
     )
 
-    expect(rows.some(r => r.restoreHash === preRewindHash)).toBe(false)
+    const undoRow = rows.find(r => r.restoreHash === preRewindHash)
+    expect(undoRow).toBeDefined()
+    expect(undoRow!.kind).toBe('pre-rewind')
+    expect(undoRow!.labelText).toBe(`↶ Before rewind "add sort" [${preRewindHash.slice(0, 7)}]`)
+    expect(undoRow!.diffStats.filesChanged).toEqual([f])
+    expect(undoRow!.diffStats.insertions).toBe(1)
+    expect(undoRow!.diffStats.deletions).toBe(1)
+
+    const targetRow = rows.find(r => r.restoreHash === beforeAiEditHash)
+    expect(targetRow).toBeDefined()
+    expect(targetRow!.kind).toBe('turn')
+    expect(targetRow!.labelText).toBe('↶ Before "add sort"')
+    expect(targetRow!.diffStats.filesChanged).toEqual([f])
+    expect(targetRow!.diffStats.insertions).toBe(1)
+    expect(targetRow!.diffStats.deletions).toBe(1)
+
+    await fileHistoryRewind(
+      holder.updater,
+      preRewindHash,
+      `[${preRewindHash.slice(0, 7)}]`,
+    )
+    const rewindRewindHash = await latestPreRewindHash()
+    const rewindRewindRows = await buildRewindCodeRows(
+      await listCodeAnchors(workTree, { withStats: true, withBodies: true }),
+      holder.state().checkpointLabelsByHash,
+    )
+    const rewindRewindRow = rewindRewindRows.find(r => r.restoreHash === rewindRewindHash)
+    expect(rewindRewindRow).toBeDefined()
+    expect(rewindRewindRow!.labelText).toBe(
+      `↶ Before rewind ${preRewindHash.slice(0, 7)} [${rewindRewindHash.slice(0, 7)}]`,
+    )
   })
 
   gitBackedTest('no-changes label on post-rewind pre-rewind anchor still produces a visible row', async () => {
@@ -325,7 +355,9 @@ describe('file-history per-turn snapshot dedup', () => {
 
     const row = rows.find(r => r.labelMessageId === afterRewindMsgId)
     expect(row).toBeDefined()
+    expect(row!.kind).toBe('turn')
     expect(row!.labelPreview).toBe('sort after rewind')
+    expect(row!.labelText).toBe('↶ Before "sort after rewind"')
     expect(row!.diffStats.filesChanged).toEqual([f])
   })
 

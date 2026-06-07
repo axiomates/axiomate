@@ -14,7 +14,6 @@ import {
   type DiffStats,
   type RewindCodeRow,
   buildRewindCodeRows,
-  fileHistoryBulkDiffVsDisk,
   fileHistoryEnabled,
   fileHistoryGetDiffVsDisk,
 } from '../utils/fileHistory.js'
@@ -22,10 +21,6 @@ import {
   type CodeAnchor,
   listCodeAnchors,
 } from '../utils/checkpoints/listCodeAnchors.js'
-import {
-  classifyAnchor,
-  parseCommitBody,
-} from '../utils/checkpoints/reason.js'
 import {
   decrementPickerOpenCount,
   getOriginalCwd,
@@ -203,12 +198,7 @@ export function MessageSelector({
   const [codeRows, setCodeRows] = useState<readonly RewindCodeRow[]>([])
   const [codeRowsLoaded, setCodeRowsLoaded] = useState(false)
   const [anchorsLoaded, setAnchorsLoaded] = useState(false)
-  // Tracks whether the per-anchor diff-vs-disk fetch has completed.
-  // Distinct from anchorsLoaded so the picker can render a brief
-  // "reading diff…" placeholder for the ~80-150ms gap between
-  // listCodeAnchors returning and bulkDiffVsDisk returning. Without
-  // this gate, rows momentarily render ⚠ ("no anchor / cannot
-  // restore") even though the anchor exists and the data is in flight.
+  // Tracks whether row metadata has been projected into the picker.
   const [bulkLoaded, setBulkLoaded] = useState(false)
 
   // Process-wide picker-open count. Background housekeeping skips
@@ -395,175 +385,39 @@ export function MessageSelector({
     }
     return m
   }, [codeRows])
+  const codeRowForUuid = useCallback(
+    (uuid: UUID) => codeRowByRowId.get(uuid) ?? codeRowByMsgId.get(uuid),
+    [codeRowByRowId, codeRowByMsgId],
+  )
 
-  const hashRowMessages = useMemo<UserMessage[]>(() => {
-    return codeRows
-      .filter(row => !row.labelMessageId || !messages.some(m => m.uuid === row.labelMessageId))
-      .map(row => ({
-        ...createUserMessage({
-          content: row.labelPreview
-            ? `Before ${row.labelPreview}`
-            : `Before checkpoint ${row.restoreHash.slice(0, 7)}`,
-        }),
-        uuid: row.rowId as UUID,
-      }) as UserMessage)
-  }, [codeRows, messages])
+  const fileRowMessages = useMemo<UserMessage[]>(() => {
+    return codeRows.map(row => ({
+      ...createUserMessage({ content: row.labelText }),
+      uuid: row.rowId as UUID,
+    }) as UserMessage)
+  }, [codeRows])
 
   const hasAnySnapshot = isFileHistoryEnabled && anchors.length > 0
-  // Code tab: rows with a code anchor (or ↶ synthetic anchors). When
-  // no anchors exist at all (fresh project or post-/checkpoints
-  // Conversation tab: every user prompt on the current chain — including
-  // "future" prompts that disappeared from in-memory `messages` after a
-  // rewind (so the user can re-select them and "redo" forward). Source
-  // is the JSONL-derived chainUserMessages; before that loads, fall
-  // back to the in-memory allSelectable so the picker isn't empty
-  // during the brief mount-time IO. Same uuid identity, so handlers
-  // resolve to either source equivalently.
+  // File tab uses hash-keyed rows from buildRewindCodeRows. Conversation
+  // tab uses every user prompt on the current chain, including post-rewind
+  // "future" prompts still present in JSONL.
   const visibleSelectable = useMemo(
     () => {
       if (activeTab === 'conversation') {
         return chainUserMessages.length > 0 ? chainUserMessages : allSelectable
       }
       if (!hasAnySnapshot) return [] // Code tab + no anchors = empty
-      return [
-        ...allSelectable.filter(m => codeRowByMsgId.has(m.uuid)),
-        ...hashRowMessages,
-      ]
+      return fileRowMessages
     },
-    [allSelectable, activeTab, codeRowByMsgId, hasAnySnapshot, chainUserMessages, hashRowMessages],
+    [allSelectable, activeTab, hasAnySnapshot, chainUserMessages, fileRowMessages],
   )
-  const hiddenCount = allSelectable.length - visibleSelectable.length
-
-  // Diagnostic: log the picker's filter inputs whenever they change so
-  // /resume-path or filter-mismatch bugs leave a paper trail. Crucially,
-  // tracks state.snapshots / messages / syntheticAnchors as deps — if
-  // snapshots load asynchronously (e.g. from JSONL on resume), we get
-  // a snapshot of state at each transition, not just at mount.
-  // Placed AFTER syntheticAnchors so we can include its computed value.
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional
-
-  // Snapshots can come in with `timestamp` as a real Date (created in-
-  // process via `new Date()`) OR as a string (loaded from JSONL via
-  // /resume / fork — JSON.parse turns Dates into ISO strings, no revive
-  // step). Defend both at the read site instead of rebuilding the
-  // restore pipeline; picker is the only consumer that compares them.
-  const snapshotTimeMs = (ts: Date | string | number): number => {
-    if (typeof ts === 'number') return ts
-    if (typeof ts === 'string') return Date.parse(ts) || 0
-    if (ts instanceof Date) return ts.getTime()
-    return 0
-  }
-
-  // Synthetic anchor rows for snapshots whose messageId is NOT in the
-  // conversation `messages` array — i.e. pre-rewind safety snapshots
-  // (and any future system-synthesized anchors). These rows let the
-  // user undo a rewind by selecting a `pre-rewind:*` row in the picker.
-  // They are pure UserMessage-shaped objects (same shape as the
-  // `(current)` row below) so the rest of the picker pipeline treats
-  // them uniformly. `handleSelect` later branches via
-  // `messages.includes(message)` to route to code-only restore.
-  const conversationUuids = useMemo(
-    () => new Set(messages.map(m => m.uuid)),
-    [messages],
-  )
-  const syntheticAnchors = useMemo<UserMessage[]>(() => {
-    if (!isFileHistoryEnabled) return []
-    // ↶ rows belong to the code tab only. Conversation rewind on a
-    // synthetic anchor is meaningless — its messageId isn't in the
-    // active conversation chain, so there's nothing to truncate to.
-    if (activeTab !== 'code') return []
-    // Sort orphan anchors oldest→newest so the chronological merge
-    // below (in messageOptions) places them in real time order.
-    // anchors arrives newest-first from listCodeAnchors; without this
-    // explicit sort, two synthetic rows with adjacent timestamps end
-    // up reversed in the picker (a 16:14 pre-rewind row above its
-    // 16:13 abandoned-turn row, etc.). The merge loop's comparator
-    // only handles real-vs-synth ordering, not synth-vs-synth.
-    const sortedOrphans = anchors
-      .filter(a => a.messageId !== undefined && !conversationUuids.has(a.messageId))
-      .slice()
-      .sort(
-        (a, b) =>
-          new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
-      )
-    return sortedOrphans
-      .map(a => {
-        // Three-template label. Pre-rewind safety nets get a distinct
-        // prefix to disambiguate from abandoned-turn anchors whose
-        // body shares the same prompt preview text.
-        //
-        // Hash short-id is appended at the end of the label so chained
-        // ↶ rows can reference a previous row's hash by sight (the
-        // `[<hash7>]` shape that REPL.tsx onRestoreCode writes into a
-        // chained pre-rewind anchor's body matches the trailing hash
-        // suffix on the row above). Per-row time moved out of the
-        // label entirely — it now renders at the end of the stats row
-        // (formatAgeOrAbsolute, same rule as /checkpoints list) so
-        // every row including (current) and turn rows shows time in
-        // the same visual position.
-        //
-        // Successive pre-rewind levels write `[<hash7>]` into their
-        // body's target preview (see REPL.tsx onRestoreCode). When
-        // we see that shape here we render it as a hash reference
-        // rather than a quoted preview — `↶ Rewind to [abc1234]` —
-        // so the chain reads naturally row-by-row.
-        const role = classifyAnchor(a.subject)
-        const parsedBody = parseCommitBody(a.body)
-        const hashTag = ` [${a.gitHash.slice(0, 7)}]`
-        let preview: string | undefined
-        if (parsedBody.kind === 'prompt' || parsedBody.kind === 'target') {
-          if (parsedBody.preview.length > 0) preview = parsedBody.preview
-        } else if (parsedBody.kind === 'unknown' && parsedBody.raw.length > 0) {
-          // Legacy bodies (pre-codec) stored a free-form preview
-          // without a key. Render them like any other preview.
-          preview = parsedBody.raw
-        }
-        let content: string
-        if (preview) {
-          if (role === 'pre-rewind') {
-            // Detect the `[<7-hex>]` hash-reference shape written by
-            // chained rewinds. If it matches, strip the surrounding
-            // brackets so the target hash renders as a bare 7-hex —
-            // the trailing `${hashTag}` carries the only `[brackets]`
-            // on the row, identifying THIS anchor's own short hash.
-            // Rendering both with brackets caused visual collision:
-            // `Rewind to [041da07] [71c90d4]` made it ambiguous which
-            // hash was the target vs the row's own id.
-            const isHashRef = /^\[[0-9a-f]{7,8}\]$/i.test(preview)
-            const targetHash = isHashRef ? preview.slice(1, -1) : preview
-            content = isHashRef
-              ? `↶ Rewind to ${targetHash}${hashTag}`
-              : `↶ Rewind to before "${preview}"${hashTag}`
-          } else {
-            content = `↶ Before "${preview}"${hashTag}`
-          }
-        } else {
-          content = `↶ Off-branch anchor${hashTag}`
-        }
-        return {
-          ...createUserMessage({ content }),
-          uuid: a.messageId!,
-        } as UserMessage
-      })
-  }, [anchors, conversationUuids, isFileHistoryEnabled, activeTab])
-
-  // Diagnostic: tracks state.snapshots / messages / syntheticAnchors
-  // across re-renders so resume-path and filter-mismatch bugs leave a
-  // paper trail. If snapshots load asynchronously (JSONL on resume),
-  // we capture each transition, not just the initial mount.
   useEffect(() => {
     if (!isFileHistoryEnabled) return
     const anchorMatches = allSelectable.filter(m => anchorByMsgId.has(m.uuid))
-    const orphanIds = anchors
-      .filter(a => a.messageId !== undefined && !messages.some(m => m.uuid === a.messageId))
-      .map(a => a.messageId!.slice(0, 8))
-    const synthIds = syntheticAnchors.map(s => s.uuid.slice(0, 8))
     logForDebugging(
       `MessageSelector: [Picker] state messages=${messages.length} ` +
         `allSelectable=${allSelectable.length} anchors=${anchors.length} ` +
-        `anchors-in-conversation=${anchorMatches.length} ` +
-        `orphan-anchors=[${orphanIds.join(',')}] ` +
-        `syntheticAnchors=[${synthIds.join(',')}]`,
+        `anchors-in-conversation=${anchorMatches.length} fileRows=${codeRows.length}`,
     )
   }, [
     isFileHistoryEnabled,
@@ -571,54 +425,17 @@ export function MessageSelector({
     allSelectable,
     anchors,
     anchorByMsgId,
-    syntheticAnchors,
+    codeRows.length,
   ])
 
   const messageOptions = useMemo(() => {
-    // Merge synthetic anchors into the conversation row list by
-    // chronological order. Both inputs are pre-sorted (state.snapshots
-    // is append-only chronological; visibleSelectable preserves
-    // messages array order). Single-pass O(n) merge using each row's
-    // associated snapshot timestamp as the key. Real rows look up
-    // their timestamp via state.snapshots; if a row has no snapshot
-    // (e.g. all-turns view shows readonly rows), it sorts by its
-    // message position relative to neighboring snapshotted rows —
-    // implemented as "assign the timestamp of the most recent
-    // preceding snapshotted row, or 0 for rows before any snapshot".
-    const tsByUuid = new Map<UUID, number>()
-    for (const a of anchors) {
-      if (a.messageId) tsByUuid.set(a.messageId, snapshotTimeMs(a.timestamp))
+    if (activeTab === 'code') {
+      const currentRow: UserMessage = {
+        ...createUserMessage({ content: '' }),
+        uuid: currentUUID,
+      } as UserMessage
+      return [currentRow, ...visibleSelectable]
     }
-    for (const row of codeRows) {
-      tsByUuid.set(row.rowId as UUID, snapshotTimeMs(row.timestamp))
-    }
-    let lastTs = 0
-    const realRowsWithTs = visibleSelectable.map(m => {
-      const ts = tsByUuid.get(m.uuid)
-      if (ts !== undefined) lastTs = ts
-      return { row: m, ts: lastTs }
-    })
-    const synthRowsWithTs = syntheticAnchors.map(m => {
-      const ts = tsByUuid.get(m.uuid) ?? 0
-      return { row: m, ts }
-    })
-    // Stable merge — when timestamps tie, real rows come first so
-    // a pre-rewind anchor produced *during* a turn renders right
-    // after that turn's row, not before it.
-    let i = 0
-    let j = 0
-    const merged: UserMessage[] = []
-    while (i < realRowsWithTs.length && j < synthRowsWithTs.length) {
-      if (realRowsWithTs[i]!.ts <= synthRowsWithTs[j]!.ts) {
-        merged.push(realRowsWithTs[i]!.row)
-        i++
-      } else {
-        merged.push(synthRowsWithTs[j]!.row)
-        j++
-      }
-    }
-    while (i < realRowsWithTs.length) merged.push(realRowsWithTs[i++]!.row)
-    while (j < synthRowsWithTs.length) merged.push(synthRowsWithTs[j++]!.row)
 
     // Conversation tab: natural reverse-chronological order (newest
     // at top, oldest at bottom — same shape as git log). The head row
@@ -626,22 +443,11 @@ export function MessageSelector({
     // sure it lands at the top of the visible area on open. ↑ scrolls
     // into "future" (post-head turns that re-appear after a rewind),
     // ↓ scrolls into "past" (pre-head turns).
-    if (activeTab === 'conversation') {
-      return merged.reverse()
-    }
-    const currentRow: UserMessage = {
-      ...createUserMessage({ content: '' }),
-      uuid: currentUUID,
-    } as UserMessage
-    return [currentRow, ...merged.reverse()]
+    return [...visibleSelectable].reverse()
   }, [
     visibleSelectable,
-    syntheticAnchors,
-    anchors,
-    codeRows,
     currentUUID,
     activeTab,
-    headLeafUuid,
   ])
   // Default cursor on the newest selectable row (index 1 — index 0
   // is the (current) row, which is non-selectable). Falls back to 0
@@ -750,7 +556,7 @@ export function MessageSelector({
   useEffect(() => {
     if (!preselectedMessage || !isFileHistoryEnabled) return
     let cancelled = false
-    const row = codeRowByMsgId.get(preselectedMessage.uuid)
+    const row = codeRowForUuid(preselectedMessage.uuid)
     if (row) {
       setDiffStatsForRestore(row.diffStats)
       setRestoreHashForRestore(row.restoreHash)
@@ -771,7 +577,7 @@ export function MessageSelector({
     return () => {
       cancelled = true
     }
-  }, [preselectedMessage, isFileHistoryEnabled, anchorByMsgId, codeRowByMsgId])
+  }, [preselectedMessage, isFileHistoryEnabled, anchorByMsgId, codeRowForUuid])
 
   const [isRestoring, setIsRestoring] = useState(false)
   const [restoringOption, setRestoringOption] = useState<RestoreOption | null>(
@@ -949,7 +755,7 @@ export function MessageSelector({
         onClose()
         return
       }
-      const row = codeRowByRowId.get(message.uuid) ?? codeRowByMsgId.get(message.uuid)
+      const row = codeRowForUuid(message.uuid)
       if (row) {
         setMessageToRestore(message)
         setDiffStatsForRestore(row.diffStats)
@@ -971,7 +777,7 @@ export function MessageSelector({
       return
     }
 
-    const row = codeRowByRowId.get(message.uuid) ?? codeRowByMsgId.get(message.uuid)
+    const row = codeRowForUuid(message.uuid)
     if (row) {
       setMessageToRestore(message)
       setDiffStatsForRestore(row.diffStats)
@@ -1201,7 +1007,7 @@ export function MessageSelector({
     const next: Record<string, DiffStats | undefined> = {}
     for (const userMessage of messageOptions) {
       if (userMessage.uuid === currentUUID) continue
-      const row = codeRowByRowId.get(userMessage.uuid) ?? codeRowByMsgId.get(userMessage.uuid)
+      const row = codeRowForUuid(userMessage.uuid)
       next[userMessage.uuid] = row?.diffStats
     }
     setFileHistoryMetadata(next)
@@ -1210,12 +1016,23 @@ export function MessageSelector({
       `MessageSelector: [Meta] write keys=${Object.keys(next).map(k => k.slice(0, 8)).join(',')} ` +
         `values=${Object.entries(next).map(([k, v]) => `${k.slice(0, 8)}:${v ? `ins=${v.insertions}/del=${v.deletions}/files=${v.filesChanged?.length ?? 'undef'}` : 'undef'}`).join(' ')}`,
     )
-  }, [messageOptions, currentUUID, codeRowByRowId, codeRowByMsgId, isFileHistoryEnabled, anchorsLoaded, codeRowsLoaded])
+  }, [
+    messageOptions,
+    currentUUID,
+    codeRowForUuid,
+    isFileHistoryEnabled,
+    anchorsLoaded,
+    codeRowsLoaded,
+  ])
 
   const canRestoreCode =
     isFileHistoryEnabled &&
     diffStatsForRestore?.filesChanged &&
     diffStatsForRestore.filesChanged.length > 0
+  const isCodeTabLoading =
+    isFileHistoryEnabled &&
+    activeTab === 'code' &&
+    (!anchorsLoaded || !codeRowsLoaded || !bulkLoaded)
   const showPickList =
     !error && !messageToRestore && !preselectedMessage && hasMessagesToSelect
 
@@ -1234,7 +1051,9 @@ export function MessageSelector({
         )}
         {!hasMessagesToSelect && (
           <>
-            {activeTab === 'code' && hasAnySnapshot ? (
+            {isCodeTabLoading ? (
+              <Text>Loading file checkpoints…</Text>
+            ) : activeTab === 'code' && hasAnySnapshot ? (
               <Text>Nothing to rewind to yet.</Text>
             ) : activeTab === 'code' ? (
               // Code tab + no anchors at all = post-clear or fresh
@@ -1360,24 +1179,9 @@ export function MessageSelector({
                     activeTab === 'conversation' &&
                     headIdxInOptions !== -1 &&
                     optionIndex < headIdxInOptions
-                  // Synthetic anchor rows (orphan turns + pre-rewind
-                  // safety nets) bake the "↶ Before / Undo rewind to
-                  // before" prefix into their message content in
-                  // syntheticAnchors above. Detect them by uuid — any
-                  // anchor's messageId that isn't in the active
-                  // conversation chain is a synthetic.
-                  // Synthetic ↶ rows belong to the file tab only.
-                  // Conversation tab rows come from the JSONL chain
-                  // and may legitimately have uuids not in the
-                  // in-memory `messages` array (post-rewind "future"
-                  // turns), so the conversationUuids check would
-                  // mis-flag them. Gate on activeTab.
+                  // File-tab rows now come from the row model, keyed by hash.
                   const isHashCodeRow = codeRowByRowId.has(msg.uuid)
-                  const isSyntheticAnchorRow =
-                    activeTab === 'code' &&
-                    !isCurrent &&
-                    !isHashCodeRow &&
-                    !conversationUuids.has(msg.uuid)
+                  const isSyntheticAnchorRow = false
 
                   // metadataLoaded is true once the bulk-diff effect
                   // has written this row's key; loading state below
@@ -1398,7 +1202,7 @@ export function MessageSelector({
                   // turn that never produced a snapshot; in those
                   // cases we leave it empty.
                   const rowAnchor = anchorByMsgId.get(msg.uuid)
-                  const rowCode = codeRowByRowId.get(msg.uuid) ?? codeRowByMsgId.get(msg.uuid)
+                  const rowCode = codeRowForUuid(msg.uuid)
                   const rowTimeText = rowCode
                     ? formatAgeOrAbsolute(new Date(rowCode.timestamp).getTime() / 1000)
                     : rowAnchor
@@ -1559,7 +1363,7 @@ export function MessageSelector({
                     </>
                   )
                 })()}
-                {syntheticAnchors.length > 0 && (
+                {codeRows.some(row => row.kind === 'pre-rewind') && (
                   <>
                     {`↶ rows restore older state`}
                     {' · '}
