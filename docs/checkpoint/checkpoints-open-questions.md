@@ -71,3 +71,19 @@ Decision:
   history view.
 - Keep foreign commits hidden from `/rewind` by default, because file rewind is
   an action UI and needs structured metadata for labels and consequence rows.
+
+## `/rewind` UI E2E Scope
+
+The checkpoint suite now covers CLI history output, real git-store behavior,
+rewind row construction, confirmation-time diff refresh, concurrency, plan
+lifecycle, and temp cleanup. It does not run a full Ink interaction e2e for the
+`/rewind` picker.
+
+Decision:
+
+- Do not add UI-ish `/rewind` interaction e2e as part of this review.
+- Keep the current split: CLI/e2e for command and store behavior; unit and
+  integration-style tests for row models, confirmation helpers, rewind
+  transactions, and concurrency.
+- Add an Ink interaction e2e later only if a stable harness exists or a real UI
+  regression shows that lower-layer tests are insufficient.

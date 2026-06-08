@@ -211,6 +211,9 @@ Policy:
 
 - E2E tests for checkpoint commands must assert exit code and meaningful output.
 - No `if (exitCode !== 0) return` in e2e tests.
+- Do not expand to full Ink `/rewind` interaction e2e in this review. Keep
+  picker/confirmation semantics covered by row-model and helper tests until a
+  stable UI harness or a real UI regression justifies the cost.
 
 ## Stage 1 Status
 
