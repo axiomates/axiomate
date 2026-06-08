@@ -46,6 +46,7 @@ import {
   setObservedFileStateIfNewer,
 } from './fileStateRegistry.js'
 import { isNotEmptyMessage, normalizeMessages } from './messages.js'
+import { notebookRawJsonToReadStateContent } from './notebook.js'
 import { expandPath } from './path.js'
 import type {
   inputSchema as permissionToolInputSchema,
@@ -592,8 +593,11 @@ export function reconstructFileStateFromTranscriptMessages(
             const toolUseResult = message.toolUseResult
             if (isSuccessfulNotebookEditResult(toolUseResult)) {
               const timestamp = new Date(message.timestamp).getTime()
+              const readStateContent = getNotebookReadStateContentFromRawJson(
+                toolUseResult.updated_file,
+              )
               cache.set(notebookEditToolData.filePath, {
-                content: normalizeContentToLf(toolUseResult.updated_file),
+                content: readStateContent,
                 timestamp,
                 offset: undefined,
                 limit: undefined,
@@ -684,6 +688,14 @@ function isSuccessfulNotebookEditResult(
     (typeof (value as { error?: unknown }).error !== 'string' ||
       (value as { error: string }).error === '')
   )
+}
+
+function getNotebookReadStateContentFromRawJson(rawNotebook: string): string {
+  try {
+    return notebookRawJsonToReadStateContent(rawNotebook)
+  } catch {
+    return normalizeContentToLf(rawNotebook)
+  }
 }
 
 export function restoreObservedReadFilesFromMessages(

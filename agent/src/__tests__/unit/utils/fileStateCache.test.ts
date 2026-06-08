@@ -25,6 +25,22 @@ describe('FileStateCache', () => {
     expect(cloned.get('/tmp/example.txt')?.registrySequence).toBe(42)
   })
 
+  test('clone keeps file state entries isolated from source cache mutations', () => {
+    const cache = createFileStateCacheWithSizeLimit(10)
+    cache.set('/tmp/example.txt', {
+      content: 'alpha\n',
+      timestamp: 123,
+      offset: 1,
+      limit: undefined,
+      registrySequence: 42,
+    })
+
+    const cloned = cloneFileStateCache(cache)
+    cloned.get('/tmp/example.txt')!.registrySequence = 99
+
+    expect(cache.get('/tmp/example.txt')?.registrySequence).toBe(42)
+  })
+
   test('cacheToObject omits runtime-only metadata from persisted state', () => {
     const cache = createFileStateCacheWithSizeLimit(10)
     cache.set('/tmp/example.txt', {

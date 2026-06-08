@@ -19,6 +19,7 @@ import {
 } from '../../../utils/fileStateRegistry.js'
 import type { Message } from '../../../types/message.js'
 import { asAgentId } from '../../../types/ids.js'
+import { notebookRawJsonToReadStateContent } from '../../../utils/notebook.js'
 
 let tmpDirs: string[] = []
 
@@ -456,23 +457,23 @@ describe('reconstructFileStateFromTranscriptMessages file-state resume reconstru
     const dir = tempDir()
     const file = join(dir, 'notebook.ipynb')
     const original = JSON.stringify([
-      {
-        cell_type: 'code',
-        source: 'print("old")',
-        metadata: {},
-        execution_count: null,
-        outputs: [],
-      },
+      { cellType: 'code', source: 'print("old")', cell_id: 'cell-1' },
     ])
-    const updated = JSON.stringify([
-      {
-        cell_type: 'code',
-        source: 'print("new")',
-        metadata: {},
-        execution_count: null,
-        outputs: [],
-      },
-    ])
+    const updated = JSON.stringify({
+      cells: [
+        {
+          id: 'cell-1',
+          cell_type: 'code',
+          source: 'print("new")',
+          metadata: {},
+          execution_count: null,
+          outputs: [],
+        },
+      ],
+      metadata: { language_info: { name: 'python' } },
+      nbformat: 4,
+      nbformat_minor: 5,
+    })
     const messages = [
       assistantToolUse('read-1', 'Read', {
         file_path: file,
@@ -504,7 +505,7 @@ describe('reconstructFileStateFromTranscriptMessages file-state resume reconstru
 
     const state = reconstructFileStateFromTranscriptMessages(messages, dir, 10).get(file)
 
-    expect(state?.content).toBe(updated)
+    expect(state?.content).toBe(notebookRawJsonToReadStateContent(updated))
     expect(state?.timestamp).toBe(
       new Date('2026-01-01T00:00:02.000Z').getTime(),
     )

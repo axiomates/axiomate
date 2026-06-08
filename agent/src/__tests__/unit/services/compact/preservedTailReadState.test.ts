@@ -222,4 +222,46 @@ describe('partial compact preserved-tail read state', () => {
       true,
     )
   }, 30_000)
+
+  it('stamps preserved Read state when the pre-compact cache no longer has the path', async () => {
+    const filePath = 'src/preserved-tail-evicted-read.txt'
+    const context = makeMinimalContext()
+    const child = {
+      agentId: asAgentId('achild000000000502'),
+      readFileState: createFileStateCacheWithSizeLimit(10),
+    }
+
+    noteFileWrite(child, filePath)
+
+    const readId = 'read-preserved-evicted'
+    const messages: Message[] = [
+      makeUserMsg('please inspect this file'),
+      makeReadToolUse(readId, filePath),
+      makeToolResult(readId, '1\talpha\n2\tbeta'),
+      makeUserMsg('now summarize later turns'),
+      makeAssistantTextMsg('later turn to compact'),
+    ]
+
+    await partialCompactConversation(
+      messages,
+      3,
+      context as never,
+      {
+        forkContextMessages: messages,
+        systemPrompt: { text: '' },
+        userContext: {},
+        systemContext: {},
+        toolUseContext: {},
+      } as never,
+      undefined,
+      'from',
+    )
+
+    const restored = context.readFileState.get(filePath)
+    expect(restored?.content).toBe('alpha\nbeta')
+    expect(restored?.registrySequence).toBeDefined()
+    expect(wasFileModifiedAfterReadByAnotherContext(context, filePath)).toBe(
+      false,
+    )
+  }, 30_000)
 })

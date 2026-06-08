@@ -996,12 +996,14 @@ function restorePreservedReadState(
   )
   for (const [filePath, fileState] of restored.entries()) {
     const preCompactState = preCompactReadFileState.get(filePath)
-    context.readFileState.set(filePath, {
-      ...fileState,
-      ...(preCompactState?.registrySequence !== undefined
-        ? { registrySequence: preCompactState.registrySequence }
-        : {}),
-    })
+    if (preCompactState?.registrySequence !== undefined) {
+      context.readFileState.set(filePath, {
+        ...fileState,
+        registrySequence: preCompactState.registrySequence,
+      })
+    } else {
+      setObservedFileState(context, filePath, fileState)
+    }
   }
 }
 

@@ -346,6 +346,35 @@ describe('NotebookEditTool file harness behavior', () => {
     expect(await readNotebookSource(path)).toBe('print("two")')
   })
 
+  test('allows mtime-only drift after NotebookEdit-updated full-file state', async () => {
+    const path = join(getHarnessCwd(), 'mtime-after-notebook-edit.ipynb')
+    await writeNotebook(path, 'print("one")')
+    const context = await readNotebookIntoContext(path)
+
+    await editNotebookCell(path, 'print("two")', context)
+    const postEditState = context.readFileState.get(path)
+    expect(postEditState).toBeDefined()
+    expect(postEditState?.offset).toBeUndefined()
+
+    const touchedDate = new Date(postEditState!.timestamp + 2_000)
+    await utimes(path, touchedDate, touchedDate)
+
+    const validation = await NotebookEditTool.validateInput!(
+      {
+        notebook_path: path,
+        cell_id: 'cell-a',
+        new_source: 'print("three")',
+        edit_mode: 'replace',
+      },
+      context,
+    )
+    expect(validation.result).toBe(true)
+
+    await editNotebookCell(path, 'print("three")', context)
+
+    expect(await readNotebookSource(path)).toBe('print("three")')
+  })
+
   test('preserves an existing UTF-8 BOM when editing a notebook', async () => {
     const path = join(getHarnessCwd(), 'bom-notebook.ipynb')
     await writeFile(path, `\ufeff${JSON.stringify(createNotebook('print("one")'), null, 1)}`, 'utf8')

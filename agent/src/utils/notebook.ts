@@ -16,7 +16,7 @@ import type {
 import { getFsImplementation } from './fsOperations.js'
 import { normalizeContentToLf } from './file.js'
 import { expandPath } from './path.js'
-import { jsonParse } from './slowOperations.js'
+import { jsonParse, jsonStringify } from './slowOperations.js'
 
 const LARGE_OUTPUT_THRESHOLD = 10000
 
@@ -201,6 +201,23 @@ export function readNotebookCellsSync(
   }
   return notebook.cells.map((cell, index) =>
     processCell(cell, index, language, false),
+  )
+}
+
+export function notebookCellsToReadStateContent(
+  cells: NotebookCellSource[],
+): string {
+  return jsonStringify(cells)
+}
+
+export function notebookRawJsonToReadStateContent(rawNotebook: string): string {
+  const content = normalizeContentToLf(rawNotebook)
+  const notebook = jsonParse(content) as NotebookContent
+  const language = notebook.metadata?.language_info?.name ?? 'python'
+  return notebookCellsToReadStateContent(
+    notebook.cells.map((cell, index) =>
+      processCell(cell, index, language, false),
+    ),
   )
 }
 

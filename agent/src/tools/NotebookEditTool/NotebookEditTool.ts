@@ -23,7 +23,11 @@ import { fileStateHasFullContent } from '../../utils/fileStateCache.js'
 import { readFileSyncWithMetadata } from '../../utils/fileRead.js'
 import { safeParseJSON } from '../../utils/json.js'
 import { lazySchema } from '../../utils/lazySchema.js'
-import { parseCellId, readNotebookCellsSync } from '../../utils/notebook.js'
+import {
+  notebookCellsToReadStateContent,
+  parseCellId,
+  readNotebookCellsSync,
+} from '../../utils/notebook.js'
 import { expandPath } from '../../utils/path.js'
 import { checkWritePermissionForTool } from '../../utils/permissions/filesystem.js'
 import type { PermissionDecision } from '../../utils/permissions/PermissionResult.js'
@@ -499,7 +503,7 @@ export const NotebookEditTool = buildTool({
         // without this, Read→NotebookEdit→Read in the same millisecond would
         // return the file_unchanged stub against stale in-context content.
         readFileState.set(fullPath, {
-          content: updatedContent,
+          content: getNotebookReadStateContent(fullPath),
           timestamp: getFileModificationTime(fullPath),
           offset: undefined,
           limit: undefined,
@@ -559,5 +563,5 @@ export const NotebookEditTool = buildTool({
 } satisfies ToolDef<InputSchema, Output>)
 
 function getNotebookReadStateContent(filePath: string): string {
-  return jsonStringify(readNotebookCellsSync(filePath))
+  return notebookCellsToReadStateContent(readNotebookCellsSync(filePath))
 }

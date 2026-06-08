@@ -174,7 +174,12 @@ export function cacheKeys(cache: FileStateCache): string[] {
 export function cloneFileStateCache(cache: FileStateCache): FileStateCache {
   const cloned = createFileStateCacheWithSizeLimit(cache.max, cache.maxSize)
   for (const [filePath, fileState] of cache.entries()) {
-    cloned.set(filePath, fileState)
+    cloned.set(filePath, {
+      ...fileState,
+      ...(fileState.toolNormalization
+        ? { toolNormalization: { ...fileState.toolNormalization } }
+        : {}),
+    })
   }
   return cloned
 }
