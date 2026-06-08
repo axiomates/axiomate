@@ -44,7 +44,13 @@ import {
   quoteDiagnostic,
 } from './checkpoints/diagnostics.js'
 import { runCheckpointGit } from './checkpoints/git.js'
-import { indexPath, normalizePath, projectHash, refName } from './checkpoints/paths.js'
+import {
+  activeRewindRefName,
+  indexPath,
+  normalizePath,
+  projectHash,
+  refName,
+} from './checkpoints/paths.js'
 import {
   classifyAnchor,
   formatCommitBody,
@@ -139,6 +145,7 @@ const DIFF_HAS_CHANGES = new Set([0, 1])
 const REF_NOT_PRESENT = new Set([128, 129])
 
 type RewindTestHooks = {
+  beforeApply?: () => void | Promise<void>
   afterApply?: () => void | Promise<void>
   afterTouchedVerify?: () => void | Promise<void>
 }
@@ -501,8 +508,17 @@ export async function fileHistoryRewind(
     )
   }
 
-  const plan = await prepareWorktreeReconcilePlan(getOriginalCwd(), gitHash)
+  const activeRewindRef = await protectActiveRewindTarget(gitHash)
+  if (!activeRewindRef) {
+    throw new Error(
+      `This snapshot is no longer available — the store may have been ` +
+        `pruned or cleared. Press Esc and re-open /rewind to refresh the picker.`,
+    )
+  }
+
+  let plan: Awaited<ReturnType<typeof prepareWorktreeReconcilePlan>> | undefined
   try {
+    plan = await prepareWorktreeReconcilePlan(getOriginalCwd(), gitHash)
     const preRewindMessageId = randomUUID() as UUID
     const bodyText = targetPreview
       ? formatCommitBody({ kind: 'target', preview: targetPreview })
@@ -515,6 +531,7 @@ export async function fileHistoryRewind(
         label: `${LABEL_PRE_REWIND}:${gitHash.slice(0, 8)}`,
         bodyText,
       },
+      { skipPrune: true },
     )
     if (
       preRewind.ok === false &&
@@ -545,6 +562,8 @@ export async function fileHistoryRewind(
       `FileHistory: [Rewind] pre-rewind safety net ` +
         (preRewind.ok ? `committed (${preRewind.hash.slice(0, 8)})` : 'no-op (no-changes)'),
     )
+
+    await rewindTestHooks?.beforeApply?.()
 
     try {
       await applyWorktreeReconcilePlan(plan)
@@ -580,7 +599,8 @@ export async function fileHistoryRewind(
       `FileHistory: [Rewind] Finished rewinding to ${gitHash.slice(0, 8)}`,
     )
   } finally {
-    await cleanupWorktreeReconcilePlan(plan)
+    if (plan) await cleanupWorktreeReconcilePlan(plan)
+    await releaseActiveRewindTarget(activeRewindRef)
   }
 }
 
@@ -591,6 +611,35 @@ export async function fileHistoryRewind(
  * don't want a flaky verification step blocking otherwise-successful
  * rewinds; the throw-on-mismatch path requires a confident "no").
  */
+async function protectActiveRewindTarget(gitHash: string): Promise<string | undefined> {
+  const storeResult = await ensureStore()
+  if (storeResult.ok === false) return undefined
+  const canonical = normalizePath(getOriginalCwd())
+  const ref = activeRewindRefName(projectHash(canonical), `${Date.now()}-${randomUUID()}`)
+  const result = await runCheckpointGit(['update-ref', ref, gitHash], {
+    store: storeResult.store,
+    workTree: canonical,
+  })
+  if (result.ok === false) {
+    logForDebugging(
+      `FileHistory: [Rewind] failed to protect target ${gitHash.slice(0, 8)} (${result.message})`,
+    )
+    return undefined
+  }
+  return ref
+}
+
+async function releaseActiveRewindTarget(ref: string | undefined): Promise<void> {
+  if (!ref) return
+  const storeResult = await ensureStore()
+  if (storeResult.ok === false) return
+  const canonical = normalizePath(getOriginalCwd())
+  await runCheckpointGit(['update-ref', '-d', ref], {
+    store: storeResult.store,
+    workTree: canonical,
+  })
+}
+
 /**
  * Check whether the given commit hash still exists in the checkpoint
  * store. Used by `fileHistoryRewind` to detect prune / clear / gc

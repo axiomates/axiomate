@@ -126,7 +126,7 @@ export interface CreateSnapshotReason {
 }
 
 export interface CreateSnapshotOptions {
-  // (no options today — kept as a struct for forward compatibility)
+  skipPrune?: boolean
 }
 
 type CreateSnapshotFailure = Exclude<CreateSnapshotResult, { ok: true }>
@@ -255,12 +255,13 @@ export async function createSnapshotFromTree(
   workdir: string,
   treeHash: string,
   reason: CreateSnapshotReason,
+  opts: CreateSnapshotOptions = {},
 ): Promise<CreateSnapshotResult> {
   return withSnapshotMetrics({
     workdir,
     reason,
     source: 'prepared-tree',
-    run: () => _runCreateSnapshotFromTree(workdir, treeHash, reason),
+    run: () => _runCreateSnapshotFromTree(workdir, treeHash, reason, opts),
   })
 }
 
@@ -268,6 +269,7 @@ async function _runCreateSnapshotFromTree(
   workdir: string,
   treeHash: string,
   reason: CreateSnapshotReason,
+  opts: CreateSnapshotOptions,
 ): Promise<CreateSnapshotResult> {
   if (!(await probeGitAvailable())) {
     return { ok: false, skipped: 'git-missing' }
@@ -326,7 +328,7 @@ async function _runCreateSnapshotFromTree(
     bodyText: reason.bodyText,
   })
   if (commitResult.ok === false) return commitResult
-  await pruneProjectRef({ store, workTree: canonical, ref })
+  if (!opts.skipPrune) await pruneProjectRef({ store, workTree: canonical, ref })
   return { ok: true, hash: await currentRefCommit(store, canonical, ref, commitResult.hash), ref }
 }
 
@@ -586,7 +588,7 @@ async function _runCreateSnapshot(
   //     entirely — the prune-time snapshot-cap pass still uses the same
   //     config value, so a user who explicitly disables it gets it
   //     disabled both ways.
-  await pruneProjectRef({ store, workTree: canonical, ref })
+  if (!opts.skipPrune) await pruneProjectRef({ store, workTree: canonical, ref })
 
   // 13. Cross-project size cap deferred to Phase 4.
   return { ok: true, hash: await currentRefCommit(store, canonical, ref, newSha), ref }

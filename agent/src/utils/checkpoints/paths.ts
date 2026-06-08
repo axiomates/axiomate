@@ -139,6 +139,7 @@ export function refName(hash: string): string {
  * (see `prune.ts::listProjectRefs`).
  */
 export const KEEP_REF_PREFIX = `${REF_PREFIX}/_keep`
+export const ACTIVE_REF_PREFIX = `${REF_PREFIX}/_active`
 
 /**
  * Anchor-keep ref name: `refs/axiomate/_keep/<projectHash16>/<sessionId>`.
@@ -150,6 +151,28 @@ export const KEEP_REF_PREFIX = `${REF_PREFIX}/_keep`
  */
 export function keepRefName(projectHash: string, sessionId: string): string {
   return `${KEEP_REF_PREFIX}/${projectHash}/${sessionId}`
+}
+
+export function activeRewindRefName(projectHash: string, token: string): string {
+  return `${ACTIVE_REF_PREFIX}/${projectHash}/${token}`
+}
+
+export function parseActiveRewindRefName(
+  ref: string,
+): { projectHash: string; token: string; createdAtMs: number } | null {
+  if (!ref.startsWith(`${ACTIVE_REF_PREFIX}/`)) return null
+  const tail = ref.slice(ACTIVE_REF_PREFIX.length + 1)
+  const slash = tail.indexOf('/')
+  if (slash < 0) return null
+  const projectHash = tail.slice(0, slash)
+  const token = tail.slice(slash + 1)
+  if (projectHash.length !== 16 || !/^[0-9a-f]{16}$/.test(projectHash)) return null
+  if (token.length === 0) return null
+  const dash = token.indexOf('-')
+  if (dash <= 0) return null
+  const createdAtMs = Number.parseInt(token.slice(0, dash), 10)
+  if (!Number.isFinite(createdAtMs) || createdAtMs <= 0) return null
+  return { projectHash, token, createdAtMs }
 }
 
 /**

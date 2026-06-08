@@ -23,7 +23,9 @@ import {
   type FileHistoryState,
 } from '../../../utils/fileHistory.js'
 import { listCodeAnchors } from '../../../utils/checkpoints/listCodeAnchors.js'
+import { pruneCheckpoints } from '../../../utils/checkpoints/prune.js'
 import { LABEL_PRE_REWIND } from '../../../utils/checkpoints/reason.js'
+import { saveGlobalConfig } from '../../../utils/config.js'
 
 let tmpRoot: string
 let workTree: string
@@ -101,6 +103,39 @@ describe('rewind and rewind-of-rewind', () => {
 
     await fileHistoryRewind(holder.updater, targetHash!, 'create v1')
     expect(readFile('sort.py')).toBe('v1\n')
+  }, GIT_TEST_TIMEOUT)
+
+  test('pre-rewind safety snapshot does not prune the selected target before apply', async () => {
+    saveGlobalConfig(config => ({ ...config, checkpointsMaxSnapshotsPerProject: 2 }))
+    const holder = makeStateHolder()
+    try {
+      const msg1 = randomUUID()
+      writeFile('sort.py', 'v1\n')
+      await fileHistoryMakeSnapshot(holder.updater, msg1, 'file-history', 'create v1')
+
+      const msg2 = randomUUID()
+      writeFile('sort.py', 'v2\n')
+      await fileHistoryMakeSnapshot(holder.updater, msg2, 'file-history', 'edit to v2')
+
+      writeFile('sort.py', 'dirty before rewind\n')
+      writeFile('dirty-only.py', 'safety net\n')
+
+      const anchors = await listCodeAnchors(workTree, { withStats: false })
+      const targetHash = anchors.find(a => a.messageId === msg1)?.gitHash
+      expect(targetHash).toBeDefined()
+
+      _setRewindTestHooksForTesting({
+        beforeApply: async () => {
+          const report = await pruneCheckpoints({ forceNow: true, maxSnapshotsPerRef: 2 })
+          expect(report.errors).toEqual([])
+        },
+      })
+      await fileHistoryRewind(holder.updater, targetHash!, 'create v1')
+      expect(readFile('sort.py')).toBe('v1\n')
+      expect(existsSync(join(workTree, 'dirty-only.py'))).toBe(false)
+    } finally {
+      saveGlobalConfig(config => ({ ...config, checkpointsMaxSnapshotsPerProject: 1000 }))
+    }
   }, GIT_TEST_TIMEOUT)
 
   test('rewind of rewind restores post-rewind content', async () => {

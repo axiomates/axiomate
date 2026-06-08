@@ -26,6 +26,7 @@ import { join } from 'path'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test as vitestTest } from 'vitest'
 import { _resetGitAvailableCacheForTesting, runCheckpointGit } from '../../../../utils/checkpoints/git.js'
 import {
+  activeRewindRefName,
   getLastPrunePath,
   getStoreDir,
   indexPath,
@@ -476,6 +477,73 @@ async function commitBodiesOnRef(store: string, ref: string): Promise<string[]> 
   if (r.ok === false) return []
   return r.stdout.split('\x00').filter(s => s.length > 0).map(s => s.trim())
 }
+
+describe('pruneCheckpoints — active rewind refs', () => {
+  test('preserves fresh active rewind refs during gc', async () => {
+    const e = await ensureStore()
+    if (!e.ok) return
+
+    const wtParent = mkdtempSync(join(tmpRoot, 'wts-'))
+    const proj = await buildProjectWithNCommits({
+      store: e.store,
+      parent: wtParent,
+      commits: 2,
+    })
+    const oldest = await runCheckpointGit(
+      ['rev-list', '--max-parents=0', `${proj.ref}^{commit}`],
+      { store: e.store, workTree: e.store },
+    )
+    expect(oldest.ok).toBe(true)
+    if (oldest.ok === false) return
+    const activeRef = activeRewindRefName(proj.hash, `${Date.now()}-fresh`)
+    const up = await runCheckpointGit(
+      ['update-ref', activeRef, oldest.stdout.trim()],
+      { store: e.store, workTree: e.store },
+    )
+    expect(up.ok).toBe(true)
+
+    const r = await pruneCheckpoints({
+      forceNow: true,
+      maxSnapshotsPerRef: 1,
+      maxTotalSizeMb: 0,
+    })
+    expect(r.errors).toEqual([])
+
+    const refCheck = await runCheckpointGit(
+      ['rev-parse', '--verify', activeRef],
+      { store: e.store, workTree: e.store },
+    )
+    expect(refCheck.ok).toBe(true)
+    const objectCheck = await runCheckpointGit(
+      ['cat-file', '-t', oldest.stdout.trim()],
+      { store: e.store, workTree: e.store },
+    )
+    expect(objectCheck.ok).toBe(true)
+  }, 30_000)
+
+  test('expires stale active rewind refs', async () => {
+    const e = await ensureStore()
+    if (!e.ok) return
+
+    const wtParent = mkdtempSync(join(tmpRoot, 'wts-'))
+    const proj = await buildPopulatedProject({ store: e.store, parent: wtParent })
+    const staleRef = activeRewindRefName(proj.hash, `${Date.now() - 2 * 60 * 60 * 1000}-stale`)
+    const up = await runCheckpointGit(
+      ['update-ref', staleRef, proj.ref],
+      { store: e.store, workTree: e.store },
+    )
+    expect(up.ok).toBe(true)
+
+    const r = await pruneCheckpoints({ forceNow: true, maxTotalSizeMb: 0 })
+    expect(r.errors).toEqual([])
+
+    const refCheck = await runCheckpointGit(
+      ['rev-parse', '--verify', staleRef],
+      { store: e.store, workTree: e.store, allowedExitCodes: new Set([128]) },
+    )
+    expect(refCheck.ok && refCheck.code === 128).toBe(true)
+  }, 30_000)
+})
 
 describe('pruneCheckpoints — snapshot cap pass', () => {
   test('truncates ref to maxN when count exceeds cap', async () => {

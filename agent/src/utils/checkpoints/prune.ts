@@ -47,8 +47,10 @@ import {
   getLastPrunePath,
   getStoreDir,
   indexPath,
+  ACTIVE_REF_PREFIX,
   KEEP_REF_PREFIX,
   keepRefName,
+  parseActiveRewindRefName,
   parseKeepRefName,
   projectMetaPath,
   refName,
@@ -79,6 +81,7 @@ const KEEP_LAST_N_PER_REF = 1
 
 const REF_MISSING = new Set([128])
 const REFS_PREFIX = 'refs/axiomate'
+const ACTIVE_REWIND_REF_TTL_MS = 60 * 60 * 1000
 
 /**
  * Default retention for stale-pass (days). 30d preserves recent work
@@ -266,6 +269,8 @@ export async function pruneCheckpoints(
   // last would mean every keep-ref under a freshly-orphaned project
   // gets misclassified as "project meta missing → orphan keep-ref".
   await expireKeepRefs(store, metas, report)
+
+  await expireActiveRewindRefs(store, report)
 
   for (const meta of metas) {
     // Orphan check first — wins over stale if both apply (Hermes `prune_checkpoints`::1289-1298).
@@ -558,6 +563,37 @@ async function deleteKeepRef(
   report.keepRefsExpired++
 }
 
+async function expireActiveRewindRefs(
+  store: string,
+  report: PruneReport,
+): Promise<void> {
+  if (!existsSync(store)) return
+  const r = await runCheckpointGit(
+    ['for-each-ref', '--format=%(refname)', ACTIVE_REF_PREFIX],
+    { store, workTree: store, allowedExitCodes: REF_MISSING },
+  )
+  if (r.ok === false) {
+    report.errors.push(`for-each-ref _active: ${r.message}`)
+    return
+  }
+  const refs = r.stdout
+    .split('\n')
+    .map(s => s.trim())
+    .filter(s => s.length > 0)
+  const cutoffMs = Date.now() - ACTIVE_REWIND_REF_TTL_MS
+  for (const ref of refs) {
+    const parsed = parseActiveRewindRefName(ref)
+    if (parsed !== null && parsed.createdAtMs > cutoffMs) continue
+    const del = await runCheckpointGit(['update-ref', '-d', ref], {
+      store,
+      workTree: store,
+    })
+    if (del.ok === false) {
+      report.errors.push(`update-ref -d ${ref}: ${del.message}`)
+    }
+  }
+}
+
 /**
  * `git reflog expire --expire=now --all` + `git gc --prune=now --quiet`.
  * Both run with 3× the default checkpoint git timeout — Hermes `prune_checkpoints`::1378
@@ -805,6 +841,7 @@ async function listProjectRefs(
     .map(s => s.trim())
     .filter(s => s.length > 0)
     .filter(s => !s.startsWith(`${KEEP_REF_PREFIX}/`))
+    .filter(s => !s.startsWith(`${ACTIVE_REF_PREFIX}/`))
 }
 
 /**

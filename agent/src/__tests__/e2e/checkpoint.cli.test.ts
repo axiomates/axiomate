@@ -1,7 +1,14 @@
 import { execFile } from 'child_process'
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'fs'
 import { tmpdir } from 'os'
-import { join } from 'path'
+import { dirname, join } from 'path'
 import { promisify } from 'util'
 import { randomUUID, type UUID } from 'crypto'
 import { afterEach, beforeAll, beforeEach, describe, expect, test } from 'vitest'
@@ -10,6 +17,7 @@ import {
   setOriginalCwd,
 } from '../../bootstrap/state.js'
 import {
+  buildRewindCodeRows,
   fileHistoryMakeSnapshot,
   fileHistoryRewind,
   resetFileHistoryDraft,
@@ -17,6 +25,7 @@ import {
   type FileHistoryState,
 } from '../../utils/fileHistory.js'
 import { listCodeAnchors } from '../../utils/checkpoints/listCodeAnchors.js'
+import { LABEL_PRE_REWIND } from '../../utils/checkpoints/reason.js'
 import { ensureStore } from '../../utils/checkpoints/store.js'
 import { runCheckpointGit } from '../../utils/checkpoints/git.js'
 import { indexPath, normalizePath, projectHash } from '../../utils/checkpoints/paths.js'
@@ -75,6 +84,12 @@ function makeStateHolder(): {
     state: () => state,
     updater: f => { state = f(state) },
   }
+}
+
+function writeWorktreeFile(path: string, content: string): void {
+  const abs = join(workTree, path)
+  mkdirSync(dirname(abs), { recursive: true })
+  writeFileSync(abs, content)
 }
 
 async function expectWorktreeTreeEquals(gitHash: string): Promise<void> {
@@ -187,11 +202,11 @@ describe('checkpoint CLI e2e', () => {
     const holder = makeStateHolder()
     const msg1 = randomUUID()
 
-    writeFileSync(join(workTree, 'sort.py'), 'v1\n')
+    writeWorktreeFile('sort.py', 'v1\n')
     await fileHistoryMakeSnapshot(holder.updater, msg1, 'file-history', 'create v1')
 
-    writeFileSync(join(workTree, 'sort.py'), 'v2\n')
-    writeFileSync(join(workTree, 'extra.txt'), 'extra\n')
+    writeWorktreeFile('sort.py', 'v2\n')
+    writeWorktreeFile('extra.txt', 'extra\n')
     await fileHistoryMakeSnapshot(holder.updater, randomUUID(), 'file-history', 'edit to v2')
 
     const anchors = await listCodeAnchors(workTree, { withStats: false })
@@ -203,4 +218,53 @@ describe('checkpoint CLI e2e', () => {
     expect(readFileSync(join(workTree, 'sort.py'), 'utf8')).toBe('v1\n')
     await expectWorktreeTreeEquals(hash1!)
   }, 60_000)
+
+  test('file tab restore and rewind-of-rewind restore exact trees with nested git', async () => {
+    const holder = makeStateHolder()
+
+    const msg1 = randomUUID()
+    await fileHistoryMakeSnapshot(holder.updater, msg1, 'file-history', 'create v1')
+    writeWorktreeFile('stable.txt', 'v1\n')
+    writeWorktreeFile('replace', 'file in target\n')
+
+    const msg2 = randomUUID()
+    await fileHistoryMakeSnapshot(holder.updater, msg2, 'file-history', 'create nested git and v2')
+    rmSync(join(workTree, 'replace'), { recursive: true, force: true })
+    writeWorktreeFile('stable.txt', 'v2\n')
+    writeWorktreeFile('replace/node.txt', 'directory in current\n')
+    writeWorktreeFile('nested/.git/config', '[core]\n\trepositoryformatversion = 0\n')
+    writeWorktreeFile('nested/src/app.ts', 'export const value = 2\n')
+
+    writeWorktreeFile('stable.txt', 'v2 dirty before rewind\n')
+    writeWorktreeFile('dirty-only.txt', 'pre-rewind only\n')
+
+    const rows = await buildRewindCodeRows(
+      await listCodeAnchors(workTree, { withStats: true, withBodies: true }),
+      holder.state().checkpointLabelsByHash,
+    )
+    const targetRow = rows.find(row => row.kind === 'turn' && row.labelMessageId === msg2)
+    expect(targetRow).toBeDefined()
+
+    await fileHistoryRewind(holder.updater, targetRow!.restoreHash, 'create nested git and v2')
+    expect(readFileSync(join(workTree, 'stable.txt'), 'utf8')).toBe('v1\n')
+    expect(readFileSync(join(workTree, 'replace'), 'utf8')).toBe('file in target\n')
+    expect(existsSync(join(workTree, 'nested/src/app.ts'))).toBe(false)
+    expect(existsSync(join(workTree, 'nested/.git'))).toBe(true)
+    await expectWorktreeTreeEquals(targetRow!.restoreHash)
+
+    const rewindAnchors = await listCodeAnchors(workTree, { withStats: true, withBodies: true })
+    const preRewindAnchor = rewindAnchors.find(anchor =>
+      anchor.subject.includes(`:${LABEL_PRE_REWIND}:`),
+    )
+    expect(preRewindAnchor).toBeDefined()
+
+    await fileHistoryRewind(holder.updater, preRewindAnchor!.gitHash, 'undo rewind')
+    expect(readFileSync(join(workTree, 'stable.txt'), 'utf8')).toBe('v2 dirty before rewind\n')
+    expect(readFileSync(join(workTree, 'dirty-only.txt'), 'utf8')).toBe('pre-rewind only\n')
+    expect(readFileSync(join(workTree, 'replace/node.txt'), 'utf8')).toBe('directory in current\n')
+    expect(readFileSync(join(workTree, 'nested/src/app.ts'), 'utf8')).toBe('export const value = 2\n')
+    expect(existsSync(join(workTree, 'nested/.git'))).toBe(true)
+    await expectWorktreeTreeEquals(preRewindAnchor!.gitHash)
+    void msg2
+  }, 120_000)
 })
