@@ -69,6 +69,7 @@ import {
 let tmpRoot: string
 let workTree: string
 let originalConfigDir: string | undefined
+let originalRewindTempRoot: string | undefined
 let originalCwd: string
 const GIT_BACKED_TEST_TIMEOUT_MS = 30_000
 
@@ -81,9 +82,12 @@ function gitBackedTest(
 
 beforeEach(() => {
   originalConfigDir = process.env.AXIOMATE_CONFIG_DIR
+  originalRewindTempRoot = process.env.AXIOMATE_REWIND_TEMP_ROOT_FOR_TESTING
   originalCwd = process.cwd()
   tmpRoot = mkdtempSync(join(tmpdir(), 'axiomate-fhb-'))
   process.env.AXIOMATE_CONFIG_DIR = join(tmpRoot, 'config')
+  process.env.AXIOMATE_REWIND_TEMP_ROOT_FOR_TESTING = join(tmpRoot, 'rewind-temp')
+  mkdirSync(process.env.AXIOMATE_REWIND_TEMP_ROOT_FOR_TESTING, { recursive: true })
   workTree = mkdtempSync(join(tmpRoot, 'wt-'))
   setOriginalCwd(workTree)
   setIsInteractive(true)
@@ -98,6 +102,8 @@ afterEach(() => {
   }))
   if (originalConfigDir === undefined) delete process.env.AXIOMATE_CONFIG_DIR
   else process.env.AXIOMATE_CONFIG_DIR = originalConfigDir
+  if (originalRewindTempRoot === undefined) delete process.env.AXIOMATE_REWIND_TEMP_ROOT_FOR_TESTING
+  else process.env.AXIOMATE_REWIND_TEMP_ROOT_FOR_TESTING = originalRewindTempRoot
   setOriginalCwd(originalCwd)
   setIsInteractive(false)
   resetFileHistoryDraft()
@@ -191,8 +197,9 @@ async function latestPreRewindHash(): Promise<string> {
 }
 
 function rewindTempDirNames(): Set<string> {
+  const root = process.env.AXIOMATE_REWIND_TEMP_ROOT_FOR_TESTING ?? tmpdir()
   return new Set(
-    readdirSync(tmpdir()).filter(name => name.startsWith('axiomate-rewind-')),
+    readdirSync(root).filter(name => name.startsWith('axiomate-rewind-')),
   )
 }
 

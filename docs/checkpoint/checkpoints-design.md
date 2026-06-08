@@ -229,6 +229,15 @@ Rules:
 - Restore and verify git commands must use the plan scratch index.
 - A stale lock on the fixed per-project index must not affect rewind or disk
   preview helpers.
+- Normal rewind cleanup removes the plan temp directory. If the process is
+  killed before `finally` runs, crash leftovers can remain under the system temp
+  directory as `axiomate-rewind-*`.
+- `/checkpoints prune` removes only stale rewind temp leftovers older than 24
+  hours and skips directories whose owner process still appears alive. This
+  temp cleanup can run even when the store prune is skipped by the 24-hour
+  idempotency marker.
+- `/checkpoints clear` is an explicit destructive operation and removes all
+  `axiomate-rewind-*` temp directories in addition to the checkpoint store.
 
 ## Performance Design
 

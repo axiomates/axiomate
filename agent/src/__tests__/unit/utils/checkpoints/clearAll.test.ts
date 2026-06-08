@@ -43,30 +43,37 @@ vi.mock('fs/promises', async () => {
 import { clearAll } from '../../../../utils/checkpoints/clearAll.js'
 import { _resetGitAvailableCacheForTesting } from '../../../../utils/checkpoints/git.js'
 import { getCheckpointBase, getStoreDir } from '../../../../utils/checkpoints/paths.js'
+import { REWIND_TEMP_PREFIX } from '../../../../utils/checkpoints/rewindTempCleanup.js'
 import { ensureStore } from '../../../../utils/checkpoints/store.js'
 
 let tmpRoot: string
 let baseEnvBefore: string | undefined
+let rewindTempRootEnvBefore: string | undefined
 
 beforeAll(() => {
   tmpRoot = mkdtempSync(join(tmpdir(), 'axiomate-clearall-'))
   baseEnvBefore = process.env.AXIOMATE_CHECKPOINT_BASE
+  rewindTempRootEnvBefore = process.env.AXIOMATE_REWIND_TEMP_ROOT_FOR_TESTING
 })
 
 afterAll(() => {
   if (baseEnvBefore === undefined) delete process.env.AXIOMATE_CHECKPOINT_BASE
   else process.env.AXIOMATE_CHECKPOINT_BASE = baseEnvBefore
+  if (rewindTempRootEnvBefore === undefined) delete process.env.AXIOMATE_REWIND_TEMP_ROOT_FOR_TESTING
+  else process.env.AXIOMATE_REWIND_TEMP_ROOT_FOR_TESTING = rewindTempRootEnvBefore
   rmSync(tmpRoot, { recursive: true, force: true })
 })
 
 beforeEach(() => {
   const fresh = mkdtempSync(join(tmpRoot, 'base-'))
   process.env.AXIOMATE_CHECKPOINT_BASE = fresh
+  process.env.AXIOMATE_REWIND_TEMP_ROOT_FOR_TESTING = mkdtempSync(join(tmpRoot, 'rewind-temp-'))
   _resetGitAvailableCacheForTesting()
 })
 
 afterEach(() => {
   delete process.env.AXIOMATE_CHECKPOINT_BASE
+  delete process.env.AXIOMATE_REWIND_TEMP_ROOT_FOR_TESTING
   rmMock.fn = undefined
 })
 
@@ -79,6 +86,24 @@ describe('clearAll — empty/missing base', () => {
     const report = await clearAll()
     expect(report.bytes_freed).toBe(0)
     expect(report.deleted).toBe(false)
+    expect(report.errors).toEqual([])
+  })
+
+  test('nonexistent base still clears rewind temp directories', async () => {
+    rmSync(process.env.AXIOMATE_CHECKPOINT_BASE!, {
+      recursive: true,
+      force: true,
+    })
+    const rewindRoot = process.env.AXIOMATE_REWIND_TEMP_ROOT_FOR_TESTING!
+    const tempDir = mkdtempSync(join(rewindRoot, REWIND_TEMP_PREFIX))
+    writeFileSync(join(tempDir, 'checkout-paths.nul'), 'leftover')
+
+    const report = await clearAll()
+
+    expect(report.deleted).toBe(false)
+    expect(report.rewind_temp_dirs_removed).toBe(1)
+    expect(report.rewind_temp_bytes_freed).toBeGreaterThan(0)
+    expect(existsSync(tempDir)).toBe(false)
     expect(report.errors).toEqual([])
   })
 

@@ -32,25 +32,33 @@ type TreeModel = Map<string, string>
 let tmpRoot: string
 let workTree: string
 let originalBase: string | undefined
+let originalRewindTempRoot: string | undefined
 let snapshotCounter = 0
 
 beforeAll(() => {
   originalBase = process.env.AXIOMATE_CHECKPOINT_BASE
+  originalRewindTempRoot = process.env.AXIOMATE_REWIND_TEMP_ROOT_FOR_TESTING
 })
 
 afterAll(() => {
   if (originalBase === undefined) delete process.env.AXIOMATE_CHECKPOINT_BASE
   else process.env.AXIOMATE_CHECKPOINT_BASE = originalBase
+  if (originalRewindTempRoot === undefined) delete process.env.AXIOMATE_REWIND_TEMP_ROOT_FOR_TESTING
+  else process.env.AXIOMATE_REWIND_TEMP_ROOT_FOR_TESTING = originalRewindTempRoot
 })
 
 beforeEach(() => {
   tmpRoot = mkdtempSync(join(tmpdir(), 'axiomate-reconcile-'))
   process.env.AXIOMATE_CHECKPOINT_BASE = join(tmpRoot, 'cp')
+  process.env.AXIOMATE_REWIND_TEMP_ROOT_FOR_TESTING = join(tmpRoot, 'rewind-temp')
+  mkdirSync(process.env.AXIOMATE_REWIND_TEMP_ROOT_FOR_TESTING, { recursive: true })
   workTree = mkdtempSync(join(tmpRoot, 'wt-'))
 })
 
 afterEach(() => {
   _setWorktreeReconcileTestHooksForTesting(undefined)
+  if (originalRewindTempRoot === undefined) delete process.env.AXIOMATE_REWIND_TEMP_ROOT_FOR_TESTING
+  else process.env.AXIOMATE_REWIND_TEMP_ROOT_FOR_TESTING = originalRewindTempRoot
   rmSync(tmpRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
 })
 

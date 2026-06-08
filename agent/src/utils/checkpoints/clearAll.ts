@@ -21,6 +21,7 @@ import { rm } from 'fs/promises'
 import { logForDebugging } from '../debug.js'
 import { getCheckpointBase } from './paths.js'
 import { dirSizeBytes } from './prune.js'
+import { cleanupRewindTempDirs } from './rewindTempCleanup.js'
 
 export interface ClearAllReport {
   /**
@@ -34,6 +35,9 @@ export interface ClearAllReport {
   deleted: boolean
   /** Captured error messages. Empty when `deleted` is true. */
   errors: string[]
+  /** Rewind transaction temp dirs removed from os.tmpdir(). */
+  rewind_temp_dirs_removed: number
+  rewind_temp_bytes_freed: number
 }
 
 /**
@@ -51,19 +55,28 @@ export async function clearAll(): Promise<ClearAllReport> {
     bytes_freed: 0,
     deleted: false,
     errors: [],
+    rewind_temp_dirs_removed: 0,
+    rewind_temp_bytes_freed: 0,
   }
-  if (!existsSync(base)) return report
+  if (existsSync(base)) {
+    // Measure first — Hermes `clear_all`::1609. After `rm` we have nothing to count.
+    report.bytes_freed = dirSizeBytes(base)
 
-  // Measure first — Hermes `clear_all`::1609. After `rm` we have nothing to count.
-  report.bytes_freed = dirSizeBytes(base)
+    try {
+      await rm(base, { recursive: true, force: true })
+      report.deleted = true
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      report.errors.push(msg)
+      logForDebugging(`clearAll: rm failed: ${msg}`)
+    }
+  }
 
-  try {
-    await rm(base, { recursive: true, force: true })
-    report.deleted = true
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err)
-    report.errors.push(msg)
-    logForDebugging(`clearAll: rm failed: ${msg}`)
+  const rewindTemp = await cleanupRewindTempDirs({ includeActive: true })
+  report.rewind_temp_dirs_removed = rewindTemp.dirsRemoved
+  report.rewind_temp_bytes_freed = rewindTemp.bytesFreed
+  for (const error of rewindTemp.errors) {
+    report.errors.push(`rewind temp cleanup: ${error}`)
   }
   return report
 }

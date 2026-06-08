@@ -53,6 +53,11 @@ This test plan follows `docs/checkpoint/checkpoints-design.md`.
 - Temp directory is removed after success.
 - Temp directory is removed after prepare/apply/verify failure.
 - Cleanup failure is logged without hiding the original restore/apply error.
+- Rewind temp janitor removes only `axiomate-rewind-*` directories.
+- `/checkpoints prune` removes stale rewind temp leftovers and leaves fresh or
+  active-owner directories alone.
+- `/checkpoints clear` removes rewind temp leftovers even when the checkpoint
+  store is already empty.
 - Pathspec records reject absolute paths, drive-prefixed paths, NUL bytes, empty
   records, and traversal outside the worktree.
 - File/directory type conflicts are handled before checkout.

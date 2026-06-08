@@ -34,6 +34,7 @@ import {
   refName,
 } from '../../../../utils/checkpoints/paths.js'
 import { pruneCheckpoints, MIN_INTERVAL_HOURS } from '../../../../utils/checkpoints/prune.js'
+import { REWIND_TEMP_PREFIX } from '../../../../utils/checkpoints/rewindTempCleanup.js'
 import { ensureStore } from '../../../../utils/checkpoints/store.js'
 import { touchProject } from '../../../../utils/checkpoints/touchProject.js'
 import { gitExe } from '../../../../utils/git.js'
@@ -41,6 +42,7 @@ import { buildFixtureCommit } from './fixtures.js'
 
 let tmpRoot: string
 let baseEnvBefore: string | undefined
+let rewindTempRootEnvBefore: string | undefined
 const CHECKPOINT_TEST_TIMEOUT_MS = 30_000
 
 function test(
@@ -54,11 +56,14 @@ function test(
 beforeAll(() => {
   tmpRoot = mkdtempSync(join(tmpdir(), 'axiomate-prune-skel-'))
   baseEnvBefore = process.env.AXIOMATE_CHECKPOINT_BASE
+  rewindTempRootEnvBefore = process.env.AXIOMATE_REWIND_TEMP_ROOT_FOR_TESTING
 })
 
 afterAll(() => {
   if (baseEnvBefore === undefined) delete process.env.AXIOMATE_CHECKPOINT_BASE
   else process.env.AXIOMATE_CHECKPOINT_BASE = baseEnvBefore
+  if (rewindTempRootEnvBefore === undefined) delete process.env.AXIOMATE_REWIND_TEMP_ROOT_FOR_TESTING
+  else process.env.AXIOMATE_REWIND_TEMP_ROOT_FOR_TESTING = rewindTempRootEnvBefore
   rmSync(tmpRoot, { recursive: true, force: true })
 })
 
@@ -67,6 +72,7 @@ beforeEach(() => {
   // store init don't bleed across tests.
   const fresh = mkdtempSync(join(tmpRoot, 'base-'))
   process.env.AXIOMATE_CHECKPOINT_BASE = fresh
+  process.env.AXIOMATE_REWIND_TEMP_ROOT_FOR_TESTING = mkdtempSync(join(tmpRoot, 'rewind-temp-'))
   _resetGitAvailableCacheForTesting()
 })
 
@@ -108,6 +114,22 @@ describe('pruneCheckpoints — entry contract', () => {
     expect(r.gitMissing).toBe(false)
     expect(r.orphanRefsRemoved).toBe(0)
     expect(r.staleRefsRemoved).toBe(0)
+  })
+
+  test('recent marker still allows stale rewind temp cleanup', async () => {
+    await ensureStore()
+    writeFileSync(getLastPrunePath(), String(Date.now()), 'utf-8')
+
+    const rewindRoot = process.env.AXIOMATE_REWIND_TEMP_ROOT_FOR_TESTING!
+    const stale = mkdtempSync(join(rewindRoot, REWIND_TEMP_PREFIX))
+    writeFileSync(join(stale, 'delete-paths.nul'), 'old')
+    const oldSec = (Date.now() - 25 * 60 * 60 * 1000) / 1000
+    utimesSync(stale, oldSec, oldSec)
+
+    const r = await pruneCheckpoints({})
+    expect(r.skipped).toBe(true)
+    expect(r.rewindTempDirsRemoved).toBe(1)
+    expect(existsSync(stale)).toBe(false)
   })
 
   test('does NOT skip when marker is older than 24h', async () => {
@@ -195,6 +217,25 @@ describe('pruneCheckpoints — entry contract', () => {
     expect(r.orphanRefsRemoved).toBe(0)
     expect(r.staleRefsRemoved).toBe(0)
     expect(existsSync(getLastPrunePath())).toBe(true)
+  })
+
+  test('cleans stale rewind temp dirs but leaves fresh ones', async () => {
+    const rewindRoot = process.env.AXIOMATE_REWIND_TEMP_ROOT_FOR_TESTING!
+    const stale = mkdtempSync(join(rewindRoot, REWIND_TEMP_PREFIX))
+    const fresh = mkdtempSync(join(rewindRoot, REWIND_TEMP_PREFIX))
+    writeFileSync(join(stale, 'checkout-paths.nul'), 'old')
+    writeFileSync(join(fresh, 'checkout-paths.nul'), 'new')
+    const oldSec = (Date.now() - 25 * 60 * 60 * 1000) / 1000
+    utimesSync(stale, oldSec, oldSec)
+    try {
+      const r = await pruneCheckpoints({ forceNow: true })
+      expect(r.rewindTempDirsRemoved).toBeGreaterThanOrEqual(1)
+      expect(existsSync(stale)).toBe(false)
+      expect(existsSync(fresh)).toBe(true)
+    } finally {
+      rmSync(stale, { recursive: true, force: true })
+      rmSync(fresh, { recursive: true, force: true })
+    }
   })
 })
 

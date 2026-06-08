@@ -1,5 +1,5 @@
 import { execFile } from 'child_process'
-import { existsSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from 'fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { promisify } from 'util'
@@ -32,6 +32,7 @@ let checkpointBase: string
 let originalConfigDir: string | undefined
 let originalCwd: string
 let originalCheckpointBase: string | undefined
+let originalRewindTempRoot: string | undefined
 
 beforeAll(() => {
   // dist/cli.js must exist (pnpm run build)
@@ -41,10 +42,13 @@ beforeEach(() => {
   originalConfigDir = process.env.AXIOMATE_CONFIG_DIR
   originalCwd = process.cwd()
   originalCheckpointBase = process.env.AXIOMATE_CHECKPOINT_BASE
+  originalRewindTempRoot = process.env.AXIOMATE_REWIND_TEMP_ROOT_FOR_TESTING
   tmpRoot = mkdtempSync(join(tmpdir(), 'axiomate-cli-e2e-'))
   checkpointBase = join(tmpRoot, 'cp')
   process.env.AXIOMATE_CHECKPOINT_BASE = checkpointBase
   process.env.AXIOMATE_CONFIG_DIR = join(tmpRoot, 'config')
+  process.env.AXIOMATE_REWIND_TEMP_ROOT_FOR_TESTING = join(tmpRoot, 'rewind-temp')
+  mkdirSync(process.env.AXIOMATE_REWIND_TEMP_ROOT_FOR_TESTING, { recursive: true })
   workTree = mkdtempSync(join(tmpRoot, 'wt-'))
   setOriginalCwd(workTree)
   setIsInteractive(true)
@@ -56,6 +60,8 @@ afterEach(() => {
   else process.env.AXIOMATE_CONFIG_DIR = originalConfigDir
   if (originalCheckpointBase === undefined) delete process.env.AXIOMATE_CHECKPOINT_BASE
   else process.env.AXIOMATE_CHECKPOINT_BASE = originalCheckpointBase
+  if (originalRewindTempRoot === undefined) delete process.env.AXIOMATE_REWIND_TEMP_ROOT_FOR_TESTING
+  else process.env.AXIOMATE_REWIND_TEMP_ROOT_FOR_TESTING = originalRewindTempRoot
   setOriginalCwd(originalCwd)
   setIsInteractive(false)
   resetFileHistoryDraft()
@@ -116,6 +122,7 @@ async function cli(
           ...process.env,
           AXIOMATE_CHECKPOINT_BASE: checkpointBase,
           AXIOMATE_CONFIG_DIR: join(tmpRoot, 'config'),
+          AXIOMATE_REWIND_TEMP_ROOT_FOR_TESTING: join(tmpRoot, 'rewind-temp'),
           AXIOMATE_CODE_DISABLE_FILE_CHECKPOINTING: '0',
         },
         timeout: 60_000,

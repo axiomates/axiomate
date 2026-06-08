@@ -117,20 +117,30 @@ export async function checkpointsClearHandler(
     process.exit(1)
   }
   const status = await storeStatus()
-  if (status.total_size_bytes === 0 && status.project_count === 0) {
-    console.log(`Nothing to clear at ${status.base}.`)
-    return
-  }
   const report = await clearAll()
+  const tempSummary = report.rewind_temp_dirs_removed > 0
+    ? `\nRemoved ${report.rewind_temp_dirs_removed} rewind temp ${report.rewind_temp_dirs_removed === 1 ? 'directory' : 'directories'} (${formatBytes(report.rewind_temp_bytes_freed)}).`
+    : ''
   if (report.deleted) {
     console.log(
-      `Cleared ${formatBytes(report.bytes_freed)} from ${status.base}.`,
+      `Cleared ${formatBytes(report.bytes_freed)} from ${status.base}.` +
+        tempSummary,
+    )
+    return
+  }
+  if (report.errors.length === 0) {
+    console.log(
+      (report.rewind_temp_dirs_removed > 0
+        ? `No checkpoint store found at ${status.base}.`
+        : `Nothing to clear at ${status.base}.`) +
+        tempSummary,
     )
     return
   }
   console.error(
     `Could not clear ${status.base} (${formatBytes(report.bytes_freed)} on disk):`,
   )
+  if (tempSummary.length > 0) console.error(tempSummary.trimStart())
   for (const e of report.errors) console.error(`  - ${e}`)
   process.exit(1)
 }

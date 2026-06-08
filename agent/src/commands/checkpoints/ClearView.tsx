@@ -46,19 +46,25 @@ export function ClearView({
     }
     setMode('running')
     const report = await clearAll()
+    const tempSummary = report.rewind_temp_dirs_removed > 0
+      ? `\nRemoved ${report.rewind_temp_dirs_removed} rewind temp ${report.rewind_temp_dirs_removed === 1 ? 'directory' : 'directories'} (${formatBytes(report.rewind_temp_bytes_freed)}).`
+      : ''
     if (report.deleted) {
       const summary =
         `Cleared ${formatBytes(report.bytes_freed)} from ${base}.\n` +
-        `The store will be re-created on the next snapshot.`
+        `The store will be re-created on the next snapshot.` +
+        tempSummary
       setResult(summary)
       onDone(summary)
     } else {
       const head =
         report.errors.length === 0
-          ? `Nothing to clear at ${base}.`
+          ? report.rewind_temp_dirs_removed > 0
+            ? `No checkpoint store found at ${base}.`
+            : `Nothing to clear at ${base}.`
           : `Could not clear ${base} (${formatBytes(report.bytes_freed)} on disk).`
       const detail = report.errors.map(e => `  - ${e}`).join('\n')
-      const out = detail ? `${head}\n${detail}` : head
+      const out = detail ? `${head}${tempSummary}\n${detail}` : `${head}${tempSummary}`
       setResult(out)
       onDone(out)
     }

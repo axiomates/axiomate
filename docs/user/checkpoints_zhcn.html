@@ -240,11 +240,11 @@
       </tr>
       <tr>
         <td><code>/checkpoints prune</code><br><code>axiomate checkpoints prune --force</code></td>
-        <td>清理 orphan、stale、超数量和超容量的 checkpoint 数据。</td>
+        <td>清理 orphan、stale、超数量和超容量的 checkpoint 数据；同时清理超过 24 小时的 rewind 临时目录残留。</td>
       </tr>
       <tr>
         <td><code>/checkpoints clear</code><br><code>axiomate checkpoints clear --force</code></td>
-        <td>清空 checkpoint store。CLI 必须显式传 <code>--force</code>。</td>
+        <td>清空 checkpoint store，并删除所有 rewind 临时目录残留。CLI 必须显式传 <code>--force</code>。</td>
       </tr>
     </table>
     <div class="note warn">

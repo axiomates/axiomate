@@ -57,6 +57,10 @@ import { loadProjectMetas as loadProjectMetasShared } from './projectMetas.js'
 import type { ProjectMeta } from './projectMetas.js'
 import { pruneRefToMaxN } from './pruneRefToMaxN.js'
 import {
+  cleanupRewindTempDirs,
+  PRUNE_REWIND_TEMP_MAX_AGE_MS,
+} from './rewindTempCleanup.js'
+import {
   extractGitHashes,
   listRecentSessionsForWorkdir,
   DEFAULT_KEEP_WINDOW_DAYS,
@@ -184,6 +188,9 @@ export interface PruneReport {
   bytesFreed: number
   /** Per-step errors. Never throws; everything that goes wrong lands here. */
   errors: string[]
+  /** Crash/kill leftovers removed from os.tmpdir()/axiomate-rewind-*. */
+  rewindTempDirsRemoved: number
+  rewindTempBytesFreed: number
 }
 
 const EMPTY_REPORT: Omit<PruneReport, 'skipped' | 'gitMissing'> = {
@@ -200,6 +207,8 @@ const EMPTY_REPORT: Omit<PruneReport, 'skipped' | 'gitMissing'> = {
   gcInvocations: 0,
   bytesFreed: 0,
   errors: [],
+  rewindTempDirsRemoved: 0,
+  rewindTempBytesFreed: 0,
 }
 
 /**
@@ -211,9 +220,18 @@ const EMPTY_REPORT: Omit<PruneReport, 'skipped' | 'gitMissing'> = {
 export async function pruneCheckpoints(
   opts: PruneOptions = {},
 ): Promise<PruneReport> {
+  const report: PruneReport = {
+    skipped: false,
+    gitMissing: false,
+    ...EMPTY_REPORT,
+    errors: [],
+  }
+  await collectStaleRewindTempCleanup(report)
+
   // 1. Soft-disable when git is missing. Same pattern as createSnapshot.
   if (!(await probeGitAvailable())) {
-    return { skipped: false, gitMissing: true, ...EMPTY_REPORT }
+    report.gitMissing = true
+    return report
   }
 
   // 2. 24h idempotency marker. Hermes `maybe_auto_prune_checkpoints:1488`
@@ -221,7 +239,8 @@ export async function pruneCheckpoints(
   //    Corrupt or unreadable markers are treated as "no prior run" (Hermes
   //    line 1497 swallows the parse error silently). forceNow bypasses.
   if (!opts.forceNow && isMarkerRecent()) {
-    return { skipped: true, gitMissing: false, ...EMPTY_REPORT }
+    report.skipped = true
+    return report
   }
 
   const retentionDays = opts.retentionDays ?? DEFAULT_RETENTION_DAYS
@@ -237,12 +256,6 @@ export async function pruneCheckpoints(
     }
     return DEFAULT_MAX_SNAPSHOTS_PER_REF
   })()
-  const report: PruneReport = {
-    skipped: false,
-    gitMissing: false,
-    ...EMPTY_REPORT,
-    errors: [],
-  }
   const store = getStoreDir()
   const base = getCheckpointBase()
   // Hermes `prune_checkpoints:1260` snapshots size at the very start so
@@ -332,6 +345,17 @@ export async function pruneCheckpoints(
   await writeMarker(report)
 
   return report
+}
+
+async function collectStaleRewindTempCleanup(report: PruneReport): Promise<void> {
+  const rewindTemp = await cleanupRewindTempDirs({
+    olderThanMs: PRUNE_REWIND_TEMP_MAX_AGE_MS,
+  })
+  report.rewindTempDirsRemoved = rewindTemp.dirsRemoved
+  report.rewindTempBytesFreed = rewindTemp.bytesFreed
+  for (const error of rewindTemp.errors) {
+    report.errors.push(`rewind temp cleanup: ${error}`)
+  }
 }
 
 /**

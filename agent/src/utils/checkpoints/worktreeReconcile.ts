@@ -1,5 +1,4 @@
 import { lstat, mkdtemp, rm, rmdir, unlink } from 'fs/promises'
-import { tmpdir } from 'os'
 import { dirname, isAbsolute, join, normalize, relative, resolve } from 'path'
 import { prepareSnapshotTree, MAX_FILE_SIZE_MB } from './createSnapshot.js'
 import { dropOversizeFromIndex } from './dropOversizeFromIndex.js'
@@ -13,9 +12,13 @@ import {
   readNulPathspecFile,
   streamGitPathspecFromDiff,
 } from '../fileHistoryRewindPathspec.js'
+import {
+  getRewindTempRoot,
+  REWIND_TEMP_PREFIX,
+  writeRewindTempOwnerFile,
+} from './rewindTempCleanup.js'
 
 const DIFF_HAS_CHANGES = new Set([0, 1])
-const RECONCILE_PATHSPEC_PREFIX = 'axiomate-rewind-'
 
 type WorktreeReconcileTestHooks = {
   cleanup?: (plan: WorktreeReconcilePlan) => void | Promise<void>
@@ -61,8 +64,14 @@ export async function prepareWorktreeReconcilePlan(
   workdir: string,
   targetHash: string,
 ): Promise<WorktreeReconcilePlan> {
-  const tempDir = await mkdtemp(join(tmpdir(), RECONCILE_PATHSPEC_PREFIX))
+  const tempDir = await mkdtemp(join(getRewindTempRoot(), REWIND_TEMP_PREFIX))
   try {
+    await writeRewindTempOwnerFile(tempDir).catch(error => {
+      const detail = error instanceof Error ? error.message : String(error)
+      logForDebugging(
+        `WorktreeReconcile: owner marker write failed for ${tempDir}: ${detail}`,
+      )
+    })
     const reconcileIndexFile = join(tempDir, 'reconcile.index')
     const prepared = await prepareSnapshotTree(expandPath(workdir), {
       indexFile: reconcileIndexFile,

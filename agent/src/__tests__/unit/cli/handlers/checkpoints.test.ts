@@ -36,6 +36,7 @@ import {
 import { _resetGitAvailableCacheForTesting } from '../../../../utils/checkpoints/git.js'
 import { ensureStore } from '../../../../utils/checkpoints/store.js'
 import { getCheckpointBase } from '../../../../utils/checkpoints/paths.js'
+import { REWIND_TEMP_PREFIX } from '../../../../utils/checkpoints/rewindTempCleanup.js'
 
 class ExitInvoked extends Error {
   constructor(public code: number) {
@@ -45,6 +46,7 @@ class ExitInvoked extends Error {
 
 let tmpRoot: string
 let baseEnvBefore: string | undefined
+let rewindTempRootEnvBefore: string | undefined
 let exitSpy: ReturnType<typeof vi.spyOn>
 let logSpy: ReturnType<typeof vi.spyOn>
 let errSpy: ReturnType<typeof vi.spyOn>
@@ -52,17 +54,21 @@ let errSpy: ReturnType<typeof vi.spyOn>
 beforeAll(() => {
   tmpRoot = mkdtempSync(join(tmpdir(), 'axiomate-cli-cp-'))
   baseEnvBefore = process.env.AXIOMATE_CHECKPOINT_BASE
+  rewindTempRootEnvBefore = process.env.AXIOMATE_REWIND_TEMP_ROOT_FOR_TESTING
 })
 
 afterAll(() => {
   if (baseEnvBefore === undefined) delete process.env.AXIOMATE_CHECKPOINT_BASE
   else process.env.AXIOMATE_CHECKPOINT_BASE = baseEnvBefore
+  if (rewindTempRootEnvBefore === undefined) delete process.env.AXIOMATE_REWIND_TEMP_ROOT_FOR_TESTING
+  else process.env.AXIOMATE_REWIND_TEMP_ROOT_FOR_TESTING = rewindTempRootEnvBefore
   rmSync(tmpRoot, { recursive: true, force: true })
 })
 
 beforeEach(() => {
   const fresh = mkdtempSync(join(tmpRoot, 'base-'))
   process.env.AXIOMATE_CHECKPOINT_BASE = fresh
+  process.env.AXIOMATE_REWIND_TEMP_ROOT_FOR_TESTING = mkdtempSync(join(tmpRoot, 'rewind-temp-'))
   _resetGitAvailableCacheForTesting()
   exitSpy = vi
     .spyOn(process, 'exit')
@@ -75,6 +81,7 @@ beforeEach(() => {
 
 afterEach(() => {
   delete process.env.AXIOMATE_CHECKPOINT_BASE
+  delete process.env.AXIOMATE_REWIND_TEMP_ROOT_FOR_TESTING
   exitSpy.mockRestore()
   logSpy.mockRestore()
   errSpy.mockRestore()
@@ -94,11 +101,27 @@ describe('checkpointsClearHandler', () => {
     expect(existsSync(base)).toBe(true)
   })
 
-  test('--force on empty base: prints "nothing to clear", returns 0', async () => {
+  test('--force on empty base: clears empty checkpoint base, returns 0', async () => {
     // Explicitly DON'T ensureStore — base is an empty mkdtemp dir.
+    const base = getCheckpointBase()
     await checkpointsClearHandler({ force: true })
     const stdout = (logSpy.mock.calls.map(c => c[0] ?? '').join('\n')) as string
-    expect(stdout).toMatch(/Nothing to clear/)
+    expect(stdout).toMatch(/Cleared 0 bytes/)
+    expect(stdout).toContain(base)
+    expect(existsSync(base)).toBe(false)
+    expect(exitSpy).not.toHaveBeenCalled()
+  })
+
+  test('--force on empty base clears rewind temp leftovers', async () => {
+    const rewindRoot = process.env.AXIOMATE_REWIND_TEMP_ROOT_FOR_TESTING!
+    const tempDir = mkdtempSync(join(rewindRoot, REWIND_TEMP_PREFIX))
+    writeFileSync(join(tempDir, 'delete-paths.nul'), 'leftover')
+
+    await checkpointsClearHandler({ force: true })
+
+    const stdout = (logSpy.mock.calls.map(c => c[0] ?? '').join('\n')) as string
+    expect(stdout).toMatch(/rewind temp/)
+    expect(existsSync(tempDir)).toBe(false)
     expect(exitSpy).not.toHaveBeenCalled()
   })
 

@@ -279,13 +279,19 @@ function parseIsoToEpochSeconds(iso: string): number {
  */
 export function renderPruneReport(report: PruneReport): string {
   if (report.gitMissing) {
-    return 'Checkpoints disabled: git not found on PATH.'
+    const lines = ['Checkpoints disabled: git not found on PATH.']
+    appendRewindTempCleanupLines(lines, report)
+    appendPruneErrorLines(lines, report)
+    return lines.join('\n')
   }
   if (report.skipped) {
-    return [
+    const lines = [
       'Skipped — prune ran less than 24h ago.',
       'Pass --force to bypass the idempotency marker.',
-    ].join('\n')
+    ]
+    appendRewindTempCleanupLines(lines, report)
+    appendPruneErrorLines(lines, report)
+    return lines.join('\n')
   }
   const lines: string[] = []
   lines.push('Prune complete.')
@@ -306,6 +312,19 @@ export function renderPruneReport(report: PruneReport): string {
   }
   lines.push(`gc invocations:         ${report.gcInvocations}`)
   lines.push(`Bytes reclaimed:        ${formatBytes(report.bytesFreed)}`)
+  appendRewindTempCleanupLines(lines, report)
+  appendPruneErrorLines(lines, report)
+  return lines.join('\n')
+}
+
+function appendRewindTempCleanupLines(lines: string[], report: PruneReport): void {
+  if (report.rewindTempDirsRemoved > 0 || report.rewindTempBytesFreed > 0) {
+    lines.push(`Rewind temp dirs drop:  ${report.rewindTempDirsRemoved}`)
+    lines.push(`Rewind temp bytes:      ${formatBytes(report.rewindTempBytesFreed)}`)
+  }
+}
+
+function appendPruneErrorLines(lines: string[], report: PruneReport): void {
   if (report.errors.length > 0) {
     lines.push('')
     lines.push(`Errors (${report.errors.length}):`)
@@ -314,5 +333,4 @@ export function renderPruneReport(report: PruneReport): string {
       lines.push(`  … +${report.errors.length - 10} more`)
     }
   }
-  return lines.join('\n')
 }

@@ -404,6 +404,8 @@ describe('renderPruneReport', () => {
       gcInvocations: 0,
       bytesFreed: 0,
       errors: [],
+      rewindTempDirsRemoved: 0,
+      rewindTempBytesFreed: 0,
       skipped: false,
       gitMissing: false,
     }
@@ -418,6 +420,17 @@ describe('renderPruneReport', () => {
     const out = renderPruneReport({ ...emptyReport(), skipped: true })
     expect(out).toMatch(/Skipped/)
     expect(out).toMatch(/--force/)
+  })
+
+  test('skipped branch can still show rewind temp cleanup', () => {
+    const out = renderPruneReport({
+      ...emptyReport(),
+      skipped: true,
+      rewindTempDirsRemoved: 1,
+      rewindTempBytesFreed: 1024,
+    })
+    expect(out).toMatch(/Skipped/)
+    expect(out).toMatch(/Rewind temp dirs drop:\s+1/)
   })
 
   test('happy path with errors trimmed', () => {
@@ -450,6 +463,16 @@ describe('renderPruneReport', () => {
     expect(out).toMatch(/Orphan refs removed:    0/)
     expect(out).toMatch(/Orphan refs skipped:    4/)
     expect(out).toMatch(/Stale refs removed:     1/)
+  })
+
+  test('rewind temp cleanup is shown when prune removed temp dirs', () => {
+    const out = renderPruneReport({
+      ...emptyReport(),
+      rewindTempDirsRemoved: 2,
+      rewindTempBytesFreed: 4096,
+    })
+    expect(out).toMatch(/Rewind temp dirs drop:\s+2/)
+    expect(out).toMatch(/Rewind temp bytes:\s+4KB/)
   })
 })
 
