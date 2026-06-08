@@ -725,7 +725,15 @@ export function renderGroupedAgentToolUse(
   // Calculate stats for each agent
   const agentStats = toolUses.map(
     ({ param, isResolved, isError, progressMessages, result }) => {
-      const stats = calculateAgentStats(progressMessages)
+      const progressStats = calculateAgentStats(progressMessages)
+      const completedStats =
+        result?.output?.status === 'completed'
+          ? {
+              toolUseCount: result.output.totalToolUseCount,
+              tokens: result.output.totalTokens > 0 ? result.output.totalTokens : null,
+            }
+          : undefined
+      const stats = completedStats ?? progressStats
       const lastToolInfo = extractLastToolInfo(progressMessages, tools)
       const parsedInput = inputSchema().safeParse(param.input)
 

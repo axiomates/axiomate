@@ -50,6 +50,7 @@ import { permissionRuleValueFromString } from '../../utils/permissions/permissio
 import { emitTaskProgress as emitTaskProgressEvent } from '../../utils/task/sdkProgress.js'
 import { isInProcessTeammate } from '../../utils/teammateContext.js'
 import { getTokenCountFromUsage } from '../../utils/tokens.js'
+import { getLastKnownAgentUsage } from './agentUsage.js'
 import { EXIT_PLAN_MODE_V2_TOOL_NAME } from '../ExitPlanModeTool/constants.js'
 import { AGENT_TOOL_NAME, LEGACY_AGENT_TOOL_NAME } from './constants.js'
 import {
@@ -315,7 +316,10 @@ export function finalizeAgentTool(
     }
   }
 
-  const totalTokens = getTokenCountFromUsage(lastAssistantMessage.message.usage as any)
+  const finalUsage = getLastKnownAgentUsage(agentMessages)
+  const totalTokens = finalUsage
+    ? getTokenCountFromUsage(finalUsage)
+    : getTokenCountFromUsage(lastAssistantMessage.message.usage as any)
   const totalToolUseCount = countToolUses(agentMessages)
 
 
@@ -331,7 +335,7 @@ export function finalizeAgentTool(
     totalDurationMs: Date.now() - startTime,
     totalTokens,
     totalToolUseCount,
-    usage: lastAssistantMessage.message.usage,
+    usage: finalUsage ?? lastAssistantMessage.message.usage,
   }
 }
 
