@@ -71,6 +71,10 @@ import {
 } from '../utils/fileStateCache.js'
 import { expandPath } from '../utils/path.js'
 import { extractReadFilesFromMessages } from '../utils/queryHelpers.js'
+import {
+  setObservedFileState,
+  setObservedFileStateIfNewer,
+} from '../utils/fileStateRegistry.js'
 import { registerHookEventHandler } from '../utils/hooks/hookEvents.js'
 import { finalizePendingAsyncHooks } from '../utils/hooks/AsyncHookRegistry.js'
 import {
@@ -974,6 +978,7 @@ function runHeadlessStreaming(
   const pendingSeeds = createFileStateCacheWithSizeLimit(
     READ_FILE_STATE_CACHE_SIZE,
   )
+  const pendingSeedsContext = { readFileState: pendingSeeds }
 
   // Auto-resume interrupted turns on restart so CC continues from where it
   // left off without requiring the SDK to re-send the prompt.
@@ -1837,10 +1842,11 @@ function runHeadlessStreaming(
               setReadFileCache: cache => {
                 readFileState = cache
                 for (const [path, seed] of pendingSeeds.entries()) {
-                  const existing = readFileState.get(path)
-                  if (!existing || seed.timestamp > existing.timestamp) {
-                    readFileState.set(path, seed)
-                  }
+                  setObservedFileStateIfNewer(
+                    { readFileState },
+                    path,
+                    seed,
+                  )
                 }
                 pendingSeeds.clear()
               },
@@ -2634,7 +2640,7 @@ function runHeadlessStreaming(
               const content = (
                 raw.charCodeAt(0) === 0xfeff ? raw.slice(1) : raw
               ).replaceAll('\r\n', '\n')
-              pendingSeeds.set(normalizedPath, {
+              setObservedFileState(pendingSeedsContext, normalizedPath, {
                 content,
                 timestamp: diskMtime,
                 offset: undefined,

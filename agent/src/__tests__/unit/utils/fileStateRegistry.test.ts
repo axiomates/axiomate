@@ -14,6 +14,7 @@ import {
   getKnownReadFilePaths,
   getPathsWrittenByOtherContextsSince,
   setObservedFileState,
+  setObservedFileStateIfNewer,
   noteFileWrite,
   recordFileRead,
   wasFileModifiedAfterReadByAnotherContext,
@@ -335,6 +336,27 @@ describe('fileStateRegistry reminder queries', () => {
     expect(wasFileModifiedAfterReadByAnotherContext(parent, afterPath)).toBe(
       true,
     )
+  })
+
+  test('stamps SDK read-state seeds merged after sibling writes', () => {
+    const parent = makeContext()
+    const child = makeContext(asAgentId('achild000000000308'))
+    const path = normalize('/tmp/sdk-seeded-read.txt')
+
+    noteFileWrite(child, path)
+    const applied = setObservedFileStateIfNewer(parent, path, {
+      content: 'content from sdk seed',
+      timestamp: 1,
+      offset: undefined,
+      limit: undefined,
+    })
+
+    expect(applied).toBe(true)
+    expect(parent.readFileState.get(path)?.registrySequence).toBeDefined()
+    expect(wasFileModifiedAfterReadByAnotherContext(parent, path)).toBe(false)
+
+    noteFileWrite(child, path)
+    expect(wasFileModifiedAfterReadByAnotherContext(parent, path)).toBe(true)
   })
 })
 

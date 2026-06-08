@@ -222,6 +222,28 @@ export function setObservedFileState(
   recordFileRead(context, filePath)
 }
 
+export function setObservedFileStateIfNewer(
+  context: FileStateContext,
+  filePath: string,
+  fileState: FileState,
+): boolean {
+  const existing = context.readFileState.get(filePath)
+  if (existing && existing.timestamp >= fileState.timestamp) {
+    return false
+  }
+  context.readFileState.set(filePath, fileState)
+  if (fileState.registrySequence === undefined) {
+    recordFileRead(context, filePath)
+  } else {
+    rememberReadPathForRegistryKey(
+      context,
+      normalize(filePath),
+      getFileStateRegistryPathKey(filePath),
+    )
+  }
+  return true
+}
+
 export function noteFileWrite(
   context: FileStateContext,
   filePath: string,
