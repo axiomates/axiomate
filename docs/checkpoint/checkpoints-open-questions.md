@@ -7,11 +7,14 @@ Date: 2026-06-08
 The newest `/rewind` file-tab row compares the newest checkpoint to current
 disk. If disk changes while the picker is open, the row can become stale.
 
-Decision needed:
+Decision:
 
-- Refresh the newest row when entering confirmation.
-- Or document that the picker row is a preview and the final restore/verify path
-  is authoritative.
+- Treat picker rows as preview data.
+- When a File tab row is selected, refresh only that selected restore hash
+  against current disk before showing confirmation.
+- Do not reload the whole picker list on selection.
+- Conversation-tab confirmation does not carry file restore state or refresh
+  file stats.
 
 ## RewindPlan Staleness
 

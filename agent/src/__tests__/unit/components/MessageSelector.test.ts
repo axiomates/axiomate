@@ -15,14 +15,16 @@
  * is "does this UUID appear in the anchor map?". Tests below use a Set
  * to model that map locally.
  */
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 import {
   getMessageText,
+  resolveDiffStatsForRestoreSelection,
   selectableUserMessagesFilter,
 } from '../../../components/MessageSelector.js'
 import { createUserMessage } from '../../../utils/messages.js'
 import type { Message, UserMessage } from '../../../types/message.js'
 import type { UUID } from 'crypto'
+import type { RewindCodeRow } from '../../../utils/fileHistory.js'
 
 function userMsg(content: string): UserMessage {
   return createUserMessage({ content }) as UserMessage
@@ -144,5 +146,70 @@ describe('view-layer filter invariants', () => {
 
     expect(allSelectable).toHaveLength(2)
     expect(anchorsOnly).toHaveLength(0)
+  })
+})
+
+describe('resolveDiffStatsForRestoreSelection', () => {
+  function row(diffStats = {
+    filesChanged: ['stale.txt'],
+    insertions: 1,
+    deletions: 0,
+  }): RewindCodeRow {
+    return {
+      rowId: 'abc123',
+      kind: 'turn',
+      restoreHash: 'abc123',
+      labelText: '↶ Before edit',
+      timestamp: new Date('2026-06-08T00:00:00Z'),
+      diffStats,
+      isSynthetic: false,
+    }
+  }
+
+  test('file tab refreshes exactly the selected restore hash', async () => {
+    const freshStats = {
+      filesChanged: ['fresh.txt'],
+      insertions: 2,
+      deletions: 1,
+    }
+    const refreshDiffStats = vi.fn(async () => freshStats)
+
+    const resolved = await resolveDiffStatsForRestoreSelection({
+      activeTab: 'code',
+      row: row(),
+      refreshDiffStats,
+    })
+
+    expect(refreshDiffStats).toHaveBeenCalledTimes(1)
+    expect(refreshDiffStats).toHaveBeenCalledWith('abc123')
+    expect(resolved).toEqual({
+      diffStats: freshStats,
+      restoreHash: 'abc123',
+    })
+  })
+
+  test('conversation tab does not carry file restore state', async () => {
+    const staleStats = {
+      filesChanged: ['stale.txt'],
+      insertions: 1,
+      deletions: 0,
+    }
+    const refreshDiffStats = vi.fn(async () => ({
+      filesChanged: ['fresh.txt'],
+      insertions: 2,
+      deletions: 1,
+    }))
+
+    const resolved = await resolveDiffStatsForRestoreSelection({
+      activeTab: 'conversation',
+      row: row(staleStats),
+      refreshDiffStats,
+    })
+
+    expect(refreshDiffStats).not.toHaveBeenCalled()
+    expect(resolved).toEqual({
+      diffStats: undefined,
+      restoreHash: undefined,
+    })
   })
 })

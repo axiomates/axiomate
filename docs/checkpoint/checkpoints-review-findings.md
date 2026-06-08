@@ -128,6 +128,29 @@ Current action taken:
 - Added a regression that injects an apply failure and asserts the user-visible
   error stays concise while still pointing at the newest recovery row.
 
+### F4b: Confirmation used stale picker stats
+
+Severity: resolved
+
+`/rewind` File tab picker rows are optimized previews. The newest row can become
+stale if disk changes while the picker is open. The confirmation view previously
+reused the row's cached `diffStats`, so the displayed `+x -y` and `Restore file`
+availability could be based on stale disk state.
+
+Current action taken:
+
+- Selecting a File tab row refreshes only that selected restore hash against
+  current disk before entering confirmation.
+- The picker list is not reloaded on selection.
+- Conversation-tab confirmation continues to avoid file-stat refresh.
+
+Regression tests:
+
+- A real checkpoint-row test builds picker stats, mutates disk, then verifies
+  confirmation refresh returns the newer selected-hash diff.
+- A helper-level test proves File tab refreshes exactly one restore hash and
+  Conversation tab does not refresh file stats.
+
 ### F5: Temp pathspec lifecycle should be pinned on failure paths
 
 Severity: medium

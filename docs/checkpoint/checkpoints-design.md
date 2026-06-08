@@ -133,6 +133,16 @@ will the managed worktree change toward?"
 Rows with no file consequence are hidden from the file tab. The commit hash
 remains the restore target even when message labels are missing or synthetic.
 
+Picker rows are a preview. When a File tab row is selected, the confirmation
+view refreshes only that selected restore hash against current disk:
+
+```text
+selected checkpoint tree -> current disk
+```
+
+That one-hash refresh keeps the confirmation text and `Restore file` availability
+aligned with the disk state at selection time without reloading the whole list.
+
 ## `/checkpoints list`
 
 `/checkpoints list` is a read-only history view. It is not a rewind selector.
@@ -204,6 +214,10 @@ a cache of mutable disk state; it is a cheap projection of commit history.
 
 Only the newest `/rewind` row compares a checkpoint to current disk and can
 change while the picker is open.
+
+The picker does not refresh all rows while it is open. Confirmation refreshes
+the selected File tab row once before showing the restore options. This is the
+bounded-cost freshness point.
 
 ### RewindPlan
 

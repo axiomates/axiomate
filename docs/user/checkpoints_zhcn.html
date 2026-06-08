@@ -211,6 +211,11 @@
       而污染；只有最新行需要和当前磁盘比较。
     </p>
     <p>
+      File tab 列表中的统计是快速预览。按 Enter 选择某一行后，确认页会只对这一个
+      restore hash 重新和当前磁盘比较一次，所以确认页里的 <code>+x -y</code> 和
+      <code>Restore file</code> 是否可用会反映选择当时的磁盘状态，而不会重新加载整个列表。
+    </p>
+    <p>
       rewind 执行时会先创建一个 pre-rewind safety snapshot，然后再恢复目标文件树。
       如果恢复中途失败，File tab 会出现类似 <code>↶ Before rewind</code> 的行，
       你可以选择它恢复到 rewind 之前的状态。

@@ -16,6 +16,9 @@ import {
   type FileHistoryState,
 } from '../../../utils/fileHistory.js'
 import { listCodeAnchors } from '../../../utils/checkpoints/listCodeAnchors.js'
+import {
+  resolveDiffStatsForRestoreSelection,
+} from '../../../components/MessageSelector.js'
 
 let tmpRoot: string
 let workTree: string
@@ -125,5 +128,42 @@ describe('MessageSelector File tab row model', () => {
       expect(preRewindRow.isSynthetic).toBe(true)
     }
   }, 30_000)
-})
 
+  test('confirmation refreshes the selected file row against current disk', async () => {
+    writeFileSync(join(workTree, 'a.txt'), 'v1\n')
+    const holder = makeStateHolder()
+    await fileHistorySnapshot(holder, 'create a.txt')
+
+    writeFileSync(join(workTree, 'a.txt'), 'v2\n')
+    await fileHistorySnapshot(holder, 'edit a.txt')
+
+    // Picker opens while disk is one edit past the newest checkpoint.
+    writeFileSync(join(workTree, 'a.txt'), 'v3\n')
+    const anchors = await listCodeAnchors(workTree, { withStats: true, withBodies: true })
+    const newestHash = anchors[0]?.gitHash
+    expect(newestHash).toBeDefined()
+    const rows = await buildRewindCodeRows(anchors, holder.state().checkpointLabelsByHash)
+    const newestRow = rows.find(r => r.restoreHash === newestHash)
+    expect(newestRow, 'newest row not found').toBeDefined()
+    expect(newestRow!.diffStats).toMatchObject({
+      insertions: 1,
+      deletions: 1,
+    })
+
+    // Disk changes while the picker remains open. The selected row model is
+    // now stale; confirmation must refresh only this restore hash.
+    writeFileSync(join(workTree, 'a.txt'), 'v4\nmanual\n')
+
+    const resolved = await resolveDiffStatsForRestoreSelection({
+      activeTab: 'code',
+      row: newestRow,
+    })
+
+    expect(resolved.restoreHash).toBe(newestHash)
+    expect(resolved.diffStats).toMatchObject({
+      insertions: 2,
+      deletions: 1,
+    })
+    expect(resolved.diffStats).not.toEqual(newestRow!.diffStats)
+  }, 30_000)
+})

@@ -87,6 +87,35 @@ type RestoreOption =
   | 'summarize_up_to'
   | 'nevermind'
 
+export type RewindTab = 'code' | 'conversation'
+
+export async function resolveDiffStatsForRestoreSelection({
+  activeTab,
+  row,
+  anchor,
+  refreshDiffStats = fileHistoryGetDiffVsDisk,
+}: {
+  activeTab: RewindTab
+  row?: RewindCodeRow
+  anchor?: CodeAnchor
+  refreshDiffStats?: (gitHash: string) => Promise<DiffStats>
+}): Promise<{ diffStats: DiffStats; restoreHash?: string }> {
+  if (activeTab !== 'code') {
+    return { diffStats: undefined, restoreHash: undefined }
+  }
+  if (row) {
+    return {
+      diffStats: await refreshDiffStats(row.restoreHash),
+      restoreHash: row.restoreHash,
+    }
+  }
+  if (!anchor) return { diffStats: undefined, restoreHash: undefined }
+  return {
+    diffStats: await refreshDiffStats(anchor.gitHash),
+    restoreHash: anchor.gitHash,
+  }
+}
+
 function isSummarizeOption(
   option: RestoreOption | null,
 ): option is 'summarize' | 'summarize_up_to' {
@@ -183,7 +212,7 @@ export function MessageSelector({
   // can do for them. Earlier the visible row set and the chooser
   // options were independent, leading to "selected this row, why
   // does the chooser say I can't?" confusion.
-  const [activeTab, setActiveTab] = useState<'code' | 'conversation'>(
+  const [activeTab, setActiveTab] = useState<RewindTab>(
     'code',
   )
   const allSelectable = useMemo(
@@ -547,40 +576,42 @@ export function MessageSelector({
 
   const [messageToRestore, setMessageToRestore] = useState<
     UserMessage | undefined
-  >(preselectedMessage)
+  >(undefined)
   const [diffStatsForRestore, setDiffStatsForRestore] = useState<
     DiffStats | undefined
   >(undefined)
   const [restoreHashForRestore, setRestoreHashForRestore] = useState<string | undefined>(undefined)
 
   useEffect(() => {
-    if (!preselectedMessage || !isFileHistoryEnabled) return
-    let cancelled = false
-    const row = codeRowForUuid(preselectedMessage.uuid)
-    if (row) {
-      setDiffStatsForRestore(row.diffStats)
-      setRestoreHashForRestore(row.restoreHash)
-      return
-    }
-    const anchor = anchorByMsgId.get(preselectedMessage.uuid)
-    if (!anchor) {
+    if (!preselectedMessage) return
+    if (!isFileHistoryEnabled) {
       setDiffStatsForRestore(undefined)
       setRestoreHashForRestore(undefined)
+      setMessageToRestore(preselectedMessage)
       return
     }
-    void fileHistoryGetDiffVsDisk(anchor.gitHash).then(stats => {
-      if (!cancelled) {
-        setDiffStatsForRestore(stats)
-        setRestoreHashForRestore(anchor.gitHash)
-      }
-    })
+    let cancelled = false
+    void (async () => {
+      const row = codeRowForUuid(preselectedMessage.uuid)
+      const anchor = row ? undefined : anchorByMsgId.get(preselectedMessage.uuid)
+      const resolved = await resolveDiffStatsForRestoreSelection({
+        activeTab,
+        row,
+        anchor,
+      })
+      if (cancelled) return
+      setDiffStatsForRestore(resolved.diffStats)
+      setRestoreHashForRestore(resolved.restoreHash)
+      setMessageToRestore(preselectedMessage)
+    })()
     return () => {
       cancelled = true
     }
-  }, [preselectedMessage, isFileHistoryEnabled, anchorByMsgId, codeRowForUuid])
+  }, [preselectedMessage, isFileHistoryEnabled, anchorByMsgId, codeRowForUuid, activeTab])
 
   const [isRestoring, setIsRestoring] = useState(false)
   const restoreActionInFlightRef = useRef(false)
+  const restoreSelectionRequestIdRef = useRef(0)
   const [restoringOption, setRestoringOption] = useState<RestoreOption | null>(
     null,
   )
@@ -688,6 +719,12 @@ export function MessageSelector({
   useEffect(() => {
   }, [])
 
+  useEffect(() => {
+    return () => {
+      restoreSelectionRequestIdRef.current += 1
+    }
+  }, [])
+
   // Resolve the next user message after `target` on the current
   // conversation chain. Used to compute the input-box prefill for
   // conversation rewind: selecting X means "I want to redo the
@@ -718,6 +755,24 @@ export function MessageSelector({
       setIsRestoring(false)
       setError(`Failed to restore the conversation:\n${error}`)
     }
+  }
+
+  async function openRestoreConfirmation(
+    message: UserMessage,
+    row?: RewindCodeRow,
+    anchor?: CodeAnchor,
+  ) {
+    const requestId = restoreSelectionRequestIdRef.current + 1
+    restoreSelectionRequestIdRef.current = requestId
+    const resolved = await resolveDiffStatsForRestoreSelection({
+      activeTab,
+      row,
+      anchor,
+    })
+    if (restoreSelectionRequestIdRef.current !== requestId) return
+    setMessageToRestore(message)
+    setDiffStatsForRestore(resolved.diffStats)
+    setRestoreHashForRestore(resolved.restoreHash)
   }
 
   async function handleSelect(message: UserMessage) {
@@ -758,18 +813,11 @@ export function MessageSelector({
       }
       const row = codeRowForUuid(message.uuid)
       if (row) {
-        setMessageToRestore(message)
-        setDiffStatsForRestore(row.diffStats)
-        setRestoreHashForRestore(row.restoreHash)
+        await openRestoreConfirmation(message, row)
         return
       }
       const anchor = anchorByMsgId.get(message.uuid)
-      const diffStats = anchor
-        ? await fileHistoryGetDiffVsDisk(anchor.gitHash)
-        : undefined
-      setMessageToRestore(message)
-      setDiffStatsForRestore(diffStats)
-      setRestoreHashForRestore(anchor?.gitHash)
+      await openRestoreConfirmation(message, undefined, anchor)
       return
     }
 
@@ -780,18 +828,11 @@ export function MessageSelector({
 
     const row = codeRowForUuid(message.uuid)
     if (row) {
-      setMessageToRestore(message)
-      setDiffStatsForRestore(row.diffStats)
-      setRestoreHashForRestore(row.restoreHash)
+      await openRestoreConfirmation(message, row)
       return
     }
     const anchor = anchorByMsgId.get(message.uuid)
-    const diffStats = anchor
-      ? await fileHistoryGetDiffVsDisk(anchor.gitHash)
-      : undefined
-    setMessageToRestore(message)
-    setDiffStatsForRestore(diffStats)
-    setRestoreHashForRestore(anchor?.gitHash)
+    await openRestoreConfirmation(message, undefined, anchor)
   }
 
   async function onSelectRestoreOption(option: RestoreOption) {
@@ -1045,6 +1086,8 @@ export function MessageSelector({
     (!anchorsLoaded || !codeRowsLoaded || !bulkLoaded)
   const showPickList =
     !error && !messageToRestore && !preselectedMessage && hasMessagesToSelect
+  const isPreparingPreselectedRestore =
+    !!preselectedMessage && !messageToRestore && !error
 
   return (
     <Box flexDirection="column" width="100%">
@@ -1077,6 +1120,9 @@ export function MessageSelector({
               <Text>Nothing to rewind to yet.</Text>
             )}
           </>
+        )}
+        {isPreparingPreselectedRestore && (
+          <Text>Loading restore details…</Text>
         )}
         {!error && messageToRestore && hasMessagesToSelect && (
           <>
@@ -1348,7 +1394,7 @@ export function MessageSelector({
             </Box>
           </>
         )}
-        {!messageToRestore && (
+        {!messageToRestore && !isPreparingPreselectedRestore && (
           <Text dimColor italic>
             {exitState.pending ? (
               <>Press {exitState.keyName} again to exit</>

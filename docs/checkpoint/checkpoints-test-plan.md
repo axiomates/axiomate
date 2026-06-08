@@ -41,8 +41,10 @@ This test plan follows `docs/checkpoint/checkpoints-design.md`.
 - Rows with no file consequence are hidden.
 - Message labels can be missing without breaking restore.
 - Pre-rewind synthetic rows restore by hash.
-- Disk drift affects only the newest row unless the design later chooses
-  confirm-time refresh.
+- Picker rows are previews; selecting a File tab row refreshes that restore hash
+  against current disk before confirmation.
+- Disk drift while the picker is open is reflected in the confirmation page
+  without reloading the full list.
 
 ## RewindPlan
 
