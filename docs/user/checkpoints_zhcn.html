@@ -261,6 +261,17 @@
       因为文件回退界面需要可解释的恢复标签和回退后果。
     </p>
     <p>
+      <code>TURN</code> 列不是原样显示 git commit subject，而是根据 checkpoint
+      commit message 格式化：
+    </p>
+    <ul>
+      <li>普通 AI turn 且 body 有 <code>prompt: &lt;preview&gt;</code>：显示 <code>Before "&lt;preview&gt;"</code>。</li>
+      <li>普通 AI turn 但没有 prompt body：显示 <code>Before &lt;label&gt; (&lt;messageId 前 8 位&gt;)</code>。</li>
+      <li>pre-rewind 安全快照且 body 有 <code>target: &lt;preview&gt;</code>：显示 <code>Undo rewind to before "&lt;preview&gt;"</code>。</li>
+      <li>pre-rewind 安全快照但没有 target body：显示 <code>Undo last rewind</code>。</li>
+      <li>外部/历史 commit：显示原始 subject；空 subject 显示 <code>(no subject)</code>。</li>
+    </ul>
+    <p>
       行数可以通过 <code>--rows</code> 或配置项
       <code>checkpointsStatusRows</code> 调整。默认显示 50 行，范围是
       <code>1..500</code>。

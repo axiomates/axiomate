@@ -164,6 +164,24 @@ are history records. `/rewind` hides foreign commits by default because it is an
 action UI and needs structured checkpoint metadata to build meaningful restore
 rows.
 
+The `TURN` column is a human-readable projection of the checkpoint commit
+message:
+
+- Normal Axiomate commit with `prompt: <preview>` body:
+  `Before "<preview>"`.
+- Normal Axiomate commit without a prompt body:
+  `Before <label> (<messageId8>)`.
+- Pre-rewind safety commit with `target: <preview>` body:
+  `Undo rewind to before "<preview>"`.
+- Pre-rewind safety commit without a target body:
+  `Undo last rewind`.
+- Foreign commit:
+  raw subject, or `(no subject)` when empty.
+
+The body preview is truncated to roughly 80 characters when written. Full commit
+hashes, message IDs, and raw subjects are debug information; user-facing list
+rows show the short commit ID plus the formatted `TURN` text.
+
 ## Rewind Transaction
 
 File rewind is a transaction around a target checkpoint hash.

@@ -197,7 +197,10 @@ export function renderList(
   for (const e of shown) {
     const when = formatAgeOrAbsolute(parseIsoToEpochSeconds(e.timestamp))
     const reason = formatAnchorReason(e.subject, e.body)
-    // CHANGES column: anchor-vs-disk diff (matches picker semantics).
+    // CHANGES column: checkpoint commit stats.
+    // `/checkpoints list` callers pass commit-vs-parent stats from
+    // `listSnapshots(..., { withStats: true })`; `/rewind` consequence
+    // stats intentionally do not flow through this renderer.
     //   - 1 file → "<basename> +N -M"
     //   - 2+ files → "<count> files +N -M"
     //   - 0 changes → "(no diff)" so users can tell the row is
