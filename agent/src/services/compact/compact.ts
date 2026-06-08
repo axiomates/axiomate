@@ -38,6 +38,7 @@ import {
   analyzeContext,
   tokenStatsToanalyticsMetrics,
 } from '../../utils/contextAnalysis.js'
+import { getCwd } from '../../utils/cwd.js'
 import { logForDebugging } from '../../utils/debug.js'
 import { AbortError, hasExactErrorMessage } from '../../utils/errors.js'
 import { cacheToObject } from '../../utils/fileStateCache.js'
@@ -45,6 +46,7 @@ import {
   type CacheSafeParams,
   runForkedAgent,
 } from '../../utils/forkedAgent.js'
+import { setObservedFileState } from '../../utils/fileStateRegistry.js'
 import {
   executePostCompactHooks,
   executePreCompactHooks,
@@ -63,6 +65,7 @@ import {
 } from '../../utils/messages.js'
 import { expandPath } from '../../utils/path.js'
 import { getPlan, getPlanFilePath } from '../../utils/plans.js'
+import { extractReadFilesFromMessages } from '../../utils/queryHelpers.js'
 import { processSessionStartHooks } from '../../utils/sessionStart.js'
 import {
   getTranscriptPath,
@@ -521,10 +524,7 @@ export async function compactConversation(
       ...fileAttachments,
       ...asyncAgentAttachments,
     ]
-    const planAttachment = createPlanAttachmentIfNeeded(context.agentId)
-    if (planAttachment) {
-      postCompactFileAttachments.push(planAttachment)
-    }
+    addPlanAttachmentIfNeeded(postCompactFileAttachments, context)
 
     // Add plan mode instructions if currently in plan mode, so the model
     // continues operating in plan mode after compaction
@@ -816,6 +816,7 @@ export async function partialCompactConversation(
     const preCompactReadFileState = cacheToObject(context.readFileState)
     context.readFileState.clear()
     context.loadedNestedMemoryPaths?.clear()
+    restorePreservedReadState(context, messagesToKeep)
     // Intentionally NOT resetting sentSkillNames — see compactConversation()
     // for rationale (~4K tokens saved per compact event).
 
@@ -833,10 +834,7 @@ export async function partialCompactConversation(
       ...fileAttachments,
       ...asyncAgentAttachments,
     ]
-    const planAttachment = createPlanAttachmentIfNeeded(context.agentId)
-    if (planAttachment) {
-      postCompactFileAttachments.push(planAttachment)
-    }
+    addPlanAttachmentIfNeeded(postCompactFileAttachments, context)
 
     // Add plan mode instructions if currently in plan mode
     const planModeAttachment = await createPlanModeAttachmentIfNeeded(context)
@@ -971,6 +969,41 @@ export async function partialCompactConversation(
     context.onCompactProgress?.({ type: 'compact_end' })
     context.setSDKStatus?.(null)
   }
+}
+
+function restorePreservedReadState(
+  context: ToolUseContext,
+  preservedMessages: Message[],
+): void {
+  if (preservedMessages.length === 0) return
+
+  const restored = extractReadFilesFromMessages(
+    preservedMessages,
+    getCwd(),
+    context.readFileState.max,
+  )
+  for (const [filePath, fileState] of restored.entries()) {
+    context.readFileState.set(filePath, fileState)
+  }
+}
+
+function addPlanAttachmentIfNeeded(
+  attachments: AttachmentMessage[],
+  context: ToolUseContext,
+): void {
+  const planAttachment = createPlanAttachmentIfNeeded(context.agentId)
+  if (!planAttachment) return
+
+  const { attachment } = planAttachment
+  if (attachment.type === 'plan_file_reference') {
+    setObservedFileState(context, attachment.planFilePath, {
+      content: attachment.planContent,
+      timestamp: Date.now(),
+      offset: undefined,
+      limit: undefined,
+    })
+  }
+  attachments.push(planAttachment)
 }
 
 function addErrorNotificationIfNeeded(
