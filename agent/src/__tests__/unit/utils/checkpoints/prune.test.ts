@@ -194,6 +194,7 @@ describe('pruneCheckpoints — entry contract', () => {
     expect(r.gcInvocations).toBe(0)
     expect(r.orphanRefsRemoved).toBe(0)
     expect(r.staleRefsRemoved).toBe(0)
+    expect(existsSync(getLastPrunePath())).toBe(true)
   })
 })
 

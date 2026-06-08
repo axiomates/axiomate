@@ -7,10 +7,9 @@
  * multi-line string. Kept leaf-only so the same code backs the slash
  * command, the CLI subcommand, and tests.
  *
- * Format-wise this mirrors Hermes `cmd_status` / `cmd_prune`
- * (`hermes_cli/checkpoints.py::cmd_status` / `::cmd_prune`). One
- * divergence: `legacy_size_bytes` / "Legacy archives" sections are
- * dropped — see progress doc "`clear-legacy` is NOT ported".
+ * Format-wise this mirrors the status/prune shape used by the checkpoint
+ * CLI. Legacy archive sections are intentionally absent because Axiomate
+ * has no released pre-shadow-git checkpoint store to migrate.
  */
 
 import type { PruneReport } from '../../utils/checkpoints/prune.js'
@@ -76,7 +75,7 @@ export function renderStatus(report: StoreStatusReport, limit = 30): string {
 /**
  * Surface the cross-worktree reachability hole as a single status line.
  *
- * Completion-plan 6C2 (the "fallback" path): we don't anchor refs across
+ * Cross-worktree reachability warning: we don't anchor refs across
  * worktrees, so when a project's workdir disappears, its `refs/axiomate/
  * <hash>` ref is the *only* anchor for those commits. The next
  * `pruneCheckpoints` orphan pass will drop the ref and gc will reclaim
@@ -108,9 +107,8 @@ function appendOrphanReachabilityWarning(
 /**
  * Render the rolling snapshot-metrics block.
  *
- * Hermes has no equivalent — completion-plan 6E is an axiomate-only
- * addition. We surface the rolling p50/p95 of `ok` snapshot durations
- * plus failure / no-changes / skipped-other counters, all over the
+ * We surface the rolling p50/p95 of `ok` snapshot durations plus failure /
+ * no-changes / skipped-other counters, all over the
  * last ≤100 snapshots. Skipped entirely when `sample_size === 0` so
  * a fresh install doesn't show empty stats.
  *
@@ -136,21 +134,18 @@ function appendMetricsSection(
 /**
  * Multi-line `/checkpoints list` view for one project.
  *
- * Read-only: matches Hermes' `cmd_list` which is just `cmd_status` (line
- * 106-108). Interactive rollback lives in `/rewind`, which operates on
- * the in-session `appState.fileHistory` and is the only path that keeps
- * REPL state and worktree state in sync.
+ * Read-only checkpoint history view. Interactive rollback lives in `/rewind`.
+ *
+ * Design note: `/checkpoints list` should render commit-vs-parent stats,
+ * while `/rewind` renders consequence stats. The current caller is tracked
+ * in docs/checkpoint/checkpoints-review-findings.md F1 until that code path
+ * is corrected.
  */
 export function renderList(
   workdir: string,
   entries: SnapshotEntry[],
-  // Map<gitHash, DiffStats> from bulkDiffEventStats. Each entry
-  // describes "what THIS row's turn wrote" — anchor[i] vs anchor[i-1]
-  // for older rows, anchor[0] vs disk for the newest. Same data the
-  // picker uses. The earlier implementation copied per-anchor
-  // commit-vs-parent stats from SnapshotEntry, which was off-by-one
-  // (each row described what the PRIOR turn did) and showed empty
-  // for root commits.
+  // Map<gitHash, DiffStats>. See the design note above: this argument
+  // should be commit-vs-parent stats for /checkpoints list.
   diskDiffs: Map<
     string,
     | { filesChanged?: string[]; insertions: number; deletions: number }

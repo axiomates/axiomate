@@ -33,8 +33,8 @@
  */
 
 import { existsSync, readdirSync, statSync, type Dirent } from 'fs'
-import { stat, unlink, writeFile } from 'fs/promises'
-import { join } from 'path'
+import { mkdir, stat, unlink, writeFile } from 'fs/promises'
+import { dirname, join } from 'path'
 import { getGlobalConfig } from '../config.js'
 import { logForDebugging } from '../debug.js'
 import {
@@ -636,7 +636,9 @@ function isMarkerRecent(): boolean {
  */
 async function writeMarker(report: PruneReport): Promise<void> {
   try {
-    await writeFile(getLastPrunePath(), String(Date.now()), 'utf-8')
+    const marker = getLastPrunePath()
+    await mkdir(dirname(marker), { recursive: true })
+    await writeFile(marker, String(Date.now()), 'utf-8')
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     logForDebugging(`pruneCheckpoints: marker write failed: ${msg}`)

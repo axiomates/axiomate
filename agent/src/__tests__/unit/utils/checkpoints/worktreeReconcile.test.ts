@@ -154,6 +154,21 @@ describe('worktreeReconcile', () => {
     })
   }, GIT_TEST_TIMEOUT_MS)
 
+  test('restore does not use the fixed project index lock', async () => {
+    const targetHash = await snapshotTarget(new Map([['sort.py', '#nothing inside\n']]))
+    writeFile('sort.py', '123')
+    const fixedIndex = indexPath(projectHash(normalizePath(workTree)))
+    writeFileSync(`${fixedIndex}.lock`, 'stale project index lock\n')
+    const plan = await prepareWorktreeReconcilePlan(workTree, targetHash)
+    try {
+      await applyWorktreeReconcilePlan(plan)
+      expect(readFileSync(join(workTree, 'sort.py'), 'utf-8')).toBe('#nothing inside\n')
+    } finally {
+      rmSync(`${fixedIndex}.lock`, { force: true })
+      await cleanupWorktreeReconcilePlan(plan)
+    }
+  }, GIT_TEST_TIMEOUT_MS)
+
   test('deletes a current file absent from target', async () => {
     await expectReconcilesToTarget(new Map([['keep.txt', 'keep\n']]), () => {
       writeFile('extra.txt', 'extra\n')

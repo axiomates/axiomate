@@ -1,5 +1,5 @@
 import { execFile } from 'child_process'
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
+import { mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { promisify } from 'util'
@@ -99,8 +99,8 @@ async function expectWorktreeTreeEquals(gitHash: string): Promise<void> {
 async function cli(
   args: string[],
 ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
-  // agent/src/__tests__/e2e/ -> 4 levels up -> agent/ -> dist/cli.js
-  const script = join(__dirname, '..', '..', '..', '..', 'dist', 'cli.js')
+  // agent/src/__tests__/e2e/ -> 3 levels up -> agent/ -> dist/cli.js
+  const script = join(__dirname, '..', '..', '..', 'dist', 'cli.js')
   try {
     const { stdout, stderr } = await execFileAsync(
       'bun',
@@ -129,7 +129,9 @@ async function cli(
 describe('checkpoint CLI e2e', () => {
   test('checkpoints status runs', async () => {
     const { stdout, stderr, exitCode } = await cli(['checkpoints', 'status'])
-    expect(stdout || stderr || exitCode).toBeTruthy()
+    expect(stderr).toBe('')
+    expect(exitCode).toBe(0)
+    expect(stdout).toContain('Checkpoint base:')
   }, 60_000)
 
   test('checkpoints prune runs', async () => {
@@ -139,12 +141,16 @@ describe('checkpoint CLI e2e', () => {
       '--max-size-mb', '100',
       '--force',
     ])
-    expect(stdout || stderr || exitCode).toBeTruthy()
+    expect(stderr).toBe('')
+    expect(exitCode).toBe(0)
+    expect(stdout).toContain('Prune complete.')
   }, 60_000)
 
   test('checkpoints clear --force runs', async () => {
     const { stdout, stderr, exitCode } = await cli(['checkpoints', 'clear', '--force'])
-    expect(stdout || stderr || exitCode).toBeTruthy()
+    expect(stderr).toBe('')
+    expect(exitCode).toBe(0)
+    expect(stdout).toContain('Nothing to clear')
   }, 60_000)
 
   test('CLI list sees checkpoints created by fileHistory API', async () => {
@@ -154,8 +160,9 @@ describe('checkpoint CLI e2e', () => {
     writeFileSync(join(workTree, 'sort.py'), 'v2\n')
     await fileHistoryMakeSnapshot(holder.updater, randomUUID(), 'file-history', 'edit to v2')
 
-    const { stdout, exitCode } = await cli(['checkpoints', 'list'])
-    if (exitCode !== 0) return // may not work in all environments
+    const { stdout, stderr, exitCode } = await cli(['checkpoints', 'list'])
+    expect(stderr).toBe('')
+    expect(exitCode).toBe(0)
     expect(stdout).toContain('sort.py')
   }, 60_000)
 
@@ -178,9 +185,10 @@ describe('checkpoint CLI e2e', () => {
     expect(readFileSync(join(workTree, 'sort.py'), 'utf8')).toBe('v1\n')
 
     // CLI list should show the rewind-related anchors
-    const { stdout, exitCode } = await cli(['checkpoints', 'list'])
-    if (exitCode !== 0) return
-    expect(stdout).toBeTruthy()
+    const { stdout, stderr, exitCode } = await cli(['checkpoints', 'list'])
+    expect(stderr).toBe('')
+    expect(exitCode).toBe(0)
+    expect(stdout).toContain('Checkpoints for')
   }, 60_000)
 
   test('fileHistory rewind restores selected snapshot from picker path', async () => {
@@ -201,6 +209,36 @@ describe('checkpoint CLI e2e', () => {
     await fileHistoryRewind(holder.updater, hash1!, 'create v1')
 
     expect(readFileSync(join(workTree, 'sort.py'), 'utf8')).toBe('v1\n')
+    await expectWorktreeTreeEquals(hash1!)
+  }, 60_000)
+
+  test('fileHistory API e2e: rewind survives manual temp deletion and stale fixed index lock', async () => {
+    const holder = makeStateHolder()
+    const msg1 = randomUUID()
+    const target = join(workTree, 'sort.py')
+    const temp = join(workTree, 'temp.txt')
+
+    writeFileSync(target, '#nothing inside\n')
+    await fileHistoryMakeSnapshot(holder.updater, msg1, 'file-history', 'create sort')
+    const anchors = await listCodeAnchors(workTree, { withStats: false })
+    const hash1 = anchors.find(a => a.messageId === msg1)?.gitHash
+    expect(hash1).toBeDefined()
+
+    writeFileSync(target, '123')
+    writeFileSync(temp, 'temporary\n')
+    await fileHistoryMakeSnapshot(holder.updater, randomUUID(), 'file-history', 'edit sort and temp')
+    unlinkSync(temp)
+
+    const fixedIndex = indexPath(projectHash(normalizePath(workTree)))
+    writeFileSync(`${fixedIndex}.lock`, 'stale lock from interrupted restore\n')
+    try {
+      await fileHistoryRewind(holder.updater, hash1!, 'create sort')
+    } finally {
+      rmSync(`${fixedIndex}.lock`, { force: true })
+    }
+
+    expect(readFileSync(target, 'utf8')).toBe('#nothing inside\n')
+    expect(() => readFileSync(temp, 'utf8')).toThrow()
     await expectWorktreeTreeEquals(hash1!)
   }, 60_000)
 })

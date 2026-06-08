@@ -9,10 +9,9 @@
  *   `/checkpoints clear`      → confirm + nuke `~/.axiomate/checkpoints/`
  *
  * One divergence: `/checkpoints list` is read-only; the interactive
- * rollback selector lives in `/rewind`, which keeps `appState.fileHistory`
- * in sync with the worktree (REPL.tsx:4007-4013). Cross-session rollback
- * via the store-level commit list is intentionally *not* offered here —
- * that would desync REPL state. See progress doc Phase 5 step 3.
+ * rollback selector lives in `/rewind`, which keeps conversation state and
+ * worktree state in sync. Cross-session rollback via the store-level commit
+ * list is intentionally *not* offered here.
  */
 
 import React from 'react'

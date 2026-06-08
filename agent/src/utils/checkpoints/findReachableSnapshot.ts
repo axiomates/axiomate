@@ -35,11 +35,9 @@
  * separately so callers can fall back to "not displayed" rather than
  * "definitely gone").
  *
- * Hermes parity: Hermes does not have this helper — completion-plan 6A
- * is axiomate-only. The closest Hermes equivalent is the `_validate_*`
- * checks in `tools/checkpoint_manager.py::CheckpointManager.restore`,
- * which surface "commit not found" as an exception at rewind time;
- * we want the user to know *before* they invoke rewind.
+ * This helper exists because Axiomate warns before rewind when a recorded
+ * hash is no longer anchored by the checkpoint store. Without it, the user
+ * would only learn at restore time.
  */
 
 import { runCheckpointGit } from './git.js'
@@ -51,8 +49,7 @@ import { validateCommitHash } from './validate.js'
 /**
  * Cross-worktree scan caps to avoid pathological behavior on users with
  * hundreds of registered projects. Sorted by `last_touch` desc so the
- * most-likely matches probe first; the cap matches the completion-plan
- * 6B mitigation ("Cap scan at 50 projects ranked by `last_touch`.").
+ * most-likely matches probe first.
  */
 const CROSS_WORKTREE_SCAN_CAP = 50
 

@@ -20,6 +20,7 @@ const RECONCILE_PATHSPEC_PREFIX = 'axiomate-rewind-'
 export type WorktreeReconcilePlan = {
   store: string
   workdir: string
+  /** Per-rewind scratch index used by restore/verify git commands. */
   indexFile: string
   targetHash: string
   currentTree: string
@@ -35,16 +36,19 @@ export async function prepareWorktreeReconcilePlan(
   workdir: string,
   targetHash: string,
 ): Promise<WorktreeReconcilePlan> {
-  const prepared = await prepareSnapshotTree(expandPath(workdir))
-  if (prepared.ok === false) {
-    if (prepared.skipped === 'too-many-files') {
-      throw new Error('too-many-files')
-    }
-    throw new Error(prepared.message ?? prepared.skipped)
-  }
-
   const tempDir = await mkdtemp(join(tmpdir(), RECONCILE_PATHSPEC_PREFIX))
   try {
+    const reconcileIndexFile = join(tempDir, 'reconcile.index')
+    const prepared = await prepareSnapshotTree(expandPath(workdir), {
+      indexFile: reconcileIndexFile,
+    })
+    if (prepared.ok === false) {
+      if (prepared.skipped === 'too-many-files') {
+        throw new Error('too-many-files')
+      }
+      throw new Error(prepared.message ?? prepared.skipped)
+    }
+
     const checkoutPathspecFile = join(tempDir, 'checkout-paths.nul')
     const deletePathspecFile = join(tempDir, 'delete-paths.nul')
     const deleteCount = await writePathspecFromDiff({
@@ -81,7 +85,7 @@ export async function prepareWorktreeReconcilePlan(
     return {
       store: prepared.store,
       workdir: prepared.canonical,
-      indexFile: prepared.indexFile,
+      indexFile: reconcileIndexFile,
       targetHash,
       currentTree: prepared.treeHash,
       tempDir,

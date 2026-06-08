@@ -609,6 +609,26 @@ describe('rewind — restore content at the chosen turn', () => {
     expect(existsSync(created)).toBe(false)
   })
 
+  gitBackedTest('restores after a manual temp-file deletion in the modified worktree', async () => {
+    const existing = join(workTree, 'sub', 'sort.py')
+    const temp = join(workTree, 'sub', 'temp.txt')
+    mkdirSync(join(workTree, 'sub'), { recursive: true })
+    writeFileSync(existing, '#nothing inside\n')
+    const holder = makeStateHolder()
+    const target = await turn(holder, [existing])
+    const targetHash = await hashFor(target)
+
+    writeFileSync(existing, '123')
+    writeFileSync(temp, 'temporary\n')
+    await turn(holder, [existing, temp])
+    unlinkSync(temp)
+    await fileHistoryRewind(holder.updater, targetHash)
+
+    expect(readFileSync(existing, 'utf-8')).toBe('#nothing inside\n')
+    expect(existsSync(temp)).toBe(false)
+    await expectWorktreeTreeEquals(targetHash)
+  })
+
   gitBackedTest('rewind covers files NOT registered with trackEdit (full-tree restore)', async () => {
     const tracked = join(workTree, 'tracked.txt')
     const manual = join(workTree, 'manual.txt')

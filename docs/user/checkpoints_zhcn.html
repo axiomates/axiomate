@@ -7,125 +7,47 @@
   <style>
     :root {
       color-scheme: light;
-      --bg: #eef2f3;
+      --bg: #f5f7f8;
       --panel: #ffffff;
-      --panel-soft: #f7fafb;
-      --border: #d5dde0;
-      --text: #162126;
-      --muted: #5b6b73;
+      --soft: #eef6f5;
+      --border: #d8e0e3;
+      --text: #172126;
+      --muted: #5d6b73;
       --accent: #0f766e;
-      --accent-soft: #dff5f2;
       --warn: #92400e;
-      --warn-soft: #fef3c7;
       --danger: #991b1b;
-      --danger-soft: #fee2e2;
-      --good: #166534;
-      --good-soft: #dcfce7;
-      --code: #f3f6f7;
-      --shadow: 0 10px 30px rgba(18, 31, 38, 0.08);
-      --radius: 18px;
+      --code: #f1f4f5;
     }
     * { box-sizing: border-box; }
-    html {
-      width: 100%;
-      overflow-x: hidden;
-    }
     body {
       margin: 0;
-      font: 15px/1.65 "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      background: var(--bg);
       color: var(--text);
-      background:
-        radial-gradient(circle at top left, #d8f0ea 0, rgba(216, 240, 234, 0) 28%),
-        radial-gradient(circle at top right, #f6e9c9 0, rgba(246, 233, 201, 0) 24%),
-        linear-gradient(180deg, #edf3f3 0%, #f6f8f8 100%);
-      min-height: 100vh;
-      width: 100%;
-      overflow-x: hidden;
+      font: 15px/1.65 "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
     }
     .wrap {
-      width: calc(100% - 32px);
-      max-width: 980px;
-      min-width: 0;
+      width: min(100% - 32px, 980px);
       margin: 24px auto 48px;
       display: grid;
-      gap: 20px;
+      gap: 18px;
     }
-    .wrap > * {
-      min-width: 0;
-      max-width: 100%;
-    }
-    .hero {
-      background: linear-gradient(135deg, #12343b 0%, #204e56 56%, #2c6567 100%);
-      color: #f6fbfb;
-      border-radius: 28px;
-      padding: 30px 34px;
-      box-shadow: var(--shadow);
-      position: relative;
-      overflow: hidden;
-      width: 100%;
-    }
-    .hero::after {
-      content: "";
-      position: absolute;
-      inset: auto auto -90px -70px;
-      width: 220px;
-      height: 220px;
-      border-radius: 999px;
-      background: rgba(255, 255, 255, 0.045);
-      filter: blur(2px);
-    }
-    .eyebrow {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      background: rgba(255, 255, 255, 0.12);
-      border: 1px solid rgba(255, 255, 255, 0.18);
-      border-radius: 999px;
-      padding: 6px 11px;
-      font-size: 12px;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-    }
-    h1, h2, h3, h4 { margin: 0; line-height: 1.25; }
-    h1 { margin-top: 14px; font-size: clamp(28px, 4vw, 38px); max-width: 880px; }
-    .lede { margin-top: 12px; font-size: 16px; max-width: 820px; opacity: 0.92; }
-    .panel {
+    header, section {
       background: var(--panel);
       border: 1px solid var(--border);
-      border-radius: var(--radius);
+      border-radius: 14px;
       padding: 22px 26px;
-      box-shadow: 0 1px 0 rgba(255,255,255,0.5) inset, 0 6px 18px rgba(18, 31, 38, 0.04);
-      min-width: 0;
-      width: 100%;
     }
-    .panel h2 {
-      font-size: 22px;
-      color: var(--accent);
-      letter-spacing: -0.01em;
+    header {
+      background: #12343b;
+      color: #f7fbfb;
     }
-    .panel h2 .num {
-      display: inline-block;
-      width: 28px; height: 28px;
-      line-height: 28px;
-      border-radius: 999px;
-      background: var(--accent-soft);
-      color: var(--accent);
-      text-align: center;
-      font-size: 14px;
-      margin-right: 10px;
-      vertical-align: 2px;
-    }
-    .panel h3 { margin-top: 18px; font-size: 16px; }
-    .panel h3.tab-section {
-      margin-top: 28px;
-      margin-bottom: 16px;
-      font-size: 22px;
-      color: var(--accent);
-      letter-spacing: -0.01em;
-    }
+    h1, h2, h3 { margin: 0; line-height: 1.25; }
+    h1 { font-size: clamp(28px, 4vw, 38px); }
+    h2 { color: var(--accent); font-size: 22px; }
+    h3 { margin-top: 18px; font-size: 17px; }
     p { margin: 10px 0; }
-    code, kbd, pre {
-      font-family: "JetBrains Mono", "Fira Code", "Consolas", monospace;
+    code, pre {
+      font-family: "Consolas", "JetBrains Mono", monospace;
       font-size: 13px;
     }
     code {
@@ -133,951 +55,301 @@
       border: 1px solid var(--border);
       border-radius: 6px;
       padding: 1px 6px;
+      overflow-wrap: anywhere;
     }
-    .hero code {
-      color: #0f1c20;
-      background: rgba(255, 255, 255, 0.94);
-      border-color: rgba(255, 255, 255, 0.72);
-      font-weight: 600;
+    header code {
+      background: rgba(255, 255, 255, 0.92);
+      color: #102027;
+      border-color: rgba(255, 255, 255, 0.65);
     }
     pre {
-      background: #0f1c20;
-      color: #d8e9e9;
-      border-radius: 12px;
-      padding: 14px 16px;
+      background: #101c22;
+      color: #d7e8e8;
+      border-radius: 10px;
       overflow-x: auto;
-      margin: 10px 0;
-      line-height: 1.55;
+      padding: 14px 16px;
     }
     pre code {
       background: transparent;
       border: 0;
-      padding: 0;
       color: inherit;
+      padding: 0;
     }
     table {
       width: 100%;
       border-collapse: collapse;
       margin: 12px 0;
-      font-size: 14px;
       table-layout: fixed;
     }
     th, td {
       text-align: left;
-      padding: 9px 10px;
-      border-bottom: 1px solid var(--border);
       vertical-align: top;
+      border-bottom: 1px solid var(--border);
+      padding: 9px 10px;
       overflow-wrap: anywhere;
     }
     th {
-      background: var(--panel-soft);
-      font-weight: 600;
+      background: #f3f6f7;
       color: var(--muted);
       font-size: 12px;
-      letter-spacing: 0.04em;
       text-transform: uppercase;
     }
-    .tag {
-      display: inline-block;
-      padding: 2px 9px;
-      border-radius: 999px;
-      font-size: 12px;
-      font-weight: 600;
-    }
-    .tag.auto { background: var(--accent-soft); color: var(--accent); }
-    .tag.user { background: var(--warn-soft); color: var(--warn); }
-    .tag.ok { background: var(--good-soft); color: var(--good); }
-    .tag.warn { background: var(--warn-soft); color: var(--warn); }
-    .tag.bad { background: var(--danger-soft); color: var(--danger); }
     .toc {
-      display: flex; flex-wrap: wrap; gap: 8px;
-      margin-top: 16px;
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 14px;
     }
     .toc a {
-      color: var(--accent);
-      text-decoration: none;
-      background: var(--accent-soft);
-      padding: 6px 12px;
+      color: #073f3c;
+      background: #dff5f2;
+      border: 1px solid rgba(15, 118, 110, 0.2);
       border-radius: 999px;
-      font-size: 13px;
-      border: 1px solid rgba(15, 118, 110, 0.18);
+      padding: 5px 10px;
+      text-decoration: none;
     }
-    .toc a:hover { background: #c4ede6; }
-    .callout {
+    .note {
       border-left: 4px solid var(--accent);
-      background: var(--accent-soft);
-      border-radius: 10px;
-      padding: 12px 14px;
-      margin: 14px 0;
+      background: var(--soft);
+      border-radius: 8px;
+      padding: 10px 12px;
+      margin: 12px 0;
     }
-    .callout.warn { border-left-color: #d97706; background: var(--warn-soft); }
-    .callout.warn strong { color: var(--warn); }
-    code {
-      overflow-wrap: anywhere;
+    .warn {
+      border-left-color: #d97706;
+      background: #fff7df;
     }
-    .grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr));
-      gap: 14px;
-      margin-top: 12px;
-      min-width: 0;
-    }
-    .card {
-      border: 1px solid var(--border);
-      border-radius: 14px;
-      padding: 14px 16px;
-      background: var(--panel-soft);
-      min-width: 0;
-      overflow-wrap: anywhere;
-    }
-    .card h4 { font-size: 14px; color: var(--accent); margin-bottom: 6px; }
-    .card p { margin: 4px 0 0; font-size: 13px; color: var(--muted); }
     footer {
-      text-align: center;
       color: var(--muted);
+      text-align: center;
       font-size: 12px;
-      padding: 16px 0;
+      padding: 12px;
     }
   </style>
 </head>
 <body>
 <div class="wrap">
-
-  <header class="hero">
-    <span class="eyebrow">Axiomate · 用户文档</span>
-    <h1>Checkpoints — 文件快照与对话回放</h1>
-    <p class="lede">
-      Axiomate 的 <code>/rewind</code> 在两条独立轴上工作。<strong>File 轴</strong>：
-      每次准备改文件之前在后台拍一张工作目录的快照，放进独立的 git 影子仓库；
-      你可以把磁盘还原到任何一个历史回合。<strong>Conversation 轴</strong>：
-      在 JSONL 会话日志的基础上，让你回到某一组 Q/A 对话的位置，连同输入框
-      的回填一起送你"重做"那个回合。两条轴 100% 脱钩 — 文件不动对话、对话
-      不动文件。整个系统对你近乎透明 — 平时几乎感觉不到，关键时刻它替你兜底。
+  <header>
+    <h1>Checkpoints — 文件快照与 rewind</h1>
+    <p>
+      Axiomate 会在 AI 准备改文件之前自动记录文件快照。文件快照存放在独立的
+      checkpoint git store 中，不会写入你的项目 git 仓库。需要回退文件时，
+      使用 <code>/rewind</code> 的 File tab；需要查看存储状态时，使用
+      <code>/checkpoints</code>。
     </p>
     <div class="toc">
-      <a href="#how">它怎么工作</a>
-      <a href="#auto">自动行为</a>
-      <a href="#commands">用户命令</a>
-      <a href="#config">开关与配置</a>
-      <a href="#failure">失败模式</a>
-      <a href="#faq">FAQ</a>
+      <a href="#model">核心模型</a>
+      <a href="#rewind">/rewind</a>
+      <a href="#commands">/checkpoints</a>
+      <a href="#nested">Nested git</a>
+      <a href="#limits">默认限制</a>
+      <a href="#failures">失败与恢复</a>
     </div>
   </header>
 
-  <section id="how" class="panel">
-    <h2><span class="num">1</span>它怎么工作</h2>
-
+  <section id="model">
+    <h2>核心模型</h2>
     <p>
-      Checkpoints 是一个独立的 git 仓库，住在
-      <code>~/.axiomate/checkpoints/store/</code>，<strong>跟你项目本身的
-      git 仓库完全分开</strong>。Axiomate 每次准备改文件之前，会在这个
-      影子仓库里写一个 commit 来记录当前状态。
+      每次 AI 工具回合准备修改文件之前，Axiomate 会尝试对当前工作目录做一次
+      pre-change snapshot。如果这次快照和当前 checkpoint ref 顶端完全相同，
+      不会写 commit；如果有真实文件差异，就会在
+      <code>~/.axiomate/checkpoints/store</code> 的 shadow git 中写入一个 commit。
     </p>
-
-    <h3>关键设计</h3>
-    <div class="grid">
-      <div class="card">
-        <h4>影子仓库</h4>
-        <p>不污染你项目自己的 <code>.git/</code>。你的 git log、git status 都看不到这些快照。</p>
-      </div>
-      <div class="card">
-        <h4>每个项目一条 ref</h4>
-        <p>不同的工作目录写到不同的 <code>refs/axiomate/&lt;hash&gt;</code>，互不干扰。</p>
-      </div>
-      <div class="card">
-        <h4>结构化 commit subject</h4>
-        <p>格式 <code>axiomate:&lt;messageId&gt;:&lt;label&gt;</code>，能反查到对话回合。</p>
-      </div>
-      <div class="card">
-        <h4>遵守 .gitignore</h4>
-        <p>遍历工作目录时，用户 <code>.gitignore</code> 会生效；Axiomate 只拍最终未被忽略的普通文件。</p>
-      </div>
-      <div class="card">
-        <h4>支持嵌套 Git 仓库</h4>
-        <p>子目录里有自己的 <code>.git</code> 时，普通文件按当前磁盘内容保存，<code>.git/</code> 元数据本身不保存。</p>
-      </div>
-    </div>
-
-    <h3>跟同类系统比的优势</h3>
-    <p>
-      Axiomate 的 file checkpointing 借鉴了 hermes-agent 的 pre-tool
-      workdir 快照模型 —— 这个底层已经很稳。在它之上，axiomate 做了几
-      个 hermes 没有的事：
-    </p>
-    <div class="grid">
-      <div class="card">
-        <h4>双轴 rewind + 双游标</h4>
-        <p>
-          Hermes 只做文件回滚。Axiomate 加了独立的<strong>对话回放轴</strong>
-          —— picker 里按 <kbd>Tab</kbd> 切到 Conversation 标签，回到任意
-          一组 Q/A 之上，输入框自动回填下一组 prompt 让你重做。File 和
-          Conversation 完全脱钩。Selection 游标 (<code>▶</code>) 与
-          Head 游标 (<code>(current)</code>) 概念分离，视觉光标不等于会话
-          状态，比 hermes "光标=状态" 的合并模型更明确。
-        </p>
-      </div>
-      <div class="card">
-        <h4>对话 rewind 持久化 + 未来节点可见</h4>
-        <p>
-          Conversation rewind 的 head 状态写进 JSONL（一条
-          <code>type:"head"</code> entry）。<code>/exit</code> 后再用 UI
-          resume 进同一个 session，落点跟你 rewind 时一致 —— 不像传统的
-          内存截断那样退出就丢。Rewind 之后比 head 更新的对话回合在
-          picker 里仍以 dim 灰色显示（JSONL 没删），随时可再选回去。
-          "rewind 之后能 redo" 是 axiomate 的心智核心。
-        </p>
-      </div>
-      <div class="card">
-        <h4>每次 rewind 自动拍 pre-rewind 安全网</h4>
-        <p>
-          Hermes 的 rewind 是单向操作 —— 一旦回退就丢失更晚的状态。
-          Axiomate 在每次 rewind 之前先把当前工作区拍一张安全网快照
-          再回退；后悔了点 picker 里那条 ↶ 行就能撤销 rewind 自身。
-          可<strong>无限嵌套</strong>，rewind 套 rewind 也不会丢。
-        </p>
-      </div>
-      <div class="card">
-        <h4>嵌套 rewind 用 hash chain 显示</h4>
-        <p>
-          连续做了几次 rewind 之后，picker 里这些 ↶ 行会以
-          <code>↶ Rewind to &lt;target-hash&gt; [own-hash]</code>
-          的形式串起来 —— 你能一眼看出"这条 rewind 是从哪条又
-          rewind 回去的"。层级关系在文本里明示，不靠记忆。
-        </p>
-      </div>
-      <div class="card">
-        <h4>CHANGES 列跟 git log 同心智（event-aligned）</h4>
-        <p>
-          Picker / list / status 三处的 CHANGES 列描述<strong>本回合
-          写了什么</strong>（anchor[i] vs anchor[i-1]），跟你看 git log
-          一致。Hermes 原始的 commit-vs-parent 模型存在 off-by-one：
-          某行的 CHANGES 实际是<strong>下一行</strong>那一回合改的，
-          初看心智上对不上。
-        </p>
-      </div>
-      <div class="card">
-        <h4>更激进的默认值（适配现代开发机）</h4>
-        <p>
-          默认快照上限 1000（可通过 <code>/config</code> 调整） / 保留 30 天 / 1GB 池 / 单文件 50MB / 工作目
-          录最多 200,000 个文件（可通过 <code>/config</code> 调整） / 列表最多 500 行。Hermes 默认 7 天
-          保留，跨 sprint 项目易丢；axiomate 30 天保留 + 1GB 池优先给近期工作
-          保留可回滚空间，同时避免默认磁盘预算过重。
-        </p>
-      </div>
-      <div class="card">
-        <h4>UX 反超：newest-first + 自适应时间</h4>
-        <p>
-          Picker 默认<strong>最新在顶</strong>（hermes 无对照），刚操作的
-          回合一打开就在视线里。时间格式自适应：刚才 →
-          <code>just now</code>，几分钟前 → <code>5m ago</code>，跨天 →
-          绝对日期。
-        </p>
-      </div>
-      <div class="card">
-        <h4>完整的 /checkpoints CLI</h4>
-        <p>
-          除了 <code>list</code>，axiomate 还有
-          <code>status</code> / <code>prune</code> / <code>clear</code>
-          子命令 + 命令行版本。<code>--keep-orphans</code> 安全阀允许
-          外置盘断开时不丢快照。
-        </p>
-      </div>
-    </div>
-  </section>
-
-  <section id="auto" class="panel">
-    <h2><span class="num">2</span>自动行为 <span class="tag auto">无需手动</span></h2>
-
-    <h3>什么时候会自动拍快照</h3>
-    <p>
-      在每一次模型即将调用文件修改工具（<code>Write</code> / <code>Edit</code> /
-      <code>NotebookEdit</code>）之前，Axiomate 会在影子仓库里写一个
-      commit。这一切默认开启，无需配置。
-    </p>
-
-    <h3>什么时候会自动跳过</h3>
     <table>
-      <tr><th>条件</th><th>行为</th></tr>
-      <tr><td>当前目录里文件数超过 <code>checkpointsMaxFiles</code>（默认 200,000）</td><td>跳过这一次快照（成本太高）</td></tr>
-      <tr><td>单个文件大于 50 MB</td><td>该文件不进 index，其他文件正常拍</td></tr>
-      <tr><td>当前目录是 <code>/</code> / <code>~</code> / 盘符根</td><td>整个快照拒绝（防误伤）</td></tr>
-      <tr><td>跟上一次相比没有变化</td><td>不写空 commit</td></tr>
-      <tr><td>系统里没装 git</td><td>整个 checkpoint 子系统 no-op，不报错</td></tr>
+      <tr><th>字段</th><th>含义</th></tr>
+      <tr>
+        <td>commit hash</td>
+        <td>文件 rewind 的主键。File tab 选择和恢复都以 hash 为准。</td>
+      </tr>
+      <tr>
+        <td>messageId</td>
+        <td>辅助标签，用来把 checkpoint 关联回触发下一次文件修改的用户 prompt。</td>
+      </tr>
+      <tr>
+        <td>prompt preview</td>
+        <td>展示用文本。丢失或缺失时，不影响按 hash 恢复文件。</td>
+      </tr>
+      <tr>
+        <td><code>+x -y</code></td>
+        <td>不同界面语义不同，见下面两节。</td>
+      </tr>
     </table>
-
-    <h3>什么时候会自动清理</h3>
     <p>
-      Axiomate 会在你<strong>空闲 ≥1 分钟、且启动满 10 分钟之后</strong>，
-      在后台跑一次 prune。清理的内容包括：
-    </p>
-    <ul>
-      <li><strong>孤儿（orphan）</strong>：工作目录已经被你手动删掉的项目，
-        它们的 ref 会被删掉。</li>
-      <li><strong>过期（stale）</strong>：超过 30 天没碰过的项目 ref。</li>
-      <li><strong>超容量（size-cap）</strong>：所有快照加起来超过 1 GB
-        时，从最旧的开始裁。</li>
-      <li><strong>会话锚定（keep-ref）</strong>：如果某条即将被删的 ref 上
-        还有最近 28 天内 session 引用的 commit，会把它锚到
-        <code>refs/axiomate/_keep/</code> 里，保住到对应 session 也过期为止。</li>
-    </ul>
-    <p>
-      清理至多 24 小时跑一次（用 <code>.last_prune</code> 标记控制），不会
-      重复执行。所有 prune 都是 fail-soft 的，遇到错误只记录、不抛出。
+      checkpoint git 是 Axiomate 自己维护的影子仓库。它通过
+      <code>GIT_DIR</code>、<code>GIT_WORK_TREE</code> 和
+      <code>GIT_INDEX_FILE</code> 与你的项目 git 隔离。你的
+      <code>.git</code>、commit 历史、暂存区、stash、hooks 都不会被 checkpoint
+      系统修改。
     </p>
   </section>
 
-  <section id="commands" class="panel">
-    <h2><span class="num">3</span>用户命令 <span class="tag user">主动调用</span></h2>
+  <section id="rewind">
+    <h2><code>/rewind</code> File tab</h2>
+    <p>
+      File tab 是文件回退界面。它列出当前工作目录 checkpoint ref 上的历史 commit，
+      只显示有文件回退意义的行。每一行的恢复目标都是 commit hash。
+    </p>
+    <div class="note">
+      <strong>File tab 的 <code>+x -y</code> 表示按下这行后的文件变化后果。</strong>
+      它不是这个 commit 自己的历史 diff。
+    </div>
+    <table>
+      <tr><th>行</th><th>File tab 统计的比较对象</th><th>回答的问题</th></tr>
+      <tr>
+        <td>最新 checkpoint</td>
+        <td><code>checkpoint tree -> 当前磁盘</code></td>
+        <td>回到最新 checkpoint 会撤销当前磁盘上的哪些变化？</td>
+      </tr>
+      <tr>
+        <td>更旧 checkpoint</td>
+        <td><code>checkpoint tree -> 下一个 checkpoint tree</code></td>
+        <td>回到这个历史点，会把文件推回到哪个区间？</td>
+      </tr>
+    </table>
+    <p>
+      这个设计让旧行的统计来自不可变 commit，加载更快且不会因为当前磁盘继续变化
+      而污染；只有最新行需要和当前磁盘比较。
+    </p>
+    <p>
+      rewind 执行时会先创建一个 pre-rewind safety snapshot，然后再恢复目标文件树。
+      如果恢复中途失败，File tab 会出现类似 <code>↶ Before rewind</code> 的行，
+      你可以选择它恢复到 rewind 之前的状态。
+    </p>
+  </section>
 
-    <h3><code>/rewind</code> — 回到某个回合之前</h3>
+  <section id="commands">
+    <h2><code>/checkpoints</code> 与 CLI</h2>
     <p>
-      在 REPL 里输入 <code>/rewind</code>，弹出一个交互式 picker，列出本次
-      会话的回合 + 历史快照。每行的 label 形如 <code>Before "&lt;prompt&gt;"</code>
-      —— 选中一行表示<strong>把状态还原到那一回合还没运行之前</strong>。
-    </p>
-
-    <h4>两个标签：File vs Conversation</h4>
-    <p>
-      Picker 默认进入 <strong>File</strong> 标签。按 <kbd>Tab</kbd> 切到
-      <strong>Conversation</strong> 标签。两个标签是<strong>独立的子系统</strong>：
-      列表来源不同、行语义不同、chooser 动作不同、持久化存储不同。下面
-      每个标签自成一节，独立讲述。
-    </p>
-
-    <hr>
-    <h3 class="tab-section">File 标签 — 文件回滚</h3>
-
-    <h4>心智模型：每个 anchor 是 pre-tool 快照</h4>
-    <p>
-      Axiomate 在每个工具调用<strong>之前</strong>拍快照（跟 hermes-agent
-      一致）。所以 anchor 自身的 tree 描述的是"那一回合还没跑时磁盘
-      长什么样"。Picker 行显式说 <code>Before "&lt;prompt&gt;"</code>
-      避免把 anchor 误当成"git log 一条 commit"。每行右侧的 stats
-      （<code>file +X -Y</code>）描述的是<em>从这一行 anchor 到更新的下一个
-      状态之间磁盘发生了什么</em>；最新一行则比较 anchor 和当前磁盘。
-      数据来源是影子仓库（<code>~/.axiomate/checkpoints/store/</code>），
-      跟 JSONL 会话日志无关。
-    </p>
-
-    <p>
-      只显示<strong>影响过磁盘文件的回合</strong>（AI 调用 Edit / Write /
-      NotebookEdit / 经过 Bash 改过文件的回合），纯聊天 / 只读问答不出现。
-    </p>
-
-    <h4>排序：newest-first</h4>
-    <p>
-      Picker 跟 <code>/checkpoints list</code> 一样，<strong>新的在最上面</strong>：
-    </p>
-    <pre><code>(current)
-↶ Before rewind 041da07 [71c90d4]             test.txt +1 -1   just now
-↶ Before rewind "v2 改成 v3" [041da07]       test.txt +1 -1   just now
-↶ Before "v2 改成 v3"                       test.txt +1 -1   2m ago
-↶ Before "v1 改成 v2"                       test.txt +1 -1   3m ago
-↶ Before "创建 test.txt 内容 v1"            test.txt +1 -0   4m ago</code></pre>
-    <p>
-      默认光标停在第二行（最近的可还原目标）。<code>(current)</code> 不可选中
-      —— 它只是排版定位用的"现在"。<kbd>g</kbd> 跳到第一个可选行（跳过
-      <code>(current)</code>），<kbd>G</kbd> 跳到末尾。<kbd>j</kbd> /
-      <kbd>k</kbd> 上下走。
-    </p>
-
-    <h4>Chooser：选了行后能做什么</h4>
-    <ul>
-      <li><strong>有 diff</strong>: <code>Restore file</code> /
-        <code>Never mind</code>。把磁盘还原到这个 anchor 之前的状态，
-        chat 不动。File restore 使用 checkpoint reconciler：目标中存在且不同的
-        文件会恢复，目标中不存在的当前文件会删除，成功后当前 worktree 应该等于
-        目标 checkpoint 的 managed tree。</li>
-      <li><strong>无 diff</strong>: 仅 <code>Never mind</code>
-        （anchor.tree 跟当前磁盘一致，还原是 no-op）。</li>
-    </ul>
-    <h4>Pre-rewind 安全网</h4>
-    <p>
-      每次 <em>Restore file</em> 之前，Axiomate 会自动拍一张 pre-rewind
-      安全网快照（subject 形如 <code>axiomate:&lt;synth-uuid&gt;:pre-rewind:&lt;hash&gt;</code>）。
-      它的 tree 是 rewind 操作执行之前的磁盘状态。如果 rewind 把你
-      重要的改动覆盖了，再开 <code>/rewind</code>，挑那条
-      <code>↶ Before rewind "&lt;X&gt;" [&lt;hash&gt;]</code> 行 → Restore file，
-      原状态就回来了。无限嵌套：撤销 rewind 操作本身也会再拍一张安全网。
-    </p>
-
-    <h4>Picker 行的几种形式</h4>
-    <p>
-      每个 ↶ 行末尾带一个 <code>[7-字符短 hash]</code> —— 这是该 anchor
-      自己的 git short id。普通对话回合的行不带 hash（用户的 prompt
-      本身就是行的标识）。所有有 anchor 的行右侧都显示 stats + 时间。
-    </p>
-    <ul>
-      <li><code>↶ Before "创建 test.txt 内容 v1"</code> —— 普通对话回合的
-        anchor。在 File 标签中，<code>Before</code> 前缀提醒你这是
-        "&lt;X&gt; 还没运行之前"的快照；普通行不显示 hash，因为 prompt
-        本身更可读。</li>
-      <li><code>↶ Before checkpoint &lt;hash&gt;</code> —— 没有可读 prompt
-        或 hash-label 的普通 checkpoint anchor。</li>
-      <li><code>↶ Before rewind "&lt;target&gt;" [&lt;own-hash&gt;]</code> ——
-        一次 rewind 操作的 pre-rewind 安全网。选它就是撤销那次 rewind。
-        引号包的是这次 rewind 想还原回去的那个 turn 的 prompt；方括号是
-        这条安全网自己的 hash。</li>
-      <li><code>↶ Before rewind &lt;target-hash&gt; [&lt;own-hash&gt;]</code> ——
-        嵌套 rewind 的安全网（撤销了一次 rewind 操作本身）。
-        <strong>裸 7-字符 hash</strong> 是它要还原的目标的 short id；
-        <strong>方括号包的 hash</strong> 是这一行自己的 short id。视觉上
-        bare = "我引用谁"，bracketed = "我是谁"，可以顺着 hash 一路向上
-        追溯整条 rewind 链。</li>
-      <li><code>↶ Off-branch anchor [&lt;hash&gt;]</code> —— 没有对话上下文
-        的 anchor（来自 legacy session 或外部直接 commit 进 store）。</li>
-      <li><code>(current)</code> —— 当前 disk 状态占位，不可选中。</li>
-    </ul>
-
-    <h4>每行的时间</h4>
-    <p>
-      stats 列右侧统一显示时间，规则跟 <code>/checkpoints list</code> 一致：
-      <code>just now</code>（&lt;1 分钟）/ <code>5m ago</code>（&lt;1 小时）
-      / <code>3h ago</code>（&lt;24 小时）/ <code>2026-05-24 09:42</code>
-      （≥24 小时）。</p>
-
-    <h4>每行的 CHANGES 列含义</h4>
-    <p>
-      每行的 stats 描述<strong>这一行 turn 自己写了什么</strong>（不是
-      上一行）。算法：
-    </p>
-    <ul>
-      <li><strong>最新那一行</strong>：anchor.tree vs 当前磁盘（"最新
-        turn 跑完后磁盘当前长这样"）。如果你在 axiomate 之外手动改了
-        文件，这一行的 stats 会跟着变 —— 它反映 anchor.tree 到当前
-        disk 的全部差异。</li>
-      <li><strong>其它行</strong>：anchor.tree vs 上一个 anchor 的
-        tree（newer 那个）。等价于"这一行的 turn 跑完后产生了下一个
-        anchor 的状态"，frozen 不变。</li>
-      <li><code>file +X -Y</code> / <code>N files +X -Y</code> 单/多
-        文件变更。<code>(no diff)</code> 这一行 turn 没改文件
-        （比如纯聊天 / 只读问答）。</li>
-    </ul>
-
-    <h4>反馈消息</h4>
-    <p>
-      <em>Restore file</em> 完成后，transcript 里会有一行：
-    </p>
-    <pre><code>● File rewound to "v2 改成 v3". Use /rewind → "↶ Rewind" row to undo.</code></pre>
-    <p>
-      <em>Restore conversation</em> 不发反馈 —— 截断后的对话链已经
-      自显（剪掉的回合从屏幕消失，剪点的 prompt 回到输入框）。
-    </p>
-
-    <h4>空目录行为</h4>
-    <p>
-      在全新空目录里启动 Axiomate、让它创建第一个文件，那一回合的
-      anchor 是合成的根快照（空 tree）。还原到这个 anchor，会把 Axiomate
-      之后创建的文件全部删掉。同理，如果目标 checkpoint 里没有某个后来新增的
-      文件，restore 会删除它；如果目标里有但当前磁盘被手动删掉，restore 会恢复它。
-    </p>
-
-    <h4>Slash 命令在 picker 里不出现</h4>
-    <p>
-      <code>/checkpoints status</code>、<code>/help</code>、<code>/clear</code>
-      这些不属于对话回合 —— 它们是你在 REPL 跑的工具调用，picker 自动
-      过滤掉。"rewind 到 <code>/checkpoints status</code> 之前" 和
-      rewind 到再前一个真实回合是同一个状态。
-    </p>
-
-    <hr>
-    <h3 class="tab-section">Conversation 标签 — 对话回放</h3>
-
-    <h4>心智模型：每行 = 一组 Q/A 对话</h4>
-    <p>
-      显示当前 chain 上所有<strong>真实的 user prompt</strong>。每行 = 一组
-      完整的问答（user prompt + AI 回复）。<code>(current)</code> tag 标在你
-      <strong>正站在哪一组之上</strong> —— 即"head" 指向的那一回合。
-      数据来源是 JSONL 会话日志（<code>~/.axiomate/projects/.../*.jsonl</code>），
-      跟磁盘文件无关。
-    </p>
-
-    <p>
-      行渲染示例（发了 hi → ok → good，没 rewind 过的状态）：
-    </p>
-    <pre><code>good (current)
-ok
-hi</code></pre>
-    <p>
-      reverse-chrono 顺序，最新的 Q/A 在最上面。光标自动落在
-      <code>(current)</code> 行，<kbd>↑</kbd>/<kbd>↓</kbd> 向上向下走。<strong>没
-      有</strong> File 标签那种 <code>Before "&lt;prompt&gt;"</code> 前缀 —— 这里行
-      文本就是 prompt 自身。
-    </p>
-
-    <h4>历史 / 未来：未来行 dim</h4>
-    <p>
-      Rewind 把 head 移到了某个早一点的 turn 之后，比 head 更新的回合在 picker
-      里仍然<strong>可见</strong>（它们在 JSONL 里还存在），但渲染成 dim 灰色
-      —— 提醒你它们是"未来"的、已经从 chat 区消失但还能选回去重做的节点。
-    </p>
-    <pre><code>good          ← dim 灰色（未来）
-ok (current)  ← 默认色（当前）
-hi            ← 默认色（历史）</code></pre>
-    <p>
-      只要你在同一个 session 里没有跑 <code>/clear</code> 或 <code>/branch</code>，
-      不管 rewind 多少次，未来节点都不会丢。
-    </p>
-
-    <h4>两种游标：selection 和 head</h4>
-    <p>
-      Conversation 标签里同时有<strong>两种游标</strong>，别混淆：
-    </p>
-    <ul>
-      <li><strong>Selection 游标</strong>（左侧 <code>▶</code>）—— 你
-        <kbd>↑</kbd>/<kbd>↓</kbd> 移动的视觉光标，决定按 Enter 时选中
-        哪一行。打开 picker 时自动落在 head 行。</li>
-      <li><strong>Head 游标</strong>（行末 <code>(current)</code> tag）——
-        会话当前的状态指针，"我现在站在哪一组对话之上"。head 不会随
-        <kbd>↑</kbd>/<kbd>↓</kbd> 移动，只在你做 <em>Restore conversation</em>
-        之后才换位置。
-      </li>
-    </ul>
-    <p>
-      两种游标可以重叠：刚打开 picker 时 selection 也在 head 行，那一行
-      同时有 <code>▶</code> 和 <code>(current)</code>。<kbd>↑</kbd>/<kbd>↓</kbd>
-      移动后 selection 跑去别处，head 仍留在 <code>(current)</code> 行 ——
-      这两条信息是独立的。
-    </p>
-
-    <h4>Rewind 的语义：截到这一组 + 输入框回填下一条</h4>
-    <p>
-      在 picker 里选某一行 <code>X</code> 之后按 Enter，chooser 提供
-      <code>Restore conversation</code>。执行后：
-    </p>
-    <ul>
-      <li><strong>chat 区</strong>：截到 X 这组对话<strong>结束为止</strong>（含
-        X 的 user prompt 和 AI 回复）；X 之后的 turn 从屏幕消失（数据还在 JSONL）。</li>
-      <li><strong>输入框</strong>：自动回填 X <strong>下一条</strong> user prompt
-        的内容 —— 让你"修改这次问答"再发一次。如果 X 已经是 chain tail
-        （没有下一条），输入框清空。</li>
-      <li><strong>head record</strong>：写一条到 JSONL，标记你现在站在 X 这组。</li>
-    </ul>
-    <p>
-      选 <code>(current)</code> 行本身：no-op（你已经在这了，重做无意义）。
-      Enter 不响应，picker 保持开着。
-    </p>
-
-    <h4>持久化：<code>/exit</code> 后再 resume 仍在原地</h4>
-    <p>
-      Conversation rewind 的 head 写到 JSONL 一条 <code>type: "head"</code>
-      entry。<code>/exit</code> + 重启 + UI resume 这个 session 之后，落点跟你
-      上次 rewind 的位置一致。再次打开 <code>/rewind</code>，<code>(current)</code>
-      tag 仍在 X 行 —— 状态没丢。
-    </p>
-
-    <h4>Picker 不显示什么</h4>
-    <p>
-      下列内容会被自动过滤掉，避免噪音：
-    </p>
-    <ul>
-      <li>tool_use / tool_result（在 JSONL 里 <code>type=user</code> 但 content 是
-        工具执行结果，不是真实 prompt）</li>
-      <li>resume 时注入的 <code>Continue from where you left off.</code>
-        续行（<code>isMeta=true</code>）</li>
-      <li><code>/clear</code> / <code>/help</code> 等 slash 命令的输入和输出包装</li>
-      <li>Compact summary 占位、transcript-only 元数据</li>
-      <li>纯 attachment / readonly 的"非 prompt"消息</li>
-    </ul>
-
-
-    <hr>
-    <h3 class="tab-section">TUI 斜杠命令 (<code>/checkpoints</code>)</h3>
-    <p>
-      在 axiomate REPL 里直接输入。子命令清单：
+      <code>/checkpoints</code> 是 checkpoint store 的只读/维护入口，不是文件回退
+      selector。实际回退文件请使用 <code>/rewind</code>。
     </p>
     <table>
       <tr><th>命令</th><th>作用</th></tr>
       <tr>
-        <td><code>/checkpoints</code><br><code>/checkpoints status</code><br><code>/checkpoints status N</code></td>
-        <td>显示影子仓库总大小、每个项目的快照数和最近活动时间。可选位置参数 <code>N</code> 控制最多显示几行（默认 50，范围 1..500）。</td>
+        <td><code>/checkpoints status</code><br><code>axiomate checkpoints status</code></td>
+        <td>查看 checkpoint base、store 大小、项目数量、最近项目。</td>
       </tr>
       <tr>
-        <td><code>/checkpoints list</code><br><code>/checkpoints list N</code></td>
-        <td>列出当前项目的快照，按时间倒序。可选位置参数 <code>N</code> 控制最多显示几行（默认 50，范围 1..500）。</td>
+        <td><code>/checkpoints list</code><br><code>axiomate checkpoints list</code></td>
+        <td>只读列出当前工作目录的 checkpoint commit 历史。</td>
       </tr>
       <tr>
-        <td><code>/checkpoints prune</code><br><code>/checkpoints prune force</code><br><code>/checkpoints prune keep-orphans</code></td>
-        <td>立即跑一次清理。默认带 24h 节流；加 <code>force</code> 绕过。加 <code>keep-orphans</code> 跳过孤儿（工作目录消失的）那一遍，stale 和 size-cap 仍然跑。斜杠命令的参数是位置子词（不带 <code>--</code>）；拼错的词（如 <code>frce</code>）会被拒绝并报用法错误。命令行端保留 POSIX 风格 flag &mdash; 见下方。</td>
+        <td><code>/checkpoints prune</code><br><code>axiomate checkpoints prune --force</code></td>
+        <td>清理 orphan、stale、超数量和超容量的 checkpoint 数据。</td>
       </tr>
       <tr>
-        <td><code>/checkpoints clear</code></td>
-        <td>清空整个影子仓库（所有项目的所有快照）。<strong>不可恢复。</strong></td>
+        <td><code>/checkpoints clear</code><br><code>axiomate checkpoints clear --force</code></td>
+        <td>清空 checkpoint store。CLI 必须显式传 <code>--force</code>。</td>
       </tr>
     </table>
-
-    <hr>
-    <h3 class="tab-section">命令行 (CLI)</h3>
+    <div class="note warn">
+      <strong><code>/checkpoints list</code> 的 <code>+x -y</code> 语义不同：</strong>
+      它展示 checkpoint commit 自身的历史 diff，即
+      <code>parent(commit) -> commit</code>。同一个 hash 在
+      <code>/rewind</code> 中可能显示不同数字，因为 <code>/rewind</code> 显示的是
+      选择该行后的回退后果。
+    </div>
     <p>
-      同样的子命令也可以从 axiomate 的命令行调用，不进 TUI ——
-      用于脚本、CI 集成、或快速查看 / 清理时不想拉起整个 REPL。
-    </p>
-    <pre><code>axiomate checkpoints status
-axiomate checkpoints status --rows 50
-axiomate checkpoints list
-axiomate checkpoints list --rows 50
-axiomate checkpoints prune --force
-axiomate checkpoints prune --retention-days 90 --max-size-mb 10000
-axiomate checkpoints prune --keep-orphans --force
-axiomate checkpoints clear --force</code></pre>
-    <p>
-      每个子命令都拒绝多余的位置参数（输出 <code>too many arguments</code>），
-      不会静默忽略。<code>clear</code> 在命令行端必须显式 <code>--force</code>，
-      因为它绕过了斜杠版本里的交互确认。
-    </p>
-
-    <h4>控制 <code>status</code> / <code>list</code> 显示几行</h4>
-    <p>
-      <code>status</code> 和 <code>list</code> 渲染的表格默认最多
-      <strong>50</strong> 行。想多看（或少看）几行，传一个
-      <strong>1..500</strong> 之间的整数。斜杠命令直接用位置参数
-      （<code>/checkpoints status 50</code>、<code>/checkpoints list 50</code>）；
-      命令行用 <code>--rows N</code>，跟其他 CLI flag 风格一致
-      （<code>axiomate checkpoints status --rows 50</code>）。
-      非整数或超界会被拒绝。
-    </p>
-    <p>
-      想让覆盖值长期生效，把 <code>checkpointsStatusRows</code> 写到
-      Settings 里（叫 <strong>Checkpoints rows shown</strong>，在
-      10/20/50/100/200/500 之间循环），或者
-      <code>/config checkpointsStatusRows N</code>，再或者直接编辑
-      <code>~/.axiomate.json</code>。每次调用的位置参数（斜杠命令）
-      或 <code>--rows N</code>（CLI）永远优先于 config 里的值。
-    </p>
-
-    <h4><code>--keep-orphans</code> — 保留临时缺失的工作目录 ref</h4>
-    <p>
-      默认情况下，prune 会把工作目录已经从磁盘上消失的项目 ref 直接删掉。
-      但如果你只是临时拔了外置盘、改了路径名打算再改回来、或者计划晚点
-      重新 clone 到原路径，可以加 <code>--keep-orphans</code>（CLI）或
-      <code>keep-orphans</code>（斜杠命令）：这次 prune 跳过孤儿那一遍，
-      stale 和 size-cap 照常跑。<code>/checkpoints prune keep-orphans</code>
-      在 REPL 里也支持。命中这个安全阀的 ref 数量会以
-      <code>Orphan refs skipped: N</code> 的形式出现在输出里。
-    </p>
-
-    <h4>典型输出</h4>
-    <h4><code>/checkpoints status</code></h4>
-    <pre><code>Checkpoint base: C:\Users\you\.axiomate\checkpoints
-Total size:      284.3 MB
-  store/         284.3 MB
-Projects:        7
-
-  WORKDIR                                                        COMMITS    LAST TOUCH  STATE
-  C:\public\workspace\axiomate                                       142          5m ago  live
-  C:\public\workspace\hermes-agent                                    87          2h ago  live
-  C:\Users\you\Desktop\old-prototype                                   3         18d ago  orphan
-
-Note: 3 snapshots from 1 orphan workdir will be discarded on next prune.
-
-Snapshot metrics (last 100):
-  ok 96, no-changes 3, skipped 0, failed 1
-  source full 96, prepared-tree 0
-  full duration p50 142ms, p95 380ms</code></pre>
-    <p>
-      <code>WORKDIR</code> / <code>COMMITS</code> / <code>LAST TOUCH</code> /
-      <code>STATE</code> 各列含义：项目工作目录、shadow store 里这个项目的
-      anchor 数、最近一次 anchor 的时间（自适应：&lt;24h 显示 <em>5m ago</em> /
-      <em>3h ago</em>，&gt;24h 显示绝对日期）、状态（<code>live</code> /
-      <code>orphan</code>，orphan 表示 workdir 不存在了）。
-    </p>
-    <p>
-      <code>Snapshot metrics</code> 块是最近最多 100 次 snapshot 尝试的滚动窗口
-      （<em>last N</em> 那个数字会随快照累计涨到 100）。窗口数据写在
-      <code>~/.axiomate/checkpoints/metrics.jsonl</code> 里，重启不丢。
-      第一次 snapshot 之前这块整段不显示；
-      <code>source full</code> 是普通快照（<code>createSnapshot</code>），
-      <code>prepared-tree</code> 是复用已有树的快照（rewind 安全网等）。
-      <code>p50</code> / <code>p95</code> 只用 <code>full</code> 源的行
-      来算，避免 prepared-tree 的提交耗时污染普通快照的延迟分布。
-      至少要 2 个 <code>ok</code> 样本才会
-      展示数字，否则显示 <code>&mdash;</code>。
-    </p>
-
-    <h4><code>/checkpoints list</code></h4>
-    <pre><code>Checkpoints for C:\public\test:
-
-  WHEN      ID       CHANGES         TURN
-  just now  bd10d75  test.txt +1 -1  Before "v1 改成 v2"
-  just now  49f18dc  test.txt +1 -0  Before "创建 test.txt，内容 v1"
-
-Roll back to a turn with /rewind (interactive selector).</code></pre>
-    <p>
-      列含义：
-    </p>
-    <ul>
-      <li><code>WHEN</code> —— anchor 的时间戳，自适应格式（&lt;1m =
-        <em>just now</em>，&lt;1h = <em>Nm ago</em>，&lt;24h =
-        <em>Nh ago</em>，&ge;24h = <em>2026-05-24 09:42</em>）。</li>
-      <li><code>ID</code> —— git short hash（7 字符）。可以直接喂给外部 git
-        命令，例如
-        <code>git --git-dir=~/.axiomate/checkpoints/store show 8da1461</code>。
-        完整 hash + message UUID 在 <code>--debug</code> 日志里。</li>
-      <li><code>CHANGES</code> —— 跟 picker 同源："这一行 turn 写了
-        什么"。最新那一行用 anchor-vs-disk，其它行用相邻 anchor 间的
-        diff。<code>file +X -Y</code> / <code>N files +X -Y</code> 单/多
-        文件变更，<code>(no diff)</code> 这次 turn 没改文件。</li>
-      <li><code>TURN</code> —— 这一行的 label，说明是哪个回合的 pre-tool
-        快照。形如 <code>Before "&lt;prompt&gt;"</code> 或
-        <code>Undo rewind to before "&lt;target&gt;"</code>（pre-rewind 安全网）。</li>
-    </ul>
-    <p>
-      所有 anchor 都会显示。要还原选 <code>/rewind</code> 里相应的行
-      → <em>Restore file</em>。
+      行数可以通过 <code>--rows</code> 或配置项
+      <code>checkpointsStatusRows</code> 调整。默认显示 50 行，范围是
+      <code>1..500</code>。
     </p>
   </section>
 
-  <section id="config" class="panel">
-    <h2><span class="num">4</span>开关与配置</h2>
+  <section id="nested">
+    <h2>Nested git 与文件发现</h2>
+    <p>
+      checkpoint 系统把当前工作目录当作一个大的 filesystem snapshot 来追踪，
+      而不是复用你的项目 git 暂存区。为了支持 nested git、submodule 和 worktree，
+      Axiomate 不在生产路径使用用户仓库的 <code>git add -A</code>。
+    </p>
+    <p>当前发现与 staging 规则：</p>
+    <ul>
+      <li>普通文件按当前磁盘字节进入 snapshot。</li>
+      <li><code>.git</code>、<code>.hg</code>、<code>.svn</code> 等 VCS metadata 永远排除。</li>
+      <li>nested repo 里的普通文件会被纳入 snapshot。</li>
+      <li>nested repo 自己的 staged/dirty/untracked 状态不会影响 checkpoint。</li>
+      <li>用户项目里的 <code>.gitignore</code> 会生效。</li>
+      <li>父目录 ignore 可以在进入 nested repo 前剪掉整个目录。</li>
+    </ul>
+    <p>
+      测试中可能用 fresh-index <code>git add -A</code> 作为 oracle 验证普通树语义；
+      这只是测试基准，不是生产实现。
+    </p>
+  </section>
 
-    <h3>用户配置</h3>
+  <section id="limits">
+    <h2>默认限制</h2>
     <table>
-      <tr><th>位置</th><th>开关</th><th>作用</th></tr>
+      <tr><th>配置/限制</th><th>默认值</th><th>说明</th></tr>
       <tr>
-        <td>Settings → Config 界面 <br>或 <code>~/.axiomate.json</code></td>
-        <td><code>fileCheckpointingEnabled</code></td>
-        <td>整个 checkpoint 子系统的总开关。默认 <strong>true</strong>。</td>
-      </tr>
-      <tr>
-        <td>Settings → Config 界面<br>或 <code>/config checkpointsStatusRows N</code><br>或 <code>~/.axiomate.json</code></td>
         <td><code>checkpointsStatusRows</code></td>
-        <td><code>/checkpoints status</code> 和 <code>/checkpoints list</code> 默认显示的行数。范围 <strong>1..500</strong>，默认 <strong>50</strong>。每次调用的位置参数（斜杠）或 <code>--rows N</code>（CLI）会覆盖这里的值。</td>
+        <td>50</td>
+        <td><code>status</code> / <code>list</code> 默认显示行数，范围 <code>1..500</code>。</td>
       </tr>
       <tr>
-        <td>Settings → Config 界面<br>或 <code>/config checkpointsMaxFiles N</code><br>或 <code>~/.axiomate.json</code></td>
+        <td><code>checkpointsMaxSnapshotsPerProject</code></td>
+        <td>1000</td>
+        <td>每个项目 ref 最多保留的 snapshot 数。设为 <code>0</code> 表示不限制。</td>
+      </tr>
+      <tr>
         <td><code>checkpointsMaxFiles</code></td>
-        <td>单次快照前的工作目录文件数上限。范围 <strong>0..1000000</strong>，默认 <strong>200000</strong>；<strong>0</strong> 表示关闭这个文件数 guard。超过上限时跳过快照，主流程继续；当前运行内同一工作目录会记住该超限结果，避免每次写文件前重复扫描。</td>
-      </tr>
-    </table>
-
-    <h3>环境变量</h3>
-    <table>
-      <tr><th>变量</th><th>作用</th></tr>
-      <tr>
-        <td><code>AXIOMATE_CODE_DISABLE_FILE_CHECKPOINTING</code></td>
-        <td>设为任意 truthy 值（<code>1</code>、<code>true</code>）就能彻底关掉 checkpoints，优先级高于上面的 config。</td>
+        <td>200000</td>
+        <td>单次 snapshot 允许扫描的工作目录文件数。设为 <code>0</code> 表示不限制。</td>
       </tr>
       <tr>
-        <td><code>AXIOMATE_CHECKPOINT_TIMEOUT</code></td>
-        <td>单条 git 命令的超时秒数，默认 <strong>30s</strong>，clamp 到 <strong>3-300</strong>。</td>
+        <td>单文件大小</td>
+        <td>50 MB</td>
+        <td>超过该大小的文件不会进入 checkpoint managed tree。</td>
       </tr>
       <tr>
-        <td><code>AXIOMATE_CHECKPOINT_BASE</code></td>
-        <td>影子仓库根目录，默认 <code>~/.axiomate/checkpoints</code>。主要用于测试隔离。</td>
+        <td>stale prune</td>
+        <td>30 天</td>
+        <td>长时间未触碰的项目 ref 会被自动清理。</td>
       </tr>
-    </table>
-
-    <h3>快照与 Prune 阈值</h3>
-    <table>
-      <tr><th>参数</th><th>默认</th><th>覆盖方式</th></tr>
-      <tr><td>保留天数（stale 阈值）</td><td>30 天</td><td><code>--retention-days N</code> &mdash; <strong>填 0 关掉 stale 这一遍</strong></td></tr>
-      <tr><td>总大小上限</td><td>1 GB（1000 MB）</td><td><code>--max-size-mb N</code> &mdash; <strong>填 0 关掉 size-cap 这一遍</strong></td></tr>
-      <tr><td>每个项目最多快照数</td><td>1000</td><td>通过 <code>/config</code> 设置 <code>checkpointsMaxSnapshotsPerProject</code>（范围 0..100000，0 = 关闭 ring buffer 上限）。Settings 档位为 100/300/500/1000/2000/5000/10000/0。写时和 prune 时都生效。</td></tr>
-      <tr><td>单次快照最多工作目录文件数</td><td>200,000</td><td>通过 <code>/config</code> 设置 <code>checkpointsMaxFiles</code>（范围 0..1000000，0 = 关闭文件数 guard）。Settings 档位为 50000/100000/200000/300000/500000/1000000/0。写快照前生效；调整配置后会重新检测。</td></tr>
-      <tr><td>会话锚定窗口</td><td>28 天，或保留期的 2 倍</td><td>不可配，硬上限</td></tr>
+      <tr>
+        <td>store size cap</td>
+        <td>1000 MB</td>
+        <td>超过上限时 prune 会删除较旧 commit，但每个 ref 至少保留一个 commit。</td>
+      </tr>
     </table>
   </section>
 
-  <section id="failure" class="panel">
-    <h2><span class="num">5</span>失败模式 <span class="tag warn">兜底</span></h2>
-
-    <p>
-      Checkpoint 子系统的核心契约是<strong>fail-open</strong> — 任何一次
-      快照失败都不能阻塞主流程。这意味着：
-    </p>
-    <ul>
-      <li>系统里没装 git → 整个子系统 no-op，不报错。</li>
-      <li>git 命令失败（EBUSY、超时、权限问题、文件在扫描和写入 index 之间变化等） → 这一次跳过，下一回合自动重试。</li>
-      <li>工作目录文件数超过 <code>checkpointsMaxFiles</code>（默认 200,000） → 跳过，避免快照扫描成本过高；当前运行内会缓存这个结果，配置变化或重启后重新检测。</li>
-      <li>磁盘满 / 权限不足 → 错误进 <code>logForDebugging</code>，对话继续。</li>
-    </ul>
-
-    <h3><code>transient-error</code> 是什么</h3>
-    <p>
-      <code>transient-error</code> 表示 Axiomate 尝试创建快照时，某一步
-      git 命令失败了。它不会让本轮工具调用失败，只是本次没有留下可
-      rewind 的文件快照。下一次写文件前会再试。
-    </p>
-    <p>
-      如果使用 <code>axiomate --debug</code> 启动，可以在 debug log 里搜索
-      <code>[checkpoint-diagnostics]</code>。这类日志只在 debug 模式下输出，
-      正常启动时不会做额外的大量诊断扫描。常见失败点包括目录边界判断用的
-      <code>check-ignore</code>、文件发现用的 <code>ls-files</code>、
-      写入快照 index 的 <code>update-index</code>、<code>write-tree</code>
-      和 <code>commit-tree</code>。这些错误通常表示文件系统正在变化、文件被锁、
-      权限不足、磁盘不足，或 Git 写入 shadow store 超时。
-    </p>
-
-    <h3>嵌套 Git 仓库怎么处理</h3>
-    <p>
-      简化心智模型：Axiomate 把嵌套 Git 仓库当成“可进入的普通文件夹”来拍，
-      只跳过里面的 VCS 元数据。子仓库当前磁盘上的普通文件会保存；进入子仓库后，
-      <code>.gitignore</code> 范围从子仓库自己重新开始。
-    </p>
-    <h4>处理规则</h4>
-    <ul>
-      <li>不会保存 <code>.git/</code>、<code>.git</code>、<code>.hg/</code>、<code>.svn/</code> 这些 VCS 元数据。</li>
-      <li>会保存子仓库里的普通文件，包括 dirty、staged、untracked 文件的当前磁盘内容。</li>
-      <li>父级 <code>.gitignore</code> 只负责“能不能走到子仓库目录入口”；一旦进入子仓库，内部文件只看子仓库范围的 <code>.gitignore</code>。</li>
-    </ul>
-    <h4>父级 <code>.gitignore</code> 的边界例子</h4>
-    <ul>
-      <li><code>child/</code>：忽略 <code>child</code> 目录本身，整个子仓库跳过。</li>
-      <li><code>child/*</code> 且 <code>child/.git</code> 存在：<code>child</code> 目录入口没被忽略，会进入子仓库；进入后按子仓库自己的 <code>.gitignore</code> 重新判断文件。</li>
-      <li><code>vendor/*</code> 且子仓库在 <code>vendor/child/.git</code>：<code>vendor/child</code> 这个入口已经被父级 <code>.gitignore</code> 忽略，所以跳过。</li>
-      <li>子仓库没有自己的 <code>.gitignore</code>：不会继承父级 <code>.gitignore</code>，只受 Axiomate 的极小默认排除影响。</li>
-    </ul>
-    <h4>实现细节</h4>
-    <ul>
-      <li>Axiomate 不从父目录执行 <code>git add -A</code>，所以嵌套仓库不会被保存成 gitlink。</li>
-      <li>目录入口用 Git 的 <code>check-ignore</code> 判断；最终文件用独立空 index 下的 <code>ls-files --others --exclude-standard</code> 枚举。</li>
-      <li>写入 checkpoint shadow index 时使用 <code>update-index</code>，不读取用户仓库自己的 index 状态。</li>
-    </ul>
-    <h4>性能对比</h4>
-    <p>
-      这套算法比直接跑父仓库 <code>git add -A</code> 多做了“寻找嵌套仓库边界”和
-      “把子仓库当普通文件拍”的工作。Windows warm median 实测如下：
-    </p>
+  <section id="failures">
+    <h2>失败与恢复</h2>
     <table>
-      <thead>
-        <tr>
-          <th>场景</th>
-          <th>Axiomate</th>
-          <th>对照</th>
-          <th>回退</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td>普通 5k 文件</td>
-          <td>2122ms</td>
-          <td><code>git add -A</code> 1991ms</td>
-          <td>1.07x，多 131ms</td>
-        </tr>
-        <tr>
-          <td>大量被 <code>.gitignore</code> 忽略的文件/目录</td>
-          <td>2292ms</td>
-          <td><code>git add -A</code> 2088ms</td>
-          <td>1.10x，多 204ms</td>
-        </tr>
-        <tr>
-          <td>8 个嵌套仓库，每个 500 文件</td>
-          <td>3022ms</td>
-          <td>每个仓库分别 fresh-index <code>git add -A</code> 后合并，1037ms</td>
-          <td>2.92x，多 1985ms</td>
-        </tr>
-      </tbody>
+      <tr><th>现象</th><th>含义</th><th>处理</th></tr>
+      <tr>
+        <td>某次 AI 改动没有 checkpoint</td>
+        <td>可能是没有真实文件差异、超过文件数/大小限制、git 不可用或临时错误。</td>
+        <td>下一次有文件差异时会再次尝试。需要排查时看 debug log 和 <code>/checkpoints status</code>。</td>
+      </tr>
+      <tr>
+        <td>rewind 报 snapshot 不存在</td>
+        <td>目标 commit 可能被 prune、clear 或外部 gc 移除。</td>
+        <td>退出并重新打开 <code>/rewind</code> 刷新列表。</td>
+      </tr>
+      <tr>
+        <td>rewind failed mid-way</td>
+        <td>恢复文件过程中失败，磁盘可能部分修改。</td>
+        <td>重新打开 <code>/rewind</code>，选择 <code>↶ Before rewind</code> 行恢复。</td>
+      </tr>
+      <tr>
+        <td>checkpoint store 太大</td>
+        <td>历史 commit 或大文件过多。</td>
+        <td>运行 <code>/checkpoints prune</code> 或调整数量/容量配置。</td>
+      </tr>
     </table>
     <p>
-      读法：比例只说明相对回退，绝对时间更能说明体感。普通项目和大量 ignored
-      文件场景只多约 0.1-0.2 秒；嵌套仓库场景多约 2 秒，因为 Git 的父仓库语义
-      倾向于把子仓库当 gitlink，而 Axiomate 必须进入子仓库并保存里面的普通文件。
-      这是为了保证 rewind 能恢复嵌套仓库里的当前磁盘内容。
-    </p>
-    <p>
-      默认排除只有 Axiomate 自己管理的一小组：<code>.git/</code>、
-      <code>.hg/</code>、<code>.svn/</code>、<code>node_modules/</code>、
-      <code>.DS_Store</code>、<code>Thumbs.db</code>、<code>desktop.ini</code>。
-      <code>.env</code>、<code>.env.local</code>、<code>.env.*.local</code>、
-      <code>*.log</code>、<code>.next/</code>、<code>build/</code>、
-      <code>bin/</code>、<code>obj/</code> 和 <code>.vs/</code> 不会被默认排除，
-      除非项目自己的 <code>.gitignore</code> 明确忽略。项目仓库自己的
-      <code>.git/info/exclude</code> 和全局 gitignore 不作为 checkpoint 的用户规则；
-      Axiomate 只使用 shadow store 的 <code>info/exclude</code> 放这组极小默认值。
-    </p>
-
-    <h3><code>too-many-files</code> 和文件数看起来不一致</h3>
-    <p>
-      <code>too-many-files</code> 检查的是本次 checkpoint 的<strong>工作目录</strong>，
-      不一定是你眼前打开的那个子文件夹。例如从 <code>D:\Temp</code> 或
-      <code>D:\AI</code> 启动 Axiomate，即使你只让它改其中一个 30 个文件的
-      子目录，checkpoint 仍可能先按启动工作目录做保护性文件数检查。
-      看到这类问题时，用 <code>--debug</code> 搜索
-      <code>[checkpoint-diagnostics]</code> 或查看 <code>/checkpoints status</code>
-      里的 <code>WORKDIR</code>，先确认实际被扫描的是哪个目录。
-    </p>
-
-    <h3>跨工作目录的边界情况</h3>
-    <p>
-      如果你 <code>/resume</code> 了一个旧 session，但当前工作目录跟当时
-      不一样，<code>/rewind</code> 之前 Axiomate 会用一行系统消息提示你：
-    </p>
-    <ul>
-      <li><strong>reachable</strong>：快照在当前 ref 里，可以正常 rewind。</li>
-      <li><strong>reachable-other-worktree</strong>：快照存在，但属于另一个
-        工作目录。提示你 <code>cd</code> 过去。</li>
-      <li><strong>unreachable</strong>：快照已被 prune 删掉，rewind 会失败。</li>
-    </ul>
-
-    <h3>清理时的孤儿提醒</h3>
-    <p>
-      <code>/checkpoints status</code> 末尾可能会附一行类似：
-    </p>
-    <pre><code>Note: 3 snapshots from 1 orphan workdir will be discarded on next prune.</code></pre>
-    <p>
-      如果你看到这行、并且那个工作目录的 commit 还有用（比如刚把外置硬盘
-      拔了），可以把工作目录复原到原路径，下一次 prune 会重新认它为 live。
-    </p>
-  </section>
-
-  <section id="faq" class="panel">
-    <h2><span class="num">6</span>FAQ</h2>
-
-    <h3>会污染我的 git 仓库吗？</h3>
-    <p>
-      不会。所有 commit 都写到 <code>~/.axiomate/checkpoints/store/</code>，
-      跟你项目自己的 <code>.git/</code> 完全独立。<code>git status</code>、
-      <code>git log</code>、<code>git push</code> 全都看不到这些 commit。
-    </p>
-
-    <h3>占多少磁盘？</h3>
-    <p>
-      硬上限 1 GB（prune 命令可临时覆盖）。git 自己会做对象去重和 zlib 压缩，所以同一个
-      文件改 100 次，实际只多存了几次 delta。日常使用一般在几百 MB 到 1-2 GB。
-    </p>
-
-    <h3>能跨机器同步吗？</h3>
-    <p>
-      不能。Checkpoints 是本机快照，没设计跨机器的同步、加密、
-      签名机制。换机器就当回到没历史的状态。
-    </p>
-
-    <h3>能导出 / 导入吗？</h3>
-    <p>
-      暂时没有 <code>checkpoints export</code> / <code>import</code>。
-      影子仓库本身是一个标准的 bare git repo，懂 git 的用户可以直接用
-      <code>git --git-dir=~/.axiomate/checkpoints/store ...</code> 检查它。
-    </p>
-
-    <h3>怎么彻底关掉？</h3>
-    <p>
-      在 Settings 里把 <code>fileCheckpointingEnabled</code> 设成 false，
-      或者环境变量 <code>AXIOMATE_CODE_DISABLE_FILE_CHECKPOINTING=1</code>。
-      之前已经攒下的快照不会被自动清理，需要手动 <code>/checkpoints clear</code>。
-    </p>
-
-    <h3><code>/rewind</code> 报错说 commit 找不到，怎么办？</h3>
-    <p>
-      多半是那个回合的 commit 已经被 prune 掉了（超过 30 天 + 当前 session
-      没引用）。这是预期行为。如果是关键节点，请另行保留一份相关工作目录
-      的输出，不要只依赖 checkpoint。
-    </p>
-
-    <h3>父级 <code>.gitignore</code> 会影响子仓库吗？</h3>
-    <p>
-      只影响“能不能到达子仓库目录”这个边界，不影响已经进入后的子仓库内部文件。
-      进入带 <code>.git</code> 的子目录后，Axiomate 会从该子目录重新评估 ignore
-      规则，行为等价于在子仓库里单独看它自己的 <code>.gitignore</code>。
-      <code>child/</code> 会让 <code>child</code> 整体跳过；
-      <code>child/*</code> 不会挡住 <code>child/.git</code> 这个边界；
-      <code>vendor/*</code> 会挡住 <code>vendor/child/.git</code> 这个更深一层的边界。
+      checkpoint 系统整体是 fail-open 的：快照失败不会阻止 AI 工具继续执行。
+      rewind 是例外：如果没有安全 snapshot 或无法确认目标 commit，Axiomate 会在
+      修改磁盘前停止。
     </p>
   </section>
 
   <footer>
-    Axiomate · Checkpoints v2 · 文档随实现迭代，最后更新 2026-06-07
+    Last updated: 2026-06-08 · Source of truth: docs/checkpoint/checkpoints-design.md
   </footer>
-
 </div>
 </body>
 </html>

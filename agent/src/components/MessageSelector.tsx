@@ -5,7 +5,7 @@ import type {
 import { randomUUID, type UUID } from 'crypto'
 import figures from 'figures'
 import * as React from 'react'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   logEvent,
 } from '../services/analytics/index.js'
@@ -580,6 +580,7 @@ export function MessageSelector({
   }, [preselectedMessage, isFileHistoryEnabled, anchorByMsgId, codeRowForUuid])
 
   const [isRestoring, setIsRestoring] = useState(false)
+  const restoreActionInFlightRef = useRef(false)
   const [restoringOption, setRestoringOption] = useState<RestoreOption | null>(
     null,
   )
@@ -808,88 +809,97 @@ export function MessageSelector({
       return
     }
 
-    if (isSummarizeOption(option)) {
+    if (restoreActionInFlightRef.current) {
+      return
+    }
+    restoreActionInFlightRef.current = true
+
+    try {
+      if (isSummarizeOption(option)) {
+        onPreRestore()
+        setIsRestoring(true)
+        setRestoringOption(option)
+        setError(undefined)
+        try {
+          const direction = option === 'summarize_up_to' ? 'up_to' : 'from'
+          const feedback =
+            (direction === 'up_to'
+              ? summarizeUpToFeedback
+              : summarizeFromFeedback
+            ).trim() || undefined
+          await onSummarize(messageToRestore, feedback, direction)
+          setIsRestoring(false)
+          setRestoringOption(null)
+          setMessageToRestore(undefined)
+          setRestoreHashForRestore(undefined)
+          onClose()
+        } catch (error) {
+          logError(error as Error)
+          setIsRestoring(false)
+          setRestoringOption(null)
+          setMessageToRestore(undefined)
+          setRestoreHashForRestore(undefined)
+          setError(`Failed to summarize:\n${error}`)
+        }
+        return
+      }
+
       onPreRestore()
       setIsRestoring(true)
       setRestoringOption(option)
       setError(undefined)
-      try {
-        const direction = option === 'summarize_up_to' ? 'up_to' : 'from'
-        const feedback =
-          (direction === 'up_to'
-            ? summarizeUpToFeedback
-            : summarizeFromFeedback
-          ).trim() || undefined
-        await onSummarize(messageToRestore, feedback, direction)
-        setIsRestoring(false)
-        setRestoringOption(null)
-        setMessageToRestore(undefined)
-        setRestoreHashForRestore(undefined)
-        onClose()
-      } catch (error) {
-        logError(error as Error)
-        setIsRestoring(false)
-        setRestoringOption(null)
-        setMessageToRestore(undefined)
-        setRestoreHashForRestore(undefined)
-        setError(`Failed to summarize:\n${error}`)
+
+      let codeError: Error | null = null
+      let conversationError: Error | null = null
+
+      // 'both' branch removed alongside the chooser option (#215). Each
+      // axis is dispatched independently — file via onRestoreCode, conv
+      // via onRestoreMessage. The mode args still carry 'file-only' /
+      // 'conversation-only' literals for callees that historically
+      // distinguished sequencing in the 'both' case; with 'both' gone
+      // these are now the only modes the picker emits.
+      if (option === 'file') {
+        try {
+          await onRestoreCode(messageToRestore, 'file-only', restoreHashForRestore)
+        } catch (error) {
+          codeError = error as Error
+          logError(codeError)
+        }
       }
-      return
-    }
 
-    onPreRestore()
-    setIsRestoring(true)
-    setRestoringOption(option)
-    setError(undefined)
-
-    let codeError: Error | null = null
-    let conversationError: Error | null = null
-
-    // 'both' branch removed alongside the chooser option (#215). Each
-    // axis is dispatched independently — file via onRestoreCode, conv
-    // via onRestoreMessage. The mode args still carry 'file-only' /
-    // 'conversation-only' literals for callees that historically
-    // distinguished sequencing in the 'both' case; with 'both' gone
-    // these are now the only modes the picker emits.
-    if (option === 'file') {
-      try {
-        await onRestoreCode(messageToRestore, 'file-only', restoreHashForRestore)
-      } catch (error) {
-        codeError = error as Error
-        logError(codeError)
+      if (option === 'conversation') {
+        try {
+          await onRestoreMessage(
+            messageToRestore,
+            'conversation-only',
+            nextUserAfter(messageToRestore),
+          )
+        } catch (error) {
+          conversationError = error as Error
+          logError(conversationError)
+        }
       }
-    }
 
-    if (option === 'conversation') {
-      try {
-        await onRestoreMessage(
-          messageToRestore,
-          'conversation-only',
-          nextUserAfter(messageToRestore),
+      setIsRestoring(false)
+      setRestoringOption(null)
+      setMessageToRestore(undefined)
+      setRestoreHashForRestore(undefined)
+
+      // Handle errors
+      if (conversationError && codeError) {
+        setError(
+          `Failed to restore the conversation and code:\n${conversationError}\n${codeError}`,
         )
-      } catch (error) {
-        conversationError = error as Error
-        logError(conversationError)
+      } else if (conversationError) {
+        setError(`Failed to restore the conversation:\n${conversationError}`)
+      } else if (codeError) {
+        setError(`Failed to restore the code:\n${codeError}`)
+      } else {
+        // Success - close the selector
+        onClose()
       }
-    }
-
-    setIsRestoring(false)
-    setRestoringOption(null)
-    setMessageToRestore(undefined)
-    setRestoreHashForRestore(undefined)
-
-    // Handle errors
-    if (conversationError && codeError) {
-      setError(
-        `Failed to restore the conversation and code:\n${conversationError}\n${codeError}`,
-      )
-    } else if (conversationError) {
-      setError(`Failed to restore the conversation:\n${conversationError}`)
-    } else if (codeError) {
-      setError(`Failed to restore the code:\n${codeError}`)
-    } else {
-      // Success - close the selector
-      onClose()
+    } finally {
+      restoreActionInFlightRef.current = false
     }
   }
 

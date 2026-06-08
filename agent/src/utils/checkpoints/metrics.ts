@@ -18,10 +18,8 @@
  * `MAX_LINES * 2`. No fancy log-rotation library — JSONL is the same
  * shape as `~/.axiomate/projects/*` files everywhere else in axiomate.
  *
- * **Hermes parity note**: Hermes does not have this. It's an
- * axiomate-only addition — completion-plan 6E. Keeping the API tight
- * (`recordSnapshotOutcome`, `loadRecentMetrics`, `summarizeMetrics`)
- * so a future Hermes-side equivalent can map cleanly.
+ * The API is intentionally small: `recordSnapshotOutcome`,
+ * `loadRecentMetrics`, and `summarizeMetrics`.
  *
  * Fail-open everywhere: a write failure cannot block a snapshot, a
  * read failure cannot block status rendering. Both paths swallow into

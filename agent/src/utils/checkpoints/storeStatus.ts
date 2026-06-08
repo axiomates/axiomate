@@ -1,16 +1,13 @@
 /**
  * `storeStatus` — read-only summary of the shadow checkpoint store.
  *
- * Backs Phase 5's `/checkpoints` slash command and `axiomate checkpoints
- * status` CLI. Pure read path: no `git init`, no commits, no writes.
+ * Backs the `/checkpoints` slash command and `axiomate checkpoints status`
+ * CLI. Pure read path: no `git init`, no commits, no writes.
  * Safe to call before `ensureStore` has ever run — returns a "store
  * doesn't exist yet" shape with zeroed counts.
  *
- * Adapted from Hermes `store_status` (`tools/checkpoint_manager.py:
- * 1533-1597`). Divergence from Hermes: axiomate has no v1 legacy
- * archives. The `legacy_size_bytes` / `legacy_archives` fields Hermes
- * returns are not part of axiomate's surface — see progress doc
- * "`clear-legacy` is NOT ported" for the reasoning.
+ * Axiomate has no released pre-shadow-git checkpoint store to migrate, so
+ * legacy archive fields are not part of this surface.
  *
  * Best-effort: every per-project lookup is wrapped in a soft-fail.
  * One bad ref does not knock out the whole report — the project's

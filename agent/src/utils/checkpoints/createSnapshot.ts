@@ -10,7 +10,7 @@
  * treats any non-`ok` result as "no snapshot recorded this turn, retry
  * next turn".
  *
- * Steps (full rationale lives in docs/checkpoints-v2-progress.md):
+ * Steps (full rationale lives in docs/checkpoint/checkpoints-design.md):
  *   1.  soft-disable when git missing
  *   2.  broad-dir guard
  *   3.  per-turn dedup is the caller's responsibility
@@ -129,6 +129,14 @@ export interface CreateSnapshotOptions {
   // (no options today — kept as a struct for forward compatibility)
 }
 
+export interface PrepareSnapshotTreeOptions {
+  /**
+   * Optional scratch index for callers that need a one-off tree without
+   * touching the per-project staging index. Normal snapshots leave this unset.
+   */
+  indexFile?: string
+}
+
 type CreateSnapshotFailure = Exclude<CreateSnapshotResult, { ok: true }>
 
 export type PreparedSnapshotTreeResult =
@@ -176,6 +184,7 @@ export async function createSnapshot(
 
 export async function prepareSnapshotTree(
   workdir: string,
+  opts: PrepareSnapshotTreeOptions = {},
 ): Promise<PreparedSnapshotTreeResult> {
   if (!(await probeGitAvailable())) {
     return { ok: false, skipped: 'git-missing' }
@@ -195,7 +204,7 @@ export async function prepareSnapshotTree(
   }
   const store = storeResult.store
   const hash = projectHash(canonical)
-  const indexFile = indexPath(hash)
+  const indexFile = opts.indexFile ?? indexPath(hash)
   const ref = refName(hash)
   await touchProject(canonical)
 
@@ -284,7 +293,6 @@ async function _runCreateSnapshotFromTree(
   }
   const store = storeResult.store
   const hash = projectHash(canonical)
-  const indexFile = indexPath(hash)
   const ref = refName(hash)
   await touchProject(canonical)
 
@@ -306,7 +314,6 @@ async function _runCreateSnapshotFromTree(
     const refTree = await runCheckpointGit(['rev-parse', `${refCommit}^{tree}`], {
       store,
       workTree: canonical,
-      indexFile,
     })
     if (refTree.ok === false) return TRANSIENT(`rev-parse tree: ${refTree.message}`)
     if (refTree.stdout.trim() === treeHash) {
@@ -317,7 +324,6 @@ async function _runCreateSnapshotFromTree(
   const commitResult = await commitTreeSnapshot({
     store,
     workTree: canonical,
-    indexFile,
     ref,
     refCommit,
     hasRef,
@@ -786,7 +792,14 @@ interface CommitArgs {
   bodyText?: string
 }
 
-interface CommitTreeArgs extends CommitArgs {
+interface CommitTreeArgs {
+  store: string
+  workTree: string
+  ref: string
+  refCommit: string
+  hasRef: boolean
+  subject: string
+  bodyText?: string
   treeHash: string
 }
 
@@ -819,7 +832,6 @@ async function commitTreeSnapshot(
   const commitTree = await runCheckpointGit(args, {
     store: a.store,
     workTree: a.workTree,
-    indexFile: a.indexFile,
     input: useStdin ? message : undefined,
   })
   if (commitTree.ok === false) {
@@ -838,7 +850,6 @@ async function commitTreeSnapshot(
   const update = await runCheckpointGit(updateArgs, {
     store: a.store,
     workTree: a.workTree,
-    indexFile: a.indexFile,
   })
   if (update.ok === false) {
     // update-ref's CAS failure exits 1 with stderr including

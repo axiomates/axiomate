@@ -1,7 +1,7 @@
 /**
  * Path helpers for the shadow-git checkpoint store.
  *
- * Layout (see docs/checkpoints-v2-design.md):
+ * Layout (see docs/checkpoint/checkpoints-design.md):
  *   ~/.axiomate/checkpoints/
  *     store/                          ← single bare-ish git repo
  *       refs/axiomate/<hash16>        ← per-project branch tip
