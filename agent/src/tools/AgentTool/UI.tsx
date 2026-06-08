@@ -41,6 +41,7 @@ import {
   renderModelName,
 } from '../../utils/model/model.js'
 import type { Theme, ThemeName } from '../../utils/theme.js'
+import { getKnownTokenUsage, getTokenCountFromUsage } from '../../utils/tokens.js'
 import type {
   outputSchema,
   Progress,
@@ -62,6 +63,11 @@ function hasProgressMessage(data: Progress): data is AgentToolProgress {
   }
   const msg = (data as AgentToolProgress).message
   return msg != null && typeof msg === 'object' && 'type' in msg
+}
+
+function getKnownProgressTokenCount(message: Message): number | null {
+  const usage = getKnownTokenUsage(message)
+  return usage ? getTokenCountFromUsage(usage) : null
 }
 
 /**
@@ -456,12 +462,7 @@ export function renderToolUseProgressMessage(
 
     let tokens = null
     if (latestAssistant?.data.message.type === 'assistant') {
-      const usage = latestAssistant.data.message.message.usage
-      tokens =
-        (usage.cache_creation_input_tokens ?? 0) +
-        (usage.cache_read_input_tokens ?? 0) +
-        usage.input_tokens +
-        usage.output_tokens
+      tokens = getKnownProgressTokenCount(latestAssistant.data.message)
     }
 
     return { toolUseCount, tokens }
@@ -692,12 +693,7 @@ function calculateAgentStats(progressMessages: ProgressMessage<Progress>[]): {
 
   let tokens = null
   if (latestAssistant?.data.message.type === 'assistant') {
-    const usage = latestAssistant.data.message.message.usage
-    tokens =
-      (usage.cache_creation_input_tokens ?? 0) +
-      (usage.cache_read_input_tokens ?? 0) +
-      usage.input_tokens +
-      usage.output_tokens
+    tokens = getKnownProgressTokenCount(latestAssistant.data.message)
   }
 
   return { toolUseCount, tokens }
