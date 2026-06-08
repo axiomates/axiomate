@@ -153,7 +153,7 @@ function platformRegistryPathKey(
   }
 }
 
-function registryPathKey(
+export function getFileStateRegistryPathKey(
   filePath: string,
   options?: RegistryPathKeyOptions,
 ): string {
@@ -196,7 +196,7 @@ export function getFileStateRegistryPathKeyForTests(
   filePath: string,
   options?: RegistryPathKeyOptions,
 ): string {
-  return registryPathKey(filePath, options)
+  return getFileStateRegistryPathKey(filePath, options)
 }
 
 export function recordFileRead(
@@ -205,7 +205,7 @@ export function recordFileRead(
 ): void {
   getOwnerId(context)
   const normalizedPath = normalize(filePath)
-  const registryKey = registryPathKey(filePath)
+  const registryKey = getFileStateRegistryPathKey(filePath)
   const fileState = context.readFileState.get(normalizedPath)
   if (fileState) fileState.registrySequence = ++sequence
   if (fileState) {
@@ -229,7 +229,7 @@ export function noteFileWrite(
   const ownerId = getOwnerId(context)
   const writeSequence = ++sequence
   const normalizedPath = normalize(filePath)
-  const registryKey = registryPathKey(filePath)
+  const registryKey = getFileStateRegistryPathKey(filePath)
   lastWriterByPath.delete(registryKey)
   lastWriterByPath.set(registryKey, {
     ownerId,
@@ -249,7 +249,7 @@ export function wasFileModifiedAfterReadByAnotherContext(
   filePath: string,
 ): boolean {
   const ownerId = getOwnerId(context)
-  const registryKey = registryPathKey(filePath)
+  const registryKey = getFileStateRegistryPathKey(filePath)
   const lastWriter = lastWriterByPath.get(registryKey)
   if (!lastWriter || lastWriter.ownerId === ownerId) return false
 
@@ -280,7 +280,10 @@ export function getPathsWrittenByOtherContextsSince(
 ): string[] {
   const ownerId = getOwnerId(context)
   const paths = new Map(
-    Array.from(filePaths, path => [registryPathKey(path), normalize(path)]),
+    Array.from(filePaths, path => [
+      getFileStateRegistryPathKey(path),
+      normalize(path),
+    ]),
   )
   const stalePaths: string[] = []
 
@@ -308,7 +311,7 @@ export async function withFileStatePathLock<T>(
   filePath: string,
   callback: () => T | Promise<T>,
 ): Promise<T> {
-  const registryKey = registryPathKey(filePath)
+  const registryKey = getFileStateRegistryPathKey(filePath)
   const heldLocks = heldPathLocks.getStore()
   if (heldLocks?.has(registryKey)) {
     throwFileHarnessFailure(
@@ -358,7 +361,7 @@ export async function withFileStatePathLock<T>(
 }
 
 export function getFileStatePathLockDepthForTests(filePath: string): number {
-  return pathLockDepths.get(registryPathKey(filePath)) ?? 0
+  return pathLockDepths.get(getFileStateRegistryPathKey(filePath)) ?? 0
 }
 
 export function clearFileStateRegistryForTests(): void {

@@ -58,6 +58,9 @@ import {
   userFacingName,
 } from './UI.js'
 
+const PARTIAL_READ_FOR_WRITE_ERROR =
+  'File was only partially read. Read the whole file before writing to it, or use Edit for a targeted change.'
+
 const inputSchema = lazySchema(() =>
   z.strictObject({
     file_path: z
@@ -220,13 +223,16 @@ export const FileWriteTool = buildTool({
 
     const readTimestamp = toolUseContext.readFileState.get(fullFilePath)
     if (!readTimestamp || !fileStateHasFullContent(readTimestamp)) {
+      const reason = readTimestamp ? 'partial_read_for_write' : 'not_read'
       return {
         result: false,
         message:
-          'File has not been read yet. Read it first before writing to it.',
+          reason === 'partial_read_for_write'
+            ? PARTIAL_READ_FOR_WRITE_ERROR
+            : 'File has not been read yet. Read it first before writing to it.',
         errorCode: 2,
         fileHarnessFailure: fileHarnessFailure(
-          readTimestamp ? 'partial_read_for_write' : 'not_read',
+          reason,
           'validation',
           fullFilePath,
         ),
@@ -335,7 +341,9 @@ export const FileWriteTool = buildTool({
           const lastRead = readFileState.get(fullFilePath)
           if (!lastRead || !fileStateHasFullContent(lastRead)) {
             throwFileHarnessFailure(
-              FILE_UNEXPECTEDLY_MODIFIED_ERROR,
+              lastRead
+                ? PARTIAL_READ_FOR_WRITE_ERROR
+                : FILE_UNEXPECTEDLY_MODIFIED_ERROR,
               lastRead ? 'partial_read_for_write' : 'not_read',
               'execution',
               fullFilePath,

@@ -1,11 +1,13 @@
 import { LRUCache } from 'lru-cache'
 import { normalize } from 'path'
+import { getFileStateRegistryPathKey } from './fileStateRegistry.js'
 
 export type FileState = {
   content: string
   timestamp: number
   offset: number | undefined
   limit: number | undefined
+  totalLines?: number
   // Records format-only changes applied by a structured tool while preserving
   // the known semantic text state. This is informational; full-content checks
   // should not treat it as a partial read.
@@ -28,11 +30,13 @@ export type FileState = {
 }
 
 export function fileStateHasFullContent(fileState: FileState): boolean {
-  return (
-    !fileState.isPartialView &&
-    fileState.limit === undefined &&
-    (fileState.offset === undefined || fileState.offset === 1)
-  )
+  if (fileState.isPartialView) return false
+  if (fileState.limit === undefined) {
+    return fileState.offset === undefined || fileState.offset === 1
+  }
+  if (fileState.offset !== undefined && fileState.offset !== 1) return false
+  if (fileState.totalLines === undefined) return false
+  return fileState.limit >= fileState.totalLines
 }
 
 // Default max entries for read file state caches
@@ -50,34 +54,44 @@ const DEFAULT_MAX_CACHE_SIZE_BYTES = 25 * 1024 * 1024
  */
 export class FileStateCache {
   private cache: LRUCache<string, FileState>
+  private originalKeysByLookupKey = new Map<string, string>()
 
   constructor(maxEntries: number, maxSizeBytes: number) {
     this.cache = new LRUCache<string, FileState>({
       max: maxEntries,
       maxSize: maxSizeBytes,
       sizeCalculation: value => Math.max(1, Buffer.byteLength(value.content)),
+      dispose: (_value, key) => {
+        this.originalKeysByLookupKey.delete(key)
+      },
     })
   }
 
   get(key: string): FileState | undefined {
-    return this.cache.get(normalize(key))
+    return this.cache.get(getFileStateRegistryPathKey(key))
   }
 
   set(key: string, value: FileState): this {
-    this.cache.set(normalize(key), value)
+    const normalizedKey = normalize(key)
+    const lookupKey = getFileStateRegistryPathKey(normalizedKey)
+    this.cache.set(lookupKey, value)
+    this.originalKeysByLookupKey.set(lookupKey, normalizedKey)
     return this
   }
 
   has(key: string): boolean {
-    return this.cache.has(normalize(key))
+    return this.cache.has(getFileStateRegistryPathKey(key))
   }
 
   delete(key: string): boolean {
-    return this.cache.delete(normalize(key))
+    const lookupKey = getFileStateRegistryPathKey(key)
+    this.originalKeysByLookupKey.delete(lookupKey)
+    return this.cache.delete(lookupKey)
   }
 
   clear(): void {
     this.cache.clear()
+    this.originalKeysByLookupKey.clear()
   }
 
   get size(): number {
@@ -96,12 +110,16 @@ export class FileStateCache {
     return this.cache.calculatedSize
   }
 
-  keys(): Generator<string> {
-    return this.cache.keys()
+  *keys(): Generator<string> {
+    for (const key of this.cache.keys()) {
+      yield this.originalKeysByLookupKey.get(key) ?? key
+    }
   }
 
-  entries(): Generator<[string, FileState]> {
-    return this.cache.entries()
+  *entries(): Generator<[string, FileState]> {
+    for (const [key, value] of this.cache.entries()) {
+      yield [this.originalKeysByLookupKey.get(key) ?? key, value]
+    }
   }
 
   dump(): ReturnType<LRUCache<string, FileState>['dump']> {
@@ -110,6 +128,10 @@ export class FileStateCache {
 
   load(entries: ReturnType<LRUCache<string, FileState>['dump']>): void {
     this.cache.load(entries)
+    this.originalKeysByLookupKey.clear()
+    for (const key of this.cache.keys()) {
+      this.originalKeysByLookupKey.set(key, key)
+    }
   }
 }
 
@@ -151,7 +173,9 @@ export function cacheKeys(cache: FileStateCache): string[] {
 // Preserves size limit configuration from the source cache
 export function cloneFileStateCache(cache: FileStateCache): FileStateCache {
   const cloned = createFileStateCacheWithSizeLimit(cache.max, cache.maxSize)
-  cloned.load(cache.dump())
+  for (const [filePath, fileState] of cache.entries()) {
+    cloned.set(filePath, fileState)
+  }
   return cloned
 }
 

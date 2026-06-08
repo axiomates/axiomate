@@ -14,6 +14,9 @@ import {
   setupFileHarness,
 } from './helpers.js'
 
+const PARTIAL_READ_FOR_WRITE_ERROR =
+  'File was only partially read. Read the whole file before writing to it, or use Edit for a targeted change.'
+
 mockFileHarnessRuntime()
 setupFileHarness()
 
@@ -80,6 +83,7 @@ async function writeNotebook(path: string, source: string): Promise<void> {
 
 async function expectFileHarnessRejection(
   promise: Promise<unknown>,
+  expectedMessage = FILE_UNEXPECTEDLY_MODIFIED_ERROR,
 ): Promise<Error & {
   fileHarnessFailure?: {
     reason?: string
@@ -98,7 +102,7 @@ async function expectFileHarnessRejection(
         path?: string
       }
     }
-    expect(typed.message).toBe(FILE_UNEXPECTEDLY_MODIFIED_ERROR)
+    expect(typed.message).toBe(expectedMessage)
     return typed
   }
   throw new Error('Expected FileHarness call to reject')
@@ -424,6 +428,7 @@ describe('FileHarness failure metadata', () => {
         allowToolUse,
         parentMessage,
       ),
+      PARTIAL_READ_FOR_WRITE_ERROR,
     )
     expect(error.fileHarnessFailure?.reason).toBe('partial_read_for_write')
     expect(error.fileHarnessFailure?.phase).toBe('execution')

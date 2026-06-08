@@ -292,7 +292,7 @@ describe('FileWriteTool file harness behavior', () => {
     expect(context.readFileState.get(path)?.isPartialView).toBe(true)
     expectValidationFailure(result)
     expect(result.errorCode).toBe(2)
-    expect(result.message).toContain('File has not been read yet')
+    expect(result.message).toContain('File was only partially read')
   })
 
   test('call rejects overwriting after a range Read before touching disk', async () => {
@@ -315,9 +315,78 @@ describe('FileWriteTool file harness behavior', () => {
         allowToolUse,
         parentMessage,
       ),
-    ).rejects.toThrow(FILE_UNEXPECTEDLY_MODIFIED_ERROR)
+    ).rejects.toThrow('File was only partially read')
     expect(await readFile(path, 'utf8')).toBe('alpha\nbeta\ngamma\n')
   })
+
+  test('allows overwriting after a bounded Read that covered the full file', async () => {
+    const { FileReadTool, FileWriteTool } = await loadFileTools()
+    const path = join(getHarnessCwd(), 'bounded-full-write.txt')
+    await writeFile(path, 'alpha\nbeta\ngamma\n', 'utf8')
+    const context = makeToolContext()
+
+    await FileReadTool.call(
+      { file_path: path, offset: 1, limit: 10 },
+      context,
+      allowToolUse,
+      parentMessage,
+    )
+
+    const readState = context.readFileState.get(path)
+    expect(readState?.isPartialView).toBeUndefined()
+    expect(readState?.totalLines).toBe(4)
+
+    const validation = await FileWriteTool.validateInput!(
+      { file_path: path, content: 'replacement\n' },
+      context,
+    )
+
+    expect(validation.result).toBe(true)
+    await FileWriteTool.call(
+      { file_path: path, content: 'replacement\n' },
+      context,
+      allowToolUse,
+      parentMessage,
+    )
+    expect(await readFile(path, 'utf8')).toBe('replacement\n')
+  })
+
+  test.runIf(process.platform === 'win32')(
+    'overwrites after a full Read when only Windows path casing differs',
+    async () => {
+      const { FileReadTool, FileWriteTool } = await loadFileTools()
+      const path = join(getHarnessCwd(), 'case-write.txt')
+      await writeFile(path, 'alpha\nbeta\n', 'utf8')
+      const context = makeToolContext()
+      const upperDrivePath = path.replace(/^[a-z]:/, drive =>
+        drive.toUpperCase(),
+      )
+      const lowerDrivePath = path.replace(/^[A-Z]:/, drive =>
+        drive.toLowerCase(),
+      )
+
+      await FileReadTool.call(
+        { file_path: upperDrivePath },
+        context,
+        allowToolUse,
+        parentMessage,
+      )
+
+      const validation = await FileWriteTool.validateInput!(
+        { file_path: lowerDrivePath, content: 'replacement\n' },
+        context,
+      )
+
+      expect(validation.result).toBe(true)
+      await FileWriteTool.call(
+        { file_path: lowerDrivePath, content: 'replacement\n' },
+        context,
+        allowToolUse,
+        parentMessage,
+      )
+      expect(await readFile(path, 'utf8')).toBe('replacement\n')
+    },
+  )
 
   test('rejects overwriting partial state with limit even when isPartialView is missing', async () => {
     const { FileWriteTool } = await loadFileTools()
@@ -366,7 +435,7 @@ describe('FileWriteTool file harness behavior', () => {
         allowToolUse,
         parentMessage,
       ),
-    ).rejects.toThrow(FILE_UNEXPECTEDLY_MODIFIED_ERROR)
+    ).rejects.toThrow('File was only partially read')
     expect(await readFile(path, 'utf8')).toBe('alpha\nbeta\ngamma\n')
   })
 

@@ -1033,12 +1033,13 @@ async function callInner(
 
   await validateContentTokens(content, ext, maxTokens, context.onRecoveryTrace)
 
-  const partial = isPartialRead(offset, limit)
+  const partial = isPartialRead(offset, limit, totalLines)
   readFileState.set(fullFilePath, {
     content,
     timestamp: Math.floor(mtimeMs),
     offset,
     limit,
+    totalLines,
     ...(partial ? { isPartialView: true } : {}),
   })
   clearFileReadDedupHits(context, fullFilePath)
@@ -1081,8 +1082,10 @@ async function callInner(
 function isPartialRead(
   offset: number,
   limit: number | undefined,
+  totalLines: number,
 ): boolean {
-  return offset !== 1 || limit !== undefined
+  if (offset !== 1) return true
+  return limit !== undefined && limit < totalLines
 }
 
 /**
