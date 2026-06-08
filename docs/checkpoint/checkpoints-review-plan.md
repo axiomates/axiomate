@@ -71,11 +71,9 @@ Required review tracks:
 
 1. Rename or narrow rewind-only stats helpers so they cannot be reused by
    `/checkpoints list`.
-2. Add a lower-level per-workdir rewind concurrency gate.
-3. Decide whether RewindPlan should check current-tree freshness before apply.
-4. Add temp cleanup tests for prepare/apply/verify failure paths.
-5. Remove or scratch-index any remaining preview helpers that stage current disk
-   into the fixed project index outside normal snapshot creation.
+2. Add temp cleanup tests for prepare/apply/verify failure paths.
+3. Decide whether newest `/rewind` row stats should refresh on confirmation.
+4. Decide whether `WorktreeReconcilePlan` needs a runtime one-shot guard.
 
 ## Review Exit Criteria
 

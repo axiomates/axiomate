@@ -53,30 +53,33 @@ Follow-up:
 - `bulkDiffEventStats` and nearby comments should be renamed or narrowed so it
   cannot be mistaken for checkpoint-list stats again.
 
-### F2: Rewind no longer uses the fixed project index, but other disk-preview helpers still can
+### F2: Disk-preview helpers used the fixed project index
 
-Severity: medium
+Severity: resolved
 
 The rewind reconciler now uses an operation-scoped scratch index, which is the
-right boundary. Some preview/diff helpers still stage current disk into the
-fixed per-project index. That is acceptable for ordinary snapshot/list paths
-only if they do not run concurrently with restore-sensitive operations.
+right boundary. Some preview/diff helpers also staged current disk into the
+fixed per-project index, which made picker previews, dry-run stats, and no-op
+checks vulnerable to stale fixed index locks.
 
-Known helper to revisit:
+Current action taken:
 
-- `fileHistoryBulkDiffVsDisk`
+- Added a short-lived disk-preview scratch index helper.
+- `fileHistoryGetDiffVsDisk`, `fileHistoryHasDiffVsDisk`,
+  `fileHistoryBulkDiffVsDisk`, `buildRewindCodeRows`, and
+  `bulkDiffEventStats` now stage current disk through scratch indexes.
+- Read-only object lookups no longer pass the fixed index unnecessarily.
 
-Expected fix:
+Invariant:
 
-- Delete unused fixed-index preview helpers, or move them to scratch indexes.
-- Keep the invariant simple: any operation that stages arbitrary current disk
-  outside normal snapshot creation should prefer an operation-scoped index.
+- Normal snapshot creation may use the fixed per-project index.
+- Any preview/dry-run/no-op helper that stages arbitrary current disk must use
+  an operation-scoped scratch index.
 
-Required tests:
+Regression test:
 
-- A stale fixed index lock must not break `/rewind`.
-- A stale fixed index lock should not break any active picker preview path that
-  the UI still calls.
+- A stale fixed project index lock does not break disk preview helpers or
+  `/rewind` row construction.
 
 ### F3: Rewind action needs a bottom-layer per-workdir concurrency gate
 

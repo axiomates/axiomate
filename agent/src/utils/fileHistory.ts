@@ -33,6 +33,8 @@
 
 import type { UUID } from 'crypto'
 import { randomUUID } from 'crypto'
+import { mkdtemp, rm } from 'fs/promises'
+import { tmpdir } from 'os'
 import { isAbsolute, join, relative } from 'path'
 import { getOriginalCwd } from '../bootstrap/state.js'
 import {
@@ -44,7 +46,7 @@ import {
   quoteDiagnostic,
 } from './checkpoints/diagnostics.js'
 import { runCheckpointGit } from './checkpoints/git.js'
-import { indexPath, normalizePath, projectHash, refName } from './checkpoints/paths.js'
+import { normalizePath, projectHash, refName } from './checkpoints/paths.js'
 import {
   classifyAnchor,
   formatCommitBody,
@@ -138,6 +140,7 @@ export type RewindCodeRow = {
 
 const DIFF_HAS_CHANGES = new Set([0, 1])
 const REF_NOT_PRESENT = new Set([128, 129])
+const DISK_PREVIEW_INDEX_PREFIX = 'axiomate-disk-preview-'
 
 type RewindTestHooks = {
   beforeApply?: (plan: WorktreeReconcilePlan) => void | Promise<void>
@@ -401,7 +404,6 @@ async function diffPathsAgainstParent(
     {
       store: storeResult.store,
       workTree: canonical,
-      indexFile: indexPath(projectHash(canonical)),
     },
   )
   if (r.ok === false) return []
@@ -664,7 +666,6 @@ async function anchorExistsInStore(gitHash: string): Promise<boolean> {
   const r = await runCheckpointGit(['cat-file', '-t', gitHash], {
     store: storeResult.store,
     workTree: canonical,
-    indexFile: indexPath(projectHash(canonical)),
     allowedExitCodes: new Set([128]), // 128 = unknown object
   })
   if (r.ok === false) return false
@@ -691,23 +692,26 @@ export async function fileHistoryGetDiffVsDisk(
     return { filesChanged: [], insertions: 0, deletions: 0 }
   }
   const canonical = normalizePath(getOriginalCwd())
-  const indexFile = indexPath(projectHash(canonical))
 
-  await stageWorkdir(storeResult.store, canonical, indexFile)
-  const numstat = await runCheckpointGit(
-    ['diff', '--cached', '--numstat', gitHash, '--'],
-    {
-      store: storeResult.store,
-      workTree: canonical,
-      indexFile,
-      allowedExitCodes: REF_NOT_PRESENT,
-    },
+  const numstat = await withDiskPreviewIndex(
+    storeResult.store,
+    canonical,
+    async ({ indexFile }) =>
+      runCheckpointGit(
+        ['diff', '--cached', '--numstat', gitHash, '--'],
+        {
+          store: storeResult.store,
+          workTree: canonical,
+          indexFile,
+          allowedExitCodes: REF_NOT_PRESENT,
+        },
+      ),
   )
 
   const filesRel: string[] = []
   let insertions = 0
   let deletions = 0
-  if (numstat.ok) {
+  if (numstat?.ok) {
     for (const line of numstat.stdout.split('\n')) {
       if (line.length === 0) continue
       const parts = line.split('\t')
@@ -738,19 +742,22 @@ export async function fileHistoryHasDiffVsDisk(
   const storeResult = await ensureStore()
   if (storeResult.ok === false) return false
   const canonical = normalizePath(getOriginalCwd())
-  const indexFile = indexPath(projectHash(canonical))
 
-  await stageWorkdir(storeResult.store, canonical, indexFile)
-  const result = await runCheckpointGit(
-    ['diff', '--cached', '--quiet', gitHash, '--'],
-    {
-      store: storeResult.store,
-      workTree: canonical,
-      indexFile,
-      allowedExitCodes: DIFF_HAS_CHANGES,
-    },
+  const result = await withDiskPreviewIndex(
+    storeResult.store,
+    canonical,
+    async ({ indexFile }) =>
+      runCheckpointGit(
+        ['diff', '--cached', '--quiet', gitHash, '--'],
+        {
+          store: storeResult.store,
+          workTree: canonical,
+          indexFile,
+          allowedExitCodes: DIFF_HAS_CHANGES,
+        },
+      ),
   )
-  if (result.ok === false) return false
+  if (!result || result.ok === false) return false
   return result.code === 1
 }
 
@@ -782,36 +789,24 @@ export async function fileHistoryBulkDiffVsDisk(
   if (storeResult.ok === false) return out
   const store = storeResult.store
   const canonical = normalizePath(getOriginalCwd())
-  const indexFile = indexPath(projectHash(canonical))
 
-  await stageWorkdir(store, canonical, indexFile)
-
-  // Lock disk state into an immutable tree. Subsequent diff-tree calls
-  // read this tree object, not the index, so they're safe to parallelize
-  // and free of any further `git add` race.
-  const wt = await runCheckpointGit(['write-tree'], {
-    store,
-    workTree: canonical,
-    indexFile,
-  })
-  if (wt.ok === false) return out
-  const diskTree = wt.stdout.trim()
+  const disk = await captureDiskPreviewTree(store, canonical)
+  if (!disk) return out
+  const { diskTree } = disk
   if (diskTree.length === 0) return out
 
   // Serial loop instead of Promise.all: parallel git children sharing
-  // the same indexFile + store directory race in subtle ways on
-  // Windows (output of all-but-the-last call comes back empty even
-  // though each call's args are correct individually). Serial keeps
-  // one git process at a time and is still fast (~5ms per spawn × N
-  // anchors); for typical N <= 30 the total is well under the
-  // ~150ms picker-mount budget.
+  // the same store directory race in subtle ways on Windows (output of
+  // all-but-the-last call comes back empty even though each call's args
+  // are correct individually). Serial keeps one git process at a time
+  // and is still fast (~5ms per spawn × N anchors); for typical N <= 30
+  // the total is well under the ~150ms picker-mount budget.
   for (const hash of gitHashes) {
     const r = await runCheckpointGit(
       ['diff-tree', '--numstat', '-r', hash, diskTree, '--'],
       {
         store,
         workTree: canonical,
-        indexFile,
       },
     )
     if (r.ok === false) {
@@ -926,16 +921,10 @@ export async function buildRewindCodeRows(
   if (storeResult.ok === false) return rows
   const store = storeResult.store
   const canonical = normalizePath(getOriginalCwd())
-  const indexFile = indexPath(projectHash(canonical))
 
-  await stageWorkdir(store, canonical, indexFile)
-  const wt = await runCheckpointGit(['write-tree'], {
-    store,
-    workTree: canonical,
-    indexFile,
-  })
-  if (wt.ok === false) return rows
-  const diskTree = wt.stdout.trim()
+  const disk = await captureDiskPreviewTree(store, canonical)
+  if (!disk) return rows
+  const { diskTree } = disk
   if (diskTree.length === 0) return rows
 
   const diffInterval = async (
@@ -944,7 +933,7 @@ export async function buildRewindCodeRows(
   ): Promise<DiffStats | undefined> => {
     const diff = await runCheckpointGit(
       ['diff-tree', '--numstat', '-r', anchor.gitHash, compare, '--'],
-      { store, workTree: canonical, indexFile },
+      { store, workTree: canonical },
     )
     if (diff.ok === false) {
       logForDebugging(
@@ -1055,19 +1044,13 @@ export async function bulkDiffEventStats(
   if (storeResult.ok === false) return out
   const store = storeResult.store
   const canonical = normalizePath(getOriginalCwd())
-  const indexFile = indexPath(projectHash(canonical))
 
   // Stage current disk into a tree object, used only for anchors[0]'s
   // event diff (newest anchor's pair is current disk). Older rows reuse
   // already-batched commit stats from the next-newer anchor.
-  await stageWorkdir(store, canonical, indexFile)
-  const wt = await runCheckpointGit(['write-tree'], {
-    store,
-    workTree: canonical,
-    indexFile,
-  })
-  if (wt.ok === false) return out
-  const diskTree = wt.stdout.trim()
+  const disk = await captureDiskPreviewTree(store, canonical)
+  if (!disk) return out
+  const { diskTree } = disk
   if (diskTree.length === 0) return out
 
   const newest = anchors[0]!
@@ -1076,7 +1059,6 @@ export async function bulkDiffEventStats(
     {
       store,
       workTree: canonical,
-      indexFile,
     },
   )
   if (newestDiff.ok === false) {
@@ -1160,11 +1142,49 @@ export function fileHistoryRestoreStateFromLog(
   })
 }
 
+async function captureDiskPreviewTree(
+  store: string,
+  workTree: string,
+): Promise<{ diskTree: string } | undefined> {
+  return withDiskPreviewIndex(store, workTree, async ({ indexFile }) => {
+    const wt = await runCheckpointGit(['write-tree'], {
+      store,
+      workTree,
+      indexFile,
+    })
+    if (wt.ok === false) {
+      logForDebugging(
+        `FileHistory: disk preview write-tree failed (${wt.message})`,
+      )
+      return undefined
+    }
+    const diskTree = wt.stdout.trim()
+    if (diskTree.length === 0) return undefined
+    return { diskTree }
+  })
+}
+
+async function withDiskPreviewIndex<T>(
+  store: string,
+  workTree: string,
+  run: (args: { indexFile: string }) => Promise<T>,
+): Promise<T | undefined> {
+  const tempDir = await mkdtemp(join(tmpdir(), DISK_PREVIEW_INDEX_PREFIX))
+  try {
+    const indexFile = join(tempDir, 'preview.index')
+    const staged = await stageWorkdir(store, workTree, indexFile)
+    if (!staged) return undefined
+    return await run({ indexFile })
+  } finally {
+    await rm(tempDir, { recursive: true, force: true }).catch(() => {})
+  }
+}
+
 async function stageWorkdir(
   store: string,
   workTree: string,
   indexFile: string,
-): Promise<void> {
+): Promise<boolean> {
   const result = await stageWorktreeSnapshotIndex({
     store,
     workTree,
@@ -1174,7 +1194,9 @@ async function stageWorkdir(
     logForDebugging(
       `FileHistory: stageWorkdir failed (${result.message}); diff may miss untracked files`,
     )
+    return false
   }
+  return true
 }
 
 function throwRewindVerificationError(gitHash: string): never {

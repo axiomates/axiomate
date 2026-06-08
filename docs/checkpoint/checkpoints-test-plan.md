@@ -73,5 +73,5 @@ This test plan follows `docs/checkpoint/checkpoints-design.md`.
   second transaction can prepare or mutate disk.
 - The same-workdir gate is released after a failed rewind.
 - Concurrent rewinds for different workdirs are independent.
-- Preview/list helpers that stage disk do not share fixed indexes with rewind
-  restore operations.
+- Preview/dry-run/no-op helpers that stage disk use operation-scoped scratch
+  indexes and ignore stale fixed project index locks.

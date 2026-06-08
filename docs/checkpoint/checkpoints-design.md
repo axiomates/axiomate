@@ -49,8 +49,11 @@ Normal snapshot staging uses the fixed per-project index:
 ~/.axiomate/checkpoints/store/indexes/<projectHash16>
 ```
 
-Rewind and restore reconciliation must not use that fixed index. They use an
-operation-scoped scratch index inside the rewind temp directory.
+Rewind, restore reconciliation, and disk-preview helpers must not use that
+fixed index. Rewind reconciliation uses an operation-scoped scratch index inside
+the rewind temp directory. Preview/dry-run/no-op helpers that need to stage
+current disk use their own short-lived scratch index under the system temp
+directory.
 
 ## Filesystem Snapshot Semantics
 
@@ -187,7 +190,8 @@ Rules:
 - NUL pathspec files live only under the plan temp directory.
 - Cleanup must run in `finally`.
 - Restore and verify git commands must use the plan scratch index.
-- A stale lock on the fixed per-project index must not affect rewind.
+- A stale lock on the fixed per-project index must not affect rewind or disk
+  preview helpers.
 
 ## Performance Design
 

@@ -28,7 +28,7 @@ import {
   unlinkSync,
 } from 'fs'
 import { tmpdir } from 'os'
-import { join } from 'path'
+import { dirname, join } from 'path'
 import { randomUUID, type UUID } from 'crypto'
 import {
   afterEach,
@@ -901,6 +901,47 @@ describe('getDiffVsDisk / hasDiffVsDisk — chooser preview source', () => {
     expect(stats!.filesChanged).toContain(a)
     expect(stats!.insertions + stats!.deletions).toBeGreaterThan(0)
     expect(await fileHistoryHasDiffVsDisk(anchors[0]!.gitHash)).toBe(true)
+  })
+
+  gitBackedTest('disk preview helpers ignore stale fixed project index locks', async () => {
+    const a = join(workTree, 'a.txt')
+    const holder = makeStateHolder()
+    const id = uuid()
+    await fileHistoryMakeSnapshot(holder.updater, id, 'file-history', 'create a.txt')
+    writeFileSync(a, 'one\ntwo\n')
+
+    const fixedIndex = indexPath(projectHash(normalizePath(workTree)))
+    mkdirSync(dirname(fixedIndex), { recursive: true })
+    writeFileSync(`${fixedIndex}.lock`, 'stale fixed index lock\n')
+
+    try {
+      const anchors = await listCodeAnchors(workTree, { withStats: true, withBodies: true })
+      expect(anchors.length).toBe(1)
+      const hash = anchors[0]!.gitHash
+
+      const single = await fileHistoryGetDiffVsDisk(hash)
+      expect(single?.filesChanged).toEqual([a])
+      expect(await fileHistoryHasDiffVsDisk(hash)).toBe(true)
+
+      const bulk = await fileHistoryBulkDiffVsDisk([hash])
+      expect(bulk.get(hash)?.filesChanged).toEqual([a])
+
+      const rows = await buildRewindCodeRows(anchors, holder.state().checkpointLabelsByHash)
+      expect(rows.find(row => row.restoreHash === hash)?.diffStats.filesChanged).toEqual([a])
+
+      const eventStats = await bulkDiffEventStats(
+        anchors.map(anchor => ({
+          gitHash: anchor.gitHash,
+          filesChanged: anchor.filesChanged,
+          insertions: anchor.insertions,
+          deletions: anchor.deletions,
+          filePaths: anchor.filePaths,
+        })),
+      )
+      expect(eventStats.get(hash)?.filesChanged).toEqual([a])
+    } finally {
+      rmSync(`${fixedIndex}.lock`, { force: true })
+    }
   })
 })
 
