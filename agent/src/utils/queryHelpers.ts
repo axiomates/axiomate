@@ -356,7 +356,10 @@ export function extractReadFilesFromMessages(
   const cache = createFileStateCacheWithSizeLimit(maxSize)
 
   // First pass: find all FileReadTool/FileWriteTool/FileEditTool uses in assistant messages
-  const fileReadToolUseIds = new Map<string, string>() // toolUseId -> filePath
+  const fileReadToolInputs = new Map<
+    string,
+    { filePath: string; offset: number | undefined; limit: number | undefined }
+  >()
   const fileWriteToolUseIds = new Map<
     string,
     { filePath: string; content: string }
@@ -383,15 +386,14 @@ export function extractReadFilesFromMessages(
         ) {
           // Extract file_path from the tool use input
           const input = content.input as FileReadInput | undefined
-          // Ranged reads are not added to the cache.
-          if (
-            input?.file_path &&
-            input?.offset === undefined &&
-            input?.limit === undefined
-          ) {
+          if (input?.file_path) {
             // Normalize to absolute path for consistent cache lookups
             const absolutePath = expandPath(input.file_path, cwd)
-            fileReadToolUseIds.set(content.id, absolutePath)
+            fileReadToolInputs.set(content.id, {
+              filePath: absolutePath,
+              offset: input.offset,
+              limit: input.limit,
+            })
           }
         } else if (
           content.type === 'tool_use' &&
@@ -448,7 +450,8 @@ export function extractReadFilesFromMessages(
       for (const content of message.message.content) {
         if (content.type === 'tool_result' && content.tool_use_id) {
           // Handle Read tool results
-          const readFilePath = fileReadToolUseIds.get(content.tool_use_id)
+          const readToolInput = fileReadToolInputs.get(content.tool_use_id)
+          const readFilePath = readToolInput?.filePath
           if (
             readFilePath &&
             content.is_error !== true &&
@@ -475,11 +478,15 @@ export function extractReadFilesFromMessages(
             // Cache the file content with the message timestamp
             if (message.timestamp) {
               const timestamp = new Date(message.timestamp).getTime()
+              const readStateMetadata = getRecoveredReadStateMetadata(
+                readToolInput?.offset,
+                readToolInput?.limit,
+                content.content,
+              )
               cache.set(readFilePath, {
                 content: fileContent,
                 timestamp,
-                offset: undefined,
-                limit: undefined,
+                ...readStateMetadata,
               })
             }
           }
@@ -539,6 +546,54 @@ export function extractReadFilesFromMessages(
   }
 
   return cache
+}
+
+function getRecoveredReadStateMetadata(
+  offset: number | undefined,
+  limit: number | undefined,
+  processedContent: string,
+): {
+  offset: number | undefined
+  limit: number | undefined
+  totalLines?: number
+  isPartialView?: boolean
+} {
+  if (offset === undefined && limit === undefined) {
+    return { offset: undefined, limit: undefined }
+  }
+
+  const effectiveOffset = offset ?? 1
+  const returnedLineCount = countLineNumberedReadResultLines(processedContent)
+  const isLeadingRead = effectiveOffset === 1
+  if (isLeadingRead && limit === undefined) {
+    return { offset: effectiveOffset, limit: undefined }
+  }
+
+  const isEmptyFileRead = isEmptyFileReadResult(processedContent)
+  const reachedEof =
+    limit !== undefined &&
+    ((returnedLineCount > 0 && returnedLineCount < limit) || isEmptyFileRead)
+
+  return {
+    offset: effectiveOffset,
+    limit,
+    ...(isLeadingRead && reachedEof
+      ? { totalLines: isEmptyFileRead ? 0 : returnedLineCount }
+      : {}),
+    ...(!isLeadingRead || !reachedEof ? { isPartialView: true } : {}),
+  }
+}
+
+function countLineNumberedReadResultLines(content: string): number {
+  return content
+    .split('\n')
+    .filter(line => /^\s*\d+[\u2192\t]/.test(line)).length
+}
+
+function isEmptyFileReadResult(content: string): boolean {
+  return content.includes(
+    '<system-reminder>Warning: the file exists but the contents are empty.</system-reminder>',
+  )
 }
 
 function replayEditFromKnownContent(
