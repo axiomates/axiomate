@@ -738,7 +738,11 @@ async function validateUpdatedToolInput(
   | { ok: true; input: Record<string, unknown> }
   | { ok: false; messages: MessageUpdateLazy[] }
 > {
-  const parsedInput = tool.inputSchema.safeParse(input)
+  const schema =
+    shouldUsePermissionUpdatedInputSchema(tool, input, source)
+      ? tool.permissionUpdatedInputSchema!
+      : tool.inputSchema
+  const parsedInput = schema.safeParse(input)
   if (!parsedInput.success) {
     const errorContent = formatZodValidationError(tool.name, parsedInput.error)
     logForDebugging(
@@ -796,6 +800,21 @@ async function validateUpdatedToolInput(
   }
 
   return { ok: true, input: parsedInput.data as Record<string, unknown> }
+}
+
+function shouldUsePermissionUpdatedInputSchema(
+  tool: Tool,
+  input: Record<string, unknown>,
+  source: 'hook' | 'permission',
+): boolean {
+  return (
+    source === 'permission' &&
+    tool.name === BASH_TOOL_NAME &&
+    tool.permissionUpdatedInputSchema !== undefined &&
+    input !== null &&
+    typeof input === 'object' &&
+    '_simulatedSedEdit' in input
+  )
 }
 
 /**

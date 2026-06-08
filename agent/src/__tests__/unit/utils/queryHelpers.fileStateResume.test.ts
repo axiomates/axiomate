@@ -7,6 +7,7 @@ import {
   createFileStateCacheWithSizeLimit,
   fileStateHasFullContent,
 } from '../../../utils/fileStateCache.js'
+import type { Output as FileReadToolOutput } from '../../../tools/FileReadTool/FileReadTool.js'
 import {
   reconstructFileStateFromTranscriptMessages,
   restoreObservedReadFilesFromMessages,
@@ -106,6 +107,26 @@ function readResult(
           content,
         },
       ],
+    },
+  } as Message
+}
+
+function fileAttachment(
+  filename: string,
+  timestamp: string,
+  content: FileReadToolOutput,
+  truncated?: boolean,
+): Message {
+  return {
+    type: 'attachment',
+    uuid: randomUUID(),
+    timestamp,
+    attachment: {
+      type: 'file',
+      filename,
+      displayPath: filename,
+      content,
+      ...(truncated ? { truncated: true } : {}),
     },
   } as Message
 }
@@ -210,6 +231,93 @@ describe('reconstructFileStateFromTranscriptMessages file-state resume reconstru
     expect(state?.limit).toBe(10)
     expect(state?.totalLines).toBe(2)
     expect(state && fileStateHasFullContent(state)).toBe(true)
+  })
+
+  test('reconstructs file attachment content as observed Read state', () => {
+    const dir = tempDir()
+    const file = join(dir, 'attached.txt')
+    const messages = [
+      fileAttachment(file, '2026-01-01T00:00:01.000Z', {
+        type: 'text',
+        file: {
+          filePath: file,
+          content: 'alpha\nbeta\n',
+          numLines: 2,
+          startLine: 1,
+          totalLines: 2,
+        },
+      }),
+    ]
+
+    const state = reconstructFileStateFromTranscriptMessages(messages, dir, 10).get(file)
+
+    expect(state?.content).toBe('alpha\nbeta\n')
+    expect(state?.timestamp).toBe(
+      new Date('2026-01-01T00:00:01.000Z').getTime(),
+    )
+    expect(state?.offset).toBe(1)
+    expect(state?.limit).toBeUndefined()
+    expect(state && fileStateHasFullContent(state)).toBe(true)
+  })
+
+  test('replays file attachment in transcript order', () => {
+    const dir = tempDir()
+    const file = join(dir, 'attached-after-write.txt')
+    const messages = [
+      assistantToolUse('write-1', 'Write', {
+        file_path: file,
+        content: 'old\n',
+      }),
+      toolResult('write-1', '2026-01-01T00:00:01.000Z'),
+      fileAttachment(file, '2026-01-01T00:00:02.000Z', {
+        type: 'text',
+        file: {
+          filePath: file,
+          content: 'new\n',
+          numLines: 1,
+          startLine: 1,
+          totalLines: 1,
+        },
+      }),
+    ]
+
+    const state = reconstructFileStateFromTranscriptMessages(messages, dir, 10).get(file)
+
+    expect(state?.content).toBe('new\n')
+    expect(state?.timestamp).toBe(
+      new Date('2026-01-01T00:00:02.000Z').getTime(),
+    )
+  })
+
+  test('reconstructs truncated file attachment as partial Read state', () => {
+    const dir = tempDir()
+    const file = join(dir, 'truncated-attachment.txt')
+    const messages = [
+      fileAttachment(
+        file,
+        '2026-01-01T00:00:01.000Z',
+        {
+          type: 'text',
+          file: {
+            filePath: file,
+            content: 'alpha\nbeta\n',
+            numLines: 2,
+            startLine: 1,
+            totalLines: 10,
+          },
+        },
+        true,
+      ),
+    ]
+
+    const state = reconstructFileStateFromTranscriptMessages(messages, dir, 10).get(file)
+
+    expect(state?.content).toBe('alpha\nbeta\n')
+    expect(state?.offset).toBe(1)
+    expect(state?.limit).toBe(2)
+    expect(state?.totalLines).toBe(10)
+    expect(state?.isPartialView).toBe(true)
+    expect(state && fileStateHasFullContent(state)).toBe(false)
   })
 
   test('reconstructs limit-only Read as full when transcript proves it reached EOF', () => {
@@ -342,6 +450,66 @@ describe('reconstructFileStateFromTranscriptMessages file-state resume reconstru
     expect(state?.timestamp).toBe(
       new Date('2026-01-01T00:00:02.000Z').getTime(),
     )
+  })
+
+  test('replays successful NotebookEdit state from tool output', () => {
+    const dir = tempDir()
+    const file = join(dir, 'notebook.ipynb')
+    const original = JSON.stringify([
+      {
+        cell_type: 'code',
+        source: 'print("old")',
+        metadata: {},
+        execution_count: null,
+        outputs: [],
+      },
+    ])
+    const updated = JSON.stringify([
+      {
+        cell_type: 'code',
+        source: 'print("new")',
+        metadata: {},
+        execution_count: null,
+        outputs: [],
+      },
+    ])
+    const messages = [
+      assistantToolUse('read-1', 'Read', {
+        file_path: file,
+      }),
+      toolResult('read-1', '2026-01-01T00:00:01.000Z', {
+        content: `Result of calling the Read tool:\n${original}`,
+      }),
+      assistantToolUse('notebook-edit-1', 'NotebookEdit', {
+        notebook_path: file,
+        cell_id: 'cell-1',
+        new_source: 'print("new")',
+        cell_type: 'code',
+      }),
+      toolResult('notebook-edit-1', '2026-01-01T00:00:02.000Z', {
+        content: 'Updated cell cell-1 with print("new")',
+      }),
+    ]
+    ;(messages[3] as any).toolUseResult = {
+      new_source: 'print("new")',
+      cell_type: 'code',
+      language: 'python',
+      edit_mode: 'replace',
+      cell_id: 'cell-1',
+      error: '',
+      notebook_path: file,
+      original_file: '{}',
+      updated_file: updated,
+    }
+
+    const state = reconstructFileStateFromTranscriptMessages(messages, dir, 10).get(file)
+
+    expect(state?.content).toBe(updated)
+    expect(state?.timestamp).toBe(
+      new Date('2026-01-01T00:00:02.000Z').getTime(),
+    )
+    expect(state?.offset).toBeUndefined()
+    expect(state?.limit).toBeUndefined()
   })
 
   test('does not seed Edit state from current disk when replay has no prior known content', () => {

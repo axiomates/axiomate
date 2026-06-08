@@ -397,6 +397,11 @@ export type Tool<
     },
   ): Promise<string>
   readonly inputSchema: Input
+  /**
+   * Optional schema for permission-dialog updatedInput values that are never
+   * accepted from the model-facing tool schema.
+   */
+  readonly permissionUpdatedInputSchema?: Input
   // Type for MCP tools that can specify their input schema directly in JSON Schema format
   // rather than converting from Zod schema
   readonly inputJSONSchema?: ToolInputJSONSchema

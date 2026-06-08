@@ -275,6 +275,7 @@ const inputSchema = lazySchema(() => isBackgroundTasksDisabled ? fullInputSchema
   _simulatedSedEdit: true
 }));
 type InputSchema = ReturnType<typeof inputSchema>;
+type PermissionUpdatedInputSchema = ReturnType<typeof fullInputSchema>;
 
 // Use fullInputSchema for the type to always include run_in_background
 // (even when it's omitted from the schema, the code needs to handle it)
@@ -511,6 +512,9 @@ export const BashTool = buildTool({
   },
   get inputSchema(): InputSchema {
     return inputSchema();
+  },
+  get permissionUpdatedInputSchema(): PermissionUpdatedInputSchema {
+    return fullInputSchema();
   },
   get outputSchema(): OutputSchema {
     return outputSchema();

@@ -10,12 +10,16 @@ import { runTools } from '../services/tools/toolOrchestration.js'
 import { findToolByName, type Tool, type Tools } from '../Tool.js'
 import { BASH_TOOL_NAME } from '../tools/BashTool/toolName.js'
 import { FILE_EDIT_TOOL_NAME } from '../tools/FileEditTool/constants.js'
-import type { Input as FileReadInput } from '../tools/FileReadTool/FileReadTool.js'
+import type {
+  Input as FileReadInput,
+  Output as FileReadToolOutput,
+} from '../tools/FileReadTool/FileReadTool.js'
 import {
   FILE_READ_TOOL_NAME,
   FILE_UNCHANGED_STUB,
 } from '../tools/FileReadTool/prompt.js'
 import { FILE_WRITE_TOOL_NAME } from '../tools/FileWriteTool/prompt.js'
+import { NOTEBOOK_EDIT_TOOL_NAME } from '../tools/NotebookEditTool/constants.js'
 import {
   findActualString,
   getPatchForEdit,
@@ -49,6 +53,7 @@ import type {
 } from './permissions/PermissionPromptToolResultSchema.js'
 import type { ProcessUserInputContext } from './processUserInput/processUserInput.js'
 import { recordTranscript } from './sessionStorage.js'
+import { jsonStringify } from './slowOperations.js'
 
 export type PermissionPromptTool = Tool<
   ReturnType<typeof permissionToolInputSchema>,
@@ -382,6 +387,7 @@ export function reconstructFileStateFromTranscriptMessages(
       replaceAll: boolean
     }
   >() // toolUseId -> edit data
+  const notebookEditToolUseIds = new Map<string, { filePath: string }>()
 
   for (const message of messages) {
     if (
@@ -448,6 +454,21 @@ export function reconstructFileStateFromTranscriptMessages(
               replaceAll: input.replace_all === true,
             })
           }
+        } else if (
+          content.type === 'tool_use' &&
+          content.name === NOTEBOOK_EDIT_TOOL_NAME
+        ) {
+          const input = content.input as
+            | {
+                notebook_path?: string
+              }
+            | undefined
+          if (input?.notebook_path) {
+            const absolutePath = expandPath(input.notebook_path, cwd)
+            notebookEditToolUseIds.set(content.id, {
+              filePath: absolutePath,
+            })
+          }
         }
       }
     }
@@ -455,7 +476,17 @@ export function reconstructFileStateFromTranscriptMessages(
 
   // Second pass: find corresponding tool results and extract content
   for (const message of messages) {
-    if (message.type === 'user' && Array.isArray(message.message.content)) {
+    if (message.type === 'attachment') {
+      restoreFileAttachmentReadState(
+        cache,
+        message.attachment,
+        message.timestamp,
+        cwd,
+      )
+    } else if (
+      message.type === 'user' &&
+      Array.isArray(message.message.content)
+    ) {
       for (const content of message.message.content) {
         if (content.type === 'tool_result' && content.tool_use_id) {
           // Handle Read tool results
@@ -549,12 +580,110 @@ export function reconstructFileStateFromTranscriptMessages(
               }
             }
           }
+
+          const notebookEditToolData = notebookEditToolUseIds.get(
+            content.tool_use_id,
+          )
+          if (
+            notebookEditToolData &&
+            content.is_error !== true &&
+            message.timestamp
+          ) {
+            const toolUseResult = message.toolUseResult
+            if (isSuccessfulNotebookEditResult(toolUseResult)) {
+              const timestamp = new Date(message.timestamp).getTime()
+              cache.set(notebookEditToolData.filePath, {
+                content: normalizeContentToLf(toolUseResult.updated_file),
+                timestamp,
+                offset: undefined,
+                limit: undefined,
+              })
+            }
+          }
         }
       }
     }
   }
 
   return cache
+}
+
+function restoreFileAttachmentReadState(
+  cache: FileStateCache,
+  attachment: Message['attachment'],
+  timestampString: string | undefined,
+  cwd: string,
+): void {
+  if (!attachment || attachment.type !== 'file' || !timestampString) return
+
+  const fileContent = attachment.content as FileReadToolOutput
+  const timestamp = new Date(timestampString).getTime()
+  if (!Number.isFinite(timestamp)) return
+
+  switch (fileContent.type) {
+    case 'text': {
+      const filePath = expandPath(
+        fileContent.file.filePath || attachment.filename,
+        cwd,
+      )
+      cache.set(filePath, {
+        content: fileContent.file.content,
+        timestamp,
+        ...getFileAttachmentTextReadStateMetadata(fileContent, attachment.truncated),
+      })
+      return
+    }
+    case 'notebook': {
+      const filePath = expandPath(
+        fileContent.file.filePath || attachment.filename,
+        cwd,
+      )
+      cache.set(filePath, {
+        content: jsonStringify(fileContent.file.cells),
+        timestamp,
+        offset: 1,
+        limit: undefined,
+      })
+      return
+    }
+    default:
+      return
+  }
+}
+
+function getFileAttachmentTextReadStateMetadata(
+  output: Extract<FileReadToolOutput, { type: 'text' }>,
+  truncated: boolean | undefined,
+): {
+  offset: number | undefined
+  limit: number | undefined
+  totalLines?: number
+  isPartialView?: boolean
+} {
+  const offset = output.file.startLine
+  const returnedLineCount = output.file.numLines
+  const totalLines = output.file.totalLines
+  const limit = truncated ? returnedLineCount : undefined
+  const partial = offset !== 1 || truncated === true || returnedLineCount < totalLines
+
+  return {
+    offset,
+    limit,
+    ...(partial || limit !== undefined ? { totalLines } : {}),
+    ...(partial ? { isPartialView: true } : {}),
+  }
+}
+
+function isSuccessfulNotebookEditResult(
+  value: unknown,
+): value is { updated_file: string; error?: string } {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    typeof (value as { updated_file?: unknown }).updated_file === 'string' &&
+    (typeof (value as { error?: unknown }).error !== 'string' ||
+      (value as { error: string }).error === '')
+  )
 }
 
 export function restoreObservedReadFilesFromMessages(

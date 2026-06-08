@@ -254,4 +254,26 @@ describe('BashTool simulated sed file harness behavior', () => {
     expect(raw.toString('utf8')).toBe('\ufeffalpha\r\nBETA\r\n')
     expect(context.readFileState.get(path)?.content).toBe('alpha\nBETA\n')
   })
+
+  test('accepts internal simulated sed input from permission approval validation', async () => {
+    expect(
+      BashTool.inputSchema.safeParse({
+        command: 'sed -i s/beta/BETA/ file.txt',
+        _simulatedSedEdit: {
+          filePath: 'file.txt',
+          newContent: 'alpha\nBETA\n',
+        },
+      }).success,
+    ).toBe(false)
+
+    const parsed = BashTool.permissionUpdatedInputSchema.safeParse({
+      command: 'sed -i s/beta/BETA/ file.txt',
+      _simulatedSedEdit: {
+        filePath: 'file.txt',
+        newContent: 'alpha\nBETA\n',
+      },
+    })
+
+    expect(parsed.success).toBe(true)
+  })
 })

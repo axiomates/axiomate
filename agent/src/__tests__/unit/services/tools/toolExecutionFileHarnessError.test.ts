@@ -122,6 +122,35 @@ function makeValidatingTool(callSpy: ReturnType<typeof vi.fn>): Tool {
   } as unknown as Tool
 }
 
+function makeInternalInputTool(callSpy: ReturnType<typeof vi.fn>): Tool {
+  return {
+    name: 'Bash',
+    inputSchema: z.strictObject({ command: z.string() }),
+    permissionUpdatedInputSchema: z.strictObject({
+      command: z.string(),
+      _simulatedSedEdit: z.object({
+        filePath: z.string(),
+        newContent: z.string(),
+      }),
+    }),
+    isReadOnly: () => true,
+    isEnabled: () => true,
+    isConcurrencySafe: () => true,
+    description: async () => 'fake',
+    prompt: async () => 'fake',
+    userFacingName: () => 'Fake',
+    call: async input => {
+      callSpy(input)
+      return { data: 'called' }
+    },
+    mapToolResultToToolResultBlockParam: (content, toolUseID) => ({
+      type: 'tool_result',
+      content: String(content),
+      tool_use_id: toolUseID,
+    }),
+  } as unknown as Tool
+}
+
 function makeContext(tool: Tool): ToolUseContext {
   return {
     options: {
@@ -314,5 +343,51 @@ describe('runToolUse file harness failures', () => {
       is_error: true,
       tool_use_id: 'toolu_fake',
     })
+  })
+
+  test('allows internal permission updatedInput without allowing PreToolUse to inject it', async () => {
+    const permissionCallSpy = vi.fn()
+    const permissionTool = makeInternalInputTool(permissionCallSpy)
+    hookMockState.permissionUpdatedInput = {
+      command: 'sed -i s/a/b/ file.txt',
+      _simulatedSedEdit: {
+        filePath: 'file.txt',
+        newContent: 'b\n',
+      },
+    }
+
+    const permissionUpdates = await collectRunToolUse(permissionTool, {
+      command: 'sed -i s/a/b/ file.txt',
+    })
+
+    expect(permissionUpdates).toHaveLength(1)
+    expect(firstToolResultContent(permissionUpdates)).toBe('called')
+    expect(permissionCallSpy).toHaveBeenCalledWith({
+      command: 'sed -i s/a/b/ file.txt',
+      _simulatedSedEdit: {
+        filePath: 'file.txt',
+        newContent: 'b\n',
+      },
+    })
+
+    const preHookCallSpy = vi.fn()
+    const preHookTool = makeInternalInputTool(preHookCallSpy)
+    hookMockState.permissionUpdatedInput = undefined
+    hookMockState.preHookUpdatedInput = {
+      command: 'sed -i s/a/b/ file.txt',
+      _simulatedSedEdit: {
+        filePath: 'file.txt',
+        newContent: 'b\n',
+      },
+    }
+
+    const preHookUpdates = await collectRunToolUse(preHookTool, {
+      command: 'sed -i s/a/b/ file.txt',
+    })
+
+    expect(preHookCallSpy).not.toHaveBeenCalled()
+    expect(firstToolResultContent(preHookUpdates)).toContain(
+      'unexpected parameter `_simulatedSedEdit`',
+    )
   })
 })
