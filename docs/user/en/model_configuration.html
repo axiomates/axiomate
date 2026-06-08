@@ -1,0 +1,1569 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Axiomate Model Configuration User Guide</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f5f7f8;
+      --panel: #ffffff;
+      --panel-soft: #f0f5f6;
+      --text: #172126;
+      --muted: #5d6b73;
+      --line: #d7e0e3;
+      --accent: #0f766e;
+      --accent-soft: #dff5f2;
+      --warn: #8a5a00;
+      --warn-soft: #fff4d6;
+      --danger: #991b1b;
+      --danger-soft: #fee2e2;
+      --good: #166534;
+      --good-soft: #dcfce7;
+      --code: #f3f6f7;
+      --shadow: 0 12px 28px rgba(23, 33, 38, 0.08);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      overflow-x: hidden;
+      background: var(--bg);
+      color: var(--text);
+      font: 15px/1.65 "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    }
+
+    .wrap {
+      width: calc(100% - 32px);
+      max-width: 1120px;
+      margin: 26px auto 52px;
+      display: grid;
+      gap: 18px;
+      justify-content: stretch;
+      text-align: left;
+    }
+
+    header,
+    section {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+      min-width: 0;
+    }
+
+    header {
+      padding: 28px 30px;
+    }
+
+    section {
+      padding: 24px 26px;
+    }
+
+    .eyebrow {
+      margin: 0 0 10px;
+      color: var(--accent);
+      font-weight: 700;
+      letter-spacing: 0;
+    }
+
+    h1,
+    h2,
+    h3 {
+      margin: 0;
+      line-height: 1.25;
+      letter-spacing: 0;
+    }
+
+    h1 {
+      font-size: 32px;
+      margin-bottom: 10px;
+    }
+
+    h2 {
+      font-size: 22px;
+      margin-bottom: 12px;
+    }
+
+    h3 {
+      font-size: 17px;
+      margin: 20px 0 8px;
+    }
+
+    p {
+      margin: 0 0 12px;
+    }
+
+    a {
+      color: var(--accent);
+      text-decoration-thickness: 1px;
+    }
+
+    code {
+      padding: 1px 5px;
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      background: var(--code);
+      font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+      font-size: 0.95em;
+      overflow-wrap: anywhere;
+    }
+
+    pre {
+      margin: 12px 0 18px;
+      padding: 15px 16px;
+      max-width: 100%;
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #101820;
+      color: #f5fbfc;
+      font: 13px/1.55 ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+    }
+
+    pre code {
+      padding: 0;
+      border: 0;
+      background: transparent;
+      color: inherit;
+      font-size: inherit;
+    }
+
+    table {
+      width: 100%;
+      max-width: 100%;
+      table-layout: fixed;
+      border-collapse: collapse;
+      margin: 12px 0 18px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow: hidden;
+      background: var(--panel);
+    }
+
+    th,
+    td {
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      vertical-align: top;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+    }
+
+    th {
+      background: var(--panel-soft);
+      font-weight: 700;
+    }
+
+    tr:last-child td {
+      border-bottom: 0;
+    }
+
+    ul,
+    ol {
+      margin: 8px 0 14px 22px;
+      padding: 0;
+    }
+
+    li {
+      margin: 6px 0;
+    }
+
+    .muted {
+      color: var(--muted);
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+      margin: 16px 0;
+    }
+
+    .tile {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 14px;
+      background: var(--panel-soft);
+    }
+
+    .tile strong {
+      display: block;
+      margin-bottom: 4px;
+    }
+
+    .callout,
+    .warn,
+    .danger,
+    .good {
+      margin: 14px 0 18px;
+      padding: 13px 15px;
+      border-left: 4px solid var(--accent);
+      border-radius: 6px;
+      background: var(--accent-soft);
+    }
+
+    .warn {
+      border-left-color: var(--warn);
+      background: var(--warn-soft);
+    }
+
+    .danger {
+      border-left-color: var(--danger);
+      background: var(--danger-soft);
+    }
+
+    .good {
+      border-left-color: var(--good);
+      background: var(--good-soft);
+    }
+
+    .nowrap {
+      white-space: nowrap;
+    }
+
+    @media (max-width: 860px) {
+      .wrap {
+        width: calc(100% - 20px);
+        margin: 12px auto 52px;
+      }
+
+      header,
+      section {
+        padding: 18px 16px;
+      }
+
+      h1 {
+        font-size: 26px;
+      }
+
+      .grid {
+        grid-template-columns: 1fr;
+      }
+
+      table {
+        display: block;
+        overflow-x: auto;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <header>
+      <p class="eyebrow">Axiomate user guide</p>
+      <h1>Model Configuration and Routing Strategy</h1>
+      <p class="muted">Last updated: 2026-06-02. This guide is for first-time Axiomate users and explains the model-related fields in <code>~/.axiomate.json</code>, manual configuration methods, the <code>/model</code> command, and the model UI in Settings.</p>
+      <div class="callout">
+        <p><strong>In a nutshell:</strong> <code>models</code> defines "which specific model resources are available," <code>model.defaultRoute</code> / <code>model.routes</code> defines which model chain the main conversation uses, and <code>auxiliary</code> defines which model chain auxiliary tasks such as title generation, goal judging, summarization, and hooks use.</p>
+        <p><strong>A model chain</strong> is the set of candidate models allowed for a single main conversation or auxiliary task: the <code>primary</code> model is used first, and only when the unified recovery system determines that "this type of error is suitable for a model switch" does it try subsequent models in <code>fallbackChain</code> order.</p>
+        <p>Axiomate's API reliability is handled by a unified observe-decide-execute recovery system. Routing configuration only provides candidate models and policy thresholds &mdash; it is not a separate, independent retry logic.</p>
+      </div>
+    </header>
+
+    <section>
+      <h2>File Location</h2>
+      <p>The user-level configuration file is at <code>~/.axiomate.json</code>. On Windows it is typically <code>C:\Users\&lt;your-username&gt;\.axiomate.json</code>.</p>
+      <p>On first run or when executing <code>/model add</code>, Axiomate creates or updates this file. You can also edit it manually, but ensure the JSON is valid before saving.</p>
+      <div class="callout">
+        <p><strong>Current configuration contract:</strong> Model configuration only uses <code>models</code>, <code>model.routes</code>, <code>model.defaultRoute</code>, and <code>auxiliary</code>. Model switching and routing management use the <code>/model</code> command, not <code>/config</code> settings.</p>
+      </div>
+    </section>
+
+    <section>
+      <h2>Understand Three Core Concepts First</h2>
+      <p>The most confusing parts of the config file are model resources, model chains, and routes. Just remember: model resources handle "how to call," model chains handle "who else to try on failure," and routes handle "saving a main conversation usage pattern under a name."</p>
+      <table>
+        <thead>
+          <tr>
+            <th>Concept</th>
+            <th>What it is</th>
+            <th>How to use</th>
+            <th>When to use</th>
+            <th>Config location</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Model Resource</td>
+            <td>How to call this model: protocol, endpoint, API key, actual provider model name, context window, image capabilities.</td>
+            <td>Add with <code>/model add</code>, or manually write into <code>models</code>.</td>
+            <td>When onboarding a new provider or new model.</td>
+            <td><code>models.&lt;model-id&gt;</code></td>
+          </tr>
+          <tr>
+            <td>Model Chain</td>
+            <td>Which models a single request can try in sequence.</td>
+            <td>Configure <code>primary</code> and <code>fallbackChain</code> inside a route or auxiliary task.</td>
+            <td>When you want automatic fallback to a candidate model on rate limits, timeouts, server errors, or malformed output.</td>
+            <td><code>primary</code> + <code>fallbackChain</code></td>
+          </tr>
+          <tr>
+            <td>Route</td>
+            <td>A named model chain with an attached recovery policy. Main conversations select different "usage patterns" via routes.</td>
+            <td>Switch with <code>/model route &lt;route-id&gt;</code>, or manually change <code>model.defaultRoute</code>.</td>
+            <td>When you want to switch between modes like "default primary," "quality-first," or "speed-first" for the main conversation.</td>
+            <td><code>model.routes.&lt;route-id&gt;</code></td>
+          </tr>
+        </tbody>
+      </table>
+      <p><code>model.defaultRoute</code> simply points to one of the routes. For example, <code>"defaultRoute": "deepseek-main"</code> means: the main conversation defaults to the <code>deepseek-main</code> model chain, rather than being hardcoded to a single model.</p>
+      <div class="warn">
+        <p><strong>A model chain is not load balancing, nor does it randomly pick a model each time.</strong> Axiomate always starts each request with <code>primary</code>. Only when the observation layer confirms the current error is recoverable and the decision layer selects <code>switch_model</code> does the execution layer move to the next model in <code>fallbackChain</code>.</p>
+      </div>
+    </section>
+
+    <section>
+      <h2>Main Route: What, How, and When</h2>
+      <h3>What it is</h3>
+      <p>A main route is the name for "which model strategy the main conversation uses." Each route contains a first-choice model <code>primary</code>, a set of backup models <code>fallbackChain</code>, and policy fields that specify which errors are allowed to trigger recovery.</p>
+      <p>A single route is enough to operate. Multiple routes let you preset several common patterns for the same set of models, such as default primary, quality-first, and speed-first. They can reference the same <code>models</code> entries, just with different model ordering.</p>
+      <table>
+        <thead>
+          <tr>
+            <th>Route</th>
+            <th>What it is</th>
+            <th>Typical model chain</th>
+            <th>When to use</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>deepseek-main</code></td>
+            <td>Default primary route.</td>
+            <td><code>deepseek-v4-pro</code> &rarr; <code>gpt-5.4</code> &rarr; <code>Pro/zai-org/GLM-5.1</code> &rarr; <code>Pro/moonshotai/Kimi-K2.6</code> &rarr; <code>Qwen/Qwen3.5-397B-A17B</code> &rarr; <code>Pro/MiniMaxAI/MiniMax-M2.5</code> &rarr; <code>Qwen/Qwen3.5-122B-A10B</code> &rarr; <code>Qwen/Qwen3-8B</code></td>
+            <td>Daily main conversations. Uses the most commonly used primary model first, falling back in quality order only when a recoverable error requires a model switch.</td>
+          </tr>
+          <tr>
+            <td><code>quality-main</code></td>
+            <td>Quality-first route.</td>
+            <td><code>gpt-5.4</code> &rarr; <code>deepseek-v4-pro</code> &rarr; <code>Pro/zai-org/GLM-5.1</code> &rarr; <code>Pro/moonshotai/Kimi-K2.6</code> &rarr; <code>Qwen/Qwen3.5-397B-A17B</code> &rarr; <code>Pro/MiniMaxAI/MiniMax-M2.5</code> &rarr; <code>Qwen/Qwen3.5-122B-A10B</code> &rarr; <code>Qwen/Qwen3-8B</code></td>
+            <td>Complex refactoring, long reasoning, important outputs. Switch to this route when you explicitly want to use the strongest or most expensive model first.</td>
+          </tr>
+          <tr>
+            <td><code>fast-main</code></td>
+            <td>Speed / cost-first route.</td>
+            <td><code>Qwen/Qwen3.5-122B-A10B</code> &rarr; <code>Pro/MiniMaxAI/MiniMax-M2.5</code> &rarr; <code>Qwen/Qwen3.5-397B-A17B</code> &rarr; <code>Pro/moonshotai/Kimi-K2.6</code> &rarr; <code>deepseek-v4-pro</code> &rarr; <code>Qwen/Qwen3-8B</code></td>
+            <td>Simple Q&amp;A, short text processing, quick ad-hoc tasks. Uses a faster large model first, escalating to stronger candidates on failure.</td>
+          </tr>
+        </tbody>
+      </table>
+      <p><code>model.defaultRoute</code> determines which main route is used by default. For example, <code>"defaultRoute": "deepseek-main"</code> means the default primary chain is used normally. Switching routes is essentially changing <code>model.defaultRoute</code> to a different route name.</p>
+      <pre><code>{
+  "model": {
+    "defaultRoute": "deepseek-main",
+    "routes": {
+      "deepseek-main": {
+        "primary": "deepseek-v4-pro",
+        "fallbackChain": ["gpt-5.4", "Pro/zai-org/GLM-5.1", "Pro/moonshotai/Kimi-K2.6", "Qwen/Qwen3.5-397B-A17B", "Pro/MiniMaxAI/MiniMax-M2.5", "Qwen/Qwen3.5-122B-A10B", "Qwen/Qwen3-8B"],
+        "recoveryProfile": "main-agent",
+        "allowActions": ["retry_same_model", "adapt_request", "switch_model"],
+        "switchModelOn": ["rate_limit", "overloaded", "timeout", "connection", "server_error", "malformed_response", "responses_null_output", "model_not_found", "content_policy_blocked"]
+      },
+      "quality-main": {
+        "primary": "gpt-5.4",
+        "fallbackChain": ["deepseek-v4-pro", "Pro/zai-org/GLM-5.1", "Pro/moonshotai/Kimi-K2.6", "Qwen/Qwen3.5-397B-A17B", "Pro/MiniMaxAI/MiniMax-M2.5", "Qwen/Qwen3.5-122B-A10B", "Qwen/Qwen3-8B"],
+        "recoveryProfile": "main-agent",
+        "allowActions": ["retry_same_model", "adapt_request", "switch_model"],
+        "switchModelOn": ["rate_limit", "overloaded", "timeout", "connection", "server_error", "malformed_response", "responses_null_output", "model_not_found", "content_policy_blocked"]
+      },
+      "fast-main": {
+        "primary": "Qwen/Qwen3.5-122B-A10B",
+        "fallbackChain": ["Pro/MiniMaxAI/MiniMax-M2.5", "Qwen/Qwen3.5-397B-A17B", "Pro/moonshotai/Kimi-K2.6", "deepseek-v4-pro", "Qwen/Qwen3-8B"],
+        "recoveryProfile": "main-agent",
+        "allowActions": ["retry_same_model", "adapt_request", "switch_model"],
+        "switchModelOn": ["rate_limit", "overloaded", "timeout", "connection", "server_error", "malformed_response", "responses_null_output", "model_not_found", "content_policy_blocked"]
+      }
+    }
+  }
+}</code></pre>
+      <div class="callout">
+        <p><strong>When there are three routes, Axiomate does not run all three concurrently.</strong> By default, only the route pointed to by <code>model.defaultRoute</code> is used. The other routes are switchable presets for different task orientations.</p>
+      </div>
+
+      <h3>How to use</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>What you want to do</th>
+            <th>Recommended command</th>
+            <th>Where to edit JSON manually</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>See which route the main conversation is actually using</td>
+            <td><code>/model show</code></td>
+            <td>Check the value of <code>model.defaultRoute</code>.</td>
+          </tr>
+          <tr>
+            <td>List all available routes</td>
+            <td><code>/model route list</code></td>
+            <td>Check which keys exist under <code>model.routes</code>.</td>
+          </tr>
+          <tr>
+            <td>View a route's model chain</td>
+            <td><code>/model route show quality-main</code></td>
+            <td>Check <code>model.routes.quality-main.primary</code> and <code>fallbackChain</code>.</td>
+          </tr>
+          <tr>
+            <td>Switch the default main conversation to the quality-first route</td>
+            <td><code>/model route quality-main</code> or <code>/model default quality-main</code></td>
+            <td>Change <code>model.defaultRoute</code> to <code>"quality-main"</code>.</td>
+          </tr>
+          <tr>
+            <td>Switch the default main conversation back to the default primary route</td>
+            <td><code>/model route deepseek-main</code></td>
+            <td>Change <code>model.defaultRoute</code> to <code>"deepseek-main"</code>.</td>
+          </tr>
+          <tr>
+            <td>Only change the first-choice model of the current default route</td>
+            <td><code>/model use &lt;model-id&gt;</code> or open the <code>/model</code> picker</td>
+            <td>Change <code>model.routes.&lt;defaultRoute&gt;.primary</code>. This does not switch routes.</td>
+          </tr>
+        </tbody>
+      </table>
+      <p>The command method writes directly to <code>~/.axiomate.json</code> and persists across restarts. When editing manually, <code>model.defaultRoute</code> must reference an existing route name in <code>model.routes</code>; the <code>primary</code> and <code>fallbackChain</code> in each route must reference model IDs that already exist in <code>models</code>.</p>
+      <div class="warn">
+        <p><strong>The Model setting in Settings is not a route switcher.</strong> The Settings or <code>/model</code> picker is primarily for changing the <code>primary</code> of the current default route. To switch between <code>deepseek-main</code>, <code>quality-main</code>, and <code>fast-main</code>, use <code>/model route &lt;route-id&gt;</code> or manually edit <code>model.defaultRoute</code>.</p>
+        <p><strong>This type of selection is not a temporary override.</strong> Settings &rarr; Config <strong>Model</strong>, opening the <code>/model</code> picker directly, and <code>/model use &lt;model-id&gt;</code> all persist by writing to the route pointed to by the current <code>model.defaultRoute</code>, changing that route's <code>primary</code> to the selected model. The new <code>primary</code> will still be used on the next launch.</p>
+      </div>
+
+      <h3>When you should use multiple routes</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Situation</th>
+            <th>Recommendation</th>
+            <th>Reason</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Only one model connected, or rarely switch task types</td>
+            <td>One route is enough.</td>
+            <td>Simpler configuration; the main conversation always uses the same model chain.</td>
+          </tr>
+          <tr>
+            <td>Daily tasks and complex tasks differ significantly</td>
+            <td>Keep two routes: <code>default-main</code> / <code>quality-main</code>.</td>
+            <td>Use the default route normally, and <code>/model route quality-main</code> to switch when you need higher quality.</td>
+          </tr>
+          <tr>
+            <td>Frequently run simple, low-cost, low-latency tasks</td>
+            <td>Add a <code>fast-main</code> route.</td>
+            <td>Let a small model be the first choice, only trying stronger models on recoverable errors.</td>
+          </tr>
+          <tr>
+            <td>Just want to change the first-choice model for the current default route</td>
+            <td>Use the <code>/model</code> picker or <code>/model use &lt;model-id&gt;</code>.</td>
+            <td>This changes the current route's <code>primary</code>; no need to create or switch routes.</td>
+          </tr>
+          <tr>
+            <td>A particular provider is frequently rate-limited, timing out, or returning server errors</td>
+            <td>Add models from other providers to the current route's <code>fallbackChain</code>.</td>
+            <td>Fallback is a reliability mechanism; it is only used when the recovery system determines a model switch is appropriate.</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>Minimal Complete Example</h2>
+      <p>A minimal configuration only needs one main route. The example below demonstrates three things: registering two concrete models, setting a default main conversation route, and assigning models to several auxiliary tasks. It explains how the fields are written, but does not imply that a real configuration can only have one route.</p>
+      <pre><code>{
+  "models": {
+    "main-qwen": {
+      "model": "qwen/qwen3-235b",
+      "name": "Qwen3 235B",
+      "protocol": "openai-chat",
+      "baseUrl": "https://openrouter.ai/api/v1",
+      "apiKey": "sk-...",
+      "contextWindow": 131072,
+      "maxOutputTokens": 32768,
+      "supportsImages": true,
+      "thinking": { "enabled": true, "budget": 8192 }
+    },
+    "o4-mini": {
+      "model": "o4-mini",
+      "name": "o4-mini (Responses)",
+      "protocol": "openai-responses",
+      "baseUrl": "https://api.openai.com/v1",
+      "apiKey": "sk-...",
+      "contextWindow": 200000,
+      "maxOutputTokens": 100000,
+      "thinking": { "enabled": true, "effort": "high" }
+    },
+    "fast-qwen": {
+      "model": "Qwen/Qwen3-8B",
+      "name": "Qwen3 8B",
+      "protocol": "openai-chat",
+      "baseUrl": "https://api.siliconflow.cn/v1",
+      "apiKey": "sk-...",
+      "contextWindow": 131072,
+      "maxOutputTokens": 8192,
+      "supportsImages": false,
+      "thinking": { "enabled": false }
+    },
+    "prompt-qwen3-8b": {
+      "model": "Qwen/Qwen3-8B",
+      "name": "Prompt Suggestion Qwen3 8B",
+      "description": "Cheap, fast model dedicated to input box suggestions; may point to the same provider model as fast-qwen.",
+      "protocol": "openai-chat",
+      "baseUrl": "https://api.siliconflow.cn/v1",
+      "apiKey": "sk-...",
+      "contextWindow": 131072,
+      "maxOutputTokens": 8192,
+      "supportsImages": false,
+      "thinking": { "enabled": false },
+      "repairToolCalls": true
+    }
+  },
+  "model": {
+    "defaultRoute": "default",
+    "routes": {
+      "default": {
+        "primary": "main-qwen",
+        "fallbackChain": ["o4-mini"],
+        "recoveryProfile": "main-agent"
+      }
+    }
+  },
+  "auxiliary": {
+    "sessionTitle": { "primary": "main-qwen" },
+    "promptSuggestion": {
+      "primary": "prompt-qwen3-8b",
+      "fallbackChain": [],
+      "recoveryProfile": "auxiliary-fast",
+      "allowActions": ["retry_same_model"],
+      "switchModelOn": ["timeout", "connection", "server_error"],
+      "failure": "return_null",
+      "timeoutMs": 8000,
+      "maxOutputTokens": 96
+    },
+    "sessionSearchSummary": {
+      "primary": "main-qwen",
+      "failure": "return_original"
+    },
+    "goalJudge": {
+      "primary": "o4-mini",
+      "recoveryProfile": "auxiliary-judge",
+      "failure": "fail_open",
+      "timeoutMs": 30000
+    }
+  }
+}</code></pre>
+      <div class="callout">
+      <p><strong>The <code>models</code> key and <code>models[id].model</code> are not necessarily the same.</strong> For example, above <code>prompt-qwen3-8b</code> is the model ID used internally by Axiomate, meaning "a resource dedicated to input suggestions"; the <code>model: "Qwen/Qwen3-8B"</code> inside it is the actual model name sent to the provider API.</p>
+      </div>
+    </section>
+
+    <section>
+      <h2>Model Resource: What, How, and When</h2>
+      <h3>What it is</h3>
+      <p>A model resource is an entry in <code>models</code> that describes "how to call a specific model from a specific provider." It does not decide which model the main conversation uses by default, nor does it decide fallback order; those are determined by routes and auxiliary tasks.</p>
+      <p>For example, <code>models["main-qwen"]</code> is the model ID referenced internally by Axiomate, and routes also use this ID; whereas <code>models["main-qwen"].model</code> is the actual model name sent to the provider API.</p>
+
+      <h3>Full Example</h3>
+      <p>The snippet below only shows the <code>models</code> section. The left-side key is the Axiomate internal model ID, which routes and auxiliary tasks reference; the <code>model</code> field inside each entry is the actual model name sent to the provider.</p>
+      <pre><code>{
+  "models": {
+    "main-qwen": {
+      "model": "Qwen/Qwen3.5-397B-A17B",
+      "name": "Qwen 3.5 397B",
+      "description": "Main conversation quality model",
+      "protocol": "openai-chat",
+      "baseUrl": "https://api.siliconflow.cn/v1",
+      "apiKey": "sk-...",
+      "contextWindow": 262144,
+      "maxOutputTokens": 16384,
+      "supportsImages": true,
+      "thinking": { "enabled": true, "effort": "medium" }
+    },
+    "gpt-responses": {
+      "model": "gpt-5.4",
+      "name": "GPT Responses",
+      "protocol": "openai-responses",
+      "baseUrl": "https://api.openai.com/v1",
+      "apiKey": "sk-...",
+      "contextWindow": 400000,
+      "maxOutputTokens": 32768,
+      "supportsImages": true,
+      "thinking": { "enabled": true, "effort": "high" },
+      "userAgent": "axiomate"
+    },
+    "claude-sonnet": {
+      "model": "claude-sonnet-4-20250514",
+      "name": "Claude Sonnet",
+      "protocol": "anthropic",
+      "baseUrl": "https://api.anthropic.com",
+      "apiKey": "sk-ant-...",
+      "contextWindow": 200000,
+      "maxOutputTokens": 8192,
+      "supportsImages": true,
+      "thinking": { "enabled": true, "budget": 8192 }
+    },
+    "local-fast": {
+      "model": "qwen2.5-coder:7b",
+      "name": "Local Fast",
+      "protocol": "openai-chat",
+      "baseUrl": "http://127.0.0.1:11434/v1",
+      "apiKey": "local",
+      "contextWindow": 32768,
+      "supportsImages": false
+    }
+  }
+}</code></pre>
+      <div class="warn">
+        <p><strong>Do not interpret this example as a route.</strong> The above only registers callable model resources. Whether the main conversation uses <code>main-qwen</code> depends on the route pointed to by <code>model.defaultRoute</code>; whether an auxiliary task uses <code>local-fast</code> depends on <code>auxiliary.&lt;task&gt;</code>.</p>
+      </div>
+
+      <h3>How to use</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>What you want to do</th>
+            <th>Recommended method</th>
+            <th>What happens in the configuration</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Onboard a new model</td>
+            <td><code>/model add</code></td>
+            <td>Adds a new <code>models.&lt;model-id&gt;</code>, and optionally includes it in the main route.</td>
+          </tr>
+          <tr>
+            <td>Change API key, endpoint, protocol, or context window</td>
+            <td><code>/model edit &lt;model-id&gt;</code> or manually edit <code>models.&lt;model-id&gt;</code></td>
+            <td>Only modifies the model resource itself; does not automatically change the default route.</td>
+          </tr>
+          <tr>
+            <td>Make the main conversation start using this model</td>
+            <td><code>/model use &lt;model-id&gt;</code></td>
+            <td>Changes the current default route's <code>primary</code> to this model.</td>
+          </tr>
+          <tr>
+            <td>Add this model as a fallback model</td>
+            <td><code>/model fallback add &lt;model-id&gt;</code></td>
+            <td>Adds it to the current default route's <code>fallbackChain</code>.</td>
+          </tr>
+          <tr>
+            <td>Use only for auxiliary tasks like titles, summaries, or goal judging</td>
+            <td><code>/model aux set &lt;task&gt; &lt;model-id&gt;</code></td>
+            <td>Changes the corresponding auxiliary task's <code>primary</code> to this model.</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3>When you need to modify model resources</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Situation</th>
+            <th>What to modify</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>API key expired, provider endpoint changed, model name misspelled</td>
+            <td>Edit <code>models.&lt;model-id&gt;.apiKey</code>, <code>baseUrl</code>, or <code>model</code>.</td>
+          </tr>
+          <tr>
+            <td>Model does not support images but is used for image input</td>
+            <td>Set <code>supportsImages</code> to <code>false</code>, and point main routes that need image input to models that support images.</td>
+          </tr>
+          <tr>
+            <td>Provider requires special reasoning / thinking parameters</td>
+            <td>Edit <code>thinking</code>, and set <code>vendor</code> or <code>extraParams</code> if needed.</td>
+          </tr>
+          <tr>
+            <td>Context or output token budget is incorrect</td>
+            <td>Edit <code>contextWindow</code> or <code>maxOutputTokens</code>.</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3>Field Reference</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Field</th>
+            <th>Required</th>
+            <th>Meaning</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>model</code></td>
+            <td>Yes</td>
+            <td>The model name sent to the provider API. It may be the same as the <code>models</code> key or different.</td>
+          </tr>
+          <tr>
+            <td><code>name</code></td>
+            <td>No</td>
+            <td>The name displayed in the model picker. If omitted, the <code>models</code> key is shown.</td>
+          </tr>
+          <tr>
+            <td><code>description</code></td>
+            <td>No</td>
+            <td>Description shown in the model picker. If omitted, the protocol and endpoint are displayed.</td>
+          </tr>
+          <tr>
+            <td><code>protocol</code></td>
+            <td>Yes</td>
+            <td><code>openai-chat</code>, <code>openai-responses</code>, or <code>anthropic</code>. Determines the wire format for requests and streaming responses.</td>
+          </tr>
+          <tr>
+            <td><code>vendor</code></td>
+            <td>No</td>
+            <td>Vendor template name, used to translate the neutral <code>thinking</code> configuration into provider-specific fields and handle gateway-level compatibility differences. Can usually be omitted; Axiomate infers it from the protocol and <code>baseUrl</code>. Set explicitly if the model is exposed through a special relay gateway.</td>
+          </tr>
+          <tr>
+            <td><code>modelTemplate</code></td>
+            <td>No</td>
+            <td>Explicit model-layer template name, used to overlay model / relay-specific behaviors. The onboarding wizard recommends a value based on model name, vendor, and <code>baseUrl</code>, but at runtime a model template is only applied if this field is configured; leaving it unset means no model-layer overrides are applied. The built-in DeepSeek V4+ model template targets the <code>openai-chat</code> protocol.</td>
+          </tr>
+          <tr>
+            <td><code>baseUrl</code></td>
+            <td>Yes</td>
+            <td>API endpoint, e.g. <code>https://api.openai.com/v1</code> or the compatible address for OpenRouter / SiliconFlow / vLLM / ollama.</td>
+          </tr>
+          <tr>
+            <td><code>apiKey</code></td>
+            <td>Yes</td>
+            <td>API key. Even for local ollama which does not validate keys, a placeholder string is required.</td>
+          </tr>
+          <tr>
+            <td><code>contextWindow</code></td>
+            <td>No</td>
+            <td>Context window token count. Used for truncation, compression, and budget estimation.</td>
+          </tr>
+          <tr>
+            <td><code>maxOutputTokens</code></td>
+            <td>No</td>
+            <td>Default maximum output tokens per single response for this model resource. Auxiliary tasks can further narrow the request budget via <code>auxiliary.&lt;task&gt;.maxOutputTokens</code>.</td>
+          </tr>
+          <tr>
+            <td><code>supportsImages</code></td>
+            <td>No</td>
+            <td>Whether the model supports image input. Defaults to <code>true</code>; set to <code>false</code> for text-only models.</td>
+          </tr>
+          <tr>
+            <td><code>thinking</code></td>
+            <td>No</td>
+            <td>Neutral reasoning configuration, e.g. <code>{ "enabled": true, "effort": "high" }</code> or <code>{ "enabled": true, "budget": 8192 }</code>.</td>
+          </tr>
+          <tr>
+            <td><code>extraParams</code></td>
+            <td>No</td>
+            <td>Provider-private parameters merged as-is into the request body on every call.</td>
+          </tr>
+          <tr>
+            <td><code>usageMapping</code></td>
+            <td>No</td>
+            <td>Cache token field path mapping for OpenAI Chat-compatible responses. Usually not needed for Responses and Anthropic.</td>
+          </tr>
+          <tr>
+            <td><code>userAgent</code></td>
+            <td>No</td>
+            <td>Override the HTTP User-Agent. Some Responses-compatible gateways require a specific UA to pass through.</td>
+          </tr>
+          <tr>
+            <td><code>repairToolCalls</code></td>
+            <td>No</td>
+            <td>Compatibility switch: enable repair for models prone to emitting malformed tool-call JSON.</td>
+          </tr>
+          <tr>
+            <td><code>stallTimeoutMs</code></td>
+            <td>No</td>
+            <td>Override the streaming response stall warning threshold. Set to <code>0</code> to disable stall warnings for this model.</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3>Vendor / Model Template Reasoning Replay Fields</h3>
+      <p>Axiomate's template system merges in three layers: <code>protocol</code> &rarr; <code>vendor</code> &rarr; <code>model</code>. Later layers override earlier ones, so when both a vendor template and a model template declare the same field, the model template takes effect.</p>
+      <table>
+        <thead>
+          <tr>
+            <th>Field</th>
+            <th>Writable location</th>
+            <th>Recommended location</th>
+            <th>Meaning</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>autoRoundTripReasoningContent</code></td>
+            <td><code>templates</code>, <code>modelTemplates</code></td>
+            <td><code>modelTemplates</code></td>
+            <td>Whether to replay the previous assistant reasoning / thinking content in the next turn after a tool call. Models like DeepSeek V4+ typically need this.</td>
+          </tr>
+          <tr>
+            <td><code>reasoningRoundTripFormat</code></td>
+            <td><code>templates</code>, <code>modelTemplates</code></td>
+            <td><code>templates</code> or <code>modelTemplates</code></td>
+            <td>The history message shape for reasoning round-trip. Currently only supports <code>reasoning_content</code>, used for official / default DeepSeek V4+ multi-turn tool-call replay.</td>
+          </tr>
+        </tbody>
+      </table>
+      <p>Model templates are not applied automatically at runtime based on the model name; you must explicitly set <code>modelTemplate</code> in the model entry. The built-in <code>openai-chat-deepseek-v4p</code> is for the official / default DeepSeek V4+ replay shape (<code>reasoning_content</code>) under the <code>openai-chat</code> protocol. The current adapter only supports this one reasoning replay shape; relay-specific shapes require behavior verification and adapter extension first, and cannot be expressed solely through custom <code>modelTemplates</code>.</p>
+      <pre><code>{
+  "models": {
+    "deepseek-v4-pro": {
+      "model": "deepseek-v4-pro",
+      "name": "deepseek-v4-pro",
+      "protocol": "openai-chat",
+      "baseUrl": "https://api.deepseek.com",
+      "apiKey": "sk-...",
+      "modelTemplate": "openai-chat-deepseek-v4p",
+      "contextWindow": 1000000,
+      "maxOutputTokens": 384000,
+      "supportsImages": false,
+      "thinking": { "enabled": true, "effort": "high" }
+    }
+  }
+}</code></pre>
+
+      <h3>How to Choose Among Three Protocols</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Protocol</th>
+            <th>Applicable scenarios</th>
+            <th>Typical baseUrl</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>openai-chat</code></td>
+            <td>OpenAI Chat Completions-compatible interfaces. OpenRouter, SiliconFlow, DeepSeek, vLLM, ollama, etc. typically use this.</td>
+            <td><code>https://openrouter.ai/api/v1</code></td>
+          </tr>
+          <tr>
+            <td><code>openai-responses</code></td>
+            <td>OpenAI Responses API or compatible gateways. Suitable for models that need to preserve reasoning items and Responses tool-call semantics.</td>
+            <td><code>https://api.openai.com/v1</code></td>
+          </tr>
+          <tr>
+            <td><code>anthropic</code></td>
+            <td>Anthropic Messages wire format. For providers that truly expose the Anthropic protocol.</td>
+            <td><code>https://api.anthropic.com</code></td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>Auxiliary Tasks: What, How, and When</h2>
+      <h3>What it is</h3>
+      <p><code>auxiliary</code> provides model strategies for "small tasks that need an LLM but are not the main conversation." Title generation, input suggestions, search summaries, goal judging, hooks, and token counting all belong to this layer. They should not consume the most expensive main model by default, nor should they treat API error text as normal results on failure.</p>
+
+      <h3>How to use</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>What you want to do</th>
+            <th>Recommended command</th>
+            <th>Where to edit JSON manually</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>View all auxiliary task policies</td>
+            <td><code>/model aux list</code></td>
+            <td>Check which tasks exist under <code>auxiliary</code>.</td>
+          </tr>
+          <tr>
+            <td>View the model chain for a specific auxiliary task</td>
+            <td><code>/model aux show goalJudge</code></td>
+            <td>Check <code>auxiliary.goalJudge.primary</code> and <code>fallbackChain</code>.</td>
+          </tr>
+          <tr>
+            <td>Make title generation use a cheap, fast model</td>
+            <td><code>/model aux set sessionTitle &lt;model-id&gt;</code></td>
+            <td>Edit <code>auxiliary.sessionTitle.primary</code>.</td>
+          </tr>
+          <tr>
+            <td>Make input suggestions use a cheap, fast model</td>
+            <td><code>/model aux set promptSuggestion &lt;model-id&gt;</code></td>
+            <td>Edit <code>auxiliary.promptSuggestion.primary</code>.</td>
+          </tr>
+          <tr>
+            <td>Add a fallback model for goal judging</td>
+            <td><code>/model aux fallback add goalJudge &lt;model-id&gt;</code></td>
+            <td>Add the model ID to <code>auxiliary.goalJudge.fallbackChain</code>.</td>
+          </tr>
+          <tr>
+            <td>Set how an auxiliary task handles failure</td>
+            <td><code>/model aux policy goalJudge failure fail_open</code></td>
+            <td>Edit <code>auxiliary.goalJudge.failure</code>.</td>
+          </tr>
+          <tr>
+            <td>Set the maximum output tokens for input suggestions</td>
+            <td><code>/model aux policy promptSuggestion maxOutputTokens 96</code></td>
+            <td>Edit <code>auxiliary.promptSuggestion.maxOutputTokens</code>.</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3>When you need to modify auxiliary tasks</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Situation</th>
+            <th>Recommendation</th>
+            <th>Reason</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Title generation, summarization, or date parsing is too slow or too expensive</td>
+            <td>Change the corresponding task's <code>primary</code> to a cheap, fast model.</td>
+            <td>These tasks do not need a model of the same tier as the main conversation.</td>
+          </tr>
+          <tr>
+            <td>Next-suggestion in the input box is too slow, too expensive, or repeatedly shows empty output in <code>/doctor</code></td>
+            <td>Change <code>auxiliary.promptSuggestion.primary</code> to a cheap, fast model and keep the failure policy as <code>return_null</code>.</td>
+            <td>This is a background hint; it should not slow down the main response or retry endlessly due to empty results.</td>
+          </tr>
+          <tr>
+            <td><code>/goal</code> judgment is too lax, too strict, or has unstable formatting</td>
+            <td>Adjust <code>auxiliary.goalJudge</code> and choose a model that follows JSON more reliably.</td>
+            <td>Goal judging requires stable structured output.</td>
+          </tr>
+          <tr>
+            <td>Auxiliary task failure should not interrupt the main flow</td>
+            <td>Set <code>failure</code> to <code>return_null</code>, <code>return_original</code>, or <code>fail_open</code>.</td>
+            <td>Title, summary, and search helpers can usually degrade gracefully on failure.</td>
+          </tr>
+          <tr>
+            <td>Hook agent or critical validation failures must surface errors</td>
+            <td>Set <code>failure</code> to <code>propagate_error</code> or <code>fail_closed</code>.</td>
+            <td>Failure in these tasks may affect security or correctness and must not be silently swallowed.</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3>Configuration Example</h3>
+      <pre><code>{
+  "auxiliary": {
+    "sessionTitle": {
+      "primary": "main-qwen",
+      "timeoutMs": 15000,
+      "failure": "return_null"
+    },
+    "promptSuggestion": {
+      "primary": "prompt-qwen3-8b",
+      "fallbackChain": [],
+      "recoveryProfile": "auxiliary-fast",
+      "allowActions": ["retry_same_model"],
+      "switchModelOn": ["timeout", "connection", "server_error"],
+      "timeoutMs": 8000,
+      "maxOutputTokens": 96,
+      "failure": "return_null"
+    },
+    "goalJudge": {
+      "primary": "o4-mini",
+      "fallbackChain": ["main-qwen"],
+      "recoveryProfile": "auxiliary-judge",
+      "failure": "fail_open"
+    }
+  }
+}</code></pre>
+      <h3>Field Reference</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Field</th>
+            <th>Auxiliary-only?</th>
+            <th>Meaning</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>primary</code> / <code>fallbackChain</code> / <code>allowActions</code> / <code>switchModelOn</code> / <code>recoveryProfile</code></td>
+            <td>No</td>
+            <td>Same semantics as main routes.</td>
+          </tr>
+          <tr>
+            <td><code>failure</code></td>
+            <td>Yes</td>
+            <td>Final disposition after all attempts have failed. Options: <code>fail_open</code>, <code>fail_closed</code>, <code>return_null</code>, <code>return_original</code>, <code>return_empty</code>, <code>propagate_error</code>.</td>
+          </tr>
+          <tr>
+            <td><code>timeoutMs</code></td>
+            <td>Yes</td>
+            <td>Per-attempt timeout for this task. If omitted, the built-in timeout policy is used.</td>
+          </tr>
+          <tr>
+            <td><code>maxOutputTokens</code></td>
+            <td>Yes</td>
+            <td>The output cap for this specific task. It does not change the model capability expressed by <code>models[id].maxOutputTokens</code>; it only limits how much output this auxiliary task requests per call.</td>
+          </tr>
+          <tr>
+            <td><code>extraBody</code></td>
+            <td>Yes</td>
+            <td>Reserved entry point for task-level provider parameters. Prefer <code>models[id].extraParams</code> for everyday configuration; use this only when you know a specific auxiliary execution path reads it.</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3>Common Auxiliary Tasks</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Task</th>
+            <th>Purpose</th>
+            <th>Common model choice</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>sessionTitle</code></td>
+            <td>Generate session titles.</td>
+            <td>Cheap, fast, stable text model.</td>
+          </tr>
+          <tr>
+            <td><code>promptSuggestion</code></td>
+            <td>Generate the dimmed next-suggestion shown in the input box.</td>
+            <td>Cheap, fast small model, e.g. Qwen3 8B; typically no fallback, <code>return_null</code> on failure, and constrained short output via <code>maxOutputTokens</code>.</td>
+          </tr>
+          <tr>
+            <td><code>tokenCounting</code></td>
+            <td>Auxiliary token estimation / counting path.</td>
+            <td>Cheap model; typically <code>return_null</code> on failure.</td>
+          </tr>
+          <tr>
+            <td><code>sessionSearchSummary</code></td>
+            <td>Summary after a <code>/resume</code> or SessionSearch hit.</td>
+            <td>Cheap summarization model; can <code>return_original</code> on failure.</td>
+          </tr>
+          <tr>
+            <td><code>memdirRelevance</code></td>
+            <td>Select relevant files from memory frontmatter.</td>
+            <td>Medium-quality model that strictly outputs JSON.</td>
+          </tr>
+          <tr>
+            <td><code>goalJudge</code></td>
+            <td>Per-turn goal completion judgment for <code>/goal</code>.</td>
+            <td>Model that strictly follows JSON output, ideally cheaper than the main model.</td>
+          </tr>
+          <tr>
+            <td><code>hookPrompt</code> / <code>hookAgent</code></td>
+            <td>Prompt hook or full agent hook.</td>
+            <td><code>hookAgent</code> typically needs higher quality and <code>propagate_error</code>.</td>
+          </tr>
+          <tr>
+            <td><code>skillImprovement</code></td>
+            <td>Skill improvement suggestions.</td>
+            <td>Cheap model that can follow a format.</td>
+          </tr>
+          <tr>
+            <td><code>mcpDateTimeParse</code></td>
+            <td>Natural-language date / time parsing in MCP forms.</td>
+            <td>Fast text model.</td>
+          </tr>
+          <tr>
+            <td><code>shellPrefix</code></td>
+            <td>Extract shell command prefix for permissions / display.</td>
+            <td>Fast text model.</td>
+          </tr>
+          <tr>
+            <td><code>permissionExplainer</code></td>
+            <td>Generate permission request explanations.</td>
+            <td>Fast text model.</td>
+          </tr>
+          <tr>
+            <td><code>compact</code> / <code>sideQuestion</code> / <code>forkedAgent</code></td>
+            <td>Compaction, side questions, forked agent-type tasks.</td>
+            <td>Quality-first, typically stronger than title / counting tasks.</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>Recovery Semantics: Observe, Decide, Execute</h2>
+      <div class="grid">
+        <div class="tile">
+          <strong>Observe</strong>
+          <p>Every API attempt records the protocol, provider, model, route, auxiliary task, attempt index, initial or retry error, and classifies raw 400s, 52xs, timeouts, empty output, etc. into semantic reasons.</p>
+        </div>
+        <div class="tile">
+          <strong>Decide</strong>
+          <p>The decision layer reads the recovery rule table, the previous error, the current error, route policy, and remaining candidate models, then decides to <code>retry_same_model</code>, <code>adapt_request</code>, <code>switch_model</code>, or stop.</p>
+        </div>
+        <div class="tile">
+          <strong>Execute</strong>
+          <p>The execution layer modifies the request or switches to the next candidate as decided. Failure results are written back to the same recovery session for the next round of decision-making.</p>
+        </div>
+      </div>
+      <p>For example, if the first attempt hits a 400 and the second attempt hits a 52x after adjusting the request, this is not a state "overwriting the old error," but rather two attempt observations within the same recovery session. The decision layer can see "previously it was a request shape issue, now it is a server/gateway issue," and then decide whether to switch models or stop.</p>
+      <h3>API Automatic Recovery Overview</h3>
+      <p><strong>What it is:</strong> Axiomate first classifies API failures into semantic reasons, then selects actions from the unified recovery rule table. The current rule table explicitly covers 13 common recoverable error categories, and the recovery action set contains 21 action types. This number will grow with releases; users need to understand the classifications and budgets, not memorize every internal rule.</p>
+      <p><strong>How to use:</strong> Regular users only need to configure model chains and policy thresholds. Main conversations default to a maximum of 10 recovery retries, i.e. up to 11 attempts; this can be adjusted with the environment variable <code>AXIOMATE_CODE_MAX_RETRIES</code>. Auxiliary tasks are allocated budgets by semantics: background direct-connect auxiliary requests have no local recovery retries, verification and fast auxiliary tasks typically have 1 recovery retry, and foreground interactive or quality-first auxiliary tasks typically have 2 recovery retries. Provider <code>Retry-After</code> headers are respected, but individual wait times are capped to avoid stalling for too long.</p>
+      <p><strong>When it happens:</strong> Request failures, stream interruptions, Responses empty output, unsupported model fields, oversized images, excessive context, server 52x, rate limits, timeouts, disconnected connections, and unavailable models all enter the observation layer. The decision layer may choose to wait and retry the same model, retry after modifying the request, compress the request, downgrade to non-streaming, refresh the connection, switch models, or stop.</p>
+      <table>
+        <thead>
+          <tr>
+            <th>Failure symptom</th>
+            <th>Common observed reason</th>
+            <th>Possible actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Provider reports unsupported <code>temperature</code>, <code>stop</code>, <code>tool_choice</code>, or similar fields</td>
+            <td><code>unsupported_parameter</code></td>
+            <td>Resend after omitting the offending fields.</td>
+          </tr>
+          <tr>
+            <td>OpenAI Responses rejects historical encrypted reasoning content</td>
+            <td><code>invalid_encrypted_content</code></td>
+            <td>Resend after removing unverifiable reasoning replay.</td>
+          </tr>
+          <tr>
+            <td>Image dimensions or size exceed provider limits</td>
+            <td><code>image_too_large</code></td>
+            <td>Rewrite image payload according to the image recovery profile, then resend.</td>
+          </tr>
+          <tr>
+            <td>Context or payload too large</td>
+            <td><code>context_overflow</code> / <code>payload_too_large</code></td>
+            <td>Compress request, or first reduce output budget and disable thinking.</td>
+          </tr>
+          <tr>
+            <td>Rate limit, overload, timeout, disconnected connection, server 52x</td>
+            <td><code>rate_limit</code> / <code>overloaded</code> / <code>timeout</code> / <code>connection</code> / <code>server_error</code></td>
+            <td>Wait then retry; switch to <code>fallbackChain</code> when the budget is exhausted and the policy allows it.</td>
+          </tr>
+          <tr>
+            <td>Model not found, content policy blocked, response structure empty or malformed</td>
+            <td><code>model_not_found</code> / <code>content_policy_blocked</code> / <code>responses_null_output</code> / <code>malformed_response</code></td>
+            <td>Retry, adapt the request, or switch models according to the rules; content policy refusals do not retry the same request as-is, and stop with a trace when unrecoverable.</td>
+          </tr>
+          <tr>
+            <td>Provider or aggregator account policy blocked</td>
+            <td><code>provider_policy_blocked</code></td>
+            <td>This is a deterministic block at the account, privacy, or data-policy level. Axiomate stops and prompts you to check provider/account policy, base URL, model, or route; it will not treat this as an automatic model-switch reason.</td>
+          </tr>
+          <tr>
+            <td>Provider explicitly rejects streaming, or streaming endpoint returns 404 but not model-not-found</td>
+            <td><code>streaming_unsupported</code> / <code>stream_endpoint_not_found</code></td>
+            <td>Only in these narrow semantics does it fall back to non-streaming; empty streams, local stream parse errors, and ordinary 52x will first go through streaming retry and will not directly downgrade.</td>
+          </tr>
+        </tbody>
+      </table>
+      <p><code>allowActions</code> determines which action types a route or auxiliary task permits, and <code>switchModelOn</code> only determines which semantic errors allow a model switch. They are merely inputs to the decision system and do not bypass the observation and rule table to fall back directly. <code>provider_policy_blocked</code> is a diagnostic and configuration-fix reason, not an automatic model-switch reason writable into <code>switchModelOn</code>.</p>
+      <p><code>content_policy_blocked</code> means the provider issued a safety / content-filtering refusal for the current prompt. Axiomate does not treat it as a transient retry and will not resend the same request as-is; it only switches to a candidate model when <code>allowActions</code> includes <code>switch_model</code>, <code>switchModelOn</code> includes <code>content_policy_blocked</code>, and <code>fallbackChain</code> has a different model available.</p>
+      <p>Each failure round re-observes the error reason and generates an independent fallback-eligibility snapshot from the current <code>primary</code> / <code>fallbackChain</code> / policy. That is, a previous <code>rate_limit</code> with switch_model allowed does not pollute the judgment of a subsequent <code>model_not_found</code> or <code>server_error</code>. The <code>actionAllowed</code> / <code>reasonAllowed</code> seen in <code>/doctor</code> are diagnostic snapshots for that request round, not fields you need to manually write into configuration.</p>
+
+      <h3><code>/doctor</code> API Providers: How to Read API Failures</h3>
+      <p><strong>What it is:</strong> The <strong>API Providers</strong> section in <code>/doctor</code> projects the most recent API recovery traces from the current session into readable cards. It is not a configuration entry point and does not actively repair requests; it is for answering "which provider / model / route had what problem just now, what did Axiomate observe, what did the decision system do, and where should I look next."</p>
+      <p><strong>How to use:</strong> Run <code>/doctor</code> when the main conversation, auxiliary tasks, model validation, or streaming output shows failures, noticeable slowness, model switches, non-streaming downgrades, empty output, 52x, rate limits, or model-not-found. If the current session has no API recovery records, this section does not appear. The current UI displays up to 5 most recent cards; earlier cards are indicated by a hidden count hint.</p>
+      <p><strong>How to read background task cards:</strong> When background auxiliary tasks like <code>prompt_suggestion</code>, title generation, or permission explanation fail, the cards are typically <code>[Info]</code> or lightweight <code>[Warning]</code>. For example, <code>scope: auxiliary:promptSuggestion</code> indicates the input box dimmed suggestion failed or was cancelled, not that the main conversation reply failed; you should check <code>auxiliary.promptSuggestion</code>, not the current main route.</p>
+      <p><strong>How to read capability probe cards:</strong> <code>scope: capability:count_tokens</code> indicates the provider native token counting probe failed. It is not a main conversation request failure; Axiomate will continue trying <code>auxiliary.tokenCounting</code> or local estimation. Only <code>scope: auxiliary:tokenCounting</code> means the auxiliary model chain used for token counting itself failed.</p>
+      <p><strong>Record scope:</strong> These records are only kept in the current process memory, up to a maximum of 200 recent safe trace events. <code>/clear</code>, switching, or restoring other sessions clears them. Traces are not written to disk and do not store prompts, image content, tool results, API keys, Authorization headers, or raw provider response bodies; they only retain protocol, model, route/task, error classification, HTTP status, a small set of safe response headers, request ID, timestamp, and recovery actions.</p>
+      <table>
+        <thead>
+          <tr>
+            <th>Card field</th>
+            <th>Meaning</th>
+            <th>How to interpret</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>[Error]</code> / <code>[Warning]</code> / <code>[Info]</code> and title</td>
+            <td>This card's severity level and final state summary.</td>
+            <td><code>Error</code> typically requires configuration changes, model switches, or account/network handling; <code>Warning</code> means a recovery action occurred; <code>Info</code> typically means the request was adapted or partially recovered.</td>
+          </tr>
+          <tr>
+            <td><code>scope</code></td>
+            <td>Where the failure occurred: main route, a specific auxiliary task, model validation, or other API operations.</td>
+            <td><code>route:deepseek-main</code> means check <code>model.routes.deepseek-main</code>; <code>auxiliary:goalJudge</code> or <code>auxiliary:promptSuggestion</code> means check the corresponding <code>auxiliary</code> task.</td>
+          </tr>
+          <tr>
+            <td><code>impact</code></td>
+            <td>The user flow affected by this failure, e.g. main response stream, auxiliary reasoning, token counting, model validation, or non-streaming downgrade.</td>
+            <td>Main response stream failure affects the ongoing chat; auxiliary task failure may only affect title, summary, goal judgment, or hooks.</td>
+          </tr>
+          <tr>
+            <td><code>model</code></td>
+            <td>The model path traversed during this recovery round.</td>
+            <td><code>a -&gt; b</code> means the decision system already switched from <code>a</code> to <code>b</code>; a single model means no actual model switch occurred, likely just a retry or request modification.</td>
+          </tr>
+          <tr>
+            <td><code>observed</code></td>
+            <td>The semantic error reason classified by the observation layer, possibly with HTTP status and provider request ID.</td>
+            <td>Look here first to determine if it is an account, billing, rate limit, timeout, model name, protocol compatibility, context overflow, or provider server error.</td>
+          </tr>
+          <tr>
+            <td><code>recovery</code></td>
+            <td>Short summary of the decision and execution result.</td>
+            <td>This explains whether recovery succeeded, a model was switched, the request was adapted, it was blocked by policy, the budget was exhausted, or it was delegated to compression, etc.</td>
+          </tr>
+          <tr>
+            <td><code>stopped</code></td>
+            <td>If recovery stopped, this explains the stop reason.</td>
+            <td>Common reasons include non-retryable error, retry budget exhausted, no available fallback model, route policy disallowing model switch, or request cancelled.</td>
+          </tr>
+          <tr>
+            <td><code>next</code></td>
+            <td>User-facing next-step suggestion.</td>
+            <td>It points to specific configuration fields, e.g. <code>models["..."].apiKey</code>, <code>models["..."].baseUrl</code>, <code>model.routes["..."].fallbackChain</code>, or <code>switchModelOn</code>.</td>
+          </tr>
+          <tr>
+            <td><code>timeline</code></td>
+            <td>The attempt sequence within the same recovery session.</td>
+            <td>Format is <code>#attempt/max reason HTTP xxx -&gt; action/outcome +mutation</code>. The UI defaults to showing the last 3 events; internally sorted by sequence, so multiple observations within the same millisecond maintain order.</td>
+          </tr>
+          <tr>
+            <td><code>request</code> / <code>timing</code> / <code>advanced</code> / <code>policy</code></td>
+            <td>Optional diagnostic fields: request ID, timeout/duration, protocol, operation, route/task, matched rules, safe response headers, and policy snapshot.</td>
+            <td><code>actionAllowed</code> / <code>reasonAllowed</code> in <code>policy</code> are this round's diagnostic results, not configuration fields. Configuration is still written in <code>allowActions</code> and <code>switchModelOn</code>.</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3>Recovery States in <code>/doctor</code></h3>
+      <table>
+        <thead>
+          <tr>
+            <th>State</th>
+            <th>Meaning</th>
+            <th>What the user should focus on</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>recovered</code></td>
+            <td>The request succeeded after retry or adaptation.</td>
+            <td>Generally no action needed; if it occurs frequently, check provider stability and route ordering.</td>
+          </tr>
+          <tr>
+            <td><code>switched_model</code></td>
+            <td>The decision system executed <code>fallback_model</code> and actually switched to a fallback model.</td>
+            <td>Confirm that the fallback model's quality, cost, context window, and tool/image capabilities meet this route's expectations.</td>
+          </tr>
+          <tr>
+            <td><code>switched_request_mode</code></td>
+            <td>The streaming request failed and was switched to a non-streaming request.</td>
+            <td>This is a request mode downgrade, not a model switch. If frequent, prioritize checking the provider's streaming compatibility.</td>
+          </tr>
+          <tr>
+            <td><code>adapted_request</code></td>
+            <td>Axiomate modified the request shape, e.g. removed unsupported fields, reduced output budget, disabled thinking, or rewrote image payload.</td>
+            <td>Usually indicates the provider or model does not fully support the current request parameters; check <code>vendor</code>, <code>template</code>, <code>extraParams</code>, and model capability configuration.</td>
+          </tr>
+          <tr>
+            <td><code>adaptation_failed</code></td>
+            <td>The request was already adapted but subsequent attempts still failed.</td>
+            <td>Check whether the first error and last error in <code>timeline</code> differ; may need to change protocol, switch provider, or adjust route policy.</td>
+          </tr>
+          <tr>
+            <td><code>delegated_recovery</code></td>
+            <td>The recovery action was handed off to an outer mechanism, e.g. session compaction or the main route loop continuing to process.</td>
+            <td>This is not a "lost error." It means this layer recorded the observation and decision and handed execution to a higher-level recovery loop.</td>
+          </tr>
+          <tr>
+            <td><code>blocked_by_policy</code></td>
+            <td>The error could have considered a model switch, but the current route or auxiliary policy does not allow it.</td>
+            <td>Check whether <code>allowActions</code> includes <code>switch_model</code>, whether <code>switchModelOn</code> includes this error type, and whether <code>fallbackChain</code> has available candidates.</td>
+          </tr>
+          <tr>
+            <td><code>salvaged</code></td>
+            <td>The streaming output was interrupted, but partial output was safely preserved.</td>
+            <td>Check whether the final reply is complete; if this happens often, prioritize checking the network, provider streaming, and timeout policy.</td>
+          </tr>
+          <tr>
+            <td><code>exhausted</code></td>
+            <td>A recoverable error exhausted the current budget.</td>
+            <td>Check provider status, increase budget, add fallback models, or reduce context and payload.</td>
+          </tr>
+          <tr>
+            <td><code>aborted</code></td>
+            <td>The request was cancelled by the user or system.</td>
+            <td>If intentionally cancelled, no action needed; if not, check for timeouts, exits, or session switches.</td>
+          </tr>
+          <tr>
+            <td><code>failed</code></td>
+            <td>The request failed and no executable recovery action remains.</td>
+            <td>Follow <code>observed</code> and <code>next</code> to check keys, billing, model name, baseUrl, protocol, and account permissions.</td>
+          </tr>
+          <tr>
+            <td><code>retrying</code></td>
+            <td>The current trace shows the request is still in the recovery process.</td>
+            <td>Wait for the current request to finish before checking the final card; if it stays for a long time, check timeouts and network.</td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="callout">
+        <p><strong>Order for reading cards:</strong> First check <code>scope</code> to locate the configuration block, then check <code>observed</code> to confirm the error category, then check <code>timeline</code> to understand the recovery process, and finally follow <code>next</code> to modify <code>models</code>, <code>model.routes</code>, or <code>auxiliary</code>. Do not directly copy-paste <code>actionAllowed</code> / <code>reasonAllowed</code> from <code>policy</code>; they are only result snapshots of that particular decision.</p>
+      </div>
+    </section>
+
+    <section>
+      <h2><code>/model</code> Commands</h2>
+      <p><code>/model</code> is the primary UI for model configuration. It can add models, edit individual model entries, switch main routes, and manage fallback and auxiliary task policies.</p>
+      <table>
+        <thead>
+          <tr>
+            <th>Command</th>
+            <th>Effect</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>/model</code></td>
+            <td>Opens the model picker. Selecting a model persistently updates the current default route's <code>primary</code>.</td>
+          </tr>
+          <tr>
+            <td><code>/model show</code></td>
+            <td>Displays the current main model route, fallback chain, and session override information.</td>
+          </tr>
+          <tr>
+            <td><code>/model add</code></td>
+            <td>Interactively add a provider/model: protocol, baseUrl, apiKey, model id, context window, image support, vendor template, thinking, User-Agent, and verify the connection before writing to <code>~/.axiomate.json</code>.</td>
+          </tr>
+          <tr>
+            <td><code>/model edit &lt;model-id&gt;</code></td>
+            <td>Edit <code>models[model-id]</code> with an editor. Validates JSON, model fields, route references, and auxiliary references on save.</td>
+          </tr>
+          <tr>
+            <td><code>/model use &lt;model-id&gt;</code></td>
+            <td>Persistently change the current default route's <code>primary</code> to the specified model.</td>
+          </tr>
+          <tr>
+            <td><code>/model route list</code></td>
+            <td>List all main conversation routes. The default route is marked.</td>
+          </tr>
+          <tr>
+            <td><code>/model route show [route-id]</code></td>
+            <td>Show a route's chain, profile, allowActions, and switchModelOn.</td>
+          </tr>
+          <tr>
+            <td><code>/model route &lt;route-id&gt;</code> or <code>/model default &lt;route-id&gt;</code></td>
+            <td>Switch <code>model.defaultRoute</code> to the specified route.</td>
+          </tr>
+          <tr>
+            <td><code>/model route create &lt;id&gt; &lt;model-id&gt;</code></td>
+            <td>Create a new main route.</td>
+          </tr>
+          <tr>
+            <td><code>/model route delete &lt;id&gt;</code></td>
+            <td>Delete a non-default route. The default route cannot be directly deleted.</td>
+          </tr>
+          <tr>
+            <td><code>/model route rename &lt;from&gt; &lt;to&gt;</code></td>
+            <td>Rename a route, keeping the default route reference consistent.</td>
+          </tr>
+          <tr>
+            <td><code>/model route policy &lt;id&gt; allowActions|switchModelOn|recoveryProfile &lt;value&gt;</code></td>
+            <td>Modify a route's recovery policy fields. Array fields use comma separation.</td>
+          </tr>
+          <tr>
+            <td><code>/model fallback list|add|remove &lt;model-id&gt;</code></td>
+            <td>View or modify the current default route's fallback chain.</td>
+          </tr>
+          <tr>
+            <td><code>/model aux list</code> / <code>/model aux show &lt;task&gt;</code></td>
+            <td>View auxiliary task model chains and policies.</td>
+          </tr>
+          <tr>
+            <td><code>/model aux set &lt;task&gt; &lt;model-id&gt;</code></td>
+            <td>Set an auxiliary task's <code>primary</code>.</td>
+          </tr>
+          <tr>
+            <td><code>/model aux fallback list|add|remove &lt;task&gt; &lt;model-id&gt;</code></td>
+            <td>View or modify an auxiliary task's fallback chain.</td>
+          </tr>
+          <tr>
+            <td><code>/model aux policy &lt;task&gt; failure|timeoutMs|maxOutputTokens|allowActions|switchModelOn|recoveryProfile &lt;value&gt;</code></td>
+            <td>Modify an auxiliary task's final failure disposition, timeout, or recovery policy fields.</td>
+          </tr>
+        </tbody>
+      </table>
+      <p><code>/template vendor list|show|new|delete</code> manages provider/vendor templates, modifying the top-level <code>templates</code>; <code>/template model list|show|new|delete</code> manages model templates, modifying the top-level <code>modelTemplates</code>. These commands do not modify routes.</p>
+    </section>
+
+    <section>
+      <h2>Model UI in Settings</h2>
+      <p>The <strong>Model</strong> item in Settings &rarr; Config uses the same model picker. It is suitable for quickly switching the current main route's <code>primary</code> and adjusting the effort selection in the picker.</p>
+      <p>The selection here writes to <code>~/.axiomate.json</code>: Axiomate reads the current <code>model.defaultRoute</code>, then changes <code>model.routes[defaultRoute].primary</code> to the model you selected. It shares the same persistent semantics as the <code>/model</code> picker and <code>/model use &lt;model-id&gt;</code> &mdash; it is not a temporary override that only applies to the current session.</p>
+      <div class="warn">
+        <p><strong>The Model setting in Settings is not a full route editor.</strong> It does not create routes, edit fallback chains, or set auxiliary policies. For full routing and auxiliary task management, use <code>/model route ...</code>, <code>/model fallback ...</code>, <code>/model aux ...</code>, or manually edit <code>~/.axiomate.json</code>.</p>
+      </div>
+      <p>The <code>/model add</code> onboarding wizard will ask about usage when adding a second or subsequent model: set as main route primary, add to main route fallback, or only write into <code>models</code> without joining routing.</p>
+    </section>
+
+    <section>
+      <h2>Manual Configuration Process</h2>
+      <ol>
+        <li>Open <code>~/.axiomate.json</code>.</li>
+        <li>Add a new key under <code>models</code>, e.g. <code>"custom-main"</code>. This key is the Axiomate internal reference name used by routes and auxiliary.</li>
+        <li>Fill in <code>model</code>, <code>protocol</code>, <code>baseUrl</code>, <code>apiKey</code>, then supplement <code>contextWindow</code>, <code>maxOutputTokens</code>, <code>supportsImages</code>, <code>thinking</code>, <code>extraParams</code>, and other fields according to the model's actual capabilities.</li>
+        <li>Write this key into <code>model.routes.&lt;route-id&gt;.primary</code>, <code>fallbackChain</code>, or <code>auxiliary.&lt;task&gt;.primary</code>.</li>
+        <li>After saving, reopen Axiomate, or verify with <code>/model show</code>, <code>/model route list</code>, <code>/model aux list</code>.</li>
+      </ol>
+      <div class="warn">
+        <p><strong>The following is an annotated JSONC explanation example, not directly saveable JSON.</strong> <code>~/.axiomate.json</code> uses strict JSON; when actually saving, you must delete all <code>//</code> comments and example placeholder values.</p>
+      </div>
+      <pre><code>{
+  "models": {
+    // Axiomate internal model ID. Routes / auxiliary reference "custom-main".
+    "custom-main": {
+      // The actual model name sent to the provider API; may differ from the key above.
+      "model": "Qwen/Qwen3.5-397B-A17B",
+
+      // Display name and description in the UI.
+      "name": "Qwen 3.5 397B via SiliconFlow",
+      "description": "High-quality OpenAI Chat-compatible model, suitable as a main conversation or quality auxiliary task.",
+
+      // Choose one: openai-chat / openai-responses / anthropic.
+      "protocol": "openai-chat",
+
+      // Provider endpoint and key. Local models also need a placeholder string for apiKey.
+      "baseUrl": "https://api.siliconflow.cn/v1",
+      "apiKey": "sk-...",
+
+      // Optional: vendor template. Can usually be omitted; specify explicitly when the provider's reasoning/thinking fields have a special format.
+      "vendor": "openai-chat-siliconflow",
+
+      // Optional: override HTTP User-Agent. Only fill when a specific compatible gateway requires it.
+      "userAgent": "axiomate",
+
+      // Optional: model context and output budget, used for truncation, compression, and max token calculation.
+      "contextWindow": 262144,
+      "maxOutputTokens": 64000,
+
+      // Optional: whether image input is supported. Must be set to false for text-only models.
+      "supportsImages": false,
+
+      // Optional: neutral thinking configuration. Axiomate translates this into provider parameters based on protocol/vendor.
+      "thinking": {
+        "enabled": true,
+        "effort": "high",
+        "budget": 8192
+      },
+
+      // Optional: provider-private parameters merged as-is into the request body on every call.
+      "extraParams": {
+        "enable_thinking": true,
+        "stream_options": {
+          "include_usage": true
+        }
+      },
+
+      // Optional: usage field mapping for OpenAI Chat-compatible responses. Usually not needed for Responses / Anthropic.
+      "usageMapping": {
+        "inputTokens": "usage.prompt_tokens",
+        "outputTokens": "usage.completion_tokens",
+        "cacheReadTokens": "usage.prompt_tokens_details.cached_tokens"
+      },
+
+      // Optional: enable tool-call repair for models prone to emitting malformed tool-call JSON.
+      "repairToolCalls": true,
+
+      // Optional: override the streaming stall warning threshold for this model; 0 disables warnings.
+      "stallTimeoutMs": 90000
+    },
+    // Cheap, fast model suitable for background tasks like input suggestions and titles.
+    "fast-qwen": {
+      "model": "Qwen/Qwen3-8B",
+      "name": "Qwen3 8B",
+      "protocol": "openai-chat",
+      "baseUrl": "https://api.siliconflow.cn/v1",
+      "apiKey": "sk-...",
+      "contextWindow": 131072,
+      "maxOutputTokens": 8192,
+      "supportsImages": false,
+      "thinking": { "enabled": false }
+    },
+    // Semantic dedicated ID: can still point to the same Qwen3 8B provider model.
+    "prompt-qwen3-8b": {
+      "model": "Qwen/Qwen3-8B",
+      "name": "Prompt Suggestion Qwen3 8B",
+      "description": "Model resource dedicated to input box suggestions",
+      "protocol": "openai-chat",
+      "baseUrl": "https://api.siliconflow.cn/v1",
+      "apiKey": "sk-...",
+      "contextWindow": 131072,
+      "maxOutputTokens": 8192,
+      "supportsImages": false,
+      "thinking": { "enabled": false },
+      "repairToolCalls": true
+    }
+  },
+  "auxiliary": {
+    "sessionTitle": { "primary": "custom-main" },
+    "sessionSearchSummary": {
+      "primary": "custom-main",
+      "failure": "return_original"
+    },
+    // Dimmed suggestion in the input box. Recommend a cheap, fast model; return null on failure so it does not affect the main reply.
+    "promptSuggestion": {
+      "primary": "prompt-qwen3-8b",
+      "fallbackChain": [],
+      "recoveryProfile": "auxiliary-fast",
+      "allowActions": ["retry_same_model"],
+      "switchModelOn": ["timeout", "connection", "server_error"],
+      "failure": "return_null",
+      "timeoutMs": 8000,
+      "maxOutputTokens": 96
+    }
+  }
+}</code></pre>
+      <p>The snippet above only shows the newly added parts. In the actual file you also need to keep the existing <code>models</code>, <code>model</code>, and other configuration; before saving, delete all comments and confirm that <code>custom-main</code> and <code>prompt-qwen3-8b</code> are referenced by a route or auxiliary task.</p>
+    </section>
+
+    <section>
+      <h2>Session-Level Override</h2>
+      <p>Some entry points temporarily specify a main model, such as launch arguments or model selection during the current session. This type of override follows the internal <code>MainModelOverride</code> semantics: it can point to the default route, a named route, or a single-model route.</p>
+      <p>The goal of a session override is "what model to use for this session," not "rewrite the global policy." It does not implicitly rewrite <code>model.defaultRoute</code>, route primary, or auxiliary policy. The regular Settings &rarr; Config <strong>Model</strong>, <code>/model</code> picker, and <code>/model use</code>, by contrast, are persistent modifications to the current default route primary.</p>
+    </section>
+
+    <section>
+      <h2>Common Checks</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Symptom</th>
+            <th>Check item</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Model not found error on startup</td>
+            <td>Confirm that <code>model.routes.*.primary</code>, <code>fallbackChain</code>, and <code>auxiliary.*.primary</code> all reference keys that exist in <code>models</code>.</td>
+          </tr>
+          <tr>
+            <td>Image request fails</td>
+            <td>Set <code>supportsImages</code> to <code>false</code> for text-only models; main routes that need to handle image input should point to models that support images.</td>
+          </tr>
+          <tr>
+            <td>Goal judging cost is too high</td>
+            <td>Point <code>auxiliary.goalJudge.primary</code> to a cheap, stable, strict-JSON model.</td>
+          </tr>
+          <tr>
+            <td>Fallback did not happen</td>
+            <td>Confirm the route/aux policy allows <code>switch_model</code>, the error reason is included in <code>switchModelOn</code>, and <code>fallbackChain</code> has candidates different from the current model. Some errors will prefer <code>adapt_request</code>, request compression, non-streaming fallback, or stopping first.</td>
+          </tr>
+          <tr>
+            <td>Cannot find route management in Settings</td>
+            <td>Settings currently only provides quick Model selection; route and auxiliary management are in the <code>/model</code> commands.</td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="good">
+        <p>We recommend using <code>/model add</code> for initial setup, confirming connectivity, and then fine-tuning routes, fallback, and auxiliary policy manually.</p>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

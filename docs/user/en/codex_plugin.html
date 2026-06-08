@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Axiomate Codex Plugin User Guide</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f5f7f8;
+      --panel: #ffffff;
+      --panel-soft: #f0f5f6;
+      --text: #172126;
+      --muted: #5d6b73;
+      --line: #d7e0e3;
+      --accent: #0f766e;
+      --accent-soft: #dff5f2;
+      --warn: #8a5a00;
+      --warn-soft: #fff4d6;
+      --code: #f3f6f7;
+      --shadow: 0 12px 28px rgba(23, 33, 38, 0.08);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font: 15px/1.65 "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    }
+
+    .wrap {
+      width: min(1120px, calc(100vw - 32px));
+      margin: 26px auto 52px;
+      display: grid;
+      gap: 18px;
+    }
+
+    header,
+    section {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+    }
+
+    header { padding: 28px 30px; }
+    section { padding: 24px 26px; }
+
+    .eyebrow {
+      margin: 0 0 10px;
+      color: var(--accent);
+      font-weight: 700;
+    }
+
+    h1,
+    h2,
+    h3 {
+      margin: 0;
+      line-height: 1.25;
+    }
+
+    h1 {
+      font-size: 32px;
+      margin-bottom: 10px;
+    }
+
+    h2 {
+      font-size: 22px;
+      margin-bottom: 12px;
+    }
+
+    h3 {
+      font-size: 17px;
+      margin: 20px 0 8px;
+    }
+
+    p { margin: 0 0 12px; }
+
+    code {
+      padding: 1px 5px;
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      background: var(--code);
+      font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+      font-size: 0.95em;
+    }
+
+    pre {
+      margin: 12px 0 18px;
+      padding: 15px 16px;
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #101820;
+      color: #f5fbfc;
+      font: 13px/1.55 ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+    }
+
+    pre code {
+      padding: 0;
+      border: 0;
+      background: transparent;
+      color: inherit;
+      font-size: inherit;
+    }
+
+    ul,
+    ol {
+      margin: 8px 0 14px 22px;
+      padding: 0;
+    }
+
+    li { margin: 6px 0; }
+
+    .muted { color: var(--muted); }
+
+    .callout,
+    .warn {
+      margin: 14px 0 18px;
+      padding: 13px 15px;
+      border-left: 4px solid var(--accent);
+      border-radius: 6px;
+      background: var(--accent-soft);
+    }
+
+    .warn {
+      border-left-color: var(--warn);
+      background: var(--warn-soft);
+    }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <header>
+      <p class="eyebrow">Axiomate User Guide</p>
+      <h1>Codex Plugin Installation and Usage</h1>
+      <p class="muted">This guide explains how to install, refresh, and initialize the Codex plugin in Axiomate.</p>
+    </header>
+
+    <section>
+      <h2>Purpose</h2>
+      <p>The Codex plugin integrates the OpenAI Codex CLI into Axiomate for code review, background tasks, rescue investigations, and an optional pre-stop review gate.</p>
+      <p>The plugin marketplace name is <code>openai-codex</code>, the plugin name is <code>codex</code>, so the install target is written as <code>codex@openai-codex</code>.</p>
+    </section>
+
+    <section>
+      <h2>Prerequisites</h2>
+      <p>Before using the Codex plugin, Codex CLI must already be runnable on your machine. This plugin is not a built-in Codex implementation; it calls the locally installed Codex CLI and Codex app server.</p>
+      <ul>
+        <li>A working <code>node</code> installation is required locally. If you want <code>/codex:setup</code> to install Codex automatically, a working <code>npm</code> is also required.</li>
+        <li>Codex CLI must be installed locally: <code>npm install -g @openai/codex</code>.</li>
+        <li>Codex CLI needs to be logged in or have an API key configured. You can run <code>!codex login</code>, or use <code>!codex login --device-auth</code> or <code>!codex login --with-api-key</code>.</li>
+      </ul>
+      <p><code>/codex:setup</code> checks these conditions. If Codex CLI is not installed and npm is available, it will ask whether to install now.</p>
+    </section>
+
+    <section>
+      <h2>First-time Installation</h2>
+      <p>First add the marketplace, then install the plugin and reload:</p>
+      <pre><code>/plugin marketplace add axiomates/codex-plugin-cc
+/plugin install codex@openai-codex
+/reload-plugins
+/codex:setup</code></pre>
+      <p><code>/codex:setup</code> checks your local Node.js, npm, Codex CLI, and Codex authentication status. If it reports you are not logged in, follow the prompt in the output to run <code>!codex login</code>.</p>
+    </section>
+
+    <section>
+      <h2>Reinstall or Refresh</h2>
+      <p>If you previously installed an older version, it is recommended to uninstall first and then reinstall:</p>
+      <pre><code>/plugin uninstall codex
+/plugin install codex@openai-codex
+/reload-plugins
+/codex:setup</code></pre>
+      <p>If you just want to pull the latest version from the marketplace, you can also refresh the marketplace first and then update the plugin:</p>
+      <pre><code>/plugin marketplace refresh
+/plugin update codex
+/reload-plugins
+/codex:setup</code></pre>
+    </section>
+
+    <section>
+      <h2>Common Commands</h2>
+      <ul>
+        <li><code>/codex:setup</code>: Check whether Codex CLI is available and show next steps.</li>
+        <li><code>/codex:status</code>: View the current Codex runtime, review gate status, and background tasks.</li>
+        <li><code>/codex:review</code>: Run a Codex code review on the current git workspace or branch.</li>
+        <li><code>/codex:adversarial-review</code>: Run a review more focused on design critique and assumption challenging.</li>
+        <li><code>/codex:rescue</code>: Delegate investigation, fix, or follow-up rescue tasks to Codex.</li>
+        <li><code>/codex:result</code>: View results for completed Codex background tasks.</li>
+        <li><code>/codex:cancel</code>: Cancel a running Codex background task.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>Optional: Enable Pre-Stop Review Gate</h2>
+      <p>If you want Codex to perform a review every time before stopping a session, you can enable the review gate:</p>
+      <pre><code>/codex:setup --enable-review-gate</code></pre>
+      <p>Disable the review gate:</p>
+      <pre><code>/codex:setup --disable-review-gate</code></pre>
+      <div class="warn">
+        <p><strong>Note:</strong> The review gate runs a Codex review during the stop phase, which may increase wait time. It is recommended to confirm that Codex CLI and authentication are working properly before enabling it.</p>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

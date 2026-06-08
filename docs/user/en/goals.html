@@ -1,0 +1,887 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Goals — Axiomate Persistent Goal System</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #eef2f3;
+      --panel: #ffffff;
+      --panel-soft: #f7fafb;
+      --border: #d5dde0;
+      --text: #162126;
+      --muted: #5b6b73;
+      --accent: #0f766e;
+      --accent-soft: #dff5f2;
+      --warn: #92400e;
+      --warn-soft: #fef3c7;
+      --danger: #991b1b;
+      --danger-soft: #fee2e2;
+      --good: #166534;
+      --good-soft: #dcfce7;
+      --code: #f3f6f7;
+      --shadow: 0 10px 30px rgba(18, 31, 38, 0.08);
+      --radius: 18px;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font: 15px/1.65 "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at top left, #d8f0ea 0, rgba(216, 240, 234, 0) 28%),
+        radial-gradient(circle at top right, #f6e9c9 0, rgba(246, 233, 201, 0) 24%),
+        linear-gradient(180deg, #edf3f3 0%, #f6f8f8 100%);
+      min-height: 100vh;
+    }
+    .wrap {
+      width: min(1100px, calc(100vw - 32px));
+      margin: 24px auto 48px;
+      display: grid;
+      gap: 20px;
+    }
+    .hero {
+      background: linear-gradient(135deg, #12343b 0%, #204e56 56%, #2c6567 100%);
+      color: #f6fbfb;
+      border-radius: 28px;
+      padding: 30px 34px;
+      box-shadow: var(--shadow);
+      position: relative;
+      overflow: hidden;
+    }
+    .hero::after {
+      content: "";
+      position: absolute;
+      inset: auto -80px -80px auto;
+      width: 260px;
+      height: 260px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.06);
+      filter: blur(2px);
+    }
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(255, 255, 255, 0.12);
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      border-radius: 999px;
+      padding: 6px 11px;
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    h1, h2, h3, h4 { margin: 0; line-height: 1.25; }
+    h1 { margin-top: 14px; font-size: clamp(28px, 4vw, 38px); max-width: 880px; }
+    .lede { margin-top: 12px; font-size: 16px; max-width: 820px; opacity: 0.92; }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 22px 26px;
+      box-shadow: 0 1px 0 rgba(255,255,255,0.5) inset, 0 6px 18px rgba(18, 31, 38, 0.04);
+    }
+    .panel h2 {
+      font-size: 22px;
+      color: var(--accent);
+      letter-spacing: -0.01em;
+    }
+    .panel h2 .num {
+      display: inline-block;
+      width: 28px; height: 28px;
+      line-height: 28px;
+      border-radius: 999px;
+      background: var(--accent-soft);
+      color: var(--accent);
+      text-align: center;
+      font-size: 14px;
+      margin-right: 10px;
+      vertical-align: 2px;
+    }
+    .panel h3 { margin-top: 18px; font-size: 16px; }
+    p { margin: 10px 0; }
+    code, kbd, pre {
+      font-family: "JetBrains Mono", "Fira Code", "Consolas", monospace;
+      font-size: 13px;
+    }
+    code {
+      background: var(--code);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 1px 6px;
+    }
+    .hero code {
+      color: #0f1c20;
+      background: rgba(255, 255, 255, 0.94);
+      border-color: rgba(255, 255, 255, 0.72);
+      font-weight: 600;
+    }
+    pre {
+      background: #0f1c20;
+      color: #d8e9e9;
+      border-radius: 12px;
+      padding: 14px 16px;
+      overflow-x: auto;
+      margin: 10px 0;
+      line-height: 1.55;
+    }
+    pre code {
+      background: transparent;
+      border: 0;
+      padding: 0;
+      color: inherit;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 12px 0;
+      font-size: 14px;
+    }
+    th, td {
+      text-align: left;
+      padding: 9px 10px;
+      border-bottom: 1px solid var(--border);
+      vertical-align: top;
+    }
+    th {
+      background: var(--panel-soft);
+      font-weight: 600;
+      color: var(--muted);
+      font-size: 12px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+    .tag {
+      display: inline-block;
+      padding: 2px 9px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .tag.auto { background: var(--accent-soft); color: var(--accent); }
+    .tag.user { background: var(--warn-soft); color: var(--warn); }
+    .tag.ok { background: var(--good-soft); color: var(--good); }
+    .tag.warn { background: var(--warn-soft); color: var(--warn); }
+    .tag.bad { background: var(--danger-soft); color: var(--danger); }
+    .toc {
+      display: flex; flex-wrap: wrap; gap: 8px;
+      margin-top: 16px;
+    }
+    .toc a {
+      color: var(--accent);
+      text-decoration: none;
+      background: var(--accent-soft);
+      padding: 6px 12px;
+      border-radius: 999px;
+      font-size: 13px;
+      border: 1px solid rgba(15, 118, 110, 0.18);
+    }
+    .toc a:hover { background: #c4ede6; }
+    .callout {
+      border-left: 4px solid var(--accent);
+      background: var(--accent-soft);
+      border-radius: 10px;
+      padding: 12px 14px;
+      margin: 14px 0;
+    }
+    .callout.warn { border-left-color: #d97706; background: var(--warn-soft); }
+    .callout.warn strong { color: var(--warn); }
+    .callout.danger { border-left-color: #b91c1c; background: var(--danger-soft); }
+    .callout.danger strong { color: var(--danger); }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 14px;
+      margin-top: 12px;
+    }
+    .card {
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 14px 16px;
+      background: var(--panel-soft);
+    }
+    .card h4 { font-size: 14px; color: var(--accent); margin-bottom: 6px; }
+    .card p { margin: 4px 0 0; font-size: 13px; color: var(--muted); }
+    .timeline {
+      display: grid;
+      gap: 10px;
+      margin-top: 14px;
+    }
+    .timeline-row {
+      display: grid;
+      grid-template-columns: 90px 1fr;
+      gap: 14px;
+      align-items: start;
+    }
+    .timeline-row .when {
+      font-size: 12px;
+      color: var(--muted);
+      font-family: "JetBrains Mono", monospace;
+      padding-top: 2px;
+    }
+    .timeline-row .what code {
+      font-size: 13px;
+    }
+    .glyph-table td:first-child {
+      width: 60px;
+      text-align: center;
+      font-size: 18px;
+      padding-top: 12px;
+    }
+    .glyph-table code {
+      font-size: 12px;
+    }
+    footer {
+      text-align: center;
+      color: var(--muted);
+      font-size: 12px;
+      padding: 16px 0;
+    }
+  </style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="hero">
+    <span class="eyebrow">Axiomate · User Documentation</span>
+    <h1>Goals — Persistent Goals Across Turns</h1>
+    <p class="lede">
+      Ordinary conversations are one question, one answer — you say something, the AI replies, done.
+      <strong>Goal</strong> elevates your objective into a cross-turn "long-task anchor": you run
+      <code>/goal &lt;description&gt;</code> to set a goal, the AI starts working, and after each turn
+      a lightweight "judge model" automatically determines whether the goal has been achieved — if not,
+      it feeds a continuation prompt to keep it going; if achieved, it stops and notifies you.
+      It runs until completion / you stop it / the budget is exhausted. In the middle, you can send
+      messages to preempt at any time, use <code>/subgoal</code> to add additional criteria,
+      press <kbd>Ctrl+C</kbd> to pause — after <code>/resume</code>, <code>--continue</code>,
+      or <code>/goal resume</code>, the goal state is fully preserved.
+      <strong>It solves the problem of the AI forgetting the original goal partway through a long task</strong>.
+    </p>
+    <div class="toc">
+      <a href="#how">How It Works</a>
+      <a href="#ui">UI Indicators</a>
+      <a href="#commands">User Commands</a>
+      <a href="#subgoal">/subgoal</a>
+      <a href="#judge">Judge Model Configuration</a>
+      <a href="#interaction">Interaction With Other Systems</a>
+      <a href="#failure">Failure Modes</a>
+      <a href="#faq">FAQ</a>
+    </div>
+  </header>
+
+  <section id="how" class="panel">
+    <h2><span class="num">1</span>How It Works</h2>
+
+    <p>
+      Goal follows the classic "Ralph loop" paradigm — breaking a long goal into a set of
+      automatically continued small turns, letting the AI build on the results of each turn.
+      Axiomate's <code>/goal</code> writes the goal into the current session's persistent state;
+      after each assistant turn, the judge evaluates it, and if not done, automatically queues
+      the next continuation message. It stops when completed, paused, or the turn budget is exhausted.
+    </p>
+
+    <h3>What Happens Each Turn</h3>
+    <div class="timeline">
+      <div class="timeline-row">
+        <span class="when">Turn N</span>
+        <span class="what">
+          The AI processes the previous user message normally (which may be the goal you set or the
+          continuation prompt from the previous round), invoking tools, editing files, and generating
+          a response.
+        </span>
+      </div>
+      <div class="timeline-row">
+        <span class="when">End of Turn</span>
+        <span class="what">
+          Axiomate extracts the last paragraph of the AI's response for this turn, combines it
+          with your goal and all subgoals, and sends them to the judge model via the
+          <code>auxiliary.goalJudge</code> route policy. Only when that policy is absent does it
+          fall back to <code>model.defaultRoute</code>, asking:
+          <code>{"done": &lt;bool&gt;, "reason": "..."}</code>.
+        </span>
+      </div>
+      <div class="timeline-row">
+        <span class="when">Verdict: done</span>
+        <span class="what">
+          The goal state flips to <code>done</code>, the screen shows
+          <code>✓ Goal achieved: &lt;reason&gt;</code>, and the loop ends.
+        </span>
+      </div>
+      <div class="timeline-row">
+        <span class="when">Verdict: continue</span>
+        <span class="what">
+          Turn count +1. If the budget hasn't been exceeded (default 20 turns), a continuation
+          prompt <code>[Continuing toward your standing goal] Goal: &lt;original text&gt; ...</code>
+          is pushed into the message queue; the REPL picks it up on the next idle tick as an
+          ordinary user message and starts the next turn.
+        </span>
+      </div>
+      <div class="timeline-row">
+        <span class="when">Budget Exhausted</span>
+        <span class="what">
+          When turn count reaches the limit, auto-pause triggers with the message
+          <code>⏸ Goal paused — 20/20 turns used. Use /goal resume to keep going, or /goal clear to stop.</code>
+        </span>
+      </div>
+    </div>
+
+    <h3>Key Design Decisions</h3>
+    <div class="grid">
+      <div class="card">
+        <h4>Ordinary User Messages</h4>
+        <p>The continuation prompt goes through the exact same message queue as a manually typed
+          message. It doesn't touch the system prompt or tool set — the prompt cache stays intact.</p>
+      </div>
+      <div class="card">
+        <h4>Judge Model as Auxiliary Task</h4>
+        <p>Judging uses the <code>auxiliary.goalJudge</code> task policy: primary, fallback chain,
+          timeout, failure disposition, and recovery gate. Only falls back to the main route when
+          this policy is absent.</p>
+      </div>
+      <div class="card">
+        <h4>Persisted in JSONL</h4>
+        <p>Goal state is written as <code>type:'goal-state'</code> entries in the session log.
+          After <code>/resume</code>, it automatically recovers. Like file checkpoints, it uses
+          an append-only + last-wins paradigm.</p>
+      </div>
+      <div class="card">
+        <h4>Fail-Open</h4>
+        <p>Judge model errors (timeout, API failure, parse failure) always return
+          <code>continue</code> — the loop won't get stuck because the judge fails.
+          Only after N consecutive parse failures does it auto-pause (N defaults to 10,
+          configurable via <code>/config</code>).</p>
+      </div>
+      <div class="card">
+        <h4>User First</h4>
+        <p>When you type a new message mid-loop, it <strong>preempts</strong> the continuation
+          prompt — this turn processes your message, and judging runs after your message is
+          handled (and your message might just happen to complete the goal).</p>
+      </div>
+      <div class="card">
+        <h4>Clean Ctrl+C Exit</h4>
+        <p>Interrupting a turn immediately pauses (no judging, no requeue), and the state is
+          recorded as <code>user-interrupted (Ctrl+C)</code>.
+          <code>/goal resume</code> restores active; judging resumes after the next ordinary
+          message is processed.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="ui" class="panel">
+    <h2><span class="num">2</span>UI Indicators</h2>
+
+    <p>
+      Here is where Goal appears on screen — these glyphs are the "identification codes" of
+      this system, well worth remembering:
+    </p>
+
+    <table class="glyph-table">
+      <thead>
+        <tr><th>Symbol</th><th>When</th><th>Meaning</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>⊙</td>
+          <td>After <code>/goal &lt;text&gt;</code> / <code>/goal status</code></td>
+          <td>Goal is set / in progress. The status bar Goal line also shows
+            <code>⊙ Goal 3/20: write fib</code>.</td>
+        </tr>
+        <tr>
+          <td>↻</td>
+          <td>Start of each continue turn / continuation prompt in transcript</td>
+          <td>The loop continues. Screen shows
+            <code>↻ Continuing toward goal (3/20): &lt;reason&gt;</code>;
+            the auto-fed user message in the transcript is prefixed with <code>↻</code>
+            so you can tell "this wasn't typed by me — it was auto-fed by the goal loop."</td>
+        </tr>
+        <tr>
+          <td>✓</td>
+          <td>Judge verdict done / you run <code>/goal clear</code></td>
+          <td>Goal achieved or manually concluded.</td>
+        </tr>
+        <tr>
+          <td>⏸</td>
+          <td>Budget exhausted / judge failed N rounds (default 10) / Ctrl+C / you run
+            <code>/goal pause</code></td>
+          <td>Paused but state preserved. <code>/goal resume</code> restores active;
+            judging resumes after the next ordinary message is processed.
+            The status bar Goal line turns yellow.</td>
+        </tr>
+        <tr>
+          <td>▶</td>
+          <td><code>/goal resume</code></td>
+          <td>Resumed from pause to active. Does not automatically queue the next turn;
+            after sending any ordinary message (e.g., <code>continue</code>),
+            judging will resume.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>Status Bar Goal Line</h3>
+    <p>
+      As long as a goal is <code>active</code> or <code>paused</code>, a dedicated
+      Goal line is always visible below the input box:
+    </p>
+    <pre><code>⊙ Goal 3/20: write a fibonacci function and verify with fib(10)
+⏸ Goal paused: refactor auth — turn budget exhausted (20/20)</code></pre>
+    <p>
+      This line only displays the current goal state. Confirmation and prompts for commands
+      like <code>/goal</code> and <code>/subgoal</code> go into the message stream and
+      no longer occupy the status bar notification area.
+    </p>
+  </section>
+
+  <section id="commands" class="panel">
+    <h2><span class="num">3</span>User Commands</h2>
+
+    <h3><code>/goal</code></h3>
+    <table>
+      <thead>
+        <tr><th>Form</th><th>Effect</th><th>Equivalent Aliases</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>/goal</code> or <code>/goal status</code></td>
+          <td>Display current goal state (active / paused / no goal) + turn progress +
+            subgoal count; if subgoals exist, their content is also listed.</td>
+          <td><code>/goal list</code>, <code>/goal ls</code></td>
+        </tr>
+        <tr>
+          <td><code>/goal &lt;description&gt;</code></td>
+          <td><strong>Set a new goal</strong>, replacing any previous goal, and immediately
+            use the description as the first user message to start the first turn
+            (no need to send again).</td>
+          <td>—</td>
+        </tr>
+        <tr>
+          <td><code>/goal pause</code></td>
+          <td>Explicitly pause. State is preserved, still visible with
+            <code>/goal status</code>; no auto-continuation on the next turn.</td>
+          <td>—</td>
+        </tr>
+        <tr>
+          <td><code>/goal resume</code></td>
+          <td>Restore from paused to active. The current implementation preserves the used
+            turn count and does not reset the budget; the command itself only restores the
+            state and will not immediately start the next turn. After sending any ordinary
+            message (e.g., <code>continue</code>), the goal loop will resume judging at the
+            end of that turn.</td>
+          <td>—</td>
+        </tr>
+        <tr>
+          <td><code>/goal clear</code></td>
+          <td>Clear the goal. The status bar Goal line disappears, and the loop stops
+            completely.</td>
+          <td><code>/goal stop</code>, <code>/goal done</code></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="callout">
+      <strong>Tip:</strong>
+      After <code>/goal &lt;description&gt;</code>, <strong>you do not need to press Enter again</strong>.
+      The command itself automatically queues the description as the first user message.
+      Command confirmation text goes into the message stream; the status bar Goal line only
+      shows the current active / paused state.
+    </div>
+  </section>
+
+  <section id="subgoal" class="panel">
+    <h2><span class="num">4</span><code>/subgoal</code> — Adding Criteria Mid-Loop</h2>
+
+    <p>
+      You set <code>/goal implement a fib function</code> and after two turns realize the AI
+      forgot unit tests. No need to clear and reset — use <code>/subgoal</code> to add criteria:
+    </p>
+
+    <pre><code>/subgoal there must be a fib.test.ts covering edge cases after completion
+/subgoal output the actual value of fib(10) to the console</code></pre>
+
+    <p>
+      The next turn's judging switches to the with-subgoals template:
+    </p>
+
+    <pre><code>Goal:
+&lt;original goal&gt;
+
+Additional criteria the user added mid-loop (all must also be
+satisfied for the goal to be DONE):
+- 1. there must be a fib.test.ts covering edge cases after completion
+- 2. output the actual value of fib(10) to the console
+
+Agent's most recent response:
+...
+
+Decision: For each numbered criterion above, find concrete evidence
+in the agent's response that the criterion is satisfied. ...</code></pre>
+
+    <p>
+      The judge is forced to find evidence for each subgoal individually — it won't let the AI
+      get away with just shouting "all done."
+    </p>
+
+    <table>
+      <thead>
+        <tr><th>Form</th><th>Effect</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>/subgoal</code></td><td>List the current goal state and all subgoals
+          (with 1-based numbering like <code>[1]</code>, <code>[2]</code>).</td></tr>
+        <tr><td><code>/subgoal list</code> or <code>/subgoal ls</code></td><td>Explicit list
+          aliases for <code>/subgoal</code>.</td></tr>
+        <tr><td><code>/subgoal &lt;text&gt;</code></td><td>Append one criterion.</td></tr>
+        <tr><td><code>/subgoal remove &lt;n&gt;</code></td><td>Remove one criterion by
+          1-based index.</td></tr>
+        <tr><td><code>/subgoal rm &lt;n&gt;</code></td><td>Alias for
+          <code>/subgoal remove &lt;n&gt;</code>.</td></tr>
+        <tr><td><code>/subgoal clear</code></td><td>Clear all subgoals (does not affect the
+          main goal).</td></tr>
+      </tbody>
+    </table>
+
+    <p>
+      <strong>A subgoal does not trigger a turn on its own</strong> — it takes effect at the
+      next judging after the current turn finishes. There is no "immediately notify the AI of
+      the new criterion" semantics, because Axiomate does not interrupt an in-progress turn.
+      So subgoals are suited for "plugging gaps," not "emergency stops." For emergency stops,
+      use <code>/goal pause</code>.
+    </p>
+  </section>
+
+    <section id="judge" class="panel">
+    <h2><span class="num">5</span>Judge Model Configuration</h2>
+
+    <p>
+      The judge model is the cost-sensitive part of the Goal system: it runs once per turn.
+      Please configure it as the <code>auxiliary.goalJudge</code> auxiliary task to avoid
+      using your main conversation model for every judging round.
+    </p>
+
+    <table>
+      <thead>
+        <tr><th>Priority</th><th>Source</th><th>Description</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>1</td>
+          <td><code>auxiliary.goalJudge.primary</code></td>
+          <td>The model the judge tries first. Recommend a cheap, stable model that strictly
+            follows JSON instructions.</td>
+        </tr>
+        <tr>
+          <td>2</td>
+          <td><code>auxiliary.goalJudge.fallbackChain</code></td>
+          <td>Ordered fallback candidates, usable when the recovery decision allows
+            <code>switch_model</code>.</td>
+        </tr>
+        <tr>
+          <td>3</td>
+          <td><code>model.defaultRoute</code></td>
+          <td>Fallback only when <code>auxiliary.goalJudge</code> is absent; uses the main
+            route chain.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>Recommended Configuration (edit <code>~/.axiomate.json</code>)</h3>
+    <pre><code>{
+  "models": {
+    "main": { "...": "..." },
+    "judge": { "...": "..." }
+  },
+  "model": {
+    "defaultRoute": "default",
+    "routes": {
+      "default": { "primary": "main", "fallbackChain": [] }
+    }
+  },
+  "auxiliary": {
+    "goalJudge": {
+      "primary": "judge",
+      "fallbackChain": ["main"],
+      "recoveryProfile": "auxiliary-judge",
+      "failure": "fail_open",
+      "timeoutMs": 30000
+    }
+  },
+  "goalsMaxTurns": 20,
+  "goalsParseFailureLimit": 10,
+  "goalsContinuationIncludeReason": true
+}</code></pre>
+
+    <p>
+      Both <code>goalsMaxTurns</code> and <code>goalsParseFailureLimit</code> can be set via
+      <code>/config</code> presets; <code>goalsContinuationIncludeReason</code> can also be
+      toggled via <code>/config</code> and is enabled by default.
+    </p>
+
+    <p>
+      <strong>There is no legacy goal-specific model alias.</strong> Judge is one of Axiomate's
+      auxiliary tasks. After configuring <code>auxiliary.goalJudge</code>, the recovery runner
+      uses its model chain and policy gates.
+    </p>
+
+    <div class="callout warn">
+      <strong>When does it fall back to the main route:</strong>
+      If <code>auxiliary.goalJudge</code> is absent, judging falls back to
+      <code>model.defaultRoute</code>. It is recommended to configure
+      <code>auxiliary.goalJudge</code> so that judging cost and behavior are more controllable.
+    </div>
+
+    <div class="callout warn">
+      <strong>Note on reasoning models:</strong>
+      Models that output <code>&lt;think&gt;...&lt;/think&gt;</code> before JSON can be used;
+      Axiomate will strip the think block before parsing. However, such models are typically
+      slow and token-heavy, making them unsuitable as judge models.
+    </div>
+
+    <h3>What the Judge Prompt Looks Like</h3>
+    <p>
+      The fixed system prompt sent to the judge model roughly looks like this:
+    </p>
+    <pre><code>You are a strict judge evaluating whether an autonomous agent has
+achieved a user's stated goal. ...
+
+A goal is DONE only when:
+- The response explicitly confirms the goal was completed, OR
+- The response clearly shows the final deliverable was produced, OR
+- The response explains the goal is unachievable / blocked / needs
+  user input (treat this as DONE with reason describing the block).
+
+Otherwise the goal is NOT done — CONTINUE.
+
+Reply ONLY with a single JSON object on one line:
+{"done": &lt;true|false&gt;, "reason": "&lt;one-sentence rationale&gt;"}</code></pre>
+
+    <p>
+      "Blocked / needs user input" also counts as DONE — this is a safeguard: the judge
+      won't let the loop keep burning tokens while the AI is stuck waiting for your answer.
+    </p>
+  </section><section id="interaction" class="panel">
+    <h2><span class="num">6</span>Interaction With Other Systems</h2>
+
+    <h3><code>/resume</code> — Automatic Recovery</h3>
+    <p>
+      The goal state is written in the JSONL session log.
+      <code>axiomate --continue</code>, <code>axiomate --resume</code>, or
+      <code>/resume &lt;sessionId&gt;</code> loads the previous session, and the goal
+      automatically surfaces — as soon as you enter the session, the status bar Goal line
+      shows <code>⊙ Goal 3/20: ...</code>. The state is exactly as you left it —
+      <code>active</code> or <code>paused</code>.
+    </p>
+
+    <h3><code>/rewind</code> — Goal Persists After Rewind</h3>
+    <p>
+      <code>/rewind</code> rewinds the <strong>conversation chain or file state</strong>;
+      the goal state does not participate in the rewind chain (it is pointer-style metadata
+      and does not enter <code>buildConversationChain</code>). In other words: even if you
+      rewind to a conversation position several turns back, the goal remains the current
+      goal — it follows the sessionId, not the conversation chain.
+    </p>
+
+    <h3><code>/branch</code> / <code>--fork-session</code> — Goal Is Not Inherited After Fork</h3>
+    <p>
+      When forking a new session, the old session's <code>goal-state</code> entries are
+      <strong>not</strong> copied to the new session — the fork filter only carries transcript
+      messages, and the new session starts with "no goal." This is intentional: forking is
+      usually for opening a parallel experiment, and carrying the old goal doesn't make sense.
+    </p>
+
+    <h3>Preemption — Your Messages vs. Continuation Prompts</h3>
+    <p>
+      What happens when you type and send a new message while the goal loop is running?
+      Two cases:
+    </p>
+    <ul>
+      <li><strong>The message is a slash command (e.g., <code>/subgoal ...</code>)</strong>:
+        Does not count as a "real message" and does not preempt — after the slash command is
+        processed, the goal continues.</li>
+      <li><strong>The message is ordinary text</strong>: Preempts. Axiomate's stopHook checks
+        the message queue before judging; if it finds a non-slash real message, it defers —
+        your message goes first, and judging runs again at the end of the next turn after it
+        is processed.</li>
+    </ul>
+
+    <h3>Judge Verdicts Do Not Pollute Conversation Context</h3>
+    <p>
+      Prompts like <code>↻ Continuing toward goal (3/20): reason</code> are marked with
+      <code>isMeta: true</code> — you can see them, but they <strong>do not enter the model
+      prompt for the next turn</strong>. This avoids the problem of "the judge's prose
+      disrupting the prompt cache." However, <strong>the continuation prompt itself</strong>
+      is a real user message and does enter the conversation history (otherwise the AI would
+      have no idea it should continue).
+    </p>
+  </section>
+
+  <section id="failure" class="panel">
+    <h2><span class="num">7</span>Failure Modes</h2>
+
+    <p>
+      The danger of a Ralph loop is "the judge model breaks and you don't feel it at all
+      while tokens keep burning." Axiomate has several built-in brakes:
+    </p>
+
+    <table>
+      <thead>
+        <tr><th>Failure</th><th>Behavior</th><th>Recovery</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Judge API timeout / network error</td>
+          <td>Treated as <code>continue</code>, <strong>not</strong> counted as a parse
+            failure. Loop continues.</td>
+          <td>Auto-recovers, no action needed.</td>
+        </tr>
+        <tr>
+          <td>Judge returns non-JSON / empty reply</td>
+          <td>Treated as <code>continue</code>, <code>consecutiveParseFailures</code> +1.</td>
+          <td>Auto-pauses after N cumulative failures (see below, N defaults to 10).
+            Process is transparent.</td>
+        </tr>
+        <tr>
+          <td>Judge returns garbage for N consecutive turns (N defaults to 10,
+            <code>/config</code> presets: 3/5/10/20/50/0)</td>
+          <td>State flips to <code>paused</code>, with message
+            <code>⏸ Goal paused — the judge model (N turns) isn't returning the required JSON verdict. Set auxiliary.goalJudge in ~/.axiomate.json to a stricter model. Then /goal resume to continue.</code></td>
+          <td>Edit <code>~/.axiomate.json</code> to use an instruct model,
+            <code>/goal resume</code> to restore, then send an ordinary message to continue.</td>
+        </tr>
+        <tr>
+          <td>Turn budget exhausted (default 20)</td>
+          <td>State flips to <code>paused</code>, with message
+            <code>⏸ Goal paused — 20/20 turns used.</code></td>
+          <td><code>/goal resume</code> to restore active, then send any ordinary message to
+            continue; or <code>/goal clear</code> to wrap up.</td>
+        </tr>
+        <tr>
+          <td>User Ctrl+C interrupts a turn</td>
+          <td>Immediately pauses (<strong>no</strong> judging, <strong>no</strong> requeue),
+            state recorded as <code>user-interrupted (Ctrl+C)</code>.</td>
+          <td><code>/goal resume</code> to restore, then send an ordinary message to continue.</td>
+        </tr>
+        <tr>
+          <td>AI produces empty response (no text at all in the final segment)</td>
+          <td>Skip judging, <strong>not</strong> counted toward turn budget (to avoid being
+            drained by API jitter).</td>
+          <td>Auto-recovers, no action needed.</td>
+        </tr>
+        <tr>
+          <td><code>auxiliary.goalJudge</code> absent, judging falls back to main route</td>
+          <td>The loop still runs, but judging may be more expensive and less stable.</td>
+          <td>Edit <code>~/.axiomate.json</code> to add <code>auxiliary.goalJudge</code>.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="callout danger">
+      <strong>The true hard failure — a runaway goal.</strong> If you set a semantically vague
+      goal (e.g., <code>/goal make this project better</code>), the judge will forever say
+      continue, and the AI will keep changing things. The turn budget is a safeguard, but
+      20 rounds of Opus calls aren't cheap either.
+      <strong>Recommendation — write "completion criteria" into your goal description</strong>,
+      e.g., <code>/goal implement a fib function and pass all test cases in fib.test.ts</code>
+      rather than <code>/goal write a fib function</code>.
+    </div>
+  </section>
+
+  <section id="faq" class="panel">
+    <h2><span class="num">8</span>FAQ</h2>
+
+    <h3>Is Goal enabled by default?</h3>
+    <p>
+      Goal consumes no resources proactively — if you don't type <code>/goal</code>, the
+      entire system stays silent. No configuration toggle is needed.
+    </p>
+
+    <h3>Can I use it without configuring auxiliary.goalJudge?</h3>
+    <p>
+      Yes. If <code>auxiliary.goalJudge</code> is absent, judging falls back to the main
+      route. It works, but configuring a dedicated judge route is usually cheaper and
+      more predictable.
+    </p>
+
+    <h3>Can I do other things while a goal is running?</h3>
+    <p>
+      Yes. Axiomate's message queue is designed with "user first" — you can type and send
+      messages at any time; the next turn processes your message, and goal judging runs
+      after your turn is done. You can let a goal run while using read-only slash commands
+      like <code>/checkpoints status</code>, <code>/rewind</code>,
+      <code>/goal status</code> to check state.
+    </p>
+
+    <h3>How do I change the 20-turn budget if it's too low or too high?</h3>
+    <p>
+      In <code>/config</code>, select "Goal turn budget (per /goal)" — presets are
+      <code>5 / 10 / 20 / 50 / 100 / 200 / 500 / 0</code>. <strong>0 = unlimited budget</strong>,
+      relying only on the judge's done verdict, the parse-failure threshold, and manual pause
+      as safeguards; the state line and status bar Goal line will show <code>N/∞</code>.
+      You can also directly edit the <code>goalsMaxTurns</code> field in
+      <code>~/.axiomate.json</code> to any integer value.
+    </p>
+    <p>
+      Be cautious when increasing this number, and set <code>auxiliary.goalJudge</code>
+      alongside it — Opus x 100 turns is real money burning (roughly ~$20+). When setting
+      to 500 or 0, consider using a cheaper model for the main conversation too.
+    </p>
+    <h3>What counts as a turn?</h3>
+    <p>
+      <strong>A turn is not the same as a tool call.</strong> One turn = the AI finishes a
+      complete response (possibly invoking 0-N tools in between) + final stop. The judging
+      checkpoint is the stop hook, consistent with the work unit triggered when you type
+      and send a message. Goal judging runs once at the end of each turn. So 500 turns is
+      not 500 tool calls — it's the AI completing 500 independent pieces of work — orders
+      of magnitude different.
+    </p>
+
+    <h3>Can the goal run automatically without appearing in the transcript?</h3>
+    <p>
+      Not currently. The continuation prompt is a real user message — it goes into the
+      transcript, consumes tokens, and is brought back by <code>/resume</code>. This is
+      intentional: so you can fully audit what the Ralph loop ran. Only the judge verdicts
+      (<code>↻ / ✓ / ⏸</code> etc.) are <code>isMeta: true</code> and do not enter
+      the transcript chain.
+    </p>
+
+    <h3>Can <code>/goal</code> use a custom prompt template?</h3>
+    <p>
+      Not currently. The continuation prompt and judge prompt use fixed templates;
+      Axiomate also defaults to including the previous round's judge reason in the next
+      continuation prompt (toggleable via <code>goalsContinuationIncludeReason</code>).
+      If you need domain-specific judging (e.g., "code must pass typecheck to count as
+      done"), a better approach is to <strong>write that criterion into the goal
+      description</strong>, letting the judge model evaluate by your words.
+    </p>
+
+    <h3>Is this the same as axiomate's <code>/skills loop</code>?</h3>
+    <p>
+      No. <code>/loop</code> runs a prompt on a <strong>schedule</strong> (cron-style) with
+      no judging; Goal runs <strong>event-driven</strong> until a semantic condition is met.
+      <code>/loop</code> suits "babysit a PR every 5 minutes"; Goal suits "finish one
+      complete thing, then stop."
+    </p>
+
+    <h3>How is goal persistence implemented? Does it survive axiomate process restarts?</h3>
+    <p>
+      Yes. Goal state is written as <code>type:'goal-state'</code> entries append-only to
+      the session JSONL (<code>~/.axiomate/projects/&lt;hash&gt;/&lt;sessionId&gt;.jsonl</code>),
+      in the same file as your conversation history. Restarting axiomate or
+      <code>--continue</code> automatically reads and restores the latest goal-state entry.
+    </p>
+
+    <h3>Is there a "global goal list" to see all goals across all projects?</h3>
+    <p>
+      Not at the moment. Goals are per-session with no cross-session index. To check goal
+      state across all projects, you'll need to grep <code>goal-state</code> entries in
+      all JSONL files under <code>~/.axiomate/projects/</code>.
+    </p>
+  </section>
+
+  <footer>
+    Axiomate · Goals · Documentation evolves with implementation, last updated 2026-05-27
+  </footer>
+
+</div>
+</body>
+</html>

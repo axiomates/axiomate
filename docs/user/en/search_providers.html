@@ -1,0 +1,791 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Axiomate Search Provider Configuration Guide</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f5f7f8;
+      --panel: #ffffff;
+      --panel-soft: #f0f5f6;
+      --text: #172126;
+      --muted: #5d6b73;
+      --line: #d7e0e3;
+      --accent: #0f766e;
+      --accent-soft: #dff5f2;
+      --warn: #8a5a00;
+      --warn-soft: #fff4d6;
+      --danger: #991b1b;
+      --danger-soft: #fee2e2;
+      --good: #166534;
+      --good-soft: #dcfce7;
+      --code: #f3f6f7;
+      --shadow: 0 12px 28px rgba(23, 33, 38, 0.08);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      overflow-x: hidden;
+      background: var(--bg);
+      color: var(--text);
+      font: 15px/1.65 "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    }
+
+    .wrap {
+      width: calc(100% - 32px);
+      max-width: 1120px;
+      margin: 26px auto 52px;
+      display: grid;
+      gap: 18px;
+      justify-content: stretch;
+      text-align: left;
+    }
+
+    header,
+    section {
+      min-width: 0;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+    }
+
+    header { padding: 28px 30px; }
+    section { padding: 24px 26px; }
+
+    .eyebrow {
+      margin: 0 0 10px;
+      color: var(--accent);
+      font-weight: 700;
+      letter-spacing: 0;
+    }
+
+    h1,
+    h2,
+    h3 {
+      margin: 0;
+      line-height: 1.25;
+      letter-spacing: 0;
+    }
+
+    h1 {
+      margin-bottom: 10px;
+      font-size: 32px;
+    }
+
+    h2 {
+      margin-bottom: 12px;
+      font-size: 22px;
+    }
+
+    h3 {
+      margin: 20px 0 8px;
+      font-size: 17px;
+    }
+
+    p { margin: 0 0 12px; }
+
+    a {
+      color: var(--accent);
+      text-decoration-thickness: 1px;
+    }
+
+    code {
+      padding: 1px 5px;
+      overflow-wrap: anywhere;
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      background: var(--code);
+      font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+      font-size: 0.95em;
+    }
+
+    pre {
+      max-width: 100%;
+      margin: 12px 0 18px;
+      padding: 15px 16px;
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #101820;
+      color: #f5fbfc;
+      font: 13px/1.55 ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+    }
+
+    pre code {
+      padding: 0;
+      border: 0;
+      background: transparent;
+      color: inherit;
+      font-size: inherit;
+      overflow-wrap: normal;
+    }
+
+    table {
+      width: 100%;
+      margin: 12px 0 18px;
+      border-collapse: collapse;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow: hidden;
+      background: var(--panel);
+    }
+
+    th,
+    td {
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      background: var(--panel-soft);
+      font-weight: 700;
+    }
+
+    tr:last-child td { border-bottom: 0; }
+
+    ul,
+    ol {
+      margin: 8px 0 14px 22px;
+      padding: 0;
+    }
+
+    li { margin: 5px 0; }
+
+    .muted { color: var(--muted); }
+
+    .note,
+    .warning,
+    .success {
+      margin: 12px 0 16px;
+      padding: 12px 14px;
+      border-radius: 8px;
+      border: 1px solid;
+    }
+
+    .note {
+      border-color: #bde7e2;
+      background: var(--accent-soft);
+    }
+
+    .warning {
+      border-color: #f3d47b;
+      background: var(--warn-soft);
+      color: var(--warn);
+    }
+
+    .success {
+      border-color: #bbf7d0;
+      background: var(--good-soft);
+      color: var(--good);
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+      margin: 12px 0 4px;
+    }
+
+    .mini {
+      min-width: 0;
+      padding: 14px 15px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel-soft);
+    }
+
+    .mini h3 { margin-top: 0; }
+
+    .toc {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 14px;
+    }
+
+    .toc a {
+      display: block;
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel-soft);
+      color: var(--text);
+      text-decoration: none;
+    }
+
+    .toc a:hover {
+      border-color: #9fd8d1;
+      background: var(--accent-soft);
+    }
+
+    .fields td:first-child,
+    .fields th:first-child {
+      width: 190px;
+      white-space: nowrap;
+    }
+
+    @media (max-width: 820px) {
+      .wrap {
+        width: calc(100% - 20px);
+        margin-top: 10px;
+      }
+
+      header,
+      section {
+        padding: 20px 16px;
+      }
+
+      h1 { font-size: 26px; }
+
+      .grid,
+      .toc {
+        grid-template-columns: 1fr;
+      }
+
+      table {
+        display: block;
+        overflow-x: auto;
+        white-space: nowrap;
+      }
+
+      td,
+      th {
+        white-space: normal;
+        min-width: 160px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <header>
+      <p class="eyebrow">Axiomate User Documentation</p>
+      <h1>Configuring Your Search Engine in <code>~/.axiomate.json</code></h1>
+      <p class="muted">Last updated: 2026-06-02. This guide explains how to configure Brave, Exa, Tavily, or SerpApi as search providers in the user-level <code>~/.axiomate.json</code>, enabling Axiomate's <code>WebSearch</code> tool to perform web searches.</p>
+      <div class="toc" aria-label="Table of Contents">
+        <a href="#quick-start">Quick Start</a>
+        <a href="#providers">Supported Providers</a>
+        <a href="#fallback">Multiple Providers &amp; Fallback</a>
+        <a href="#domain-filters">Domain Filters</a>
+        <a href="#fields">Field Reference</a>
+        <a href="#troubleshooting">Troubleshooting</a>
+      </div>
+    </header>
+
+    <section id="quick-start">
+      <h2>Quick Start</h2>
+      <p>Axiomate reads search provider configuration from the user-level config file: <code>~/.axiomate.json</code>. On Windows this is typically <code>C:\Users\&lt;your-username&gt;\.axiomate.json</code>. The search configuration lives under the top-level key <code>searchProviders</code>, alongside <code>models</code>, <code>model</code>, and other top-level fields.</p>
+      <p>A minimal configuration only requires a provider name, <code>type</code>, and <code>apiKey</code>. The example below configures an Exa search provider:</p>
+      <pre><code>{
+  "searchProviders": {
+    "exa": {
+      "type": "exa",
+      "apiKey": "exa_..."
+    }
+  }
+}</code></pre>
+      <div class="warning">
+        <strong>The config file must be strict JSON.</strong> Do not include comments, trailing commas, or single quotes. Some README examples use JSONC style&mdash;remove comments when copying into <code>~/.axiomate.json</code>.
+      </div>
+      <p>No restart is needed after saving. Axiomate watches the global config file for changes and will pick up new provider settings the next time <code>WebSearch</code> is invoked.</p>
+    </section>
+
+    <section id="how-it-works">
+      <h2>How It Works</h2>
+      <ol>
+        <li>The current primary model must already be configured under <code>models</code> and <code>model.routes</code>. Without a primary model, <code>WebSearch</code> will not appear as an available tool.</li>
+        <li>When <code>WebSearch</code> is called, Axiomate checks whether <code>searchProviders</code> exists and has at least one usable provider.</li>
+        <li>Search results are normalized into titles and URLs, while preserving the snippet content returned by the provider for the model to reference.</li>
+        <li>The model must cite search result sources as Markdown links in its final response.</li>
+      </ol>
+      <p>The keys under <code>searchProviders</code> are names you choose&mdash;for example <code>exa</code>, <code>brave</code>, or <code>company-search</code>. The <code>type</code> field on each provider determines which implementation is used.</p>
+    </section>
+
+    <section id="providers">
+      <h2>Supported Providers</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>type</th>
+            <th>Service</th>
+            <th>Default Endpoint</th>
+            <th>Best For</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>brave-web-search</code></td>
+            <td>Brave Search API</td>
+            <td><code>https://api.search.brave.com/res/v1/web/search</code></td>
+            <td>General web search, up to 20 results.</td>
+          </tr>
+          <tr>
+            <td><code>exa</code></td>
+            <td>Exa Search API</td>
+            <td><code>https://api.exa.ai/search</code></td>
+            <td>Semantic search, news, papers, company and people lookups, up to 100 results.</td>
+          </tr>
+          <tr>
+            <td><code>tavily</code></td>
+            <td>Tavily Search API</td>
+            <td><code>https://api.tavily.com/search</code></td>
+            <td>AI-oriented search with optional answer, raw content, news, or finance topics, up to 20 results.</td>
+          </tr>
+          <tr>
+            <td><code>serpapi</code></td>
+            <td>SerpApi</td>
+            <td><code>https://serpapi.com/search.json</code></td>
+            <td>Aggregated results from Google and other engines, supports <code>engine</code>, region, language, and device parameters, up to 100 results.</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3>Brave Example</h3>
+      <pre><code>{
+  "searchProviders": {
+    "brave": {
+      "type": "brave-web-search",
+      "apiKey": "BSA...",
+      "baseUrl": "https://api.search.brave.com/res/v1/web/search",
+      "country": "US",
+      "searchLang": "en",
+      "uiLang": "en-US",
+      "count": 10,
+      "safeSearch": "moderate",
+      "extraSnippets": true
+    }
+  }
+}</code></pre>
+
+      <h3>Exa Example</h3>
+      <pre><code>{
+  "searchProviders": {
+    "exa": {
+      "type": "exa",
+      "apiKey": "exa_...",
+      "baseUrl": "https://api.exa.ai/search",
+      "searchType": "auto",
+      "category": "news",
+      "userLocation": "US",
+      "numResults": 10,
+      "moderation": false,
+      "highlightMaxCharacters": 1200
+    }
+  }
+}</code></pre>
+
+      <h3>Tavily Example</h3>
+      <pre><code>{
+  "searchProviders": {
+    "tavily": {
+      "type": "tavily",
+      "apiKey": "tvly-...",
+      "baseUrl": "https://api.tavily.com/search",
+      "searchDepth": "basic",
+      "maxResults": 8,
+      "topic": "general",
+      "includeAnswer": false,
+      "country": "united states",
+      "autoParameters": false,
+      "exactMatch": false,
+      "includeUsage": false,
+      "safeSearch": true
+    }
+  }
+}</code></pre>
+
+      <h3>SerpApi Example</h3>
+      <pre><code>{
+  "searchProviders": {
+    "serpapi": {
+      "type": "serpapi",
+      "apiKey": "serp_...",
+      "baseUrl": "https://serpapi.com/search.json",
+      "engine": "google",
+      "googleDomain": "google.com",
+      "hl": "en",
+      "gl": "us",
+      "device": "desktop",
+      "safe": "active",
+      "num": 10
+    }
+  }
+}</code></pre>
+    </section>
+
+    <section id="fallback">
+      <h2>Multiple Providers &amp; Fallback</h2>
+      <p><code>searchProviders</code> supports multiple providers at once. Axiomate will try them in the order they appear in the JSON object, and the first one to return results successfully is used.</p>
+      <pre><code>{
+  "searchProviders": {
+    "exa": {
+      "type": "exa",
+      "apiKey": "exa_..."
+    },
+    "tavily": {
+      "type": "tavily",
+      "apiKey": "tvly-..."
+    },
+    "serpapi": {
+      "type": "serpapi",
+      "apiKey": "serp_..."
+    }
+  }
+}</code></pre>
+      <div class="note">
+        <strong>Fallback rules:</strong> Errors such as network failures, authentication errors, rate limiting, service unavailability, or malformed responses will cause Axiomate to try the next provider. However, errors of type <code>invalid_request</code> do not trigger a fallback, since they typically indicate the search request itself is invalid and switching providers might mask the real issue.
+      </div>
+      <p>If a provider's <code>type</code> is not supported, Axiomate skips the unusable configuration and continues to the next provider. When all providers are unavailable, <code>WebSearch</code> will report an aggregated error message.</p>
+    </section>
+
+    <section id="domain-filters">
+      <h2>Domain Filters</h2>
+      <p>The <code>WebSearch</code> tool input supports <code>allowed_domains</code> and <code>blocked_domains</code>. These are parameters the model uses when calling the search tool, not provider config fields in <code>~/.axiomate.json</code>.</p>
+      <div class="grid">
+        <div class="mini">
+          <h3>Exa &amp; Tavily</h3>
+          <p>Native domain filtering support. Axiomate passes allowed and blocked domains into the provider request body and still performs a local filter on returned results as a safeguard.</p>
+        </div>
+        <div class="mini">
+          <h3>Brave &amp; SerpApi</h3>
+          <p>Supported via an adapter. Axiomate translates allowed domains into <code>site:example.com</code> queries and blocked domains into <code>-site:example.com</code>, then filters the returned results locally.</p>
+        </div>
+      </div>
+      <p>Domains are normalized; for example <code>https://docs.example.com/path</code> matches on the hostname <code>docs.example.com</code>. <code>example.com</code> matches <code>example.com</code> and its subdomains.</p>
+    </section>
+
+    <section id="fields">
+      <h2>Field Reference</h2>
+      <h3>Common Fields</h3>
+      <table class="fields">
+        <thead>
+          <tr>
+            <th>Field</th>
+            <th>Required</th>
+            <th>Description</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>type</code></td>
+            <td>Yes</td>
+            <td>The search provider type. Currently supported: <code>brave-web-search</code>, <code>exa</code>, <code>tavily</code>, <code>serpapi</code>.</td>
+          </tr>
+          <tr>
+            <td><code>apiKey</code></td>
+            <td>Yes</td>
+            <td>The API key for the corresponding search service. The current search provider implementation reads this string directly; there is no <code>apiKeyEnv</code> field.</td>
+          </tr>
+          <tr>
+            <td><code>baseUrl</code></td>
+            <td>No</td>
+            <td>Overrides the default search endpoint. Only set this when using a proxy, corporate gateway, or compatible service.</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3>Brave Fields</h3>
+      <table class="fields">
+        <thead>
+          <tr>
+            <th>Field</th>
+            <th>Values</th>
+            <th>Description</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>country</code></td>
+            <td>String</td>
+            <td>Region code, e.g. <code>US</code>.</td>
+          </tr>
+          <tr>
+            <td><code>searchLang</code></td>
+            <td>String</td>
+            <td>Search language, sent as <code>search_lang</code>.</td>
+          </tr>
+          <tr>
+            <td><code>uiLang</code></td>
+            <td>String</td>
+            <td>UI language, sent as <code>ui_lang</code>.</td>
+          </tr>
+          <tr>
+            <td><code>count</code></td>
+            <td>Number, 1 to 20</td>
+            <td>Number of results to return. Defaults to 10 when unset; values above 20 are clamped to 20.</td>
+          </tr>
+          <tr>
+            <td><code>safeSearch</code></td>
+            <td><code>off</code>, <code>moderate</code>, <code>strict</code></td>
+            <td>Safe search level, sent as <code>safesearch</code>.</td>
+          </tr>
+          <tr>
+            <td><code>extraSnippets</code></td>
+            <td>Boolean</td>
+            <td>When <code>true</code>, requests additional snippet content from Brave.</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3>Exa Fields</h3>
+      <table class="fields">
+        <thead>
+          <tr>
+            <th>Field</th>
+            <th>Values</th>
+            <th>Description</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>searchType</code></td>
+            <td><code>auto</code>, <code>neural</code>, <code>fast</code>, <code>deep-lite</code>, <code>deep</code>, <code>deep-reasoning</code>, <code>instant</code></td>
+            <td>Exa search type, sent as <code>type</code> in the request body.</td>
+          </tr>
+          <tr>
+            <td><code>category</code></td>
+            <td><code>company</code>, <code>research paper</code>, <code>news</code>, <code>personal site</code>, <code>financial report</code>, <code>people</code></td>
+            <td>Restricts results to a specific category.</td>
+          </tr>
+          <tr>
+            <td><code>userLocation</code></td>
+            <td>String</td>
+            <td>User location, e.g. <code>US</code>.</td>
+          </tr>
+          <tr>
+            <td><code>numResults</code></td>
+            <td>Number, 1 to 100</td>
+            <td>Number of results to return. Defaults to 10 when unset; values above 100 are clamped to 100.</td>
+          </tr>
+          <tr>
+            <td><code>includeText</code></td>
+            <td>Array of strings</td>
+            <td>Requires result content to contain these text strings.</td>
+          </tr>
+          <tr>
+            <td><code>excludeText</code></td>
+            <td>Array of strings</td>
+            <td>Excludes results containing these text strings.</td>
+          </tr>
+          <tr>
+            <td><code>moderation</code></td>
+            <td>Boolean</td>
+            <td>Whether to enable the Exa moderation parameter.</td>
+          </tr>
+          <tr>
+            <td><code>highlightMaxCharacters</code></td>
+            <td>Number, 1 to 4000</td>
+            <td>Maximum characters for highlight snippets. Defaults to 800 when unset; values above 4000 are clamped to 4000.</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3>Tavily Fields</h3>
+      <table class="fields">
+        <thead>
+          <tr>
+            <th>Field</th>
+            <th>Values</th>
+            <th>Description</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>searchDepth</code></td>
+            <td><code>advanced</code>, <code>basic</code>, <code>fast</code>, <code>ultra-fast</code></td>
+            <td>Search depth, sent as <code>search_depth</code>.</td>
+          </tr>
+          <tr>
+            <td><code>chunksPerSource</code></td>
+            <td>Number</td>
+            <td>Only sent when <code>searchDepth</code> is <code>advanced</code>; the current implementation hard-clamps this to 3.</td>
+          </tr>
+          <tr>
+            <td><code>maxResults</code></td>
+            <td>Number, 1 to 20</td>
+            <td>Number of results to return. Defaults to 5 when unset; values above 20 are clamped to 20.</td>
+          </tr>
+          <tr>
+            <td><code>topic</code></td>
+            <td><code>general</code>, <code>news</code>, <code>finance</code></td>
+            <td>Search topic.</td>
+          </tr>
+          <tr>
+            <td><code>timeRange</code></td>
+            <td><code>day</code>, <code>week</code>, <code>month</code>, <code>year</code>, <code>d</code>, <code>w</code>, <code>m</code>, <code>y</code></td>
+            <td>Restricts the time range.</td>
+          </tr>
+          <tr>
+            <td><code>startDate</code> / <code>endDate</code></td>
+            <td>String</td>
+            <td>Start and end dates, sent as <code>start_date</code> and <code>end_date</code>.</td>
+          </tr>
+          <tr>
+            <td><code>includeAnswer</code></td>
+            <td>Boolean, <code>basic</code>, <code>advanced</code></td>
+            <td>Whether to request a Tavily-generated answer. If returned, it is provided to the model as an additional snippet.</td>
+          </tr>
+          <tr>
+            <td><code>includeRawContent</code></td>
+            <td>Boolean, <code>markdown</code>, <code>text</code></td>
+            <td>Whether to request raw content.</td>
+          </tr>
+          <tr>
+            <td><code>country</code></td>
+            <td>String</td>
+            <td>Country or region, e.g. <code>united states</code>.</td>
+          </tr>
+          <tr>
+            <td><code>autoParameters</code></td>
+            <td>Boolean</td>
+            <td>Whether to enable Tavily auto parameters.</td>
+          </tr>
+          <tr>
+            <td><code>exactMatch</code></td>
+            <td>Boolean</td>
+            <td>Whether to enable exact matching.</td>
+          </tr>
+          <tr>
+            <td><code>includeUsage</code></td>
+            <td>Boolean</td>
+            <td>Whether to request Tavily usage information in the response.</td>
+          </tr>
+          <tr>
+            <td><code>safeSearch</code></td>
+            <td>Boolean</td>
+            <td>Whether to enable safe search.</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3>SerpApi Fields</h3>
+      <table class="fields">
+        <thead>
+          <tr>
+            <th>Field</th>
+            <th>Values</th>
+            <th>Description</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>engine</code></td>
+            <td>String</td>
+            <td>Search engine. Defaults to <code>google</code> when unset.</td>
+          </tr>
+          <tr>
+            <td><code>googleDomain</code></td>
+            <td>String</td>
+            <td>Google domain, sent as <code>google_domain</code>.</td>
+          </tr>
+          <tr>
+            <td><code>hl</code></td>
+            <td>String</td>
+            <td>Language parameter.</td>
+          </tr>
+          <tr>
+            <td><code>gl</code></td>
+            <td>String</td>
+            <td>Country or region parameter.</td>
+          </tr>
+          <tr>
+            <td><code>location</code></td>
+            <td>String</td>
+            <td>Location parameter.</td>
+          </tr>
+          <tr>
+            <td><code>device</code></td>
+            <td>String</td>
+            <td>Device parameter, e.g. <code>desktop</code>.</td>
+          </tr>
+          <tr>
+            <td><code>safe</code></td>
+            <td><code>active</code>, <code>off</code></td>
+            <td>Safe search parameter.</td>
+          </tr>
+          <tr>
+            <td><code>num</code></td>
+            <td>Number, 1 to 100</td>
+            <td>Number of results to return. Defaults to 10 when unset; values above 100 are clamped to 100.</td>
+          </tr>
+          <tr>
+            <td><code>noCache</code></td>
+            <td>Boolean</td>
+            <td>When <code>true</code>, requests SerpApi to bypass its cache.</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="security">
+      <h2>Security Notes</h2>
+      <ul>
+        <li><code>~/.axiomate.json</code> is a user-level private configuration file that may contain both model API keys and search API keys.</li>
+        <li>Do not commit this file to a Git repository, and never paste its contents into public issues, chat logs, or logs.</li>
+        <li>If you need to share a configuration, share only the provider's <code>type</code>, <code>baseUrl</code>, and non-sensitive parameters, replacing <code>apiKey</code> with a placeholder.</li>
+        <li>If you suspect a key has been leaked, rotate or revoke the old key in the corresponding search service dashboard.</li>
+      </ul>
+    </section>
+
+    <section id="troubleshooting">
+      <h2>Troubleshooting</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Symptom</th>
+            <th>Common Cause</th>
+            <th>Resolution</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Shows <code>No search providers are configured</code></td>
+            <td><code>~/.axiomate.json</code> has no top-level <code>searchProviders</code>, or the object is empty.</td>
+            <td>Add at least one provider and verify correct field names and JSON syntax.</td>
+          </tr>
+          <tr>
+            <td>Shows model not configured, cannot use <code>WebSearch</code></td>
+            <td>The current primary model is not in <code>models</code>, or the primary route has no valid <code>primary</code>.</td>
+            <td>Configure <code>models</code> and <code>model.routes</code> first, following the model configuration docs.</td>
+          </tr>
+          <tr>
+            <td>Shows unsupported provider type</td>
+            <td>The <code>type</code> value is misspelled, or a search service that is not yet implemented was specified.</td>
+            <td>Change <code>type</code> to one of the four supported values: <code>brave-web-search</code>, <code>exa</code>, <code>tavily</code>, or <code>serpapi</code>.</td>
+          </tr>
+          <tr>
+            <td>Authentication failure or HTTP 401 / 403</td>
+            <td>The <code>apiKey</code> is incorrect, expired, lacks the relevant API permissions, or the provider plan does not include the endpoint.</td>
+            <td>Verify the key, account quota, and endpoint permissions. Brave uses <code>X-Subscription-Token</code>, Exa uses <code>x-api-key</code>, Tavily uses a Bearer token, and SerpApi uses the <code>api_key</code> query parameter.</td>
+          </tr>
+          <tr>
+            <td>Rate limiting or quota errors</td>
+            <td>Search service quota exhausted, concurrent usage too high, or plan limit reached.</td>
+            <td>Reduce search frequency, or configure a second provider as a fallback.</td>
+          </tr>
+          <tr>
+            <td>Returns empty results</td>
+            <td>Query is too narrow, domain filters are too restrictive, or region/category parameters are overly constrained.</td>
+            <td>Remove <code>category</code>, <code>timeRange</code>, domain filters, and other restrictions, then retry.</td>
+          </tr>
+          <tr>
+            <td>Changes don't take effect after saving</td>
+            <td>JSON syntax error, saved to the wrong path, or the current session has not yet picked up the new file.</td>
+            <td>Confirm the file path is <code>~/.axiomate.json</code>, check for trailing commas, and wait about 1 second before invoking search again.</td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="success">
+        <strong>Recommended approach:</strong> Start by configuring a single provider and verify that search works. Once it is stable, add a second provider for fallback. This makes it easier to tell which API key or parameter is causing the problem when troubleshooting.
+      </div>
+    </section>
+  </main>
+</body>
+</html>

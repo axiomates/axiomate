@@ -1,0 +1,553 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Axiomate OpenAI Responses Cache Compatibility Configuration Guide</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f5f7f8;
+      --panel: #ffffff;
+      --panel-soft: #f0f5f6;
+      --text: #172126;
+      --muted: #5d6b73;
+      --line: #d7e0e3;
+      --accent: #0f766e;
+      --accent-soft: #dff5f2;
+      --warn: #8a5a00;
+      --warn-soft: #fff4d6;
+      --danger: #991b1b;
+      --danger-soft: #fee2e2;
+      --good: #166534;
+      --good-soft: #dcfce7;
+      --code: #f3f6f7;
+      --shadow: 0 12px 28px rgba(23, 33, 38, 0.08);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      overflow-x: hidden;
+      background: var(--bg);
+      color: var(--text);
+      font: 15px/1.65 "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    }
+
+    .wrap {
+      width: calc(100% - 32px);
+      max-width: 1120px;
+      margin: 26px auto 52px;
+      display: grid;
+      gap: 18px;
+      justify-content: stretch;
+      text-align: left;
+    }
+
+    header,
+    section {
+      min-width: 0;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+    }
+
+    header { padding: 28px 30px; }
+    section { padding: 24px 26px; }
+
+    .eyebrow {
+      margin: 0 0 10px;
+      color: var(--accent);
+      font-weight: 700;
+      letter-spacing: 0;
+    }
+
+    h1,
+    h2,
+    h3 {
+      margin: 0;
+      line-height: 1.25;
+      letter-spacing: 0;
+    }
+
+    h1 {
+      margin-bottom: 10px;
+      font-size: 32px;
+    }
+
+    h2 {
+      margin-bottom: 12px;
+      font-size: 22px;
+    }
+
+    h3 {
+      margin: 20px 0 8px;
+      font-size: 17px;
+    }
+
+    p { margin: 0 0 12px; }
+
+    code {
+      padding: 1px 5px;
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      background: var(--code);
+      font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+      font-size: 0.95em;
+      overflow-wrap: anywhere;
+    }
+
+    pre {
+      margin: 12px 0 18px;
+      padding: 15px 16px;
+      max-width: 100%;
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--code);
+      white-space: pre;
+    }
+
+    pre code {
+      padding: 0;
+      border: 0;
+      background: transparent;
+      font-size: 13px;
+      line-height: 1.55;
+    }
+
+    table {
+      width: 100%;
+      margin: 12px 0 16px;
+      border-collapse: collapse;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+    }
+
+    th,
+    td {
+      padding: 11px 12px;
+      border-bottom: 1px solid var(--line);
+      vertical-align: top;
+      text-align: left;
+    }
+
+    th {
+      background: var(--panel-soft);
+      font-weight: 700;
+    }
+
+    tr:last-child td { border-bottom: 0; }
+
+    ul,
+    ol {
+      margin: 8px 0 16px 22px;
+      padding: 0;
+    }
+
+    li { margin: 5px 0; }
+
+    .lead {
+      max-width: 900px;
+      color: var(--muted);
+      font-size: 16px;
+    }
+
+    .note,
+    .warn,
+    .good {
+      margin: 12px 0 16px;
+      padding: 12px 14px;
+      border-radius: 8px;
+      border: 1px solid var(--line);
+    }
+
+    .note {
+      background: var(--accent-soft);
+      border-color: #b8e6df;
+    }
+
+    .warn {
+      background: var(--warn-soft);
+      border-color: #f3d28a;
+      color: var(--warn);
+    }
+
+    .good {
+      background: var(--good-soft);
+      border-color: #b7e4c7;
+      color: var(--good);
+    }
+
+    @media (max-width: 720px) {
+      .wrap {
+        width: calc(100% - 20px);
+        margin: 12px auto 28px;
+      }
+
+      header,
+      section {
+        padding: 18px;
+      }
+
+      h1 { font-size: 25px; }
+      h2 { font-size: 19px; }
+
+      table,
+      thead,
+      tbody,
+      tr,
+      th,
+      td {
+        display: block;
+      }
+
+      th { display: none; }
+
+      td {
+        border-bottom: 0;
+        padding: 8px 10px;
+      }
+
+      tr {
+        border-bottom: 1px solid var(--line);
+        padding: 6px 0;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <header>
+      <p class="eyebrow">OpenAI Responses · Prompt Cache · Codex Transport</p>
+      <h1>OpenAI Responses Cache Compatibility Configuration Guide</h1>
+      <p class="lead">This document explains the purpose, configuration, and applicable scenarios for <code>promptCacheKey</code>, <code>promptCacheRewriteLimit</code>, and <code>codexTransportCompat</code>. They only affect models with <code>protocol: "openai-responses"</code>.</p>
+    </header>
+
+    <section>
+      <h2>When to Configure</h2>
+      <p>These fields are generally only needed with third-party OpenAI Responses compatible gateways, relay services, or self-hosted proxies. The official OpenAI endpoint typically does not require them.</p>
+      <table>
+        <thead>
+          <tr>
+            <th>Scenario</th>
+            <th>Recommendation</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Standard OpenAI Responses API</td>
+            <td>Do not configure these fields; keep default behavior.</td>
+          </tr>
+          <tr>
+            <td>Third-party gateway requires <code>prompt_cache_key</code> in the body for reliable cache hits</td>
+            <td>Configure <code>promptCacheKey: true</code>.</td>
+          </tr>
+          <tr>
+            <td>Third-party gateway reads <code>x-codex-*</code> headers like a Codex endpoint</td>
+            <td>Configure <code>codexTransportCompat: true</code>; if it also requires a body key, configure <code>promptCacheKey</code> as well.</td>
+          </tr>
+          <tr>
+            <td>The server returns its own <code>prompt_cache_key</code></td>
+            <td>Keep the default <code>promptCacheRewriteLimit: 3</code> to let Axiomate automatically reuse the server key.</td>
+          </tr>
+          <tr>
+            <td>The server rewrites the key every time, but you still want to always send the latest key</td>
+            <td>Set <code>promptCacheRewriteLimit: 0</code>.</td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="warn">
+        <p>These fields do not guarantee that the provider will achieve KV cache hits. They only send stable request identifiers following common conventions of compatible gateways; whether cache hits actually occur still depends on how the gateway and model service implement caching.</p>
+      </div>
+    </section>
+
+    <section>
+      <h2>Field Overview</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Field</th>
+            <th>Type</th>
+            <th>Default</th>
+            <th>Purpose</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>promptCacheKey</code></td>
+            <td><code>boolean | string</code></td>
+            <td>Not set</td>
+            <td>Controls whether to send a dedicated <code>prompt_cache_key</code> in the Responses request body.</td>
+          </tr>
+          <tr>
+            <td><code>promptCacheRewriteLimit</code></td>
+            <td><code>number</code></td>
+            <td><code>3</code></td>
+            <td>How many consecutive server rewrites of <code>prompt_cache_key</code> before stopping the dedicated body key. <code>0</code> means never disable because of this.</td>
+          </tr>
+          <tr>
+            <td><code>codexTransportCompat</code></td>
+            <td><code>boolean</code></td>
+            <td>Not set</td>
+            <td>Controls whether to send Codex-style transport headers, such as <code>originator</code>, <code>session_id</code>, <code>x-client-request-id</code>, <code>x-codex-window-id</code>, and <code>x-codex-turn-metadata</code>.</td>
+          </tr>
+          <tr>
+            <td><code>userAgent</code></td>
+            <td><code>string</code></td>
+            <td>Not set</td>
+            <td>Existing field. When <code>codexTransportCompat</code> is enabled, used as the <code>User-Agent</code> with priority; when not set, the Codex-compatible default UA is used.</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>How to Use <code>promptCacheKey</code></h2>
+      <h3>Disabled</h3>
+      <p>When not set or set to <code>false</code>, Axiomate will not send a dedicated body <code>prompt_cache_key</code> and will not record the server-returned key.</p>
+      <pre><code>{
+  "models": {
+    "main": {
+      "protocol": "openai-responses",
+      "model": "gpt-5",
+      "baseUrl": "https://api.example.com/v1",
+      "apiKey": "sk-..."
+    }
+  }
+}</code></pre>
+
+      <h3>Using the Default Key</h3>
+      <p>When set to <code>true</code>, the request body will send a default key:</p>
+      <pre><code>a:{projectHash}:{providerHash}:{sessionHash}</code></pre>
+      <p>In an actual request, it renders to something like:</p>
+      <pre><code>a:9f3a1c2d4e5f6780:4a7b8c9d0e1f2345:5c9d2a71e8b0f3c4</code></pre>
+      <pre><code>{
+  "models": {
+    "main": {
+      "protocol": "openai-responses",
+      "model": "gpt-5",
+      "baseUrl": "https://api.example.com/v1",
+      "apiKey": "sk-...",
+      "promptCacheKey": true
+    }
+  }
+}</code></pre>
+      <div class="note">
+        <p>The default key is bound to the session but uses a short hash format, length 52, suitable for Responses-compatible gateways that require <code>prompt_cache_key</code> to be no longer than 64 characters.</p>
+      </div>
+
+      <h3>Custom Template</h3>
+      <p>When set to a string, Axiomate treats it as a template for rendering. Supported variables:</p>
+      <ul>
+        <li><code>{projectHash}</code>: Hash of the current project path.</li>
+        <li><code>{providerHash}</code>: Hash of the current Responses provider's <code>baseUrl</code>.</li>
+        <li><code>{sessionHash}</code>: 16-character hash of the current Axiomate session ID, used by the default template.</li>
+      </ul>
+      <pre><code>{
+  "models": {
+    "main": {
+      "protocol": "openai-responses",
+      "model": "gpt-5",
+      "baseUrl": "https://api.example.com/v1",
+      "apiKey": "sk-...",
+      "promptCacheKey": "axiomate:project:{projectHash}:{providerHash}"
+    }
+  }
+}</code></pre>
+      <p>This template above does not include <code>{sessionHash}</code>, which means different sessions under the same project and provider will share the same client key. This is only recommended when you explicitly want cross-session reuse.</p>
+      <div class="warn">
+        <p>Many gateways require <code>prompt_cache_key</code> to be at most 64 characters. Template variables only provide short hashes, not the full session ID. Custom templates should still avoid overly long fixed prefixes.</p>
+      </div>
+
+      <h3>Relationship with <code>extraParams.prompt_cache_key</code></h3>
+      <p><code>extraParams.prompt_cache_key</code> will still be sent as a regular passthrough field, but will not enable the server key state machine.</p>
+      <p>If both the dedicated <code>promptCacheKey</code> and <code>extraParams.prompt_cache_key</code> are configured, the dedicated <code>promptCacheKey</code> will override <code>prompt_cache_key</code> in the body.</p>
+    </section>
+
+    <section>
+      <h2>Server Rewrite Behavior</h2>
+      <p>Some Responses-compatible gateways return their own <code>prompt_cache_key</code> in the response. When the dedicated <code>promptCacheKey</code> is enabled, Axiomate will observe this return value.</p>
+      <ol>
+        <li>If the returned key matches the request key: considered stable, consecutive rewrite count resets to zero.</li>
+        <li>If a different key is returned: save the server key, and use the server key for the next request.</li>
+        <li>If the server returns a new key different from the request value multiple times in a row: once the count reaches <code>promptCacheRewriteLimit</code>, mark that key state as unsupported, and subsequently stop sending the dedicated body key.</li>
+      </ol>
+      <p>The default for <code>promptCacheRewriteLimit</code> is <code>3</code>.</p>
+      <table>
+        <thead>
+          <tr>
+            <th>Configuration</th>
+            <th>Behavior</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>promptCacheRewriteLimit: 3</code></td>
+            <td>Default. The 1st and 2nd consecutive rewrites continue reusing the new server key; after the 3rd consecutive rewrite, stop sending the dedicated key.</td>
+          </tr>
+          <tr>
+            <td><code>promptCacheRewriteLimit: 1</code></td>
+            <td>Stop sending the dedicated key on the first rewrite.</td>
+          </tr>
+          <tr>
+            <td><code>promptCacheRewriteLimit: 0</code></td>
+            <td>Never disable due to rewrite; whenever the server returns a new key, save it and continue sending the latest key on the next request.</td>
+          </tr>
+        </tbody>
+      </table>
+      <p>State is saved in the <code>prompt-cache-state</code> directory under the Axiomate configuration directory. The default key includes <code>{sessionHash}</code>, so default state is also session-level isolated; when a custom template does not include <code>{sessionHash}</code>, state is reused across sessions.</p>
+    </section>
+
+    <section>
+      <h2>How to Use <code>codexTransportCompat</code></h2>
+      <p>When set to <code>true</code>, Axiomate will send Codex-style transport metadata in the headers of OpenAI SDK request options.</p>
+      <pre><code>{
+  "models": {
+    "main": {
+      "protocol": "openai-responses",
+      "model": "gpt-5",
+      "baseUrl": "https://proxy.example.com/v1",
+      "apiKey": "sk-...",
+      "codexTransportCompat": true
+    }
+  }
+}</code></pre>
+      <p>When only <code>codexTransportCompat</code> is enabled, the body <code>prompt_cache_key</code> is not automatically sent. These two configurations are orthogonal.</p>
+      <p>When only headers are enabled, the header tokens use the real Axiomate session ID. The headers sent include:</p>
+      <ul>
+        <li><code>originator: codex_exec</code></li>
+        <li><code>session_id: &lt;sessionId&gt;</code></li>
+        <li><code>x-client-request-id: &lt;sessionId&gt;</code></li>
+        <li><code>x-codex-window-id: &lt;sessionId&gt;:0</code></li>
+        <li><code>x-codex-turn-metadata</code>, containing <code>session_id</code>, <code>turn_id</code>, and <code>sandbox: "none"</code>.</li>
+        <li><code>User-Agent</code>. If the model has <code>userAgent</code> configured, it is used with priority; otherwise, the Codex-compatible default UA is used.</li>
+      </ul>
+
+      <h3>Enabling Both <code>promptCacheKey</code> and <code>codexTransportCompat</code></h3>
+      <p>In this case, the behavior closely matches the Codex/Hermes compatibility patch: the body <code>prompt_cache_key</code> and Codex headers use the same selected key.</p>
+      <pre><code>{
+  "models": {
+    "main": {
+      "protocol": "openai-responses",
+      "model": "gpt-5",
+      "baseUrl": "https://proxy.example.com/v1",
+      "apiKey": "sk-...",
+      "promptCacheKey": true,
+      "promptCacheRewriteLimit": 3,
+      "codexTransportCompat": true
+    }
+  }
+}</code></pre>
+      <p>If the server returns a new <code>prompt_cache_key</code>, subsequent body and headers will all switch to the server key. If the rewrite limit is reached and marked unsupported, both the body key and these compat headers will stop being sent.</p>
+    </section>
+
+    <section>
+      <h2>Recommended Configuration Templates</h2>
+      <h3>Body Cache Key Only</h3>
+      <pre><code>{
+  "models": {
+    "responses-proxy": {
+      "name": "Responses Proxy",
+      "protocol": "openai-responses",
+      "model": "gpt-5",
+      "baseUrl": "https://proxy.example.com/v1",
+      "apiKey": "sk-...",
+      "promptCacheKey": true
+    }
+  }
+}</code></pre>
+
+      <h3>Codex-Style Relay</h3>
+      <pre><code>{
+  "models": {
+    "codex-like-proxy": {
+      "name": "Codex-like Responses Proxy",
+      "protocol": "openai-responses",
+      "model": "gpt-5",
+      "baseUrl": "https://proxy.example.com/v1",
+      "apiKey": "sk-...",
+      "promptCacheKey": true,
+      "promptCacheRewriteLimit": 3,
+      "codexTransportCompat": true
+    }
+  }
+}</code></pre>
+
+      <h3>Relay Requiring a Custom User-Agent</h3>
+      <pre><code>{
+  "models": {
+    "codex-like-proxy": {
+      "protocol": "openai-responses",
+      "model": "gpt-5",
+      "baseUrl": "https://proxy.example.com/v1",
+      "apiKey": "sk-...",
+      "promptCacheKey": true,
+      "codexTransportCompat": true,
+      "userAgent": "codex_exec/0.120.0 (Ubuntu 22.4.0; x86_64) gnome-terminal (codex_exec; 0.120.0)"
+    }
+  }
+}</code></pre>
+      <div class="good">
+        <p>If there are no special requirements, you do not need to manually set <code>userAgent</code>. When <code>codexTransportCompat</code> is enabled and <code>userAgent</code> is not configured, Axiomate will use the Codex-compatible default UA.</p>
+      </div>
+
+      <h3>Cross-Session Client Key Reuse</h3>
+      <pre><code>{
+  "models": {
+    "responses-proxy": {
+      "protocol": "openai-responses",
+      "model": "gpt-5",
+      "baseUrl": "https://proxy.example.com/v1",
+      "apiKey": "sk-...",
+      "promptCacheKey": "axiomate:project:{projectHash}:{providerHash}"
+    }
+  }
+}</code></pre>
+      <p>This template does not include <code>{sessionHash}</code>, suitable when you explicitly want multiple sessions in the same project and provider to share the same cache namespace.</p>
+    </section>
+
+    <section>
+      <h2>FAQ</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Symptom</th>
+            <th>Check</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>No improvement in cache hits after configuration</td>
+            <td>Verify the model uses the <code>openai-responses</code> protocol; confirm the relay actually reads <code>prompt_cache_key</code> or Codex headers; confirm that the system prompt, tool list, cwd, model, and provider are not frequently changing.</td>
+          </tr>
+          <tr>
+            <td>Multiple Axiomate instances interfere with each other</td>
+            <td>Use the default <code>promptCacheKey: true</code>, which includes <code>{sessionHash}</code>. Do not use a custom template without session.</td>
+          </tr>
+          <tr>
+            <td>Want to reuse cache across sessions</td>
+            <td>Set <code>promptCacheKey</code> to a template without <code>{sessionHash}</code>, for example <code>axiomate:project:{projectHash}:{providerHash}</code>.</td>
+          </tr>
+          <tr>
+            <td>Relay returns a different key every time</td>
+            <td>Keeping the default rewrite limit will stop sending the dedicated key after 3 consecutive rewrites; if you want to always follow the server key, set <code>promptCacheRewriteLimit: 0</code>.</td>
+          </tr>
+          <tr>
+            <td>Only want to mimic Codex headers, not send body key</td>
+            <td>Only set <code>codexTransportCompat: true</code>, do not set <code>promptCacheKey</code>.</td>
+          </tr>
+          <tr>
+            <td>Only want to send body key, not Codex headers</td>
+            <td>Only set <code>promptCacheKey</code>, do not set <code>codexTransportCompat</code>.</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+  </main>
+</body>
+</html>

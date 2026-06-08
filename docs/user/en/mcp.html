@@ -1,0 +1,634 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Axiomate MCP User Guide</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f5f7f8;
+      --panel: #ffffff;
+      --panel-soft: #f0f5f6;
+      --text: #172126;
+      --muted: #5d6b73;
+      --line: #d7e0e3;
+      --accent: #0f766e;
+      --accent-soft: #dff5f2;
+      --warn: #8a5a00;
+      --warn-soft: #fff4d6;
+      --danger: #991b1b;
+      --danger-soft: #fee2e2;
+      --good: #166534;
+      --good-soft: #dcfce7;
+      --code: #f3f6f7;
+      --shadow: 0 12px 28px rgba(23, 33, 38, 0.08);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font: 15px/1.65 "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    }
+
+    .wrap {
+      width: min(1120px, calc(100vw - 32px));
+      margin: 26px auto 52px;
+      display: grid;
+      gap: 18px;
+    }
+
+    header,
+    section {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+    }
+
+    header { padding: 28px 30px; }
+    section { padding: 24px 26px; }
+
+    .eyebrow {
+      margin: 0 0 10px;
+      color: var(--accent);
+      font-weight: 700;
+      letter-spacing: 0;
+    }
+
+    h1,
+    h2,
+    h3 {
+      margin: 0;
+      line-height: 1.25;
+      letter-spacing: 0;
+    }
+
+    h1 {
+      font-size: 32px;
+      margin-bottom: 10px;
+    }
+
+    h2 {
+      font-size: 22px;
+      margin-bottom: 12px;
+    }
+
+    h3 {
+      font-size: 17px;
+      margin: 20px 0 8px;
+    }
+
+    p { margin: 0 0 12px; }
+
+    a {
+      color: var(--accent);
+      text-decoration-thickness: 1px;
+    }
+
+    code {
+      padding: 1px 5px;
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      background: var(--code);
+      font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+      font-size: 0.95em;
+    }
+
+    pre {
+      margin: 12px 0 18px;
+      padding: 15px 16px;
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #101820;
+      color: #f5fbfc;
+      font: 13px/1.55 ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+    }
+
+    pre code {
+      padding: 0;
+      border: 0;
+      background: transparent;
+      color: inherit;
+      font-size: inherit;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 12px 0 18px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow: hidden;
+      background: var(--panel);
+    }
+
+    th,
+    td {
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      background: var(--panel-soft);
+      font-weight: 700;
+    }
+
+    tr:last-child td { border-bottom: 0; }
+
+    ul,
+    ol {
+      margin: 8px 0 14px 22px;
+      padding: 0;
+    }
+
+    li { margin: 6px 0; }
+
+    .muted { color: var(--muted); }
+
+    .toc {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 16px;
+    }
+
+    .toc a {
+      display: inline-block;
+      padding: 6px 11px;
+      border: 1px solid rgba(15, 118, 110, 0.2);
+      border-radius: 999px;
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-size: 13px;
+      text-decoration: none;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+      margin: 16px 0;
+    }
+
+    .tile {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 14px;
+      background: var(--panel-soft);
+    }
+
+    .tile strong {
+      display: block;
+      margin-bottom: 4px;
+    }
+
+    .callout,
+    .warn,
+    .danger,
+    .good {
+      margin: 14px 0 18px;
+      padding: 13px 15px;
+      border-left: 4px solid var(--accent);
+      border-radius: 6px;
+      background: var(--accent-soft);
+    }
+
+    .warn {
+      border-left-color: var(--warn);
+      background: var(--warn-soft);
+    }
+
+    .danger {
+      border-left-color: var(--danger);
+      background: var(--danger-soft);
+    }
+
+    .good {
+      border-left-color: var(--good);
+      background: var(--good-soft);
+    }
+
+    @media (max-width: 860px) {
+      .wrap {
+        width: min(100vw - 20px, 1120px);
+        margin-top: 12px;
+      }
+
+      header,
+      section {
+        padding: 18px 16px;
+      }
+
+      h1 { font-size: 26px; }
+
+      .grid { grid-template-columns: 1fr; }
+
+      table {
+        display: block;
+        overflow-x: auto;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <header>
+      <p class="eyebrow">Axiomate user guide</p>
+      <h1>MCP Server Configuration and Usage</h1>
+      <p class="muted">Last updated: 2026-06-02. This guide explains how to connect external MCP servers in Axiomate, manage configurations, handle authentication, and troubleshoot common issues.</p>
+      <div class="callout">
+        <p><strong>In a nutshell:</strong> MCP servers are tool providers external to Axiomate. Once you add a stdio / HTTP / SSE server to your configuration, Axiomate connects to it on startup, reads its exposed tools, prompts, and resources, and adds the tools to the available tool pool in the form <code>mcp__server__tool</code>.</p>
+        <p>The most common entry point is <code>axiomate mcp add</code> to add a configuration, then use <code>/mcp</code> inside a conversation to view status, authentication, enable/disable, and reconnect.</p>
+      </div>
+      <nav class="toc" aria-label="Table of Contents">
+        <a href="#quickstart">Quick Start</a>
+        <a href="#configure-mcp-servers">Configuration Format</a>
+        <a href="#scopes">Configuration Scopes</a>
+        <a href="#runtime">Runtime and Management</a>
+        <a href="#auth">Authentication and Headers</a>
+        <a href="#project">Project Sharing</a>
+        <a href="#advanced">Advanced Options</a>
+        <a href="#security">Security Model</a>
+        <a href="#troubleshooting">Troubleshooting</a>
+      </nav>
+    </header>
+
+    <section id="quickstart">
+      <h2>Quick Start</h2>
+      <p>Axiomate supports three MCP transports for regular users: <code>stdio</code>, <code>http</code>, and <code>sse</code>. If <code>--transport</code> is not provided, it defaults to <code>stdio</code>.</p>
+
+      <h3>Add a Local stdio Server</h3>
+      <pre><code>axiomate mcp add my-server -- npx my-mcp-server</code></pre>
+      <p>A stdio server is launched by Axiomate as a child process and communicates with Axiomate via standard input/output. The <code>--</code> after the command tells the CLI that everything that follows is the server command and arguments, not Axiomate's own flags.</p>
+
+      <h3>Add an HTTP Server</h3>
+      <pre><code>axiomate mcp add --transport http sentry https://mcp.sentry.dev/mcp</code></pre>
+
+      <h3>Add an SSE Server</h3>
+      <pre><code>axiomate mcp add --transport sse search https://example.com/sse</code></pre>
+
+      <h3>With Environment Variables or Headers</h3>
+      <pre><code>axiomate mcp add -e API_KEY=xxx my-server -- node server.js
+axiomate mcp add --transport http api https://example.com/mcp -H "Authorization: Bearer xxx"</code></pre>
+
+      <div class="warn">
+        <p><strong>Note:</strong> If you pass a URL directly to <code>axiomate mcp add name https://...</code> without specifying <code>--transport http</code> or <code>--transport sse</code>, Axiomate will treat it as a stdio server. This is usually not what you want.</p>
+      </div>
+    </section>
+
+    <section id="configure-mcp-servers">
+      <h2>Configuration Format</h2>
+      <p>The core structure of MCP configuration is a <code>mcpServers</code> object. Each key is a server name, and each value is the connection configuration.</p>
+
+      <h3>stdio</h3>
+      <pre><code>{
+  "mcpServers": {
+    "filesystem": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "."],
+      "env": {
+        "API_KEY": "${MCP_API_KEY}"
+      }
+    }
+  }
+}</code></pre>
+
+      <h3>HTTP</h3>
+      <pre><code>{
+  "mcpServers": {
+    "remote-api": {
+      "type": "http",
+      "url": "https://example.com/mcp",
+      "headers": {
+        "Authorization": "Bearer ${MCP_TOKEN}"
+      }
+    }
+  }
+}</code></pre>
+
+      <h3>SSE</h3>
+      <pre><code>{
+  "mcpServers": {
+    "events": {
+      "type": "sse",
+      "url": "https://example.com/sse",
+      "headers": {
+        "X-Api-Key": "${MCP_API_KEY:-dev-key}"
+      }
+    }
+  }
+}</code></pre>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Field</th>
+            <th>Applicable Transport</th>
+            <th>Description</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>type</code></td>
+            <td>All</td>
+            <td><code>stdio</code> can be omitted; use <code>http</code> or <code>sse</code> for remote servers. The JSON layer also supports <code>ws</code>, but the regular <code>mcp add</code> command does not currently expose a WebSocket addition option.</td>
+          </tr>
+          <tr>
+            <td><code>command</code> / <code>args</code></td>
+            <td>stdio</td>
+            <td>The local command and arguments Axiomate will launch.</td>
+          </tr>
+          <tr>
+            <td><code>env</code></td>
+            <td>stdio</td>
+            <td>Environment variables passed to the child process. Values support <code>${VAR}</code> and <code>${VAR:-default}</code> expansion.</td>
+          </tr>
+          <tr>
+            <td><code>url</code></td>
+            <td>http / sse / ws</td>
+            <td>Remote MCP endpoint.</td>
+          </tr>
+          <tr>
+            <td><code>headers</code></td>
+            <td>http / sse / ws</td>
+            <td>Static request headers. Values support environment variable expansion.</td>
+          </tr>
+          <tr>
+            <td><code>headersHelper</code></td>
+            <td>http / sse / ws</td>
+            <td>Runs a local helper to dynamically generate headers, suitable for short-lived tokens or internal company credentials.</td>
+          </tr>
+          <tr>
+            <td><code>oauth</code></td>
+            <td>http / sse</td>
+            <td>Configures MCP OAuth related parameters, such as <code>clientId</code>, <code>callbackPort</code>, and <code>authServerMetadataUrl</code>.</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="warn">
+        <p><strong>Using npx on Windows:</strong> If the project configuration directly uses <code>"command": "npx"</code>, Axiomate will emit a warning. A safer approach is to wrap it with <code>cmd /c</code>:</p>
+        <pre><code>{
+  "type": "stdio",
+  "command": "cmd",
+  "args": ["/c", "npx", "-y", "my-mcp-server"]
+}</code></pre>
+      </div>
+    </section>
+
+    <section id="scopes">
+      <h2>Configuration Scopes</h2>
+      <p><code>axiomate mcp add</code> defaults to the <code>local</code> scope. You can use <code>-s</code> to explicitly specify where to write.</p>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Scope</th>
+            <th>Command Example</th>
+            <th>Purpose</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>local</code></td>
+            <td><code>axiomate mcp add -s local ...</code></td>
+            <td>Only you within the current project. Suitable for private tokens, local paths, and temporary servers.</td>
+          </tr>
+          <tr>
+            <td><code>user</code></td>
+            <td><code>axiomate mcp add -s user ...</code></td>
+            <td>Writes to the user's global configuration, available across all projects.</td>
+          </tr>
+          <tr>
+            <td><code>project</code></td>
+            <td><code>axiomate mcp add -s project ...</code></td>
+            <td>Writes to the current directory's <code>.mcp.json</code>, suitable for team sharing, but requires approval before connections are made.</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <p>If a server with the same name appears in multiple scopes, later configurations override earlier ones during aggregation. The typical priority order is: plugin &lt; user &lt; approved project config &lt; local config. When an enterprise-managed MCP configuration exists, it takes exclusive control and does not merge with regular user configurations.</p>
+    </section>
+
+    <section id="runtime">
+      <h2>Runtime and Management</h2>
+      <p>After adding a configuration, restart Axiomate or start a new session, and Axiomate will automatically load the MCP configuration and connect to available servers. Once connected, the tools exposed by the server will be added to the model's available tool pool.</p>
+
+      <h3>In-Conversation Management</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Command</th>
+            <th>Function</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>/mcp</code></td>
+            <td>Opens the MCP management interface to view server status, tool count, prompts, resources, and authentication status.</td>
+          </tr>
+          <tr>
+            <td><code>/mcp reconnect &lt;server-name&gt;</code></td>
+            <td>Manually reconnect a specified server.</td>
+          </tr>
+          <tr>
+            <td><code>/mcp disable &lt;server-name&gt;</code></td>
+            <td>Disable a specified server. The disabled state is written to the current project configuration.</td>
+          </tr>
+          <tr>
+            <td><code>/mcp enable &lt;server-name&gt;</code></td>
+            <td>Re-enable a specified server and attempt to connect.</td>
+          </tr>
+          <tr>
+            <td><code>/mcp disable</code> / <code>/mcp enable</code></td>
+            <td>When no server name is provided, applies to all currently displayed MCP servers.</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3>CLI Management</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Command</th>
+            <th>Function</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>axiomate mcp list</code></td>
+            <td>List configured servers and perform connection health checks.</td>
+          </tr>
+          <tr>
+            <td><code>axiomate mcp get &lt;name&gt;</code></td>
+            <td>View a server's configuration scope, type, URL, or command.</td>
+          </tr>
+          <tr>
+            <td><code>axiomate mcp remove &lt;name&gt;</code></td>
+            <td>Remove server configuration; remote OAuth tokens will also be cleaned up.</td>
+          </tr>
+          <tr>
+            <td><code>axiomate mcp reset-project-choices</code></td>
+            <td>Clear the current project's approval/rejection records for <code>.mcp.json</code> servers.</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="warn">
+        <p><strong>Health checks will actually connect to servers.</strong> <code>axiomate mcp list</code> and <code>axiomate mcp get</code> will skip the workspace trust dialog and may start stdio servers from <code>.mcp.json</code> in order to check status. Only run these commands in directories you trust.</p>
+      </div>
+    </section>
+
+    <section id="auth">
+      <h2>Authentication and Headers</h2>
+      <h3>Static Headers</h3>
+      <p>HTTP, SSE, and WebSocket configurations can directly specify <code>headers</code>. It is recommended to use environment variables for sensitive values.</p>
+      <pre><code>{
+  "mcpServers": {
+    "internal": {
+      "type": "http",
+      "url": "https://internal.example.com/mcp",
+      "headers": {
+        "Authorization": "Bearer ${INTERNAL_MCP_TOKEN}"
+      }
+    }
+  }
+}</code></pre>
+
+      <h3>Dynamic headersHelper</h3>
+      <p><code>headersHelper</code> runs a local command at connection time. The command must output a JSON object to stdout, and all values must be strings.</p>
+      <pre><code>{
+  "mcpServers": {
+    "internal": {
+      "type": "http",
+      "url": "https://internal.example.com/mcp",
+      "headersHelper": "node scripts/mcp-headers.js"
+    }
+  }
+}</code></pre>
+      <pre><code>{
+  "Authorization": "Bearer eyJ...",
+  "X-Workspace": "payments"
+}</code></pre>
+      <p>The helper receives the <code>AXIOMATE_CODE_MCP_SERVER_NAME</code> and <code>AXIOMATE_CODE_MCP_SERVER_URL</code> environment variables at runtime, making it easy for one helper to serve multiple servers.</p>
+
+      <h3>OAuth</h3>
+      <p>If an HTTP/SSE server returns a response requiring OAuth, Axiomate will mark the server as <code>needs-auth</code> and provide an authentication option in <code>/mcp</code>. You can also specify OAuth parameters when adding a server:</p>
+      <pre><code>axiomate mcp add --transport http work https://example.com/mcp \
+  --client-id my-client-id \
+  --client-secret \
+  --callback-port 1455</code></pre>
+      <p><code>--client-secret</code> will prompt you for the client secret; in non-TTY environments, you can provide it via the <code>MCP_CLIENT_SECRET</code> environment variable.</p>
+    </section>
+
+    <section id="project">
+      <h2>Project Sharing with .mcp.json</h2>
+      <p>Teams can write the MCP servers needed by the project into <code>.mcp.json</code> at the repository root. Axiomate searches upward from the current directory for <code>.mcp.json</code>, and configurations closer to the current working directory take higher priority.</p>
+      <pre><code>{
+  "mcpServers": {
+    "repo-tools": {
+      "type": "stdio",
+      "command": "cmd",
+      "args": ["/c", "npx", "-y", "@example/repo-mcp"]
+    }
+  }
+}</code></pre>
+      <p>Project shared configurations are not silently connected by default. The first time a project scope server is seen, Axiomate will ask you to approve or reject it. Approval records are saved in your local project configuration and do not need to be committed to the repository.</p>
+
+      <div class="danger">
+        <p><strong>Do not commit secrets to <code>.mcp.json</code>.</strong> Team shared configurations should reference environment variables, such as <code>${MCP_TOKEN}</code>, so each user can set their own values locally.</p>
+      </div>
+    </section>
+
+    <section id="advanced">
+      <h2>Advanced Options</h2>
+      <div class="grid">
+        <div class="tile">
+          <strong><code>add-json</code></strong>
+          <p>Directly write a server JSON to the configuration, suitable for fields not covered by the current CLI add, such as <code>headersHelper</code> or <code>ws</code>.</p>
+        </div>
+        <div class="tile">
+          <strong><code>--mcp-config</code></strong>
+          <p>Load MCP servers temporarily from a JSON string or JSON file when starting Axiomate, with a scope of <code>dynamic</code>.</p>
+        </div>
+        <div class="tile">
+          <strong>Plugin MCP</strong>
+          <p>Plugins can declare <code>mcpServers</code> or a <code>.mcp.json</code> in the plugin directory. Axiomate will prefix plugin servers with <code>plugin:&lt;plugin&gt;:&lt;server&gt;</code>.</p>
+        </div>
+      </div>
+
+      <h3><code>add-json</code> Example</h3>
+      <pre><code>axiomate mcp add-json internal '{"type":"http","url":"https://example.com/mcp","headersHelper":"node scripts/headers.js"}'</code></pre>
+
+      <h3><code>--mcp-config</code> Example</h3>
+      <pre><code>axiomate --mcp-config ./mcp.local.json
+axiomate --mcp-config '{"mcpServers":{"api":{"type":"http","url":"https://example.com/mcp"}}}'</code></pre>
+
+      <p><code>--strict-mcp-config</code> will only use servers passed via <code>--mcp-config</code>, ignoring user, project, local, and plugin configurations. <code>--bare</code> will also skip auto-discovered MCP configurations, keeping only explicitly passed <code>--mcp-config</code>.</p>
+    </section>
+
+    <section id="security">
+      <h2>Security Model</h2>
+      <p>MCP servers may execute local code, access the network, or read system resources. Axiomate applies several layers of constraints to MCP:</p>
+      <ul>
+        <li>Project <code>.mcp.json</code> servers require user approval before connecting.</li>
+        <li>All MCP tool calls still go through Axiomate's tool permission and approval process.</li>
+        <li>The current project can disable a server; once disabled, it will not connect or expose tools.</li>
+        <li>Enterprise policies can restrict server names, commands, or URLs via <code>allowedMcpServers</code> / <code>deniedMcpServers</code>.</li>
+        <li>When an enterprise-managed MCP configuration exists, it can exclusively control all MCP servers.</li>
+      </ul>
+      <p>Practical advice: only add servers you trust; do not run stdio commands from unknown sources; do not commit tokens to the repository; prefer environment variables and least-privilege tokens for team-shared configurations.</p>
+    </section>
+
+    <section id="troubleshooting">
+      <h2>Troubleshooting</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Symptom</th>
+            <th>Checkpoint</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>/mcp</code> shows no server</td>
+            <td>First run <code>axiomate mcp list</code>; confirm the configuration was written to the correct scope; if it's <code>.mcp.json</code>, confirm the server has been approved.</td>
+          </tr>
+          <tr>
+            <td>URL server consistently fails</td>
+            <td>Confirm that <code>--transport http</code> or <code>--transport sse</code> was specified when adding; check proxies, certificates, headers, and the server endpoint.</td>
+          </tr>
+          <tr>
+            <td>Shows <code>needs-auth</code></td>
+            <td>Go to <code>/mcp</code> and select the server to complete authentication; if the token has expired, re-authenticate or remove and re-add it.</td>
+          </tr>
+          <tr>
+            <td>Environment variable missing warning</td>
+            <td>The configuration uses <code>${VAR}</code> but the current shell has not set this variable. Set the variable and restart Axiomate, or use <code>${VAR:-default}</code>.</td>
+          </tr>
+          <tr>
+            <td><code>npx</code> server fails to start on Windows</td>
+            <td>Change <code>command</code> to <code>cmd</code> and <code>args</code> to <code>["/c", "npx", ...]</code>.</td>
+          </tr>
+          <tr>
+            <td>Configuration changed but tools unchanged</td>
+            <td>Reconnect in <code>/mcp</code>, or restart Axiomate. For plugin MCP changes, try reloading the plugin.</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="good">
+        <p><strong>Debugging tip:</strong> Start with <code>axiomate --debug</code> and then open <code>/mcp</code>; connection errors for failed servers will be easier to identify.</p>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

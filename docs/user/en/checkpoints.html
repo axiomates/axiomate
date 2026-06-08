@@ -1,0 +1,384 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Checkpoints — Axiomate File Snapshot System</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f5f7f8;
+      --panel: #ffffff;
+      --soft: #eef6f5;
+      --border: #d8e0e3;
+      --text: #172126;
+      --muted: #5d6b73;
+      --accent: #0f766e;
+      --warn: #92400e;
+      --danger: #991b1b;
+      --code: #f1f4f5;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font: 15px/1.65 "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    }
+    .wrap {
+      width: min(100% - 32px, 980px);
+      margin: 24px auto 48px;
+      display: grid;
+      gap: 18px;
+    }
+    header, section {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 22px 26px;
+    }
+    header {
+      background: #12343b;
+      color: #f7fbfb;
+    }
+    h1, h2, h3 { margin: 0; line-height: 1.25; }
+    h1 { font-size: clamp(28px, 4vw, 38px); }
+    h2 { color: var(--accent); font-size: 22px; }
+    h3 { margin-top: 18px; font-size: 17px; }
+    p { margin: 10px 0; }
+    code, pre {
+      font-family: "Consolas", "JetBrains Mono", monospace;
+      font-size: 13px;
+    }
+    code {
+      background: var(--code);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 1px 6px;
+      overflow-wrap: anywhere;
+    }
+    header code {
+      background: rgba(255, 255, 255, 0.92);
+      color: #102027;
+      border-color: rgba(255, 255, 255, 0.65);
+    }
+    pre {
+      background: #101c22;
+      color: #d7e8e8;
+      border-radius: 10px;
+      overflow-x: auto;
+      padding: 14px 16px;
+    }
+    pre code {
+      background: transparent;
+      border: 0;
+      color: inherit;
+      padding: 0;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 12px 0;
+      table-layout: fixed;
+    }
+    th, td {
+      text-align: left;
+      vertical-align: top;
+      border-bottom: 1px solid var(--border);
+      padding: 9px 10px;
+      overflow-wrap: anywhere;
+    }
+    th {
+      background: #f3f6f7;
+      color: var(--muted);
+      font-size: 12px;
+      text-transform: uppercase;
+    }
+    .toc {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 14px;
+    }
+    .toc a {
+      color: #073f3c;
+      background: #dff5f2;
+      border: 1px solid rgba(15, 118, 110, 0.2);
+      border-radius: 999px;
+      padding: 5px 10px;
+      text-decoration: none;
+    }
+    .note {
+      border-left: 4px solid var(--accent);
+      background: var(--soft);
+      border-radius: 8px;
+      padding: 10px 12px;
+      margin: 12px 0;
+    }
+    .warn {
+      border-left-color: #d97706;
+      background: #fff7df;
+    }
+    footer {
+      color: var(--muted);
+      text-align: center;
+      font-size: 12px;
+      padding: 12px;
+    }
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Checkpoints — File Snapshots and Rewind</h1>
+    <p>
+      Axiomate automatically records file snapshots before the AI is about to modify files.
+      File snapshots are stored in an isolated checkpoint git store and will never be written
+      to your project git repository. To restore files, use <code>/rewind</code>'s File tab;
+      to inspect storage status, use <code>/checkpoints</code>.
+    </p>
+    <div class="toc">
+      <a href="#model">Core Model</a>
+      <a href="#rewind">/rewind</a>
+      <a href="#commands">/checkpoints</a>
+      <a href="#nested">Nested git</a>
+      <a href="#limits">Default Limits</a>
+      <a href="#failures">Failures and Recovery</a>
+    </div>
+  </header>
+
+  <section id="model">
+    <h2>Core Model</h2>
+    <p>
+      Before each AI tool turn is about to modify files, Axiomate attempts to capture a
+      pre-change snapshot of the current working directory. If this snapshot is identical
+      to the tip of the current checkpoint ref, no commit is written; if there are real
+      file differences, a commit is written in the shadow git at
+      <code>~/.axiomate/checkpoints/store</code>.
+    </p>
+    <table>
+      <tr><th>Field</th><th>Meaning</th></tr>
+      <tr>
+        <td>commit hash</td>
+        <td>The primary key for file rewind. File tab selection and restoration are both based on the hash.</td>
+      </tr>
+      <tr>
+        <td>messageId</td>
+        <td>Auxiliary label used to link a checkpoint back to the user prompt that triggers the next file modification.</td>
+      </tr>
+      <tr>
+        <td>prompt preview</td>
+        <td>Display text. When lost or missing, file restoration by hash is unaffected.</td>
+      </tr>
+      <tr>
+        <td><code>+x -y</code></td>
+        <td>Semantics differ between interfaces; see the two sections below.</td>
+      </tr>
+    </table>
+    <p>
+      The checkpoint git is a shadow repository maintained by Axiomate itself. It is
+      isolated from your project git via <code>GIT_DIR</code>, <code>GIT_WORK_TREE</code>,
+      and <code>GIT_INDEX_FILE</code>. Your <code>.git</code>, commit history, staging area,
+      stash, and hooks will never be modified by the checkpoint system.
+    </p>
+  </section>
+
+  <section id="rewind">
+    <h2><code>/rewind</code> File tab</h2>
+    <p>
+      The File tab is the file restoration interface. It lists historical commits on the
+      current working directory's checkpoint ref, showing only rows that are meaningful
+      for file restoration. Each row's restoration target is the commit hash.
+    </p>
+    <div class="note">
+      <strong>The File tab's <code>+x -y</code> represents the file change consequences after pressing this row.</strong>
+      It is not the commit's own historical diff.
+    </div>
+    <table>
+      <tr><th>Row</th><th>What File tab stats compare against</th><th>Question answered</th></tr>
+      <tr>
+        <td>Latest checkpoint</td>
+        <td><code>checkpoint tree -> current disk</code></td>
+        <td>What changes on the current disk would be undone by reverting to the latest checkpoint?</td>
+      </tr>
+      <tr>
+        <td>Older checkpoint</td>
+        <td><code>checkpoint tree -> next checkpoint tree</code></td>
+        <td>Reverting to this historical point: what range would files be pushed back to?</td>
+      </tr>
+    </table>
+    <p>
+      This design has older-row stats derived from immutable commits, loading faster and
+      avoiding contamination from ongoing disk changes; only the latest row needs comparison
+      with the current disk.
+    </p>
+    <p>
+      The stats in the File tab list are a quick preview. After selecting a row with Enter,
+      the confirmation page re-computes the diff for just that one restore hash against the
+      current disk, so the <code>+x -y</code> and <code>Restore file</code> availability on
+      the confirmation page reflect the disk state at selection time without reloading the
+      entire list.
+    </p>
+    <p>
+      When rewind executes, it first creates a pre-rewind safety snapshot and then restores
+      the target file tree. If restoration fails midway, the File tab will show a row like
+      <code>↶ Before rewind</code>, which you can select to restore the state before the rewind.
+    </p>
+  </section>
+
+  <section id="commands">
+    <h2><code>/checkpoints</code> and CLI</h2>
+    <p>
+      <code>/checkpoints</code> is the read-only/maintenance entry point for the checkpoint
+      store, not a file restoration selector. To actually restore files, use
+      <code>/rewind</code>.
+    </p>
+    <table>
+      <tr><th>Command</th><th>Purpose</th></tr>
+      <tr>
+        <td><code>/checkpoints status</code><br><code>axiomate checkpoints status</code></td>
+        <td>View checkpoint base, store size, project count, and recent projects.</td>
+      </tr>
+      <tr>
+        <td><code>/checkpoints list</code><br><code>axiomate checkpoints list</code></td>
+        <td>Read-only listing of the current working directory's checkpoint commit history.</td>
+      </tr>
+      <tr>
+        <td><code>/checkpoints prune</code><br><code>axiomate checkpoints prune --force</code></td>
+        <td>Clean up orphan, stale, over-count, and over-capacity checkpoint data.</td>
+      </tr>
+      <tr>
+        <td><code>/checkpoints clear</code><br><code>axiomate checkpoints clear --force</code></td>
+        <td>Clear the entire checkpoint store. The CLI requires an explicit <code>--force</code> flag.</td>
+      </tr>
+    </table>
+    <div class="note warn">
+      <strong><code>/checkpoints list</code> <code>+x -y</code> semantics differ:</strong>
+      it shows the checkpoint commit's own historical diff, i.e.,
+      <code>parent(commit) -> commit</code>. The same hash may display different numbers in
+      <code>/rewind</code> because <code>/rewind</code> shows the restoration consequences
+      after selecting that row.
+    </div>
+    <p>
+      <code>/checkpoints list</code> shows the actual commits on the checkpoint ref, including
+      safety snapshots automatically created before rewinds and a small number of
+      historical/external commits whose subject cannot be parsed into Axiomate's structured
+      format. <code>/rewind</code> hides external commits by default because the file
+      restoration interface requires interpretable restoration labels and consequences.
+    </p>
+    <p>
+      The <code>TURN</code> column does not display the raw git commit subject; it is
+      formatted based on the checkpoint commit message:
+    </p>
+    <ul>
+      <li>Normal AI turn with <code>prompt: &lt;preview&gt;</code> body: displays <code>Before "&lt;preview&gt;"</code>.</li>
+      <li>Normal AI turn without prompt body: displays <code>Before &lt;label&gt; (&lt;first 8 chars of messageId&gt;)</code>.</li>
+      <li>Pre-rewind safety snapshot with <code>target: &lt;preview&gt;</code> body: displays <code>Undo rewind to before "&lt;preview&gt;"</code>.</li>
+      <li>Pre-rewind safety snapshot without target body: displays <code>Undo last rewind</code>.</li>
+      <li>External/historical commit: displays the raw subject; empty subject displays <code>(no subject)</code>.</li>
+    </ul>
+    <p>
+      The row count can be adjusted via <code>--rows</code> or the
+      <code>checkpointsStatusRows</code> config option. Default is 50 rows, with a range
+      of <code>1..500</code>.
+    </p>
+  </section>
+
+  <section id="nested">
+    <h2>Nested Git and File Discovery</h2>
+    <p>
+      The checkpoint system tracks the current working directory as a whole filesystem
+      snapshot rather than reusing your project git's staging area. To support nested git,
+      submodules, and worktrees, Axiomate does not use the user repository's
+      <code>git add -A</code> in production paths.
+    </p>
+    <p>Current discovery and staging rules:</p>
+    <ul>
+      <li>Regular files enter the snapshot as their current on-disk bytes.</li>
+      <li>VCS metadata such as <code>.git</code>, <code>.hg</code>, <code>.svn</code> are always excluded.</li>
+      <li>Regular files inside nested repos are included in the snapshot.</li>
+      <li>A nested repo's own staged/dirty/untracked state does not affect the checkpoint.</li>
+      <li>The <code>.gitignore</code> in the user project takes effect.</li>
+      <li>Parent directory ignore rules can prune an entire directory before entering a nested repo.</li>
+    </ul>
+    <p>
+      In testing, a fresh-index <code>git add -A</code> may be used as an oracle to verify
+      normal tree semantics; this is only a test baseline, not the production implementation.
+    </p>
+  </section>
+
+  <section id="limits">
+    <h2>Default Limits</h2>
+    <table>
+      <tr><th>Config/Limit</th><th>Default</th><th>Description</th></tr>
+      <tr>
+        <td><code>checkpointsStatusRows</code></td>
+        <td>50</td>
+        <td>Default row count displayed for <code>status</code>/<code>list</code>, range <code>1..500</code>.</td>
+      </tr>
+      <tr>
+        <td><code>checkpointsMaxSnapshotsPerProject</code></td>
+        <td>1000</td>
+        <td>Maximum number of snapshots retained per project ref. Set to <code>0</code> for unlimited.</td>
+      </tr>
+      <tr>
+        <td><code>checkpointsMaxFiles</code></td>
+        <td>200000</td>
+        <td>Maximum number of working directory files scanned per snapshot. Set to <code>0</code> for unlimited.</td>
+      </tr>
+      <tr>
+        <td>Single file size</td>
+        <td>50 MB</td>
+        <td>Files exceeding this size will not be included in the checkpoint managed tree.</td>
+      </tr>
+      <tr>
+        <td>Stale prune</td>
+        <td>30 days</td>
+        <td>Project refs untouched for an extended period are automatically cleaned up.</td>
+      </tr>
+      <tr>
+        <td>Store size cap</td>
+        <td>1000 MB</td>
+        <td>When exceeded, prune removes older commits, but at least one commit is kept per ref.</td>
+      </tr>
+    </table>
+  </section>
+
+  <section id="failures">
+    <h2>Failures and Recovery</h2>
+    <table>
+      <tr><th>Symptom</th><th>Meaning</th><th>Action</th></tr>
+      <tr>
+        <td>A certain AI change has no checkpoint</td>
+        <td>Likely no real file differences, exceeded file count/size limits, git unavailable, or a transient error.</td>
+        <td>Will retry on the next turn with file differences. For troubleshooting, check the debug log and <code>/checkpoints status</code>.</td>
+      </tr>
+      <tr>
+        <td>Rewind reports snapshot not found</td>
+        <td>The target commit may have been removed by prune, clear, or external gc.</td>
+        <td>Exit and reopen <code>/rewind</code> to refresh the list.</td>
+      </tr>
+      <tr>
+        <td>Rewind file restoration fails</td>
+        <td>Failure during file restoration; disk may be partially modified. Detailed git/pathspec diagnostics are only written to the debug log.</td>
+        <td>Reopen <code>/rewind</code>, switch to File tab, and select the latest restoration row; typically <code>↶ Before rewind</code>.</td>
+      </tr>
+      <tr>
+        <td>Checkpoint store too large</td>
+        <td>Excessive historical commits or large files.</td>
+        <td>Run <code>/checkpoints prune</code> or adjust count/capacity config.</td>
+      </tr>
+    </table>
+    <p>
+      The checkpoint system as a whole is fail-open: snapshot failures do not block the AI
+      tool from continuing. Rewind is the exception: if there is no safety snapshot or the
+      target commit cannot be confirmed, Axiomate will halt before modifying disk.
+    </p>
+  </section>
+
+  <footer>
+    Last updated: 2026-06-08 · Source of truth: docs/checkpoint/checkpoints-design.md
+  </footer>
+</div>
+</body>
+</html>
