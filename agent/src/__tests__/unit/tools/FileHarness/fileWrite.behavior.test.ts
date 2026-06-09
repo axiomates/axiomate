@@ -546,6 +546,23 @@ describe('FileWriteTool file harness behavior', () => {
     expect(validation.result).toBe(true)
   })
 
+  test('validateInput allows mtime-only drift after reading a lone-CR file', async () => {
+    const { FileWriteTool } = await loadFileTools()
+    const path = join(getHarnessCwd(), 'mtime-only-cr-write.txt')
+    await writeFile(path, 'alpha\rbeta\r', 'utf8')
+    const context = await readIntoContext(path)
+    const future = new Date(Date.now() + 10_000)
+    await utimes(path, future, future)
+
+    const validation = await FileWriteTool.validateInput!(
+      { file_path: path, content: 'replacement\n' },
+      context,
+    )
+
+    expect(context.readFileState.get(path)?.content).toBe('alpha\nbeta\n')
+    expect(validation.result).toBe(true)
+  })
+
   test('validateInput allows mtime-only drift for a BOM file after full Read', async () => {
     const { FileWriteTool } = await loadFileTools()
     const path = join(getHarnessCwd(), 'bom-mtime-only-write.txt')

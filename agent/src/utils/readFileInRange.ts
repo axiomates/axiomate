@@ -26,7 +26,7 @@
 //   On error (including maxBytes exceeded), stream.destroy(err) emits
 //   'error' → reject (passed directly to .once('error')).
 //
-// Both paths strip UTF-8 BOM and \r (CRLF → LF).
+// Both paths strip UTF-8 BOM and normalize CRLF/CR → LF.
 //
 // mtime comes from fstat/stat on the already-open fd — no extra open().
 //
@@ -134,10 +134,11 @@ function readFileInRangeFast(
 ): ReadFileRangeResult {
   const endLine = maxLines !== undefined ? offset + maxLines : Infinity
 
-  // Strip BOM.
-  const text = raw.charCodeAt(0) === 0xfeff ? raw.slice(1) : raw
+  // Strip BOM and normalize line endings to match readFileSyncWithMetadata.
+  const bomless = raw.charCodeAt(0) === 0xfeff ? raw.slice(1) : raw
+  const text = normalizeLineEndingsToLf(bomless)
 
-  // Split lines, strip \r, select range.
+  // Split lines and select range.
   const selectedLines: string[] = []
   let lineIndex = 0
   let startPos = 0
@@ -161,10 +162,7 @@ function readFileInRangeFast(
 
   while ((newlinePos = text.indexOf('\n', startPos)) !== -1) {
     if (lineIndex >= offset && lineIndex < endLine && !truncatedByBytes) {
-      let line = text.slice(startPos, newlinePos)
-      if (line.endsWith('\r')) {
-        line = line.slice(0, -1)
-      }
+      const line = text.slice(startPos, newlinePos)
       tryPush(line)
     }
     lineIndex++
@@ -173,10 +171,7 @@ function readFileInRangeFast(
 
   // Final fragment (no trailing newline).
   if (lineIndex >= offset && lineIndex < endLine && !truncatedByBytes) {
-    let line = text.slice(startPos)
-    if (line.endsWith('\r')) {
-      line = line.slice(0, -1)
-    }
+    const line = text.slice(startPos)
     tryPush(line)
   }
   lineIndex++
@@ -186,7 +181,7 @@ function readFileInRangeFast(
     content,
     lineCount: selectedLines.length,
     totalLines: lineIndex,
-    totalBytes: Buffer.byteLength(text, 'utf8'),
+    totalBytes: Buffer.byteLength(bomless, 'utf8'),
     readBytes: Buffer.byteLength(content, 'utf8'),
     mtimeMs,
     ...(truncatedByBytes ? { truncatedByBytes: true } : {}),
@@ -211,8 +206,59 @@ type StreamState = {
   selectedLines: string[]
   partial: string
   isFirstChunk: boolean
+  skipLeadingLf: boolean
   resolveMtime: (ms: number) => void
   mtimeReady: Promise<number>
+}
+
+function normalizeLineEndingsToLf(content: string): string {
+  return content.replaceAll('\r\n', '\n').replaceAll('\r', '\n')
+}
+
+function findNextLineBreak(
+  data: string,
+  startPos: number,
+): { index: number; length: number; skipNextLeadingLf: boolean } | null {
+  for (let index = startPos; index < data.length; index++) {
+    const code = data.charCodeAt(index)
+    if (code === 0x0a) {
+      return { index, length: 1, skipNextLeadingLf: false }
+    }
+    if (code === 0x0d) {
+      const hasInlineLf = data[index + 1] === '\n'
+      return {
+        index,
+        length: hasInlineLf ? 2 : 1,
+        skipNextLeadingLf: !hasInlineLf && index === data.length - 1,
+      }
+    }
+  }
+
+  return null
+}
+
+function pushSelectedStreamLine(state: StreamState, line: string): void {
+  if (
+    state.currentLineIndex >= state.offset &&
+    state.currentLineIndex < state.endLine
+  ) {
+    if (state.truncateOnByteLimit && state.maxBytes !== undefined) {
+      const sep = state.selectedLines.length > 0 ? 1 : 0
+      const nextBytes = state.selectedBytes + sep + Buffer.byteLength(line)
+      if (nextBytes > state.maxBytes) {
+        // Cap hit — collapse the selection range so nothing more is
+        // accumulated. Stream continues counting total lines.
+        state.truncatedByBytes = true
+        state.endLine = state.currentLineIndex
+      } else {
+        state.selectedBytes = nextBytes
+        state.selectedLines.push(line)
+      }
+    } else {
+      state.selectedLines.push(line)
+    }
+  }
+  state.currentLineIndex++
 }
 
 function streamOnOpen(this: StreamState, fd: number): void {
@@ -241,38 +287,22 @@ function streamOnData(this: StreamState, chunk: string): void {
     return
   }
 
+  if (this.skipLeadingLf) {
+    this.skipLeadingLf = false
+    if (chunk.startsWith('\n')) {
+      chunk = chunk.slice(1)
+    }
+  }
+
   const data = this.partial.length > 0 ? this.partial + chunk : chunk
   this.partial = ''
 
   let startPos = 0
-  let newlinePos: number
-  while ((newlinePos = data.indexOf('\n', startPos)) !== -1) {
-    if (
-      this.currentLineIndex >= this.offset &&
-      this.currentLineIndex < this.endLine
-    ) {
-      let line = data.slice(startPos, newlinePos)
-      if (line.endsWith('\r')) {
-        line = line.slice(0, -1)
-      }
-      if (this.truncateOnByteLimit && this.maxBytes !== undefined) {
-        const sep = this.selectedLines.length > 0 ? 1 : 0
-        const nextBytes = this.selectedBytes + sep + Buffer.byteLength(line)
-        if (nextBytes > this.maxBytes) {
-          // Cap hit — collapse the selection range so nothing more is
-          // accumulated.  Stream continues (to count totalLines).
-          this.truncatedByBytes = true
-          this.endLine = this.currentLineIndex
-        } else {
-          this.selectedBytes = nextBytes
-          this.selectedLines.push(line)
-        }
-      } else {
-        this.selectedLines.push(line)
-      }
-    }
-    this.currentLineIndex++
-    startPos = newlinePos + 1
+  let lineBreak: ReturnType<typeof findNextLineBreak>
+  while ((lineBreak = findNextLineBreak(data, startPos)) !== null) {
+    pushSelectedStreamLine(this, data.slice(startPos, lineBreak.index))
+    this.skipLeadingLf = lineBreak.skipNextLeadingLf
+    startPos = lineBreak.index + lineBreak.length
   }
 
   // Only keep the trailing fragment when inside the selected range.
@@ -304,27 +334,7 @@ function streamOnData(this: StreamState, chunk: string): void {
 }
 
 function streamOnEnd(this: StreamState): void {
-  let line = this.partial
-  if (line.endsWith('\r')) {
-    line = line.slice(0, -1)
-  }
-  if (
-    this.currentLineIndex >= this.offset &&
-    this.currentLineIndex < this.endLine
-  ) {
-    if (this.truncateOnByteLimit && this.maxBytes !== undefined) {
-      const sep = this.selectedLines.length > 0 ? 1 : 0
-      const nextBytes = this.selectedBytes + sep + Buffer.byteLength(line)
-      if (nextBytes > this.maxBytes) {
-        this.truncatedByBytes = true
-      } else {
-        this.selectedLines.push(line)
-      }
-    } else {
-      this.selectedLines.push(line)
-    }
-  }
-  this.currentLineIndex++
+  pushSelectedStreamLine(this, this.partial)
 
   const content = this.selectedLines.join('\n')
   const truncated = this.truncatedByBytes
@@ -368,6 +378,7 @@ function readFileInRangeStreaming(
       selectedLines: [],
       partial: '',
       isFirstChunk: true,
+      skipLeadingLf: false,
       resolveMtime: () => {},
       mtimeReady: null as unknown as Promise<number>,
     }

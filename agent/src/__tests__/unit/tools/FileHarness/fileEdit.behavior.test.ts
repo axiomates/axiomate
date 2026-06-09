@@ -487,6 +487,23 @@ describe('FileEditTool file harness behavior', () => {
     expect(result.result).toBe(true)
   })
 
+  test('allows mtime-only drift after reading a lone-CR file', async () => {
+    const { FileEditTool } = await loadFileTools()
+    const path = join(getHarnessCwd(), 'mtime-only-cr-edit.txt')
+    await writeFile(path, 'alpha\rbeta\r', 'utf8')
+    const context = await readIntoContext(path)
+    const future = new Date(Date.now() + 10_000)
+    await utimes(path, future, future)
+
+    const result = await FileEditTool.validateInput!(
+      { file_path: path, old_string: 'beta', new_string: 'BETA' },
+      context,
+    )
+
+    expect(context.readFileState.get(path)?.content).toBe('alpha\nbeta\n')
+    expect(result.result).toBe(true)
+  })
+
   test('allows mtime-only drift for a BOM file after full Read', async () => {
     const { FileEditTool } = await loadFileTools()
     const path = join(getHarnessCwd(), 'bom-mtime-only-edit.txt')
