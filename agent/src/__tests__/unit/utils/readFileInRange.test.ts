@@ -38,4 +38,26 @@ describe('readFileInRange', () => {
     expect(result.content).toBe('alpha\nbeta\ngamma')
     expect(result.lineCount).toBe(3)
   })
+
+  test('decodes UTF-16LE BOM files in the fast path', async () => {
+    const path = join(tmpDir, 'utf16le.txt')
+    await writeFile(path, Buffer.from('\ufeffalpha\nbeta\n', 'utf16le'))
+
+    const result = await readFileInRange(path)
+
+    expect(result.content).toBe('alpha\nbeta\n')
+    expect(result.lineCount).toBe(3)
+    expect(result.totalLines).toBe(3)
+  })
+
+  test('decodes UTF-16LE BOM files in the streaming path', async () => {
+    const path = join(tmpDir, 'utf16le-large.txt')
+    const line = `${'x'.repeat(1024)}\n`
+    await writeFile(path, Buffer.from(`\ufeff${line.repeat(6000)}`, 'utf16le'))
+
+    const result = await readFileInRange(path, 0, 2)
+
+    expect(result.content).toBe(`${line}${line}`.trimEnd())
+    expect(result.lineCount).toBe(2)
+  })
 })

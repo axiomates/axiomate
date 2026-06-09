@@ -39,6 +39,7 @@
 
 import { createReadStream, fstat } from 'fs'
 import { stat as fsStat, readFile } from 'fs/promises'
+import { detectEncodingForResolvedPath } from './fileRead.js'
 import { formatFileSize } from './format.js'
 
 const FAST_PATH_MAX_SIZE = 10 * 1024 * 1024 // 10 MB
@@ -92,6 +93,10 @@ export async function readFileInRange(
     )
   }
 
+  const encoding: BufferEncoding = stats.isFile()
+    ? detectEncodingForResolvedPath(filePath)
+    : 'utf8'
+
   if (stats.isFile() && stats.size < FAST_PATH_MAX_SIZE) {
     if (
       !truncateOnByteLimit &&
@@ -101,7 +106,7 @@ export async function readFileInRange(
       throw new FileTooLargeError(stats.size, maxBytes)
     }
 
-    const text = await readFile(filePath, { encoding: 'utf8', signal })
+    const text = await readFile(filePath, { encoding, signal })
     return readFileInRangeFast(
       text,
       stats.mtimeMs,
@@ -117,6 +122,7 @@ export async function readFileInRange(
     maxLines,
     maxBytes,
     truncateOnByteLimit,
+    encoding,
     signal,
   )
 }
@@ -194,6 +200,7 @@ function readFileInRangeFast(
 
 type StreamState = {
   stream: ReturnType<typeof createReadStream>
+  encoding: BufferEncoding
   offset: number
   endLine: number
   maxBytes: number | undefined
@@ -275,7 +282,7 @@ function streamOnData(this: StreamState, chunk: string): void {
     }
   }
 
-  this.totalBytesRead += Buffer.byteLength(chunk)
+  this.totalBytesRead += Buffer.byteLength(chunk, this.encoding)
   if (
     !this.truncateOnByteLimit &&
     this.maxBytes !== undefined &&
@@ -357,15 +364,17 @@ function readFileInRangeStreaming(
   maxLines: number | undefined,
   maxBytes: number | undefined,
   truncateOnByteLimit: boolean,
+  encoding: BufferEncoding,
   signal?: AbortSignal,
 ): Promise<ReadFileRangeResult> {
   return new Promise((resolve, reject) => {
     const state: StreamState = {
       stream: createReadStream(filePath, {
-        encoding: 'utf8',
+        encoding,
         highWaterMark: 512 * 1024,
         ...(signal ? { signal } : undefined),
       }),
+      encoding,
       offset,
       endLine: maxLines !== undefined ? offset + maxLines : Infinity,
       maxBytes,

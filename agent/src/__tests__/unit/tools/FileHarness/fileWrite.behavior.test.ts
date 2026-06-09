@@ -580,6 +580,23 @@ describe('FileWriteTool file harness behavior', () => {
     expect(validation.result).toBe(true)
   })
 
+  test('validateInput allows mtime-only drift for a UTF-16LE BOM file after full Read', async () => {
+    const { FileWriteTool } = await loadFileTools()
+    const path = join(getHarnessCwd(), 'utf16-mtime-only-write.txt')
+    await writeFile(path, Buffer.from('\ufeffalpha\n', 'utf16le'))
+    const context = await readIntoContext(path)
+    const future = new Date(Date.now() + 10_000)
+    await utimes(path, future, future)
+
+    const validation = await FileWriteTool.validateInput!(
+      { file_path: path, content: 'beta\n' },
+      context,
+    )
+
+    expect(context.readFileState.get(path)?.content).toBe('alpha\n')
+    expect(validation.result).toBe(true)
+  })
+
   test('call allows mtime-only drift when readFileState came from full Read', async () => {
     const { FileWriteTool } = await loadFileTools()
     const path = join(getHarnessCwd(), 'mtime-only-write-call.txt')

@@ -253,6 +253,32 @@ describe('BashTool simulated sed file harness behavior', () => {
     expect(context.readFileState.get(path)?.content).toBe('alpha\nBETA\n')
   })
 
+  test('allows mtime-only drift after reading a UTF-16LE BOM file before simulated sed', async () => {
+    const path = join(getHarnessCwd(), 'sed-mtime-only-utf16.txt')
+    await writeFile(path, Buffer.from('\ufeffalpha\nbeta\n', 'utf16le'))
+    const context = await readIntoContext(path)
+    const future = new Date(Date.now() + 10_000)
+    await utimes(path, future, future)
+
+    await BashTool.call(
+      {
+        command: `sed -i 's/beta/BETA/' ${path}`,
+        _simulatedSedEdit: {
+          filePath: path,
+          newContent: 'alpha\nBETA\n',
+        },
+      },
+      context,
+      allowToolUse,
+      parentMessage,
+    )
+
+    const raw = await readFile(path)
+    expect(raw.subarray(0, 2)).toEqual(Buffer.from([0xff, 0xfe]))
+    expect(raw.toString('utf16le')).toBe('\ufeffalpha\nBETA\n')
+    expect(context.readFileState.get(path)?.content).toBe('alpha\nBETA\n')
+  })
+
   test('simulated sed preserves existing UTF-8 BOM and CRLF line endings', async () => {
     const path = join(getHarnessCwd(), 'bom-crlf-sed.txt')
     await writeFile(path, '\ufeffalpha\r\nbeta\r\n', 'utf8')
