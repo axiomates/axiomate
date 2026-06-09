@@ -7,7 +7,7 @@
     "C:/imgs/right/a.png",
     "C:/imgs/right/b.png"
   ],
-  "visionModel": "Qwen/Qwen3.6-Plus",
+  "visionModel": "Qwen/Qwen3.5-122B-A10",
   "visionImageScaleFactor": 0.5,
   "pixelCompareScaleFactor": 0.5,
   "outputPath": "./report.json"
