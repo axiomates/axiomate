@@ -35,7 +35,7 @@ import { getFileExtensionForAnalytics } from '../../services/analytics/metadata.
 import { logFileOperation } from '../../utils/fileOperationAnalytics.js'
 import {
   fileStateHasFullContent,
-  shouldForceContentStaleCheck,
+  isReadStateStaleForWrite,
 } from '../../utils/fileStateCache.js'
 import {
   noteFileWrite,
@@ -315,35 +315,29 @@ export const FileEditTool = buildTool({
     // Check if file exists and get its last modified time
     if (readTimestamp) {
       const lastWriteTime = getFileModificationTime(fullFilePath)
+      // Timestamp drift alone can be Windows mtime churn; an unstamped full
+      // read also forces a content comparison. A full-content read still equal
+      // to disk is safe to proceed on.
       if (
-        shouldForceContentStaleCheck(
+        isReadStateStaleForWrite(
           readTimestamp,
+          fileContent,
           lastWriteTime > readTimestamp.timestamp,
         )
       ) {
-        // Timestamp indicates modification, but on Windows timestamps can change
-        // without content changes (cloud sync, antivirus, etc.). For full reads,
-        // compare content as a fallback to avoid false positives.
-        if (
-          fileStateHasFullContent(readTimestamp) &&
-          fileContent === readTimestamp.content
-        ) {
-          // Content unchanged, safe to proceed
-        } else {
-          return {
-            result: false,
-            behavior: 'ask',
-            message:
-              'File has been modified since read, either by the user or by a linter. Read it again before attempting to write it.',
-            errorCode: 7,
-            fileHarnessFailure: fileHarnessFailure(
-              fileStateHasFullContent(readTimestamp)
-                ? 'stale_content'
-                : 'stale_mtime',
-              'validation',
-              fullFilePath,
-            ),
-          }
+        return {
+          result: false,
+          behavior: 'ask',
+          message:
+            'File has been modified since read, either by the user or by a linter. Read it again before attempting to write it.',
+          errorCode: 7,
+          fileHarnessFailure: fileHarnessFailure(
+            fileStateHasFullContent(readTimestamp)
+              ? 'stale_content'
+              : 'stale_mtime',
+            'validation',
+            fullFilePath,
+          ),
         }
       }
     }
@@ -550,27 +544,22 @@ export const FileEditTool = buildTool({
             )
           }
           if (
-            shouldForceContentStaleCheck(
+            isReadStateStaleForWrite(
               lastRead,
+              originalFileContents,
               lastWriteTime > lastRead.timestamp,
             )
           ) {
-            // Timestamp indicates modification, but on Windows timestamps can change
-            // without content changes (cloud sync, antivirus, etc.). For full reads,
-            // compare content as a fallback to avoid false positives.
-            const contentUnchanged =
-              fileStateHasFullContent(lastRead) &&
-              originalFileContents === lastRead.content
-            if (!contentUnchanged) {
-              throwFileHarnessFailure(
-                FILE_UNEXPECTEDLY_MODIFIED_ERROR,
-                fileStateHasFullContent(lastRead)
-                  ? 'stale_content'
-                  : 'stale_mtime',
-                'execution',
-                absoluteFilePath,
-              )
-            }
+            // Timestamp drift alone can be Windows mtime churn; an unstamped
+            // full read also forces this content comparison.
+            throwFileHarnessFailure(
+              FILE_UNEXPECTEDLY_MODIFIED_ERROR,
+              fileStateHasFullContent(lastRead)
+                ? 'stale_content'
+                : 'stale_mtime',
+              'execution',
+              absoluteFilePath,
+            )
           }
         }
 

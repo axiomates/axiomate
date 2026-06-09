@@ -41,10 +41,6 @@ import {
   type FileState,
   type FileStateCache,
 } from './fileStateCache.js'
-import {
-  recordFileRead,
-  setObservedFileStateIfNewer,
-} from './fileStateRegistry.js'
 import { isNotEmptyMessage, normalizeMessages } from './messages.js'
 import { notebookRawJsonToReadStateContent } from './notebook.js'
 import { expandPath } from './path.js'
@@ -701,43 +697,21 @@ export function restoreObservedReadFilesFromMessages(
     cwd,
     maxSize,
   )
-  const context = { readFileState: restored }
 
   for (const [filePath, fileState] of extracted.entries()) {
     const existing = restored.get(filePath)
-    const applied = setObservedFileStateIfNewer(context, filePath, {
-      ...fileState,
-    })
-    if (
-      !applied &&
-      existing &&
-      existing.timestamp === fileState.timestamp &&
-      fileStatesHaveSameObservedContent(existing, fileState)
-    ) {
-      recordFileRead(context, filePath)
-    }
+    if (existing && existing.timestamp >= fileState.timestamp) continue
+    // Reconstructed reads are NOT stamped into the registry. registrySequence
+    // is a live process-local ordering signal with no transcript form; minting
+    // a fresh stamp here would order a rebuilt historical read AFTER any real
+    // concurrent sibling write (e.g. during speculation), masking it. Leaving
+    // it unstamped makes wasFileModifiedAfterReadByAnotherContext abstain and
+    // defers to the content/mtime gate — consistent with the compact and
+    // SDK-seed reconstruction paths.
+    restored.set(filePath, { ...fileState })
   }
 
   return restored
-}
-
-function fileStatesHaveSameObservedContent(
-  first: FileState,
-  second: FileState,
-): boolean {
-  return (
-    first.content === second.content &&
-    first.offset === second.offset &&
-    first.limit === second.limit &&
-    first.totalLines === second.totalLines &&
-    first.isPartialView === second.isPartialView &&
-    first.toolNormalization?.sourceTool ===
-      second.toolNormalization?.sourceTool &&
-    first.toolNormalization?.removedLeadingBom ===
-      second.toolNormalization?.removedLeadingBom &&
-    first.toolNormalization?.normalizedLineEndings ===
-      second.toolNormalization?.normalizedLineEndings
-  )
 }
 
 function getRecoveredReadStateMetadata(

@@ -398,6 +398,28 @@ content-fidelity fixes.
   (2466 tests; one unrelated pathspec performance test flaked on a 5s timeout
   under full-suite load and passes in isolation).
 
+2026-06-09 follow-up (same day, second commit):
+
+- Retired the "stamp on reconstruct" behavior in
+  `restoreObservedReadFilesFromMessages` (used by TUI resume and speculation).
+  It minted a fresh `registrySequence` for rebuilt historical reads, which
+  ordered them after any real concurrent sibling write and masked it — a false
+  negative, most impactful during speculation (same live process with real
+  `lastWriterByPath` entries). Reconstructed reads are now left unstamped so the
+  registry abstains and the content/mtime gate decides. On real TUI resume the
+  process is fresh (empty writer registry), so this is observationally a no-op
+  there. Four tests updated to assert the abstain semantics; dead helper
+  `fileStatesHaveSameObservedContent` removed.
+- Deduplicated the four copy-pasted staleness checks (FileWrite/FileEdit,
+  validate + in-lock call) into `isReadStateStaleForWrite` in
+  `fileStateCache.ts`. `shouldForceContentStaleCheck` remains only where it
+  still guards an on-demand disk read (FileWrite validate).
+- Added the two highest-value B-class test gaps from the b59a review: dedup
+  escalation reset after a real full re-read (B06), and FileEdit match-failure
+  escalation reset hinging on read-state object identity — only a
+  content-changing re-read resets it (B11).
+- Verification: full `pnpm run test` green (2468 tests).
+
 Completed and pushed:
 
 - Stage 1: native Axiomate FileHarness tests.

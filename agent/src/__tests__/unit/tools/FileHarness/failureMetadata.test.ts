@@ -355,6 +355,59 @@ describe('FileHarness failure metadata', () => {
     })
   })
 
+  test('resets FileEdit match failure escalation after a content-changing re-read', async () => {
+    // B11: the consecutive-failure counter keys on the read-state object
+    // identity. A re-read that yields new content replaces that object, so the
+    // next match failure restarts at 1 — even though a plain Read does not call
+    // clearFileEditMatchFailure. (An unchanged-content re-read hits dedup and
+    // keeps the same object, so it intentionally does NOT reset.)
+    const path = join(getHarnessCwd(), 'edit-escalate-reset-reread.txt')
+    await writeFile(path, 'alpha\nbeta\n', 'utf8')
+    const context = await readIntoContext(path)
+
+    const first = await FileEditTool.validateInput!(
+      { file_path: path, old_string: 'gamma', new_string: 'GAMMA' },
+      context,
+    )
+    expectValidationFailure(first)
+    expectEditEscalation(first, {
+      reason: 'string_not_found',
+      count: 1,
+      level: 'none',
+    })
+
+    const second = await FileEditTool.validateInput!(
+      { file_path: path, old_string: 'gamma', new_string: 'GAMMA' },
+      context,
+    )
+    expectValidationFailure(second)
+    expectEditEscalation(second, {
+      reason: 'string_not_found',
+      count: 2,
+      level: 'reread',
+    })
+
+    // A content-changing re-read replaces the read-state object identity.
+    await writeFile(path, 'alpha\nbeta\ndelta\n', 'utf8')
+    await FileReadTool.call(
+      { file_path: path },
+      context,
+      allowToolUse,
+      parentMessage,
+    )
+
+    const afterReread = await FileEditTool.validateInput!(
+      { file_path: path, old_string: 'gamma', new_string: 'GAMMA' },
+      context,
+    )
+    expectValidationFailure(afterReread)
+    expectEditEscalation(afterReread, {
+      reason: 'string_not_found',
+      count: 1,
+      level: 'none',
+    })
+  })
+
   test('marks unread NotebookEdit validation as not_read', async () => {
     const path = join(getHarnessCwd(), 'notebook-unread.ipynb')
     await writeNotebook(path, 'print("one")')

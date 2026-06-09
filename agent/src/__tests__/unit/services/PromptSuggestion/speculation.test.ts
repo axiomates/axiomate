@@ -204,7 +204,11 @@ describe('handleSpeculationAccept file state restoration', () => {
     expect(result).toEqual({ queryRequired: false })
     const restored = readFileState.current.get(file)
     expect(restored?.content).toBe('alpha\nbeta')
-    expect(restored?.registrySequence).toBeDefined()
+    // Speculated (reconstructed) reads are not stamped, so the registry
+    // abstains on the concurrent sibling write rather than masking it with a
+    // freshly-minted stamp. Staleness is then decided by the content/mtime gate
+    // when a write is actually attempted.
+    expect(restored?.registrySequence).toBeUndefined()
 
     expect(
       wasFileModifiedAfterReadByAnotherContext(

@@ -749,7 +749,7 @@ describe('FileEditTool file harness behavior', () => {
     expect(context.readFileState.get(path)?.timestamp).toBe(
       new Date(readTimestamp).getTime(),
     )
-    expect(context.readFileState.get(path)?.registrySequence).toBeDefined()
+    expect(context.readFileState.get(path)?.registrySequence).toBeUndefined()
     expectValidationFailure(result)
     expect(result.errorCode).toBe(7)
     expect(result.fileHarnessFailure?.reason).toBe('stale_content')

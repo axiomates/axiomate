@@ -273,4 +273,59 @@ describe('FileReadTool file harness dedup behavior', () => {
     expect(reread.data.file.content).toBe('child\n')
     expect(parentContext.readFileState.get(path)?.content).toBe('child\n')
   })
+
+  test('resets the dedup escalation counter after a real full re-read', async () => {
+    // B06: a genuine text read clears the tracker, so a later unchanged read
+    // starts the escalation over at count 1 instead of continuing toward STOP.
+    const { FileReadTool } = await loadFileTools()
+    const path = join(getHarnessCwd(), 'dedup-reset-after-read.txt')
+    await writeFile(path, 'alpha\nbeta\n', 'utf8')
+    const context = makeToolContext()
+
+    // Escalate to reread-loop: one real read + two unchanged reads (count 2).
+    await FileReadTool.call(
+      { file_path: path },
+      context,
+      allowToolUse,
+      parentMessage,
+    )
+    await FileReadTool.call(
+      { file_path: path },
+      context,
+      allowToolUse,
+      parentMessage,
+    )
+    const secondDedup = await FileReadTool.call(
+      { file_path: path },
+      context,
+      allowToolUse,
+      parentMessage,
+    )
+    expect(secondDedup.data.type).toBe('file_unchanged')
+    if (secondDedup.data.type !== 'file_unchanged') return
+    expect(secondDedup.data.file.dedupCount).toBe(2)
+    expect(secondDedup.data.file.dedupLevel).toBe('reread-loop')
+
+    // A content change followed by a real text read clears the tracker.
+    await writeFile(path, 'alpha\nbeta\ngamma\n', 'utf8')
+    const realReread = await FileReadTool.call(
+      { file_path: path },
+      context,
+      allowToolUse,
+      parentMessage,
+    )
+    expect(realReread.data.type).toBe('text')
+
+    // The next unchanged read restarts at count 1 / none, not 3 / stop.
+    const afterReset = await FileReadTool.call(
+      { file_path: path },
+      context,
+      allowToolUse,
+      parentMessage,
+    )
+    expect(afterReset.data.type).toBe('file_unchanged')
+    if (afterReset.data.type !== 'file_unchanged') return
+    expect(afterReset.data.file.dedupCount).toBe(1)
+    expect(afterReset.data.file.dedupLevel).toBe('none')
+  })
 })

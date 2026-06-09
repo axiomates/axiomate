@@ -28,6 +28,7 @@ import {
 import { logFileOperation } from '../../utils/fileOperationAnalytics.js'
 import {
   fileStateHasFullContent,
+  isReadStateStaleForWrite,
   shouldForceContentStaleCheck,
 } from '../../utils/fileStateCache.js'
 import {
@@ -267,10 +268,7 @@ export const FileWriteTool = buildTool({
       )
     ) {
       const meta = readFileSyncWithMetadata(fullFilePath)
-      if (
-        !fileStateHasFullContent(readTimestamp) ||
-        meta.content !== readTimestamp.content
-      ) {
+      if (isReadStateStaleForWrite(readTimestamp, meta.content, true)) {
         return {
           result: false,
           message:
@@ -374,28 +372,23 @@ export const FileWriteTool = buildTool({
             )
           }
           if (
-            shouldForceContentStaleCheck(
+            isReadStateStaleForWrite(
               lastRead,
+              meta.content,
               lastWriteTime > lastRead.timestamp,
             )
           ) {
-            // Timestamp indicates modification, but on Windows timestamps can change
-            // without content changes (cloud sync, antivirus, etc.). For full reads,
-            // compare content as a fallback to avoid false positives.
-            // meta.content is CRLF-normalized and BOM-stripped — matches Read state.
-            if (
-              !fileStateHasFullContent(lastRead) ||
-              meta.content !== lastRead.content
-            ) {
-              throwFileHarnessFailure(
-                FILE_UNEXPECTEDLY_MODIFIED_ERROR,
-                fileStateHasFullContent(lastRead)
-                  ? 'stale_content'
-                  : 'stale_mtime',
-                'execution',
-                fullFilePath,
-              )
-            }
+            // Timestamp drift alone can be Windows mtime churn; an unstamped
+            // full read also forces this content comparison. meta.content is
+            // CRLF-normalized and BOM-stripped — matches Read state.
+            throwFileHarnessFailure(
+              FILE_UNEXPECTEDLY_MODIFIED_ERROR,
+              fileStateHasFullContent(lastRead)
+                ? 'stale_content'
+                : 'stale_mtime',
+              'execution',
+              fullFilePath,
+            )
           }
         }
 

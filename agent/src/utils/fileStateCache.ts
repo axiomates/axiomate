@@ -68,6 +68,30 @@ export function shouldForceContentStaleCheck(
   )
 }
 
+/**
+ * The shared read-before-write staleness decision used by all four
+ * Write/Edit gate sites (FileWrite/FileEdit, validate + in-lock call).
+ *
+ * Returns true when the write must be rejected as stale. The rule:
+ * - If neither the mtime advanced nor the read is an unstamped full read, the
+ *   cheap pre-filter clears it — not stale.
+ * - Otherwise compare content: a full-content read whose snapshot still equals
+ *   `currentContent` is NOT stale (Windows mtime churn tolerance); anything
+ *   else (partial read, or content mismatch) IS stale.
+ *
+ * `currentContent` must already be LF-normalized / BOM-stripped to match how
+ * FileState.content is stored.
+ */
+export function isReadStateStaleForWrite(
+  fileState: FileState,
+  currentContent: string,
+  mtimeAdvanced: boolean,
+): boolean {
+  if (!shouldForceContentStaleCheck(fileState, mtimeAdvanced)) return false
+  if (!fileStateHasFullContent(fileState)) return true
+  return currentContent !== fileState.content
+}
+
 // Default max entries for read file state caches
 export const READ_FILE_STATE_CACHE_SIZE = 100
 

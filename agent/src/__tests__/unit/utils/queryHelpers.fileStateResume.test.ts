@@ -600,7 +600,7 @@ describe('reconstructFileStateFromTranscriptMessages file-state resume reconstru
     )
   })
 
-  test('TUI resume marks restored Read state as an observed registry read without changing historical timestamp', () => {
+  test('TUI resume restores observed Read state without stamping the registry', () => {
     const dir = tempDir()
     const file = join(dir, 'tui-resume-observed-read.txt')
     const readTimestamp = '2026-01-01T00:00:01.000Z'
@@ -631,11 +631,14 @@ describe('reconstructFileStateFromTranscriptMessages file-state resume reconstru
     const restored = parent.readFileState.get(file)
     expect(restored?.content).toBe('alpha\nbeta')
     expect(restored?.timestamp).toBe(new Date(readTimestamp).getTime())
-    expect(restored?.registrySequence).toBeDefined()
+    // A rebuilt historical read is left unstamped so the registry abstains and
+    // defers to the content/mtime gate, rather than minting a stamp that would
+    // mask a real sibling write.
+    expect(restored?.registrySequence).toBeUndefined()
     expect(wasFileModifiedAfterReadByAnotherContext(parent, file)).toBe(false)
   })
 
-  test('TUI resume stamps an equivalent restored state that was already cached without a registry read', () => {
+  test('TUI resume leaves an equivalent already-cached read unstamped', () => {
     const dir = tempDir()
     const file = join(dir, 'tui-resume-existing-read.txt')
     const readTimestamp = '2026-01-01T00:00:01.000Z'
@@ -670,7 +673,7 @@ describe('reconstructFileStateFromTranscriptMessages file-state resume reconstru
     const restored = parent.readFileState.get(file)
     expect(restored?.content).toBe('alpha\nbeta')
     expect(restored?.timestamp).toBe(new Date(readTimestamp).getTime())
-    expect(restored?.registrySequence).toBeDefined()
+    expect(restored?.registrySequence).toBeUndefined()
     expect(wasFileModifiedAfterReadByAnotherContext(parent, file)).toBe(false)
   })
 })
