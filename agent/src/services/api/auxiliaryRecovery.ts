@@ -35,9 +35,17 @@ import {
   type RetryContext,
 } from './withRetry.js'
 
+// Foreground classification for auxiliary calls routed ONLY by querySource —
+// i.e. callers that do NOT pass an auxiliaryTask (e.g. sideQuestion.ts). When
+// an auxiliaryTask IS present, the task/profile branches in
+// resolveAuxiliaryRecoveryBudget decide first and this set is never consulted.
+// (That is why 'permission_explainer' is intentionally absent: its only caller
+// passes auxiliaryTask:'permissionExplainer', so it resolves via the fast-task
+// branch, not here — listing it here would be dead.) Distinct from
+// FOREGROUND_RETRY_SOURCES in withRetry.ts, which classifies the MAIN request
+// path; keep the two in sync deliberately, they are not interchangeable.
 const FOREGROUND_AUXILIARY_SOURCES = new Set<string>([
   'side_question',
-  'permission_explainer',
   'verification_agent',
 ])
 

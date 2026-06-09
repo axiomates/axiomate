@@ -43,6 +43,13 @@ export const MAX_PROVIDER_RETRY_AFTER_MS = 120_000
 // retry on overloaded errors. Everything else (summaries, titles, suggestions,
 // classifiers) bails immediately: during a capacity cascade each retry is
 // 3-10× gateway amplification, and the user never sees those fail anyway.
+//
+// This classifies the MAIN request path. The auxiliary path has its own,
+// intentionally different set — FOREGROUND_AUXILIARY_SOURCES in
+// auxiliaryRecovery.ts — which only applies to auxiliary calls routed by
+// querySource with no auxiliaryTask. The two are NOT interchangeable (different
+// source universes); if you add a source here, check whether the auxiliary
+// sibling also needs it.
 const FOREGROUND_RETRY_SOURCES = new Set<QuerySource>([
   'repl_main_thread',
   'repl_main_thread:outputStyle:custom',

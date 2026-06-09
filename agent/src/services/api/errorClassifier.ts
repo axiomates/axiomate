@@ -242,15 +242,6 @@ const BILLING_ERROR_CODES = [
   'model_not_supported_on_free_tier',
 ]
 
-const REQUEST_VALIDATION_PATTERNS = [
-  'unknown parameter',
-  'unsupported parameter',
-  'unrecognized request argument',
-  'invalid_request_error',
-  'unknown_parameter',
-  'unsupported_parameter',
-]
-
 const REQUEST_FIELD_VALIDATION_PATTERNS = [
   'unknown parameter',
   'unsupported parameter',
