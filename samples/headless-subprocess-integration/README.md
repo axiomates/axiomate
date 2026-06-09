@@ -30,9 +30,9 @@ It is not an SDK import.
 Example model key usage:
 
 - `visionModel`: a vision-capable key from `models` in `~/.axiomate.json`.
-  The bundled examples use `Qwen/Qwen3.5-122B-A10`; either configure a
-  `models["Qwen/Qwen3.5-122B-A10"]` entry, or replace the example value with
-  your own configured model key.
+  The bundled examples use `Pro/moonshotai/Kimi-K2.6`; either configure a
+  `models["Pro/moonshotai/Kimi-K2.6"]` entry, or replace the example value
+  with your own configured model key.
 
 ## Copy Elsewhere
 
@@ -85,7 +85,7 @@ Mode 1: explicit arrays
 {
   "left": ["C:/imgs/left/a.png", "C:/imgs/left/b.png"],
   "right": ["C:/imgs/right/a.png", "C:/imgs/right/b.png"],
-  "visionModel": "Qwen/Qwen3.5-122B-A10",
+  "visionModel": "Pro/moonshotai/Kimi-K2.6",
   "visionImageScaleFactor": 0.5,
   "pixelCompareScaleFactor": 0.5,
   "outputPath": "./report.json"
@@ -98,7 +98,7 @@ Mode 2: directories
 {
   "leftDir": "C:/imgs/left",
   "rightDir": "C:/imgs/right",
-  "visionModel": "Qwen/Qwen3.5-122B-A10",
+  "visionModel": "Pro/moonshotai/Kimi-K2.6",
   "visionImageScaleFactor": 0.5,
   "pixelCompareScaleFactor": 0.5,
   "outputPath": "./report.json"
