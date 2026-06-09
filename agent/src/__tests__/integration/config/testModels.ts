@@ -24,6 +24,15 @@ export const TEST_MODELS = {
    * may be too weak; bump to 32B if empirically unstable.
    */
   toolCalling: 'Qwen/Qwen3-8B',
+
+  /**
+   * Fallback target for the route/auxiliary fallback gate. The gate points an
+   * unavailable primary at this model and asserts recovery switches to it, so
+   * it must be a real, reachable, low-cost model — NOT the expensive main
+   * model. A mid-size Qwen on SiliconFlow is cheap and reliable enough to be
+   * the thing we fall back TO.
+   */
+  fallbackTarget: 'Qwen/Qwen3.5-122B-A10B',
 } as const
 
 export type TestModelCategory = keyof typeof TEST_MODELS

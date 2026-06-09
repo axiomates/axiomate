@@ -1,8 +1,13 @@
 {
   "_comment": "Copy this file to local.json (gitignored) and fill in real API keys. NEVER commit local.json.",
-  "_format": "Mirrors the 'models' section of ~/.axiomate.json. Integration tests read from THIS file — they do NOT read from your real ~/.axiomate.json.",
+  "_format": "Mirrors the 'models' section of ~/.axiomate.json. Integration tests read from THIS file — they do NOT read from your real ~/.axiomate.json. The fallback gate (apiHarnessFallback) needs at least two reachable models: a primary plus a low-cost fallback target — see the non-empty fallbackChain below.",
   "models": {
     "Qwen/Qwen3-8B": {
+      "protocol": "openai-chat",
+      "baseUrl": "https://api.siliconflow.cn/v1",
+      "apiKey": "sk-PLACEHOLDER"
+    },
+    "Qwen/Qwen3.5-122B-A10B": {
       "protocol": "openai-chat",
       "baseUrl": "https://api.siliconflow.cn/v1",
       "apiKey": "sk-PLACEHOLDER"
@@ -13,7 +18,9 @@
     "routes": {
       "default": {
         "primary": "Qwen/Qwen3-8B",
-        "fallbackChain": [],
+        "fallbackChain": [
+          "Qwen/Qwen3.5-122B-A10B"
+        ],
         "recoveryProfile": "main-agent",
         "allowActions": [
           "retry_same_model",
@@ -155,7 +162,9 @@
     },
     "sessionTitle": {
       "primary": "Qwen/Qwen3-8B",
-      "fallbackChain": [],
+      "fallbackChain": [
+        "Qwen/Qwen3.5-122B-A10B"
+      ],
       "recoveryProfile": "auxiliary-fast",
       "allowActions": [
         "retry_same_model",
