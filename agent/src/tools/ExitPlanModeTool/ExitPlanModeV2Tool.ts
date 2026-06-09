@@ -75,15 +75,24 @@ export type ApprovedExitMode = z.infer<
 >
 
 const inputSchema = lazySchema(() =>
-  z.strictObject({
-    // Prompt-based permissions requested by the plan
-    allowedPrompts: z
-      .array(allowedPromptSchema())
-      .optional()
-      .describe(
-        'Prompt-based permissions needed to implement the plan. These describe categories of actions rather than specific commands.',
-      ),
-  }),
+  z
+    .strictObject({
+      // Prompt-based permissions requested by the plan
+      allowedPrompts: z
+        .array(allowedPromptSchema())
+        .optional()
+        .describe(
+          'Prompt-based permissions needed to implement the plan. These describe categories of actions rather than specific commands.',
+        ),
+    })
+    // passthrough is load-bearing: normalizeToolInput injects `plan` and
+    // `planFilePath` into the tool_use input during stream accumulation
+    // (streamAccumulator.ts) and message normalization (contentNormalization.ts),
+    // so the input reaching runToolUse's initial validation (toolExecution.ts
+    // tool.inputSchema.safeParse) already carries those fields. A bare
+    // strictObject rejects them ("An unexpected parameter `plan` was provided"),
+    // blocking every plan approval. Matches upstream claude-code.
+    .passthrough(),
 )
 type InputSchema = ReturnType<typeof inputSchema>
 

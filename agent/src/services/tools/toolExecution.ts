@@ -991,6 +991,28 @@ async function checkPermissionsAndCallTool(
     processedInput = rest as typeof processedInput
   }
 
+  // Defense-in-depth: strip _approvedExitMode from model-provided ExitPlanMode
+  // input. Like Bash's _simulatedSedEdit, this is an internal-only field that
+  // must only be injected by the permission system after the user approves the
+  // plan (it selects the post-approval permission mode, e.g. bypassPermissions).
+  // ExitPlanMode's inputSchema uses .passthrough() so normalizeToolInput can
+  // inject plan/planFilePath, which means a strict-schema rejection no longer
+  // blocks a model-supplied _approvedExitMode — so we must strip it here. The
+  // genuine value re-enters later via permissionUpdatedInputSchema on the
+  // approved permission updatedInput.
+  if (
+    tool.name === EXIT_PLAN_MODE_V2_TOOL_NAME &&
+    processedInput &&
+    typeof processedInput === 'object' &&
+    '_approvedExitMode' in processedInput
+  ) {
+    const { _approvedExitMode: _, ...rest } =
+      processedInput as typeof processedInput & {
+        _approvedExitMode: unknown
+      }
+    processedInput = rest as typeof processedInput
+  }
+
   // Backfill legacy/derived fields on a shallow clone so hooks/canUseTool see
   // them without affecting tool.call(). SendMessageTool adds fields; file
   // tools overwrite file_path with expandPath — that mutation must not reach

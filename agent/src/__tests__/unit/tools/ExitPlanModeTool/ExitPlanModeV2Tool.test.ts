@@ -44,12 +44,18 @@ function makeContext(initialMode: 'plan' | 'bypassPermissions'): {
 }
 
 describe('ExitPlanModeV2Tool', () => {
-  test('rejects approved exit mode from model-facing input', () => {
+  test('inputSchema accepts the plan/planFilePath injected by normalizeToolInput', () => {
+    // Regression: inputSchema must keep .passthrough() so the plan and
+    // planFilePath that normalizeToolInput injects during stream accumulation
+    // survive runToolUse's initial tool.inputSchema.safeParse. A bare
+    // strictObject rejects them ("An unexpected parameter `plan`") and blocks
+    // every plan approval before the permission dialog even appears.
     expect(
       ExitPlanModeV2Tool.inputSchema.safeParse({
-        _approvedExitMode: 'bypassPermissions',
+        plan: 'Test plan',
+        planFilePath: 'C:/tmp/plan.md',
       }).success,
-    ).toBe(false)
+    ).toBe(true)
   })
 
   test('accepts approved exit mode from permission-updated input', () => {

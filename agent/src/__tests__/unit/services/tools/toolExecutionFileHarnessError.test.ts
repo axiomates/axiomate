@@ -169,7 +169,10 @@ function makePlanExitLikeTool(callSpy: ReturnType<typeof vi.fn>): Tool {
     // (shouldSkipPermissionUpdatedInputValidation, keyed on this exact name)
     // keeps being exercised if the tool is ever renamed.
     name: EXIT_PLAN_MODE_V2_TOOL_NAME,
-    inputSchema: z.strictObject({}),
+    // Mirror the real tool: passthrough so normalizeToolInput-injected fields
+    // (plan/planFilePath) and a model-supplied _approvedExitMode survive schema
+    // validation and reach toolExecution's defense-in-depth strip.
+    inputSchema: z.object({}).passthrough(),
     isReadOnly: () => false,
     isEnabled: () => true,
     isConcurrencySafe: () => true,
@@ -459,5 +462,24 @@ describe('runToolUse file harness failures', () => {
     )
     expect(callSpy).toHaveBeenCalledWith({})
     expect(firstToolResultContent(updates)).toBe('approved exit plan')
+  })
+
+  test('strips model-supplied _approvedExitMode before ExitPlanMode call', async () => {
+    // Defense-in-depth: passthrough lets _approvedExitMode survive schema
+    // validation, so toolExecution must strip a model-supplied value to stop
+    // the model self-elevating its post-plan permission mode. The genuine value
+    // only arrives via the approved permission updatedInput.
+    const callSpy = vi.fn()
+    const tool = makePlanExitLikeTool(callSpy)
+    hookMockState.permissionMode = 'plan'
+
+    await collectRunToolUse(tool, {
+      _approvedExitMode: 'bypassPermissions',
+      allowedPrompts: [],
+    })
+
+    const received = callSpy.mock.calls[0][0] as Record<string, unknown>
+    expect(received).not.toHaveProperty('_approvedExitMode')
+    expect(received).toHaveProperty('allowedPrompts')
   })
 })
