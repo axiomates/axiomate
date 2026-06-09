@@ -704,6 +704,73 @@ describe('FileWriteTool file harness behavior', () => {
     expect(await readFile(alias.realPath, 'utf8')).toBe('child\n')
   })
 
+  test('allows overwriting a reconstructed (unstamped) full read when content still matches disk', async () => {
+    // Simulates the post-compact / --print seed path: the read state is rebuilt
+    // from the transcript with full content but was never stamped through the
+    // live read path (registrySequence undefined). Previously the registry
+    // treated the missing stamp as a sibling write and wrongly rejected. Now it
+    // abstains and the content check authorizes the write because bytes match.
+    const { FileWriteTool } = await loadFileTools()
+    const path = join(getHarnessCwd(), 'reconstructed-match-write.txt')
+    await writeFile(path, 'alpha\nbeta\n', 'utf8')
+    const stats = await stat(path)
+    const context = makeToolContext()
+    context.readFileState.set(path, {
+      content: 'alpha\nbeta\n',
+      timestamp: Math.floor(stats.mtimeMs),
+      offset: undefined,
+      limit: undefined,
+    })
+    expect(context.readFileState.get(path)?.registrySequence).toBeUndefined()
+
+    const validation = await FileWriteTool.validateInput!(
+      { file_path: path, content: 'replacement\n' },
+      context,
+    )
+    expect(validation.result).toBe(true)
+
+    await FileWriteTool.call(
+      { file_path: path, content: 'replacement\n' },
+      context,
+      allowToolUse,
+      parentMessage,
+    )
+    expect(await readFile(path, 'utf8')).toBe('replacement\n')
+  })
+
+  test('still rejects a reconstructed (unstamped) full read when disk content diverged', async () => {
+    // The narrow-gap guard: an unstamped read forces a content comparison even
+    // when mtime did not advance, so a divergent on-disk file is still caught
+    // instead of silently overwritten.
+    const { FileWriteTool } = await loadFileTools()
+    const path = join(getHarnessCwd(), 'reconstructed-diverged-write.txt')
+    await writeFile(path, 'alpha\nbeta\n', 'utf8')
+    const stats = await stat(path)
+    const seededTimestamp = Math.floor(stats.mtimeMs)
+    const context = makeToolContext()
+    context.readFileState.set(path, {
+      content: 'reconstructed stale text\n',
+      timestamp: seededTimestamp,
+      offset: undefined,
+      limit: undefined,
+    })
+
+    // Change content but pin mtime back so the mtime pre-filter would skip.
+    await writeFile(path, 'alpha\nCHANGED\n', 'utf8')
+    const pinned = new Date(seededTimestamp)
+    await utimes(path, pinned, pinned)
+    expect(Math.floor((await stat(path)).mtimeMs)).toBe(seededTimestamp)
+
+    const validation = await FileWriteTool.validateInput!(
+      { file_path: path, content: 'replacement\n' },
+      context,
+    )
+    expectValidationFailure(validation)
+    expect(validation.errorCode).toBe(3)
+    expect(validation.fileHarnessFailure?.reason).toBe('stale_content')
+    expect(await readFile(path, 'utf8')).toBe('alpha\nCHANGED\n')
+  })
+
   test('call allows mtime-only drift after write-updated full-file state', async () => {
     const { FileWriteTool } = await loadFileTools()
     const path = join(getHarnessCwd(), 'mtime-after-write.txt')

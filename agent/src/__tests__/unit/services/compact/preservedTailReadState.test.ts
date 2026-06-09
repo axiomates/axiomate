@@ -223,7 +223,12 @@ describe('partial compact preserved-tail read state', () => {
     )
   }, 30_000)
 
-  it('stamps preserved Read state when the pre-compact cache no longer has the path', async () => {
+  it('leaves preserved Read state unstamped when the pre-compact cache no longer has the path', async () => {
+    // Previously this path minted a fresh "now" stamp for the reconstructed
+    // read, which ordered it AFTER the earlier sibling write and reported the
+    // file as unmodified — masking a real sibling write (a false negative).
+    // The reconstructed read now stays unstamped so the registry abstains and
+    // the content-equality gate becomes the authority instead.
     const filePath = 'src/preserved-tail-evicted-read.txt'
     const context = makeMinimalContext()
     const child = {
@@ -259,7 +264,11 @@ describe('partial compact preserved-tail read state', () => {
 
     const restored = context.readFileState.get(filePath)
     expect(restored?.content).toBe('alpha\nbeta')
-    expect(restored?.registrySequence).toBeDefined()
+    // Unstamped: order against the sibling write is unknowable, so the registry
+    // must abstain (false) and defer to the content check, rather than either
+    // fabricating freshness (false negative) or claiming staleness (false
+    // positive).
+    expect(restored?.registrySequence).toBeUndefined()
     expect(wasFileModifiedAfterReadByAnotherContext(context, filePath)).toBe(
       false,
     )

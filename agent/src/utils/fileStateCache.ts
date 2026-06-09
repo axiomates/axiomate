@@ -39,6 +39,35 @@ export function fileStateHasFullContent(fileState: FileState): boolean {
   return fileState.limit >= fileState.totalLines
 }
 
+/**
+ * Decides whether a Write/Edit staleness gate must compare cached content
+ * against current disk content.
+ *
+ * Normally the gate only re-reads disk when the file's mtime advanced past the
+ * recorded read timestamp (a cheap pre-filter). But a read state with no
+ * `registrySequence` was never observed live through this process — it was
+ * reconstructed from the transcript or injected across a compact/resume
+ * boundary, so its `timestamp` is itself reconstructed and has no reliable
+ * ordering against disk mtime. For those entries the mtime pre-filter is
+ * untrustworthy, so force a content comparison regardless of mtime. This pairs
+ * with `wasFileModifiedAfterReadByAnotherContext` abstaining on unstamped reads:
+ * the registry defers, and content equality becomes the authority.
+ */
+export function shouldForceContentStaleCheck(
+  fileState: FileState,
+  mtimeAdvanced: boolean,
+): boolean {
+  if (mtimeAdvanced) return true
+  // Only force a content comparison for an unstamped read when there is full
+  // content to compare against. A partial reconstructed read has no full
+  // content, so forcing the gate would only turn a legitimate proceed into a
+  // reject (Edit allows fresh partial-read edits) without improving safety.
+  return (
+    fileState.registrySequence === undefined &&
+    fileStateHasFullContent(fileState)
+  )
+}
+
 // Default max entries for read file state caches
 export const READ_FILE_STATE_CACHE_SIZE = 100
 

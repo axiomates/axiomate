@@ -280,10 +280,17 @@ export function wasFileModifiedAfterReadByAnotherContext(
   const readStamp = context.readFileState.get(readPath)
   if (!readStamp) return true
 
-  return (
-    readStamp.registrySequence === undefined ||
-    lastWriter.sequence > readStamp.registrySequence
-  )
+  // A read state with no registrySequence was not observed live through this
+  // process's read path — it was reconstructed from the transcript or injected
+  // across a compact/resume boundary (e.g. the --print startup seed). Its
+  // logical read order is unknowable, so this in-process write-ordering
+  // heuristic cannot judge it. Abstain and let the caller's mtime/content
+  // staleness gate decide, instead of falsely reporting a sibling write. This
+  // is the same downgrade already accepted for cross-process teammate writes
+  // (mtime/content + checkpoint), per migration plan decisions #10 and #24.
+  if (readStamp.registrySequence === undefined) return false
+
+  return lastWriter.sequence > readStamp.registrySequence
 }
 
 export function getFileStateRegistrySequence(): number {

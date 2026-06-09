@@ -997,12 +997,21 @@ function restorePreservedReadState(
   for (const [filePath, fileState] of restored.entries()) {
     const preCompactState = preCompactReadFileState.get(filePath)
     if (preCompactState?.registrySequence !== undefined) {
+      // The pre-compact runtime had a real ordering stamp for this path. The
+      // module-level registry sequence survives compaction (same process), so
+      // this coordinate is still valid — carry it forward verbatim.
       context.readFileState.set(filePath, {
         ...fileState,
         registrySequence: preCompactState.registrySequence,
       })
     } else {
-      setObservedFileState(context, filePath, fileState)
+      // No pre-compact stamp: this was already an unstamped (reconstructed /
+      // seeded) read before compaction. Keep it unstamped rather than minting a
+      // fresh "now" stamp. A fabricated current stamp would order this rebuilt
+      // historical read AFTER any real sibling write, masking it. Leaving it
+      // unstamped lets wasFileModifiedAfterReadByAnotherContext abstain and the
+      // content-equality gate decide — the same safe downgrade used elsewhere.
+      context.readFileState.set(filePath, fileState)
     }
   }
 }

@@ -33,7 +33,10 @@ import {
 } from '../../utils/fileHarnessFailures.js'
 import { getFileExtensionForAnalytics } from '../../services/analytics/metadata.js'
 import { logFileOperation } from '../../utils/fileOperationAnalytics.js'
-import { fileStateHasFullContent } from '../../utils/fileStateCache.js'
+import {
+  fileStateHasFullContent,
+  shouldForceContentStaleCheck,
+} from '../../utils/fileStateCache.js'
 import {
   noteFileWrite,
   wasFileModifiedAfterReadByAnotherContext,
@@ -312,7 +315,12 @@ export const FileEditTool = buildTool({
     // Check if file exists and get its last modified time
     if (readTimestamp) {
       const lastWriteTime = getFileModificationTime(fullFilePath)
-      if (lastWriteTime > readTimestamp.timestamp) {
+      if (
+        shouldForceContentStaleCheck(
+          readTimestamp,
+          lastWriteTime > readTimestamp.timestamp,
+        )
+      ) {
         // Timestamp indicates modification, but on Windows timestamps can change
         // without content changes (cloud sync, antivirus, etc.). For full reads,
         // compare content as a fallback to avoid false positives.
@@ -541,7 +549,12 @@ export const FileEditTool = buildTool({
               absoluteFilePath,
             )
           }
-          if (lastWriteTime > lastRead.timestamp) {
+          if (
+            shouldForceContentStaleCheck(
+              lastRead,
+              lastWriteTime > lastRead.timestamp,
+            )
+          ) {
             // Timestamp indicates modification, but on Windows timestamps can change
             // without content changes (cloud sync, antivirus, etc.). For full reads,
             // compare content as a fallback to avoid false positives.

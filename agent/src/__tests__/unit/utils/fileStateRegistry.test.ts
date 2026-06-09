@@ -360,6 +360,52 @@ describe('fileStateRegistry reminder queries', () => {
   })
 })
 
+describe('fileStateRegistry reconstructed read abstention', () => {
+  beforeEach(() => {
+    clearFileStateRegistryForTests()
+  })
+
+  test('abstains when a reconstructed read has no registry sequence', () => {
+    const parent = makeContext()
+    const child = makeContext(asAgentId('achild000000000401'))
+    const path = normalize('/tmp/reconstructed-no-stamp.txt')
+
+    // Simulate a transcript-reconstructed / --print seed read: content is in
+    // the cache but the read was never stamped through recordFileRead.
+    parent.readFileState.set(path, {
+      content: 'reconstructed',
+      timestamp: 1,
+      offset: undefined,
+      limit: undefined,
+    })
+    expect(parent.readFileState.get(path)?.registrySequence).toBeUndefined()
+
+    // A sibling write exists, but an unstamped read cannot be ordered against
+    // it. The registry must abstain (false) and defer to mtime/content checks,
+    // not falsely claim a sibling write that would wrongly reject the write.
+    noteFileWrite(child, path)
+    expect(wasFileModifiedAfterReadByAnotherContext(parent, path)).toBe(false)
+  })
+
+  test('still reports a sibling write once the read is stamped live', () => {
+    const parent = makeContext()
+    const child = makeContext(asAgentId('achild000000000402'))
+    const path = normalize('/tmp/reconstructed-then-stamped.txt')
+
+    parent.readFileState.set(path, {
+      content: 'reconstructed',
+      timestamp: 1,
+      offset: undefined,
+      limit: undefined,
+    })
+    // A real live read stamps the entry...
+    recordFileRead(parent, path)
+    // ...and a later sibling write must still be detected.
+    noteFileWrite(child, path)
+    expect(wasFileModifiedAfterReadByAnotherContext(parent, path)).toBe(true)
+  })
+})
+
 describe('fileStateRegistry path locks', () => {
   beforeEach(() => {
     clearFileStateRegistryForTests()

@@ -26,7 +26,10 @@ import {
   throwFileHarnessFailure,
 } from '../../utils/fileHarnessFailures.js'
 import { logFileOperation } from '../../utils/fileOperationAnalytics.js'
-import { fileStateHasFullContent } from '../../utils/fileStateCache.js'
+import {
+  fileStateHasFullContent,
+  shouldForceContentStaleCheck,
+} from '../../utils/fileStateCache.js'
 import {
   noteFileWrite,
   wasFileModifiedAfterReadByAnotherContext,
@@ -257,7 +260,12 @@ export const FileWriteTool = buildTool({
     // getFileModificationTime. The readTimestamp guard above ensures this
     // block is always reached when the file exists.
     const lastWriteTime = Math.floor(fileMtimeMs)
-    if (lastWriteTime > readTimestamp.timestamp) {
+    if (
+      shouldForceContentStaleCheck(
+        readTimestamp,
+        lastWriteTime > readTimestamp.timestamp,
+      )
+    ) {
       const meta = readFileSyncWithMetadata(fullFilePath)
       if (
         !fileStateHasFullContent(readTimestamp) ||
@@ -365,7 +373,12 @@ export const FileWriteTool = buildTool({
               fullFilePath,
             )
           }
-          if (lastWriteTime > lastRead.timestamp) {
+          if (
+            shouldForceContentStaleCheck(
+              lastRead,
+              lastWriteTime > lastRead.timestamp,
+            )
+          ) {
             // Timestamp indicates modification, but on Windows timestamps can change
             // without content changes (cloud sync, antivirus, etc.). For full reads,
             // compare content as a fallback to avoid false positives.

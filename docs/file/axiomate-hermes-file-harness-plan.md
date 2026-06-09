@@ -1,6 +1,6 @@
 # Axiomate/Hermes File Harness Migration Plan
 
-Status date: 2026-05-31
+Status date: 2026-06-09
 
 This plan tracks the work to copy the useful file-harness engineering from
 Hermes into Axiomate without replacing Axiomate's existing TypeScript file tool
@@ -336,6 +336,67 @@ metadata, edit-match escalation, and read-dedup loop guidance.
   The task status stays killed/failed and the failure summary stays intact.
 - There is no remaining core b59a file-harness behavior decision before
   UI/statistics work.
+
+2026-06-09 read-state churn root-cause and fix:
+
+After the 5/31 harness landed, interactive sessions hit frequent false write
+rejections ("Error writing file" / "modified since read"), and a long run of
+"fix read state" commits (roughly 28e9b6f7..HEAD) chased them. A focused
+architecture review found a single root cause, separate from the
+content-fidelity fixes.
+
+- Two layers, different verdicts:
+  - The content cache (`FileStateCache`) plus transcript reconstruction is
+    architecturally sound and matches pristine upstream: hard read-before-write
+    + rebuild the content snapshot across compact/resume. Its fixes (lone CR,
+    whitespace recovery, line-number-prefix stripping, UTF-16LE decoding) are
+    reconstruction-fidelity work that converges.
+  - The cross-context registry (`fileStateRegistry.ts`, added 5/31) was the
+    defect source. It paired Hermes' registry structure with upstream's
+    blocking contract, then tried to reconstruct `registrySequence` — a
+    process-local monotonic counter with no transcript representation. The old
+    `wasFileModifiedAfterReadByAnotherContext` treated
+    `registrySequence === undefined` as stale and rejected. Every
+    reconstruction path (print.ts SDK seed, compact restorePreservedReadState,
+    REPL resume) repopulates content but cannot repopulate the stamp, so writes
+    were wrongly rejected. The "fix registry stamp" commits were patching an
+    unreconstructable quantity and could not converge.
+
+- Reference check: neither reference does what 5/31 did. Pristine upstream
+  hard-blocks but has no registry/sequence at all. Hermes has the registry but
+  it only warns (never blocks) and never reconstructs (drops on compact).
+
+- Fix (2026-06-09):
+  1. `wasFileModifiedAfterReadByAnotherContext` now ABSTAINS (returns false) on
+     a read with no `registrySequence` instead of reporting stale. An unstamped
+     read is reconstructed/injected; its logical order is unknowable, so the
+     registry defers to the mtime/content gate. This is the same downgrade
+     already accepted for cross-process teammates (decisions #10/#24).
+  2. New `shouldForceContentStaleCheck(fileState, mtimeAdvanced)` in
+     `fileStateCache.ts` forces a content comparison for an unstamped FULL read
+     even when mtime did not advance, closing the narrow gap where a sibling
+     write plus a restored/rounded mtime would skip the content check. Gated on
+     `fileStateHasFullContent`, so fresh partial-read Edits still proceed
+     (decision #4). Wired into all four gates (FileWrite/FileEdit
+     validate + in-lock call).
+  3. `compact.ts` `restorePreservedReadState` no longer mints a fresh "now"
+     stamp for an already-unstamped reconstructed read; it keeps it unstamped
+     so the registry abstains. The branch that preserves a real pre-compact
+     `registrySequence` is unchanged and correct — the module-level sequence
+     counter survives compaction in the same process, so that coordinate stays
+     valid.
+
+- Scope notes: full compaction already re-injects recent files as attachments
+  (`createPostCompactFileAttachments`) and does not call
+  `restorePreservedReadState`; only forked/partial compaction uses it, and it
+  is safe after the abstention change. The screenshot symptom of a plan file
+  judged "not read" immediately after a Read is the `not_read` gate (cache
+  identity / path-key), a separate concern from the sibling-write registry gate
+  fixed here.
+
+- Verification: `pnpm run build:types` clean; full `pnpm run test` green
+  (2466 tests; one unrelated pathspec performance test flaked on a 5s timeout
+  under full-suite load and passes in isolation).
 
 Completed and pushed:
 
@@ -831,6 +892,9 @@ Estimated work:
 8. Process-local registry state must not persist.
    - `registrySequence` is stripped by `cacheToObject`.
    - It is preserved by clone only for live subagent ordering.
+   - Because it does not persist, reads rebuilt across a boundary arrive without
+     it. Those unstamped reads make the sibling-write check abstain rather than
+     reject (decision #25), so non-persistence is safe by design.
 
 9. Cross-context registry supplements, not replaces, `readFileState`.
    - `readFileState` still handles same-context read-before-write.
@@ -960,6 +1024,21 @@ Estimated work:
     - A file-backed registry, SQLite state, IPC, or lockfile protocol would add
       crash cleanup, stale lock, path normalization, and performance concerns
       without current evidence that the extra complexity is justified.
+
+25. An unstamped read makes the registry abstain, not reject (2026-06-09).
+    - `registrySequence` is process-local and unreconstructable from the
+      transcript. A read state without it (reconstructed, SDK-seeded, or
+      injected across a boundary) has unknowable logical order.
+    - The sibling-write check must return false (abstain) for such reads and let
+      the mtime/content gate decide. Treating a missing stamp as stale caused
+      the bulk of the post-5/31 false write rejections.
+    - To keep the narrow sibling-write-plus-restored-mtime case covered, an
+      unstamped full read forces a content comparison even when mtime did not
+      advance (`shouldForceContentStaleCheck`). Content equality is the
+      authority; the registry only adds ordering when it has a live stamp.
+    - This deliberately accepts the same downgrade as decisions #10/#24 at the
+      compact/resume boundary: detection falls back to content/mtime, which is
+      the reliable signal, plus checkpoint/rewind as backstop.
 
 ## Remaining Work
 
