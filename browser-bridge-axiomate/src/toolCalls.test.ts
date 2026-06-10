@@ -132,9 +132,20 @@ describe("browser-bridge tool → agent-browser subcommand mapping", () => {
     expect(lastCall().args).toEqual(["click", "@e1"]);
   });
 
-  it("click count 2 → dblclick", async () => {
-    await dispatchBrowserBridgeTool("browser_click", { ref: "@e1", clickCount: 2 });
+  it("double=true → dblclick", async () => {
+    await dispatchBrowserBridgeTool("browser_click", { ref: "@e1", double: true });
     expect(lastCall().args).toEqual(["dblclick", "@e1"]);
+  });
+
+  it("click never forwards a --button flag (agent-browser click has none)", async () => {
+    await dispatchBrowserBridgeTool("browser_click", {
+      ref: "@e1",
+      button: "right",
+    } as { ref: string });
+    // The bogus button arg is dropped, not translated into a silent left-click
+    // with a misleading --button flag appended.
+    expect(lastCall().args).toEqual(["click", "@e1"]);
+    expect(lastCall().args).not.toContain("--button");
   });
 
   it("type → fill @ref text", async () => {

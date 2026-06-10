@@ -71,7 +71,7 @@ export function buildBrowserBridgeTools(): Tool[] {
     {
       name: "browser_click",
       description:
-        "Click an element addressed by a snapshot ref (e.g. e5). Resolves the ref to its CSS-box center and dispatches a CDP mouse event inside the page — no OS-side click.",
+        "Click an element addressed by a snapshot ref (e.g. e5). Resolves the ref to its CSS-box center and dispatches a left-button CDP mouse event inside the page — no OS-side click. agent-browser's click has no right/middle-button support; set double=true for a double-click.",
       inputSchema: {
         type: "object",
         properties: {
@@ -79,16 +79,10 @@ export function buildBrowserBridgeTools(): Tool[] {
             type: "string",
             description: "Snapshot ref like `e5`.",
           },
-          button: {
-            type: "string",
-            enum: ["left", "middle", "right"],
-            default: "left",
-          },
-          clickCount: {
-            type: "integer",
-            default: 1,
-            minimum: 1,
-            maximum: 3,
+          double: {
+            type: "boolean",
+            default: false,
+            description: "Double-click instead of a single click.",
           },
         },
         required: ["ref"],

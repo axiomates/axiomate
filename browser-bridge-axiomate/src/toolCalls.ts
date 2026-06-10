@@ -233,16 +233,19 @@ async function handleSnapshot(args: {
 
 async function handleClick(args: {
   ref: string;
-  button?: "left" | "middle" | "right";
-  clickCount?: number;
+  double?: boolean;
 }): Promise<CallToolResult> {
   const port = requirePort();
   if (typeof port !== "number") return port;
-  const cmd =
-    args.clickCount === 2 ? ["dblclick", args.ref] : ["click", args.ref];
-  if (args.button && args.button !== "left") cmd.push("--button", args.button);
+  // agent-browser's `click` accepts only <selector> [--new-tab] — no
+  // --button, so right/middle-click is unsupported (a dropped --button would
+  // silently execute a LEFT click and falsely report success). double=true
+  // maps to the dedicated `dblclick` verb.
+  const cmd = args.double ? ["dblclick", args.ref] : ["click", args.ref];
   const r = await runAgentBrowser(cmd, { cdpPort: port, timeoutMs: 30_000 });
-  return r.ok ? ok(`clicked ${args.ref}`) : fail("click failed", r.error);
+  return r.ok
+    ? ok(`${args.double ? "double-clicked" : "clicked"} ${args.ref}`)
+    : fail("click failed", r.error);
 }
 
 async function handleType(args: {
