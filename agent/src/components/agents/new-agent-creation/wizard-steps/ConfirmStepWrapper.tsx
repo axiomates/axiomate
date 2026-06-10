@@ -45,10 +45,18 @@ export function ConfirmStepWrapper({
           source: wizardData.location!,
           agentType: wizardData.finalAgent.agentType
         });
-        await editFileInEditor(filePath);
+        // The agent is already saved; the editor is an optional extra. If it
+        // can't launch, don't claim it opened — point the user at the file.
+        const editResult = await editFileInEditor(filePath);
+        const baseMsg = `Created agent: ${chalk.bold(wizardData.finalAgent.agentType)}`;
+        const message = editResult.content !== null
+          ? `${baseMsg} and opened in editor. If you made edits, restart to load the latest version.`
+          : `${baseMsg}. Edit it at ${filePath}` +
+            (editResult.error ? ` (${editResult.error})` : '');
+        onComplete(message);
+        return;
       }
-      const message = openInEditor ? `Created agent: ${chalk.bold(wizardData.finalAgent.agentType)} and opened in editor. ` + `If you made edits, restart to load the latest version.` : `Created agent: ${chalk.bold(wizardData.finalAgent.agentType)}`;
-      onComplete(message);
+      onComplete(`Created agent: ${chalk.bold(wizardData.finalAgent.agentType)}`);
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : 'Failed to save agent');
     }

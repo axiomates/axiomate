@@ -39,7 +39,16 @@ function MemoryCommand({
           throw e;
         }
       }
-      await editFileInEditor(memoryPath);
+      const editResult = await editFileInEditor(memoryPath);
+
+      // If the editor could not be launched, tell the user tersely (system
+      // display = visible to the user, hidden from the model so it never
+      // pollutes the AI context) rather than falsely reporting "Opened".
+      // The detailed why already went to the debug log inside editFileInEditor.
+      if (editResult.content === null && editResult.error) {
+        onDone(editResult.error, { display: 'system' });
+        return;
+      }
 
       // Determine which environment variable controls the editor
       let editorSource = 'default';

@@ -6,6 +6,7 @@ import {
 import instances from '../ink/instances.js'
 import type { PastedContent } from './config.js'
 import { classifyGuiEditor, getExternalEditor, withGuiWaitFlag } from './editor.js'
+import { logForDebugging } from './debug.js'
 import { execSync_DEPRECATED } from './execSyncWrapper.js'
 import { getFsImplementation } from './fsOperations.js'
 import { toIDEDisplayName } from './ide.js'
@@ -32,7 +33,21 @@ export function editFileInEditor(filePath: string): EditorResult {
 
   const editor = getExternalEditor()
   if (!editor) {
-    return { content: null }
+    // No editor found. On POSIX this means none of $VISUAL/$EDITOR/code/vi/nano
+    // resolved (Windows always has the notepad fallback). Detail goes to the
+    // debug log only; the user-facing surface stays terse and is the caller's
+    // job. `error` lets the caller distinguish "no editor" from a clean
+    // null (cancel / unchanged) without leaking specifics into the UI.
+    logForDebugging(
+      `editFileInEditor: no editor available (platform=${process.platform}, ` +
+        `$VISUAL=${process.env.VISUAL ?? ''}, $EDITOR=${process.env.EDITOR ?? ''}); ` +
+        `set $EDITOR or install code/vi/nano`,
+      { level: 'warn' },
+    )
+    return {
+      content: null,
+      error: 'No text editor found. Set the $EDITOR environment variable.',
+    }
   }
 
   try {
