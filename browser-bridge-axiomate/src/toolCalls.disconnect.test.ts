@@ -203,3 +203,63 @@ describe("browser-bridge blocking-dialog handling", () => {
     }
   });
 });
+
+describe("browser-bridge navigate waits for load", () => {
+  function text(r: any): string {
+    return (r.content[0] as any).text;
+  }
+
+  it("returns as soon as the load event fires (not a fixed sleep)", async () => {
+    await dispatchBrowserBridgeTool("browser_attach", {});
+    const client = clients[0]!;
+
+    // Don't await yet: handleNavigate arms the load listener before resolving,
+    // so fire the load event while it's pending, then await.
+    const p = dispatchBrowserBridgeTool("browser_navigate", {
+      url: "https://example.com",
+    });
+    // Let the navigate round-trip + listener arm run, then signal load.
+    await Promise.resolve();
+    client.emit("Page.loadEventFired", {});
+    const res = await p;
+
+    expect(res.isError).toBeFalsy();
+    expect(text(res)).toContain("navigated to https://example.com");
+    expect(text(res)).not.toContain("may still be loading");
+    // Page.navigate was actually sent.
+    expect(
+      client.sends.some((s: any) => s.method === "Page.navigate"),
+    ).toBe(true);
+  });
+
+  it("reports best-effort when the load event never fires (timeout)", async () => {
+    vi.useFakeTimers();
+    try {
+      await dispatchBrowserBridgeTool("browser_attach", {});
+      const p = dispatchBrowserBridgeTool("browser_navigate", {
+        url: "https://stalled.example",
+      });
+      // Never emit loadEventFired; advance past the 10s cap.
+      await vi.advanceTimersByTimeAsync(10_000 + 100);
+      const res = await p;
+      expect(res.isError).toBeFalsy();
+      expect(text(res)).toContain("may still be loading");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("waits for load on history navigation too", async () => {
+    await dispatchBrowserBridgeTool("browser_attach", {});
+    const client = clients[0]!;
+    const p = dispatchBrowserBridgeTool("browser_back", {});
+    await Promise.resolve();
+    client.emit("Page.loadEventFired", {});
+    const res = await p;
+    expect(res.isError).toBeFalsy();
+    expect(text(res)).not.toContain("may still be loading");
+    expect(client.sends.some((s: any) => s.method === "Page.goBack")).toBe(
+      true,
+    );
+  });
+});

@@ -299,16 +299,57 @@ async function handleDetach(): Promise<CallToolResult> {
   return ok("detached");
 }
 
+// Default cap for waiting on a page load after navigation. Page.navigate
+// resolves on commit (navigation started), NOT on load, so we wait for
+// Page.loadEventFired — but a page may never fire it (SPA hash nav, a blocking
+// dialog, a slow/stalled resource), so the timeout is a hard upper bound, not
+// the expected path.
+const LOAD_EVENT_TIMEOUT_MS = 10_000;
+
+/**
+ * Resolve when the page fires its load event, or after timeoutMs — whichever
+ * comes first. Replaces a fixed sleep so fast pages return promptly and slow
+ * pages aren't truncated. Never rejects: a timeout is a normal "load didn't
+ * fire in time" outcome the caller reports as best-effort. Returns true if the
+ * load event fired, false on timeout.
+ */
+function waitForLoadEvent(
+  client: CdpClient,
+  timeoutMs = LOAD_EVENT_TIMEOUT_MS,
+): Promise<boolean> {
+  return new Promise<boolean>((resolve) => {
+    let done = false;
+    const finish = (loaded: boolean) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      client.off("Page.loadEventFired", onLoad);
+      resolve(loaded);
+    };
+    const onLoad = () => finish(true);
+    const timer = setTimeout(() => finish(false), timeoutMs);
+    timer.unref?.();
+    client.on("Page.loadEventFired", onLoad);
+  });
+}
+
 async function handleNavigate(args: {
   url: string;
 }): Promise<CallToolResult> {
   const c = requireClient();
   if (!(c instanceof CdpClient)) return c;
+  // Arm the load listener BEFORE navigate so a fast load can't fire between the
+  // navigate round-trip and our subscription.
+  const loaded = waitForLoadEvent(c);
   await c.send("Page.navigate", { url: args.url });
-  // Best-effort wait for load — Page.navigate resolves on commit, not load.
-  await new Promise((r) => setTimeout(r, 500));
+  const didLoad = await loaded;
   session.lastSnapshot = undefined;
-  return ok(`navigated to ${args.url}`);
+  return ok(
+    didLoad
+      ? `navigated to ${args.url}`
+      : `navigated to ${args.url} (load event not seen within ` +
+          `${LOAD_EVENT_TIMEOUT_MS / 1000}s; page may still be loading)`,
+  );
 }
 
 async function handleSnapshot(): Promise<CallToolResult> {
@@ -421,9 +462,18 @@ async function handleHistory(
 ): Promise<CallToolResult> {
   const c = requireClient();
   if (!(c instanceof CdpClient)) return c;
+  // Same as navigate: these trigger a load, so wait for it (bounded) instead of
+  // returning before the new page exists. Arm the listener before the call.
+  const loaded = waitForLoadEvent(c);
   await c.send(method, params);
+  const didLoad = await loaded;
   session.lastSnapshot = undefined;
-  return ok(method);
+  return ok(
+    didLoad
+      ? method
+      : `${method} (load event not seen within ` +
+          `${LOAD_EVENT_TIMEOUT_MS / 1000}s; page may still be loading)`,
+  );
 }
 
 async function handleTabList(): Promise<CallToolResult> {
