@@ -21,7 +21,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { runAgentBrowser } from "./agentBrowserClient.js";
-import { tryLaunchIsolated } from "./launcher.js";
+import { probeCdpEndpoint, tryLaunchIsolated } from "./launcher.js";
 import type { BridgeState, BrowserKind } from "./types.js";
 
 interface BridgeSession {
@@ -60,6 +60,41 @@ function statusObject() {
     browserKind: session.kind,
     cdpPort: session.port,
   };
+}
+
+/** Reset session to detached, clearing the launched-browser handles. */
+function markDetached(): void {
+  session.kind = undefined;
+  session.port = undefined;
+  session.pid = undefined;
+  session.state = "detached";
+}
+
+/**
+ * Is the launched browser still really there? agent-browser is a stateless
+ * one-shot CLI — unlike hermes's persistent websocket supervisor, we have no
+ * live connection whose death signals a closed browser. So we actively probe,
+ * and check BOTH conditions because either alone can lie:
+ *   - process alive (process.kill(pid,0) — safe cross-platform liveness in
+ *     Node, NOT the Windows os.kill(pid,0) footgun Python has): catches the
+ *     browser being closed/crashed even if some other process now holds the
+ *     port.
+ *   - CDP port reachable: catches the process lingering (zombie/shutdown) with
+ *     its debug socket already gone.
+ * Both must hold for the session to count as attached.
+ */
+async function isSessionAlive(): Promise<boolean> {
+  if (session.pid === undefined || session.port === undefined) return false;
+  let processAlive: boolean;
+  try {
+    process.kill(session.pid, 0);
+    processAlive = true;
+  } catch (e) {
+    // ESRCH = gone; EPERM = exists but not ours to signal (still alive).
+    processAlive = (e as NodeJS.ErrnoException).code === "EPERM";
+  }
+  if (!processAlive) return false;
+  return probeCdpEndpoint("127.0.0.1", session.port, 1000);
 }
 
 async function handleAttach(): Promise<CallToolResult> {
@@ -103,6 +138,20 @@ async function handleAttach(): Promise<CallToolResult> {
 }
 
 async function handleStatus(): Promise<CallToolResult> {
+  // If we think we're attached, verify the browser is actually still alive —
+  // the user may have closed it, in which case our in-memory state is stale.
+  // This is the fix for "status reports attached after the browser is gone":
+  // with a one-shot CLI there's no disconnect event, so status must probe.
+  if (session.state === "attached" && !(await isSessionAlive())) {
+    markDetached();
+    return ok(
+      JSON.stringify(
+        { ...statusObject(), note: "browser exited; detached" },
+        null,
+        2,
+      ),
+    );
+  }
   const base = statusObject();
   // Surface a blocking dialog if one is open — agent-browser tracks this
   // natively (no hand-rolled javascriptDialogOpening listener needed).

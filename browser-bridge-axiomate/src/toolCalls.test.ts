@@ -8,6 +8,9 @@ const mockState = vi.hoisted(() => ({
   // Per-subcommand stdout overrides keyed by the first arg.
   stdoutByCmd: {} as Record<string, string>,
   launchOk: true,
+  // isSessionAlive's CDP-probe half (process.kill half always passes since we
+  // launch with process.pid). Flip to false to simulate the browser dying.
+  browserAlive: true,
 }));
 
 vi.mock("./agentBrowserClient.js", () => ({
@@ -26,6 +29,10 @@ vi.mock("./launcher.js", () => ({
       ? { ok: true, pid: 4242, kind: "chrome", port: 9222 }
       : { ok: false, reason: "no browser found" },
   ),
+  // isSessionAlive probes the CDP port; mockState.browserAlive controls it so
+  // tests can simulate the browser dying. The process.kill half is stubbed in
+  // beforeEach (see killSpy) so liveness is driven purely by this probe.
+  probeCdpEndpoint: vi.fn(async () => mockState.browserAlive),
 }));
 
 import {
@@ -46,8 +53,18 @@ beforeEach(() => {
   mockState.result = { ok: true, stdout: "", stderr: "" };
   mockState.stdoutByCmd = {};
   mockState.launchOk = true;
+  mockState.browserAlive = true;
+  // Stub process.kill so the bridge never signals a real PID: the mock pid
+  // (4242) isn't ours, and detach/attach-failure call process.kill(pid) for
+  // real — under vitest's worker that SIGTERM would kill the test process
+  // itself. Returning true keeps liveness's process.kill(pid,0) half happy;
+  // the CDP-probe mock is what actually drives alive/dead.
+  vi.spyOn(process, "kill").mockReturnValue(true as never);
 });
-afterEach(() => __resetBridgeForTesting());
+afterEach(() => {
+  __resetBridgeForTesting();
+  vi.restoreAllMocks();
+});
 
 async function attach() {
   return dispatchBrowserBridgeTool("browser_attach", {});
@@ -169,6 +186,27 @@ describe("browser-bridge tool → agent-browser subcommand mapping", () => {
     const r = await dispatchBrowserBridgeTool("browser_navigate", { url: "https://x.test" });
     expect(r.isError).toBe(true);
     expect(text(r)).toMatch(/navigate failed: boom/);
+  });
+});
+
+describe("browser-bridge status detects a dead browser", () => {
+  it("flips to detached when the browser is gone (was: stale 'attached')", async () => {
+    await attach();
+    // Simulate the user closing the browser: CDP port no longer reachable.
+    mockState.browserAlive = false;
+    const r = await dispatchBrowserBridgeTool("browser_status", {});
+    expect(text(r)).toContain('"state": "detached"');
+    expect(text(r)).toMatch(/browser exited/i);
+    // And subsequent tools require re-attach.
+    const snap = await dispatchBrowserBridgeTool("browser_snapshot", {});
+    expect(snap.isError).toBe(true);
+    expect(text(snap)).toMatch(/not attached/i);
+  });
+
+  it("stays attached while the browser is alive", async () => {
+    await attach();
+    const r = await dispatchBrowserBridgeTool("browser_status", {});
+    expect(text(r)).toContain('"state": "attached"');
   });
 });
 
