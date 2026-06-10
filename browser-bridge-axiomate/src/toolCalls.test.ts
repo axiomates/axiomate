@@ -102,6 +102,44 @@ describe("browser-bridge attach/detach lifecycle", () => {
     expect(text(r)).toMatch(/not attached/i);
   });
 
+  it("a page call after the browser died fails FAST with a re-attach hint (not a passthrough timeout)", async () => {
+    await attach();
+    calls.length = 0;
+    // Browser dies; the AI calls click directly (no status first).
+    mockState.browserAlive = false;
+    const r = await dispatchBrowserBridgeTool("browser_click", { ref: "@e1" });
+    expect(r.isError).toBe(true);
+    expect(text(r)).toMatch(/was closed|re-?attach|relaunch/i);
+    // Crucially, the call was NOT forwarded to agent-browser (which would spend
+    // ~6s on CDP discovery and return a cryptic error).
+    expect(calls.some((c) => c.args[0] === "click")).toBe(false);
+  });
+
+  it("re-attach when still alive is a no-op early-return (no new connect)", async () => {
+    await attach();
+    calls.length = 0;
+    // Browser still alive → "already attached" fast path, no relaunch.
+    const r = await dispatchBrowserBridgeTool("browser_attach", {});
+    expect(r.isError).toBeFalsy();
+    expect(text(r)).toMatch(/already attached/i);
+    expect(calls.some((c) => c.args[0] === "connect")).toBe(false);
+  });
+
+  it("re-attach after the browser died relaunches instead of falsely echoing the stale session", async () => {
+    await attach();
+    calls.length = 0;
+    // Browser died: in-memory state is still "attached", but a probe must catch
+    // it. attach must NOT take the "already attached" early-return — it must
+    // detect death (markDetached) and relaunch (fresh connect).
+    mockState.browserAlive = false;
+    const r = await dispatchBrowserBridgeTool("browser_attach", {});
+    expect(r.isError).toBeFalsy();
+    // Proof it relaunched rather than echoing stale state: a fresh connect ran,
+    // and the message is a real attach, not "already attached".
+    expect(calls.some((c) => c.args[0] === "connect")).toBe(true);
+    expect(text(r)).not.toMatch(/already attached/i);
+  });
+
   it("fails attach cleanly when no browser is found", async () => {
     mockState.launchOk = false;
     const r = await attach();

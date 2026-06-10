@@ -48,10 +48,27 @@ function err(text: string): CallToolResult {
   return { content: [{ type: "text", text }], isError: true };
 }
 
-/** Require an attached browser; returns the CDP port or an error result. */
-function requirePort(): number | CallToolResult {
+/**
+ * Require a LIVE attached browser; returns the CDP port or an error result.
+ *
+ * Probes liveness first (not just in-memory state) so a call made after the
+ * user closed the browser fails FAST with a clear "re-attach" message, instead
+ * of being passed through to agent-browser where it spends ~6s on CDP discovery
+ * retries and returns a cryptic "All CDP discovery methods failed". process
+ * liveness (process.kill(pid,0)) is instant and catches the common
+ * user-closed-the-window case; the CDP probe (short timeout) catches a zombie
+ * process whose debug port is already gone. On death we markDetached() so the
+ * agent's next move is an unambiguous re-attach.
+ */
+async function requirePort(): Promise<number | CallToolResult> {
   if (session.state !== "attached" || session.port === undefined) {
     return err("browser bridge is not attached. Call browser_attach first.");
+  }
+  if (!(await isSessionAlive())) {
+    markDetached();
+    return err(
+      "browser was closed (CDP endpoint gone). Call browser_attach to relaunch.",
+    );
   }
   return session.port;
 }
@@ -120,8 +137,16 @@ async function isSessionAlive(): Promise<boolean> {
 }
 
 async function handleAttach(): Promise<CallToolResult> {
+  // "Already attached" must be VERIFIED, not assumed: if the user closed the
+  // browser, in-memory state is still "attached" but the browser is gone.
+  // Probe before the early-return so we don't falsely report success and then
+  // have the very next status say "detached". On death, fall through to a
+  // fresh launch below.
   if (session.state === "attached" && session.port !== undefined) {
-    return ok(`already attached: ${JSON.stringify(statusObject(), null, 2)}`);
+    if (await isSessionAlive()) {
+      return ok(`already attached: ${JSON.stringify(statusObject(), null, 2)}`);
+    }
+    markDetached();
   }
   if (session.state === "attaching") {
     return err("attach already in progress");
@@ -285,7 +310,7 @@ async function handleDetach(): Promise<CallToolResult> {
 // ── Page interaction (all attach to session.port via --cdp) ──────────────────
 
 async function handleNavigate(args: { url: string }): Promise<CallToolResult> {
-  const port = requirePort();
+  const port = await requirePort();
   if (typeof port !== "number") return port;
   const r = await runAgentBrowser(["open", args.url], {
     cdpPort: port,
@@ -298,7 +323,7 @@ async function handleSnapshot(args: {
   interactive?: boolean;
   urls?: boolean;
 }): Promise<CallToolResult> {
-  const port = requirePort();
+  const port = await requirePort();
   if (typeof port !== "number") return port;
   const flags = ["snapshot", "--compact"];
   if (args?.interactive) flags.push("--interactive");
@@ -314,7 +339,7 @@ async function handleClick(args: {
   ref: string;
   double?: boolean;
 }): Promise<CallToolResult> {
-  const port = requirePort();
+  const port = await requirePort();
   if (typeof port !== "number") return port;
   // agent-browser's `click` accepts only <selector> [--new-tab] — no
   // --button, so right/middle-click is unsupported (a dropped --button would
@@ -331,7 +356,7 @@ async function handleType(args: {
   ref: string;
   text: string;
 }): Promise<CallToolResult> {
-  const port = requirePort();
+  const port = await requirePort();
   if (typeof port !== "number") return port;
   const r = await runAgentBrowser(["fill", args.ref, args.text], {
     cdpPort: port,
@@ -341,7 +366,7 @@ async function handleType(args: {
 }
 
 async function handlePress(args: { key: string }): Promise<CallToolResult> {
-  const port = requirePort();
+  const port = await requirePort();
   if (typeof port !== "number") return port;
   const r = await runAgentBrowser(["press", args.key], {
     cdpPort: port,
@@ -355,7 +380,7 @@ async function handleScroll(args: {
   amount?: number;
   selector?: string;
 }): Promise<CallToolResult> {
-  const port = requirePort();
+  const port = await requirePort();
   if (typeof port !== "number") return port;
   const dir = args.direction ?? "down";
   const cmd = ["scroll", dir];
@@ -368,14 +393,14 @@ async function handleScroll(args: {
 async function handleHistory(
   verb: "back" | "forward" | "reload",
 ): Promise<CallToolResult> {
-  const port = requirePort();
+  const port = await requirePort();
   if (typeof port !== "number") return port;
   const r = await runAgentBrowser([verb], { cdpPort: port, timeoutMs: 45_000 });
   return r.ok ? ok(verb) : fail(`${verb} failed`, r.error);
 }
 
 async function handleTabList(): Promise<CallToolResult> {
-  const port = requirePort();
+  const port = await requirePort();
   if (typeof port !== "number") return port;
   const r = await runAgentBrowser(["tab", "list"], {
     cdpPort: port,
@@ -385,7 +410,7 @@ async function handleTabList(): Promise<CallToolResult> {
 }
 
 async function handleTabNew(args: { url?: string }): Promise<CallToolResult> {
-  const port = requirePort();
+  const port = await requirePort();
   if (typeof port !== "number") return port;
   const r = await runAgentBrowser(["tab", "new"], {
     cdpPort: port,
@@ -403,7 +428,7 @@ async function handleTabNew(args: { url?: string }): Promise<CallToolResult> {
 }
 
 async function handleTabClose(): Promise<CallToolResult> {
-  const port = requirePort();
+  const port = await requirePort();
   if (typeof port !== "number") return port;
   const r = await runAgentBrowser(["tab", "close"], {
     cdpPort: port,
@@ -415,7 +440,7 @@ async function handleTabClose(): Promise<CallToolResult> {
 async function handleTabSwitch(args: {
   targetId: string;
 }): Promise<CallToolResult> {
-  const port = requirePort();
+  const port = await requirePort();
   if (typeof port !== "number") return port;
   const r = await runAgentBrowser(["tab", args.targetId], {
     cdpPort: port,
@@ -428,7 +453,7 @@ async function handleDialog(args: {
   action: "accept" | "dismiss";
   promptText?: string;
 }): Promise<CallToolResult> {
-  const port = requirePort();
+  const port = await requirePort();
   if (typeof port !== "number") return port;
   const cmd = ["dialog", args.action];
   if (args.action === "accept" && args.promptText !== undefined) {
@@ -441,7 +466,7 @@ async function handleDialog(args: {
 async function handleConsole(args: {
   clear?: boolean;
 }): Promise<CallToolResult> {
-  const port = requirePort();
+  const port = await requirePort();
   if (typeof port !== "number") return port;
   const cmd = ["console"];
   if (args?.clear) cmd.push("--clear");
@@ -450,7 +475,7 @@ async function handleConsole(args: {
 }
 
 async function handleZoom(args: { factor: number }): Promise<CallToolResult> {
-  const port = requirePort();
+  const port = await requirePort();
   if (typeof port !== "number") return port;
   // agent-browser has no first-class zoom verb; set it via the page's own API.
   const r = await runAgentBrowser(
@@ -461,7 +486,7 @@ async function handleZoom(args: { factor: number }): Promise<CallToolResult> {
 }
 
 async function handleGetImages(): Promise<CallToolResult> {
-  const port = requirePort();
+  const port = await requirePort();
   if (typeof port !== "number") return port;
   const r = await runAgentBrowser(
     [
@@ -478,7 +503,7 @@ async function handleVision(args: {
   quality?: number;
   fullPage?: boolean;
 }): Promise<CallToolResult> {
-  const port = requirePort();
+  const port = await requirePort();
   if (typeof port !== "number") return port;
   // agent-browser's `screenshot` writes a file (no base64-to-stdout option),
   // so capture to a temp path, read it back, and return inline base64.
@@ -524,7 +549,7 @@ async function handleFind(args: {
   name?: string;
   exact?: boolean;
 }): Promise<CallToolResult> {
-  const port = requirePort();
+  const port = await requirePort();
   if (typeof port !== "number") return port;
   // agent-browser: find <locator> <value> [action] [text] [--name] [--exact].
   // The action slot is POSITIONAL, so we must ALWAYS emit it explicitly —
@@ -547,7 +572,7 @@ async function handleUpload(args: {
   selector: string;
   files: string[];
 }): Promise<CallToolResult> {
-  const port = requirePort();
+  const port = await requirePort();
   if (typeof port !== "number") return port;
   const r = await runAgentBrowser(["upload", args.selector, ...args.files], {
     cdpPort: port,
@@ -560,7 +585,7 @@ async function handleSelect(args: {
   selector: string;
   values: string[];
 }): Promise<CallToolResult> {
-  const port = requirePort();
+  const port = await requirePort();
   if (typeof port !== "number") return port;
   const r = await runAgentBrowser(["select", args.selector, ...args.values], {
     cdpPort: port,
@@ -570,7 +595,7 @@ async function handleSelect(args: {
 }
 
 async function handleHover(args: { selector: string }): Promise<CallToolResult> {
-  const port = requirePort();
+  const port = await requirePort();
   if (typeof port !== "number") return port;
   const r = await runAgentBrowser(["hover", args.selector], {
     cdpPort: port,
@@ -587,7 +612,7 @@ async function handleWait(args: {
   text?: string;
   fn?: string;
 }): Promise<CallToolResult> {
-  const port = requirePort();
+  const port = await requirePort();
   if (typeof port !== "number") return port;
   // agent-browser: wait <selector|ms|option>. Exactly one mode; flag forms for
   // the named conditions, positional for selector/ms.
