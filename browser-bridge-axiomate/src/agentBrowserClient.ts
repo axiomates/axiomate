@@ -11,7 +11,7 @@
  * if the CLI contract shifts.
  */
 
-import { execa } from "execa";
+import { spawn } from "node:child_process";
 import { resolveAgentBrowserPath } from "./agentBrowser.js";
 
 /** Fixed session name so all our calls target the same agent-browser session. */
@@ -30,6 +30,97 @@ export interface AgentBrowserRunOptions {
   cdpPort?: number;
   /** Per-call timeout (ms). Snapshots/navigation can be slow. */
   timeoutMs?: number;
+}
+
+interface SpawnOutcome {
+  exitCode: number | null;
+  stdout: string;
+  stderr: string;
+  timedOut: boolean;
+  spawnError?: string;
+}
+
+/**
+ * Spawn agent-browser and resolve on the process's `exit` event with whatever
+ * stdout/stderr we buffered — NOT on stream `close`.
+ *
+ * Why not execa (or anything that awaits `close`): agent-browser's `connect`
+ * forks a long-lived DETACHED daemon (cli/src/connection.rs:677-696) that it
+ * spawns with `stderr(Stdio::piped())`. On Windows that detached child inherits
+ * the foreground process's handle table, so the inherited stderr pipe's
+ * write-end stays open in the daemon for the daemon's whole lifetime. The
+ * foreground process exits in ~200ms with its output complete, but the pipe
+ * never reaches EOF — so `close` never fires and execa's promise hangs forever.
+ * execa's own `timeout` can't rescue it: the foreground process has already
+ * exited, so there's nothing left to SIGTERM while the pipe stays open. That
+ * was the "browser_attach runs forever" bug.
+ *
+ * Resolving on `exit` (process gone) instead of `close` (pipes drained) sidesteps
+ * the inherited-handle entirely: by `exit` the foreground process has flushed
+ * all of its own output, and we then destroy our read ends so the inherited
+ * write-end in the daemon can't keep us alive. We still enforce timeoutMs by
+ * killing the process group as a backstop for a genuinely stuck command.
+ */
+function spawnAgentBrowser(
+  bin: string,
+  argv: string[],
+  timeoutMs: number,
+): Promise<SpawnOutcome> {
+  return new Promise<SpawnOutcome>((resolve) => {
+    const child = spawn(bin, argv, {
+      stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: true,
+    });
+    let stdout = "";
+    let stderr = "";
+    let settled = false;
+    const finish = (o: SpawnOutcome): void => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      // Drop our read ends so the daemon's inherited write-end can't keep the
+      // event loop (or this handle) alive after we've already resolved.
+      try {
+        child.stdout?.destroy();
+      } catch {
+        /* already gone */
+      }
+      try {
+        child.stderr?.destroy();
+      } catch {
+        /* already gone */
+      }
+      resolve(o);
+    };
+    const timer = setTimeout(() => {
+      try {
+        child.kill();
+      } catch {
+        /* already gone */
+      }
+      finish({ exitCode: null, stdout, stderr, timedOut: true });
+    }, timeoutMs);
+    child.stdout?.on("data", (d: Buffer) => {
+      stdout += d.toString();
+    });
+    child.stderr?.on("data", (d: Buffer) => {
+      stderr += d.toString();
+    });
+    // Resolve on `exit` (process terminated), NOT `close` (all stdio EOF) — see
+    // the function-level comment for why `close` never arrives here.
+    child.on("exit", (code) => {
+      finish({ exitCode: code, stdout, stderr, timedOut: false });
+    });
+    child.on("error", (e) => {
+      finish({
+        exitCode: null,
+        stdout,
+        stderr,
+        timedOut: false,
+        spawnError: e instanceof Error ? e.message : String(e),
+      });
+    });
+  });
 }
 
 /**
@@ -69,32 +160,34 @@ export async function runAgentBrowser(
   argv.push("--no-auto-dialog");
   argv.push(...args);
 
-  try {
-    const result = await execa(bin, argv, {
-      timeout: opts.timeoutMs ?? 30_000,
-      reject: false,
-      stripFinalNewline: true,
-    });
-    if (result.exitCode !== 0) {
-      return {
-        ok: false,
-        stdout: result.stdout ?? "",
-        stderr: result.stderr ?? "",
-        error:
-          (result.stderr || result.stdout || `exited with code ${result.exitCode}`)
-            .slice(0, 600),
-      };
-    }
-    return { ok: true, stdout: result.stdout ?? "", stderr: result.stderr ?? "" };
-  } catch (e) {
-    // execa with reject:false still throws on spawn errors (ENOENT) / timeout.
+  const result = await spawnAgentBrowser(bin, argv, opts.timeoutMs ?? 30_000);
+  const stdout = result.stdout.replace(/\r?\n$/, "");
+  const stderr = result.stderr.replace(/\r?\n$/, "");
+
+  if (result.spawnError) {
+    // Spawn failed outright (e.g. ENOENT) — never even started.
+    return { ok: false, stdout: "", stderr: "", error: result.spawnError };
+  }
+  if (result.timedOut) {
     return {
       ok: false,
-      stdout: "",
-      stderr: "",
-      error: e instanceof Error ? e.message : String(e),
+      stdout,
+      stderr,
+      error: `agent-browser timed out after ${opts.timeoutMs ?? 30_000}ms`,
     };
   }
+  if (result.exitCode !== 0) {
+    return {
+      ok: false,
+      stdout,
+      stderr,
+      error: (stderr || stdout || `exited with code ${result.exitCode}`).slice(
+        0,
+        600,
+      ),
+    };
+  }
+  return { ok: true, stdout, stderr };
 }
 
 /** Run and parse `--json` output. Returns null parse on non-ok or bad JSON. */
