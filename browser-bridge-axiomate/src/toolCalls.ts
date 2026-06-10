@@ -260,12 +260,14 @@ async function handlePress(args: { key: string }): Promise<CallToolResult> {
 async function handleScroll(args: {
   direction?: "up" | "down" | "left" | "right";
   amount?: number;
+  selector?: string;
 }): Promise<CallToolResult> {
   const port = requirePort();
   if (typeof port !== "number") return port;
   const dir = args.direction ?? "down";
   const cmd = ["scroll", dir];
   if (typeof args.amount === "number") cmd.push(String(args.amount));
+  if (args.selector) cmd.push("--selector", args.selector);
   const r = await runAgentBrowser(cmd, { cdpPort: port, timeoutMs: 15_000 });
   return r.ok ? ok(`scrolled ${dir}`) : fail("scroll failed", r.error);
 }
@@ -421,6 +423,93 @@ async function handleVision(args: {
   }
 }
 
+async function handleFind(args: {
+  locator: string;
+  value: string;
+  action?: string;
+  text?: string;
+  name?: string;
+  exact?: boolean;
+}): Promise<CallToolResult> {
+  const port = requirePort();
+  if (typeof port !== "number") return port;
+  // agent-browser: find <locator> <value> [action] [text] [--name] [--exact].
+  // The action slot is POSITIONAL, so we must ALWAYS emit it explicitly —
+  // otherwise a following --name/--exact flag gets parsed as the action
+  // ("Unknown subaction: --name", confirmed by real smoke). Default to click.
+  const action = args.action ?? "click";
+  const cmd = ["find", args.locator, args.value, action];
+  if ((action === "fill" || action === "type") && args.text !== undefined) {
+    cmd.push(args.text);
+  }
+  if (args.name) cmd.push("--name", args.name);
+  if (args.exact) cmd.push("--exact");
+  const r = await runAgentBrowser(cmd, { cdpPort: port, timeoutMs: 30_000 });
+  return r.ok
+    ? ok(r.stdout || `find ${args.locator}=${args.value}`)
+    : fail("find failed", r.error);
+}
+
+async function handleUpload(args: {
+  selector: string;
+  files: string[];
+}): Promise<CallToolResult> {
+  const port = requirePort();
+  if (typeof port !== "number") return port;
+  const r = await runAgentBrowser(["upload", args.selector, ...args.files], {
+    cdpPort: port,
+    timeoutMs: 30_000,
+  });
+  return r.ok ? ok(`uploaded ${args.files.length} file(s)`) : fail("upload failed", r.error);
+}
+
+async function handleSelect(args: {
+  selector: string;
+  values: string[];
+}): Promise<CallToolResult> {
+  const port = requirePort();
+  if (typeof port !== "number") return port;
+  const r = await runAgentBrowser(["select", args.selector, ...args.values], {
+    cdpPort: port,
+    timeoutMs: 15_000,
+  });
+  return r.ok ? ok(`selected ${args.values.join(", ")}`) : fail("select failed", r.error);
+}
+
+async function handleHover(args: { selector: string }): Promise<CallToolResult> {
+  const port = requirePort();
+  if (typeof port !== "number") return port;
+  const r = await runAgentBrowser(["hover", args.selector], {
+    cdpPort: port,
+    timeoutMs: 15_000,
+  });
+  return r.ok ? ok(`hovered ${args.selector}`) : fail("hover failed", r.error);
+}
+
+async function handleWait(args: {
+  selector?: string;
+  ms?: number;
+  url?: string;
+  loadState?: string;
+  text?: string;
+  fn?: string;
+}): Promise<CallToolResult> {
+  const port = requirePort();
+  if (typeof port !== "number") return port;
+  // agent-browser: wait <selector|ms|option>. Exactly one mode; flag forms for
+  // the named conditions, positional for selector/ms.
+  let cmd: string[];
+  if (args.url !== undefined) cmd = ["wait", "--url", args.url];
+  else if (args.loadState !== undefined) cmd = ["wait", "--load", args.loadState];
+  else if (args.text !== undefined) cmd = ["wait", "--text", args.text];
+  else if (args.fn !== undefined) cmd = ["wait", "--fn", args.fn];
+  else if (args.ms !== undefined) cmd = ["wait", String(args.ms)];
+  else if (args.selector !== undefined) cmd = ["wait", args.selector];
+  else return err("wait requires one of: selector, ms, url, loadState, text, fn");
+  const r = await runAgentBrowser(cmd, { cdpPort: port, timeoutMs: 60_000 });
+  return r.ok ? ok(r.stdout || "wait complete") : fail("wait failed", r.error);
+}
+
 export async function dispatchBrowserBridgeTool(
   name: string,
   args: any,
@@ -469,6 +558,16 @@ export async function dispatchBrowserBridgeTool(
         return await handleGetImages();
       case "browser_vision":
         return await handleVision(args ?? {});
+      case "browser_find":
+        return await handleFind(args);
+      case "browser_upload":
+        return await handleUpload(args);
+      case "browser_select":
+        return await handleSelect(args);
+      case "browser_hover":
+        return await handleHover(args);
+      case "browser_wait":
+        return await handleWait(args ?? {});
       default:
         return err(`unknown tool ${name}`);
     }

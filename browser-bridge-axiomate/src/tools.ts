@@ -125,16 +125,23 @@ export function buildBrowserBridgeTools(): Tool[] {
     {
       name: "browser_scroll",
       description:
-        "Scroll the page or an element by `deltaY` (vertical) and `deltaX` (horizontal) pixels. Positive deltaY scrolls down.",
+        "Scroll the page (or a scrollable container) in a direction by a pixel amount. direction is up/down/left/right (default down); amount defaults to 300px.",
       inputSchema: {
         type: "object",
         properties: {
-          deltaX: { type: "number", default: 0 },
-          deltaY: { type: "number", default: 200 },
-          ref: {
+          direction: {
+            type: "string",
+            enum: ["up", "down", "left", "right"],
+            default: "down",
+          },
+          amount: {
+            type: "number",
+            description: "Pixels to scroll (default 300).",
+          },
+          selector: {
             type: "string",
             description:
-              "Optional snapshot ref to scroll over (uses its center). If omitted, scrolls at viewport center.",
+              "Optional CSS selector / @ref of a scrollable container. If omitted, scrolls the page.",
           },
         },
         additionalProperties: false,
@@ -304,6 +311,139 @@ export function buildBrowserBridgeTools(): Tool[] {
             type: "boolean",
             default: false,
             description: "If true, capture the entire scrollable page, not just the viewport.",
+          },
+        },
+        additionalProperties: false,
+      },
+    },
+    {
+      name: "browser_find",
+      description:
+        "Find an element by a SEMANTIC locator (no snapshot ref needed) and optionally act on it. Prefer this over snapshot+click when you can describe the element: by ARIA role, visible text, form label, placeholder, alt text, title, or data-testid. Example: locator='role' value='button' name='Submit'. Default action is click.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          locator: {
+            type: "string",
+            enum: ["role", "text", "label", "placeholder", "alt", "title", "testid"],
+            description: "Which semantic locator to match by.",
+          },
+          value: {
+            type: "string",
+            description: "The locator value (the role name, text, label, etc.).",
+          },
+          action: {
+            type: "string",
+            enum: ["click", "fill", "type", "hover", "focus", "check", "uncheck"],
+            default: "click",
+            description: "Action to perform on the found element.",
+          },
+          text: {
+            type: "string",
+            description: "Text to enter when action is 'fill' or 'type'.",
+          },
+          name: {
+            type: "string",
+            description: "Accessible-name filter, only meaningful when locator='role'.",
+          },
+          exact: {
+            type: "boolean",
+            default: false,
+            description: "Require an exact (not substring) match.",
+          },
+        },
+        required: ["locator", "value"],
+        additionalProperties: false,
+      },
+    },
+    {
+      name: "browser_upload",
+      description:
+        "Upload one or more local files to a file <input> on the page. Address the input by snapshot ref (e.g. @e3) or CSS selector.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          selector: {
+            type: "string",
+            description: "Snapshot ref (@e3) or CSS selector of the file input.",
+          },
+          files: {
+            type: "array",
+            items: { type: "string" },
+            minItems: 1,
+            description: "Absolute paths of the local files to upload.",
+          },
+        },
+        required: ["selector", "files"],
+        additionalProperties: false,
+      },
+    },
+    {
+      name: "browser_select",
+      description:
+        "Select one or more options in a <select> dropdown by their option value. Address the select by snapshot ref (@e5) or CSS selector.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          selector: {
+            type: "string",
+            description: "Snapshot ref (@e5) or CSS selector of the <select>.",
+          },
+          values: {
+            type: "array",
+            items: { type: "string" },
+            minItems: 1,
+            description: "Option value(s) to select. Multiple only for multi-selects.",
+          },
+        },
+        required: ["selector", "values"],
+        additionalProperties: false,
+      },
+    },
+    {
+      name: "browser_hover",
+      description:
+        "Move the mouse over an element to trigger hover states or reveal dropdown/flyout menus. Address by snapshot ref (@e4) or CSS selector.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          selector: {
+            type: "string",
+            description: "Snapshot ref (@e4) or CSS selector of the element to hover.",
+          },
+        },
+        required: ["selector"],
+        additionalProperties: false,
+      },
+    },
+    {
+      name: "browser_wait",
+      description:
+        "Wait for a condition before continuing: an element to appear, a fixed delay, a URL pattern, a load state, page text, or a JS expression to become truthy. Provide exactly ONE parameter. Use after an action that triggers async work (navigation, AJAX, spinners) instead of guessing with repeated snapshots.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          selector: {
+            type: "string",
+            description: "Wait for this element (snapshot ref or CSS selector) to appear.",
+          },
+          ms: { type: "number", description: "Wait a fixed number of milliseconds." },
+          url: {
+            type: "string",
+            description: "Wait until the page URL matches this pattern.",
+          },
+          loadState: {
+            type: "string",
+            enum: ["load", "domcontentloaded", "networkidle"],
+            description: "Wait for this load state.",
+          },
+          text: {
+            type: "string",
+            description: "Wait until this text (substring) appears on the page.",
+          },
+          fn: {
+            type: "string",
+            description: "Wait until this JavaScript expression evaluates truthy.",
           },
         },
         additionalProperties: false,

@@ -150,6 +150,15 @@ describe("browser-bridge tool → agent-browser subcommand mapping", () => {
     expect(lastCall().args).toEqual(["scroll", "down", "300"]);
   });
 
+  it("scroll with selector → scroll dir amount --selector", async () => {
+    await dispatchBrowserBridgeTool("browser_scroll", {
+      direction: "up",
+      amount: 100,
+      selector: "@e9",
+    });
+    expect(lastCall().args).toEqual(["scroll", "up", "100", "--selector", "@e9"]);
+  });
+
   it("back/forward/reload map 1:1", async () => {
     await dispatchBrowserBridgeTool("browser_back", {});
     expect(lastCall().args).toEqual(["back"]);
@@ -186,6 +195,105 @@ describe("browser-bridge tool → agent-browser subcommand mapping", () => {
     const r = await dispatchBrowserBridgeTool("browser_navigate", { url: "https://x.test" });
     expect(r.isError).toBe(true);
     expect(text(r)).toMatch(/navigate failed: boom/);
+  });
+});
+
+describe("browser-bridge semantic + interaction tools (find/upload/select/hover/wait)", () => {
+  beforeEach(async () => {
+    await attach();
+    calls.length = 0;
+  });
+
+  it("find role with name → always emits explicit action before --name", async () => {
+    await dispatchBrowserBridgeTool("browser_find", {
+      locator: "role",
+      value: "button",
+      name: "Submit",
+    });
+    // action defaults to click and MUST precede --name, else agent-browser
+    // parses --name as the action slot ("Unknown subaction").
+    expect(lastCall().args).toEqual([
+      "find",
+      "role",
+      "button",
+      "click",
+      "--name",
+      "Submit",
+    ]);
+  });
+
+  it("find with no action defaults to explicit click", async () => {
+    await dispatchBrowserBridgeTool("browser_find", { locator: "text", value: "Next" });
+    expect(lastCall().args).toEqual(["find", "text", "Next", "click"]);
+  });
+
+  it("find with fill action carries the text positionally", async () => {
+    await dispatchBrowserBridgeTool("browser_find", {
+      locator: "label",
+      value: "Email",
+      action: "fill",
+      text: "a@b.test",
+    });
+    expect(lastCall().args).toEqual(["find", "label", "Email", "fill", "a@b.test"]);
+  });
+
+  it("find drops text for non-fill actions and adds --exact", async () => {
+    await dispatchBrowserBridgeTool("browser_find", {
+      locator: "text",
+      value: "Next",
+      action: "hover",
+      text: "ignored",
+      exact: true,
+    });
+    expect(lastCall().args).toEqual(["find", "text", "Next", "hover", "--exact"]);
+  });
+
+  it("upload → upload <selector> <files...>", async () => {
+    await dispatchBrowserBridgeTool("browser_upload", {
+      selector: "@e3",
+      files: ["/a.png", "/b.png"],
+    });
+    expect(lastCall().args).toEqual(["upload", "@e3", "/a.png", "/b.png"]);
+  });
+
+  it("select → select <selector> <values...>", async () => {
+    await dispatchBrowserBridgeTool("browser_select", {
+      selector: "#country",
+      values: ["US", "CA"],
+    });
+    expect(lastCall().args).toEqual(["select", "#country", "US", "CA"]);
+  });
+
+  it("hover → hover <selector>", async () => {
+    await dispatchBrowserBridgeTool("browser_hover", { selector: "@e4" });
+    expect(lastCall().args).toEqual(["hover", "@e4"]);
+  });
+
+  it("wait selector → wait <selector>", async () => {
+    await dispatchBrowserBridgeTool("browser_wait", { selector: "#spinner" });
+    expect(lastCall().args).toEqual(["wait", "#spinner"]);
+  });
+
+  it("wait ms → wait <ms>", async () => {
+    await dispatchBrowserBridgeTool("browser_wait", { ms: 500 });
+    expect(lastCall().args).toEqual(["wait", "500"]);
+  });
+
+  it("wait conditions map to their flags", async () => {
+    await dispatchBrowserBridgeTool("browser_wait", { url: "**/done" });
+    expect(lastCall().args).toEqual(["wait", "--url", "**/done"]);
+    await dispatchBrowserBridgeTool("browser_wait", { loadState: "networkidle" });
+    expect(lastCall().args).toEqual(["wait", "--load", "networkidle"]);
+    await dispatchBrowserBridgeTool("browser_wait", { text: "Done" });
+    expect(lastCall().args).toEqual(["wait", "--text", "Done"]);
+    await dispatchBrowserBridgeTool("browser_wait", { fn: "window.ready" });
+    expect(lastCall().args).toEqual(["wait", "--fn", "window.ready"]);
+  });
+
+  it("wait with no condition errors without shelling out", async () => {
+    const r = await dispatchBrowserBridgeTool("browser_wait", {});
+    expect(r.isError).toBe(true);
+    expect(calls.length).toBe(0);
   });
 });
 
