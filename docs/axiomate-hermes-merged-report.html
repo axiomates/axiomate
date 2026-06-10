@@ -259,7 +259,7 @@
       <div class="eyebrow">Comparative Report · Current Gap · Priority Plan</div>
       <h1>Axiomate vs Hermes Agent 当前能力差距与优先事项报告</h1>
       <p>报告聚焦三个问题：当前差距在哪里、哪些差距真的影响产品、Axiomate 下一步优先补什么。关键判断是：API harness、file harness 与 checkpoint filesystem snapshot 基础短板已经补齐；下一版最该做的是从 Claude Code 2.1.88 之后补 context/memory lifecycle，再补少量 Hermes runtime hygiene。</p>
-      <div class="meta">评估时间：2026-06-06 · 左仓库：C:\public\workspace\axiomate (main @ aa2d233c) · 右仓库：C:\public\workspace\hermes-agent (main @ 56236b16e，已 git fetch/pull --ff-only) · Claude Code 基线：C:\public\workspace\claude-code-sourcemap (2.1.88 @ a8a678c) · 统计口径：tracked-file-only cloc · 外部核对：Claude Code memory/context 与 Managed Agents memory/dreams 官方资料</div>
+      <div class="meta">评估时间：2026-06-06 · 左仓库：C:\public\workspace\axiomate (main @ aa2d233c) · 右仓库：C:\public\workspace\hermes-agent (main @ 56236b16e，已 git fetch/pull --ff-only) · Claude Code 基线：C:\public\workspace\claude-code-sourcemap (2.1.88 @ a8a678c) · 统计口径：tracked-file-only cloc · 外部核对：Claude Code memory/context 与 Managed Agents memory/dreams 官方资料 · 浏览器桥更新：2026-06-10 @ db8e7100（browser-bridge 重构为 agent-browser 引擎，见维度 9）</div>
     </section>
 
     <section class="grid-4">
@@ -328,16 +328,16 @@
         <article class="subcard">
           <h4>Axiomate</h4>
           <div class="stats-grid">
-            <div><div class="stat-label">代码行</div><div class="stat-value-sm">415,515</div></div>
-            <div><div class="stat-label">注释行</div><div class="stat-value-sm">86,991</div></div>
-            <div><div class="stat-label">空白行</div><div class="stat-value-sm">46,263</div></div>
-            <div><div class="stat-label">cloc 文件</div><div class="stat-value-sm">2,144</div></div>
+            <div><div class="stat-label">代码行</div><div class="stat-value-sm">426,787</div></div>
+            <div><div class="stat-label">注释行</div><div class="stat-value-sm">87,311</div></div>
+            <div><div class="stat-label">空白行</div><div class="stat-value-sm">47,262</div></div>
+            <div><div class="stat-label">cloc 文件</div><div class="stat-value-sm">2,177</div></div>
           </div>
           <ul>
-            <li>TypeScript 385,211 code</li>
+            <li>TypeScript 392,676 code</li>
             <li>Rust 7,026 code，集中在多个 napi/本地子包</li>
-            <li>HTML 11,507 code，含用户文档与报告</li>
-            <li>Markdown 7,457 code</li>
+            <li>HTML 15,589 code，含用户文档与报告</li>
+            <li>Markdown 7,005 code</li>
           </ul>
         </article>
         <article class="subcard">
@@ -395,7 +395,7 @@
             <td><span class="score-badge s5">5/5</span></td>
             <td><span class="score-badge s5">5/5</span></td>
             <td>互有强项</td>
-            <td>Axiomate 强在本地 CDP/napi/rtk/sandbox；Hermes 强在平台工具网关、browser SaaS provider、MCP catalog、messaging delivery。不能用“谁工具更多”概括。</td>
+            <td>Axiomate 强在本地浏览器反控（agent-browser 引擎）/napi/rtk/sandbox；Hermes 强在平台工具网关、browser SaaS provider、MCP catalog、messaging delivery。不能用“谁工具更多”概括。</td>
           </tr>
           <tr>
             <td>4. Harness / 运行时韧性</td>
@@ -437,7 +437,7 @@
             <td><span class="score-badge s5">5/5</span></td>
             <td><span class="score-badge s3">3/5</span></td>
             <td>Axiomate 优势</td>
-            <td>Axiomate 走本地 CDP + mac/win napi；Hermes 主要走 browserbase/browser_use/firecrawl 等 provider 路线。Axiomate 应保住这条路线。</td>
+            <td>Axiomate 走本地浏览器 + mac/win napi；browser-bridge 已于 2026-06-10 重构，执行层从自写 raw CDP 切到 <code>agent-browser</code> 引擎（Vercel Labs，Apache-2.0 Rust 守护进程，10.7MB sidecar）——和 Hermes page-interaction 用的是<strong>同一引擎</strong>，但 Axiomate 把它指向用户<strong>本地</strong>浏览器（<code>--cdp &lt;port&gt;</code> 接 launcher 起的 Chrome/Edge/Brave），Hermes 主要指向 browserbase/browser_use/firecrawl 等 SaaS provider。OOPIF 跨域 iframe 由引擎免费处理；21→26 工具（含 find/upload/select/hover/wait 语义层）。profile-lock 已修（attach 复用幸存浏览器或清僵尸锁，隔离 profile 登录态跨会话保留），dialog 策略对齐 Hermes must_respond。Axiomate 应保住这条本地路线。</td>
           </tr>
           <tr>
             <td>10. Gateway / 多入口</td>
@@ -493,7 +493,7 @@
           <h4>本地执行护城河</h4>
           <ul>
             <li>computer-use-mac/win-napi、audio-capture、clipboard、modifiers、url-handler 等独立子包。</li>
-            <li>browser-bridge-axiomate 走 CDP 反控，不只是接 SaaS browser provider。</li>
+            <li>browser-bridge-axiomate 反控用户<strong>本地</strong>浏览器，执行层基于 <code>agent-browser</code> 引擎（与 Hermes 同引擎，但指向本地而非 SaaS provider），不只是接 SaaS browser provider。</li>
             <li>rtk-axiomate build 时 auto-pin releases，Bash 工具前置重写，fail-open + retry + once-per-session warning。</li>
           </ul>
         </article>
@@ -1163,8 +1163,8 @@
       <div class="source-list">
         <div class="source-item">
           <strong>Axiomate 本地代码与结构证据</strong>
-          <div class="code">Repo: C:\public\workspace\axiomate (branch main @ aa2d233c)
-Tracked-file-only cloc: 2,144 cloc-counted files / 415,515 code / 86,991 comment / 46,263 blank
+          <div class="code">Repo: C:\public\workspace\axiomate (branch main @ aa2d233c; LOC refreshed @ db8e7100 2026-06-10)
+Tracked-file-only cloc: 2,177 cloc-counted files / 426,787 code / 87,311 comment / 47,262 blank
 Goal implementation:
   agent/src/utils/goal/{goalManager,goalStore,goalState,goalJudge,continuation}.ts
   agent/src/commands/goal/goal.tsx; agent/src/commands/subgoal/subgoal.tsx
