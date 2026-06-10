@@ -19,6 +19,7 @@ import type {
   BridgeStatus,
   BrowserKind,
   PageSnapshot,
+  PendingDialog,
 } from "./types.js";
 
 interface ConsoleEntry {
@@ -33,6 +34,13 @@ interface ConsoleEntry {
 
 const CONSOLE_BUFFER_CAP = 500;
 
+// How long a JS dialog may block the page with no browser_dialog response
+// before the watchdog auto-dismisses it (accept=false). Matches hermes'
+// DEFAULT_DIALOG_TIMEOUT_S — the core fix is surfacing the dialog so the agent
+// responds; this is only the last-resort backstop against an unresponsive agent
+// freezing the page forever.
+const DIALOG_TIMEOUT_MS = 300_000;
+
 interface BridgeSession {
   state: BridgeState;
   client?: CdpClient;
@@ -44,6 +52,10 @@ interface BridgeSession {
   lastSnapshot?: PageSnapshot;
   /** Ring buffer of console events. Drained / cleared by browser_console. */
   consoleBuffer: ConsoleEntry[];
+  /** A JS dialog currently blocking the page, awaiting browser_dialog. */
+  pendingDialog?: PendingDialog;
+  /** Watchdog timer that auto-dismisses an unanswered dialog. */
+  dialogWatchdog?: ReturnType<typeof setTimeout>;
 }
 
 const session: BridgeSession = { state: "detached", consoleBuffer: [] };
@@ -62,7 +74,17 @@ function statusObject(): BridgeStatus {
     profile: session.state === "attached" ? session.profile : undefined,
     browserKind: session.kind,
     cdpPort: session.port,
+    pendingDialog: session.pendingDialog,
   };
+}
+
+/** Clear any pending dialog and cancel its watchdog timer. Idempotent. */
+function clearPendingDialog(): void {
+  if (session.dialogWatchdog) {
+    clearTimeout(session.dialogWatchdog);
+    session.dialogWatchdog = undefined;
+  }
+  session.pendingDialog = undefined;
 }
 
 /** Require attached state; returns the client or an error result. */
@@ -132,6 +154,7 @@ async function handleAttach(): Promise<CallToolResult> {
     // session.
     client.on("disconnect", () => {
       if (session.client !== client) return;
+      clearPendingDialog();
       session.state = "detached";
       session.client = undefined;
       session.kind = undefined;
@@ -144,6 +167,57 @@ async function handleAttach(): Promise<CallToolResult> {
     // Wire CDP events: snapshot invalidation + console buffer.
     client.on("Page.frameNavigated", () => {
       session.lastSnapshot = undefined;
+    });
+
+    // Enable the Page domain NOW (not lazily at snapshot time) so dialog events
+    // fire from the moment we attach. CRITICAL CDP semantics: once Page.enable
+    // is sent, Chrome stops showing native dialog UI and freezes the page's JS
+    // thread on alert/confirm/prompt/beforeunload until handleJavaScriptDialog
+    // is called. So we MUST listen for the opening event and surface it to the
+    // agent (browser_status / browser_snapshot) — otherwise the page hangs
+    // invisibly. Mirrors hermes' must-respond dialog policy + watchdog backstop.
+    await client.send("Page.enable").catch(() => {
+      // Already enabled or transient race — non-fatal.
+    });
+
+    client.on("Page.javascriptDialogOpening", (params: any) => {
+      if (session.client !== client) return;
+      // Replace any prior pending dialog (only one can block at a time).
+      if (session.dialogWatchdog) clearTimeout(session.dialogWatchdog);
+      session.pendingDialog = {
+        type: String(params?.type ?? ""),
+        message: String(params?.message ?? ""),
+        defaultPrompt: String(params?.defaultPrompt ?? ""),
+        openedAt: Date.now(),
+      };
+      // Backstop: if the agent never calls browser_dialog, auto-dismiss so the
+      // page can't stay frozen forever. The agent normally sees the dialog via
+      // status/snapshot and responds well before this fires.
+      session.dialogWatchdog = setTimeout(() => {
+        if (session.client !== client || !session.pendingDialog) return;
+        const d = session.pendingDialog;
+        clearPendingDialog();
+        client
+          .send("Page.handleJavaScriptDialog", { accept: false })
+          .catch(() => {
+            // Dialog may have already been closed by the page; non-fatal.
+          });
+        pushConsole({
+          type: "warn",
+          text:
+            `browser-bridge: auto-dismissed unanswered ${d.type} dialog ` +
+            `after ${DIALOG_TIMEOUT_MS / 1000}s ("${d.message.slice(0, 120)}")`,
+          timestamp: Date.now(),
+        });
+      }, DIALOG_TIMEOUT_MS);
+      // Node keeps the event loop alive for pending timers; this backstop
+      // shouldn't hold the process open on its own.
+      session.dialogWatchdog.unref?.();
+    });
+
+    client.on("Page.javascriptDialogClosed", () => {
+      if (session.client !== client) return;
+      clearPendingDialog();
     });
 
     // Enable Runtime so consoleAPICalled and exceptionThrown fire.
@@ -220,6 +294,7 @@ async function handleDetach(): Promise<CallToolResult> {
   session.profile = undefined;
   session.lastSnapshot = undefined;
   session.consoleBuffer = [];
+  clearPendingDialog();
   session.state = "released";
   return ok("detached");
 }
@@ -242,8 +317,16 @@ async function handleSnapshot(): Promise<CallToolResult> {
   const snap = await enumeratePageElements(c);
   session.lastSnapshot = snap;
   const refCount = Object.keys(snap.refs).length;
+  // If a JS dialog is blocking the page, lead with it: the page's JS thread is
+  // frozen until the agent responds via browser_dialog, so the snapshot below
+  // is stale and most other tools will hang. Make that unmissable.
+  const dialogBanner = session.pendingDialog
+    ? `⚠ A JavaScript ${session.pendingDialog.type} dialog is open and ` +
+      `blocking the page: "${session.pendingDialog.message}". ` +
+      `Respond with browser_dialog (accept/dismiss) before continuing.\n\n`
+    : "";
   return ok(
-    `# ${snap.title || "(untitled)"}\nurl: ${snap.url}\nrefs: ${refCount}\n\n${snap.ariaText}`,
+    `${dialogBanner}# ${snap.title || "(untitled)"}\nurl: ${snap.url}\nrefs: ${refCount}\n\n${snap.ariaText}`,
   );
 }
 
@@ -414,6 +497,9 @@ async function handleDialog(args: {
     accept: args.action === "accept",
     promptText: args.promptText,
   });
+  // Clear our tracked dialog immediately (idempotent with the Closed event)
+  // so status/snapshot stop reporting it and the watchdog is cancelled.
+  clearPendingDialog();
   return ok(`dialog ${args.action}`);
 }
 
@@ -611,4 +697,5 @@ export function __resetBridgeForTesting(): void {
   session.profile = undefined;
   session.lastSnapshot = undefined;
   session.consoleBuffer = [];
+  clearPendingDialog();
 }
