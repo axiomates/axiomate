@@ -659,6 +659,10 @@ function buildJsWorkspaces() {
     // platform from axiomates/rtk's latest GitHub release. Fails soft —
     // see rtk-axiomate/scripts/fetch.mjs.
     ['rtk-axiomate', 'build'],
+    // agent-browser-axiomate's `build` downloads the PINNED agent-browser
+    // binary for the host platform from vercel-labs/agent-browser releases.
+    // Fails soft — see agent-browser-axiomate/scripts/fetch.mjs.
+    ['agent-browser-axiomate', 'build'],
   ]
 
   for (const [workspace, script] of builds) {
