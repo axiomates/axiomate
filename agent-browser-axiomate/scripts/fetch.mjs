@@ -19,6 +19,16 @@
  * Fail-soft: on download failure with no usable cache, prints a warning and
  * exits 0. The runtime resolver disables the browser-bridge feature silently
  * when bin/ is empty.
+ *
+ * NO GITHUB API CALL (and so no auth/rate-limit handling, unlike
+ * rtk-axiomate): because the version is PINNED we know the exact tag and asset
+ * name up front, so we hit the release-DOWNLOAD endpoint directly
+ * (github.com/.../releases/download/<tag>/<asset>). That endpoint is a plain
+ * CDN-backed file fetch — it is NOT subject to the api.github.com 60-req/hr
+ * unauthenticated rate limit that forced rtk-axiomate to authenticate. rtk
+ * must call the API every build to resolve "latest"; we never do. If this repo
+ * ever goes private, or we move to resolving "latest" dynamically, add the
+ * same `githubToken()` auth helper rtk uses.
  */
 
 import { spawnSync } from 'node:child_process'

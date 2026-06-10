@@ -3,17 +3,19 @@
  * Fetch the latest rtk binary for the HOST platform from
  * `axiomates/rtk` GitHub releases.
  *
- * Resolves the latest tag via /releases/latest at every run. The
- * resolved tag becomes the cache key; once a version is downloaded,
- * future runs against the same tag are cache hits. New tags trigger
- * fresh downloads automatically — no manual version pinning.
+ * Resolves the latest tag via an AUTHENTICATED /releases/latest call. Auth
+ * (GITHUB_TOKEN / GH_TOKEN / `gh auth token`) raises the GitHub API limit from
+ * 60 → 5000 req/hr; the unauthenticated 60/hr/IP cap is what made shared and
+ * CI IPs fail with "could not resolve latest rtk tag" (HTTP 403). The call
+ * still works without a token, just at the lower limit.
  *
- * `axiomates/rtk` is purpose-built for axiomate (we own both repos),
- * so "latest" is always something we intentionally cut.
+ * The resolved tag is the cache key; once downloaded, future runs against the
+ * same tag are cache hits. New tags trigger fresh downloads automatically — no
+ * manual version pinning (contrast agent-browser-axiomate, which PINS a tested
+ * third-party version because we don't control that repo).
  *
- * Offline fallback: if the GitHub API is unreachable, reuse the
- * freshest cached binary for this platform. Works even with no
- * network, as long as you've built once before.
+ * Offline fallback: if the GitHub API is unreachable, reuse the freshest
+ * cached binary for this platform. Works with no network once built before.
  *
  * Fail-soft on first run with no network: prints a warning and exits 0.
  * The runtime resolver disables the feature silently when bin/ is empty.
@@ -169,18 +171,33 @@ function compareTags(a, b) {
 
 function resolveLatestTag() {
   const url = `https://api.github.com/repos/${RTK_REPO}/releases/latest`
+  const auth = githubToken()
+  const headers = ['-H', 'Accept: application/vnd.github+json']
+  if (auth) headers.push('-H', `Authorization: Bearer ${auth}`)
   const result = spawnSync(
     'curl',
     [
       '--silent', '--show-error', '--fail', '--location',
       '--retry', '2', '--retry-delay', '1',
       '--max-time', '8',
-      '-H', 'Accept: application/vnd.github+json',
+      ...headers,
       url,
     ],
     { encoding: 'utf-8' },
   )
-  if (result.status !== 0) return null
+  if (result.status !== 0) {
+    // Distinguish a rate-limit (transient, fixable with auth) from a genuine
+    // miss so the build log doesn't just say "skipped" when the release plainly
+    // exists. Unauthenticated GitHub API is 60 req/hr/IP — easy to exhaust on
+    // shared/CI IPs; an auth token raises it to 5000/hr.
+    if (!auth && /rate limit/i.test(result.stderr || result.stdout || '')) {
+      console.warn(
+        'rtk-axiomate: GitHub API rate limit hit and no token available. ' +
+          'Set GITHUB_TOKEN/GH_TOKEN or run `gh auth login` to raise the limit.',
+      )
+    }
+    return null
+  }
   try {
     const payload = JSON.parse(result.stdout)
     return typeof payload?.tag_name === 'string' && payload.tag_name
@@ -189,6 +206,26 @@ function resolveLatestTag() {
   } catch {
     return null
   }
+}
+
+/**
+ * Best-effort GitHub token for API auth: explicit env first, then the gh CLI's
+ * stored credential. Returns null when none is available (the call then runs
+ * unauthenticated and may hit the 60/hr limit). Never throws.
+ */
+function githubToken() {
+  const env = process.env.GITHUB_TOKEN || process.env.GH_TOKEN
+  if (env) return env.trim()
+  try {
+    const r = spawnSync('gh', ['auth', 'token'], { encoding: 'utf-8', timeout: 5000 })
+    if (r.status === 0 && typeof r.stdout === 'string') {
+      const tok = r.stdout.trim()
+      if (tok) return tok
+    }
+  } catch {
+    // gh not installed / not logged in — fall through to unauthenticated.
+  }
+  return null
 }
 
 function hostTarget() {
@@ -210,11 +247,14 @@ function archiveForTarget(target) {
 
 function downloadAsset(version, archive, destFile) {
   const url = `https://github.com/${RTK_REPO}/releases/download/${version}/${archive}`
+  const auth = githubToken()
+  const headers = auth ? ['-H', `Authorization: Bearer ${auth}`] : []
   const result = spawnSync(
     'curl',
     [
       '--silent', '--show-error', '--fail', '--location',
       '--retry', '3', '--retry-delay', '2',
+      ...headers,
       '--output', destFile,
       url,
     ],
