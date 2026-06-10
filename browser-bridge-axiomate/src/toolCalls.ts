@@ -33,6 +33,8 @@ interface BridgeSession {
   kind?: BrowserKind;
   port?: number;
   pid?: number;
+  /** Profile dir the launcher used — needed to clear session state on cleanup. */
+  userDataDir?: string;
 }
 
 const session: BridgeSession = { state: "detached" };
@@ -71,6 +73,7 @@ function markDetached(): void {
   session.kind = undefined;
   session.port = undefined;
   session.pid = undefined;
+  session.userDataDir = undefined;
   session.state = "detached";
 }
 
@@ -132,7 +135,7 @@ async function handleAttach(): Promise<CallToolResult> {
       } catch {
         // already gone
       }
-      clearSessionState();
+      clearSessionState(launch.userDataDir);
     }
     session.state = "detached";
     return fail("attach failed (agent-browser connect)", connect.error);
@@ -140,6 +143,7 @@ async function handleAttach(): Promise<CallToolResult> {
   session.kind = launch.kind;
   session.port = launch.port;
   session.pid = launch.pid;
+  session.userDataDir = launch.userDataDir;
   session.state = "attached";
   const label = launch.reused ? "reattached (reused running browser)" : "attached";
   return ok(`${label}: ${JSON.stringify(statusObject(), null, 2)}`);
@@ -178,12 +182,19 @@ async function handleStatus(): Promise<CallToolResult> {
   );
 }
 
-async function handleDetach(): Promise<CallToolResult> {
-  if (session.state === "detached") {
-    return ok("already detached");
-  }
+/**
+ * Tear down the current session's browser + agent-browser daemon. Shared by
+ * browser_detach and the process-exit cleanup. Closes ONLY our own daemon
+ * (runAgentBrowser pins --session axiomate-bridge-<pid>, never `close --all`)
+ * and kills ONLY the Chrome pid WE recorded — never another axiomate's.
+ */
+async function teardownSession(): Promise<void> {
   const port = session.port;
   if (port !== undefined) {
+    // `close` on a --cdp-attached daemon disconnects + exits THE DAEMON, but
+    // does NOT shut our Chrome (agent-browser treats an external/--cdp browser
+    // as not-its-own — verified in browser.rs close()). So we kill Chrome
+    // ourselves below.
     await runAgentBrowser(["close"], { cdpPort: port, timeoutMs: 10_000 });
   }
   if (session.pid) {
@@ -194,12 +205,34 @@ async function handleDetach(): Promise<CallToolResult> {
     }
   }
   // Forget the launcher's recorded session so the next attach doesn't try to
-  // kill a pid the OS may have recycled.
-  clearSessionState();
-  session.kind = undefined;
-  session.port = undefined;
-  session.pid = undefined;
-  session.state = "detached";
+  // kill a pid the OS may have recycled. Scope to the profile we actually used.
+  clearSessionState(session.userDataDir);
+}
+
+/**
+ * Process-exit cleanup: take our browser + daemon down so neither lingers as an
+ * orphan after axiomate exits (both are deliberately detached, so the OS won't
+ * reap them for us, and agent-browser's idle-timeout is off by default → the
+ * daemon would otherwise run forever). Safe under concurrent axiomate
+ * instances: only touches OUR per-pid daemon and the Chrome pid we recorded.
+ * No-op (and never throws) when we never attached.
+ */
+export async function shutdownBridge(): Promise<void> {
+  if (session.state === "detached") return;
+  try {
+    await teardownSession();
+  } catch {
+    // Best-effort on the exit path — never block or throw during shutdown.
+  }
+  markDetached();
+}
+
+async function handleDetach(): Promise<CallToolResult> {
+  if (session.state === "detached") {
+    return ok("already detached");
+  }
+  await teardownSession();
+  markDetached();
   return ok("detached");
 }
 

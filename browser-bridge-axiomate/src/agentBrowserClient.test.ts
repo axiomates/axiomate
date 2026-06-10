@@ -112,6 +112,12 @@ describe("runAgentBrowser argv injection", () => {
     expect(i).toBeLessThan(lastArgv().indexOf("snapshot"));
   });
 
+  it("scopes the session name to this process (concurrent-instance isolation)", async () => {
+    // A fixed name made instance B reuse instance A's daemon; the pid suffix
+    // gives each axiomate its own daemon and lets shutdown target only its own.
+    expect(AGENT_BROWSER_SESSION).toBe(`axiomate-bridge-${process.pid}`);
+  });
+
   it("maps a non-zero exit to ok:false with stderr surfaced", async () => {
     nextChildOpts.current = { exitCode: 2, stderr: "boom" };
     const r = await runAgentBrowser(["click", "@e1"], { cdpPort: 9222 });

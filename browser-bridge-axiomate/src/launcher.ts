@@ -89,6 +89,41 @@ export function isolatedProfileDir(): string {
 }
 
 /**
+ * Per-PROCESS profile dir, used only when the stable profile is already owned
+ * by another LIVE axiomate. Chrome's single-instance lock forbids two
+ * concurrent instances on one `--user-data-dir` (verified: the 2nd instance's
+ * CDP port never opens — the lock forwards it to the 1st), so concurrent
+ * axiomate processes MUST get distinct profiles or they collide.
+ */
+export function perProcessProfileDir(): string {
+  return join(homedir(), ".axiomate", "browser-bridge", `profile-${process.pid}`);
+}
+
+/**
+ * Pick the profile dir for THIS attach.
+ *
+ * Prefer the stable shared profile so a single axiomate's start/stop debugging
+ * cycles keep the user's logged-in session (cookies/Login Data persist there).
+ * But if that profile's session sidecar names a DIFFERENT, still-alive owner
+ * pid — another axiomate is running and holds the single-instance lock — fall
+ * back to a per-pid profile so we don't collide. A stale record (owner dead, or
+ * it's our own pid) keeps us on the stable profile, preserving logins.
+ */
+export function selectProfileDir(): string {
+  const stable = isolatedProfileDir();
+  const prior = readSessionState(stable);
+  if (
+    prior &&
+    typeof prior.ownerPid === "number" &&
+    prior.ownerPid !== process.pid &&
+    isPidAlive(prior.ownerPid)
+  ) {
+    return perProcessProfileDir();
+  }
+  return stable;
+}
+
+/**
  * Path to the small JSON sidecar where we record the browser we launched
  * ({pid, port}). Lives INSIDE the profile dir so it's scoped to that profile.
  * On the next attach we read it to (a) reconnect to a browser that survived an
@@ -101,9 +136,15 @@ function sessionStatePath(userDataDir: string): string {
 }
 
 interface PersistedSession {
+  /** Chrome process pid. */
   pid: number;
   port: number;
   kind?: BrowserKind;
+  /** axiomate process pid that launched this browser (≠ Chrome pid). Lets a
+   *  later attach tell "I previously launched here" from "another live
+   *  axiomate owns this profile". Older records without it are treated as
+   *  ownerless (safe: falls through to the stale-clear path). */
+  ownerPid?: number;
 }
 
 function readSessionState(userDataDir: string): PersistedSession | null {
@@ -111,7 +152,12 @@ function readSessionState(userDataDir: string): PersistedSession | null {
     const raw = readFileSync(sessionStatePath(userDataDir), "utf8");
     const v = JSON.parse(raw) as Partial<PersistedSession>;
     if (typeof v.pid === "number" && typeof v.port === "number") {
-      return { pid: v.pid, port: v.port, kind: v.kind };
+      return {
+        pid: v.pid,
+        port: v.port,
+        kind: v.kind,
+        ownerPid: typeof v.ownerPid === "number" ? v.ownerPid : undefined,
+      };
     }
   } catch {
     // Missing/corrupt — treat as no prior session.
@@ -308,6 +354,8 @@ export interface LaunchResult {
   reason?: string;
   /** True when we reconnected to a browser that survived (no new spawn). */
   reused?: boolean;
+  /** Profile dir actually used (stable or per-pid) — for scoped cleanup. */
+  userDataDir?: string;
 }
 
 export interface LaunchOptions {
@@ -347,7 +395,10 @@ export async function tryLaunchIsolated(
       reason: `no Chromium-family browser found on ${platform}`,
     };
   }
-  const userDataDir = opts.userDataDir ?? isolatedProfileDir();
+  // Stable profile when free; per-pid profile when another live axiomate owns
+  // it (Chrome single-instance lock forbids sharing concurrently). A pinned
+  // userDataDir (tests) overrides selection.
+  const userDataDir = opts.userDataDir ?? selectProfileDir();
   mkdirSync(userDataDir, { recursive: true, mode: 0o700 });
 
   // Reuse-or-clear: a prior bridge browser recorded in the profile's state
@@ -358,7 +409,16 @@ export async function tryLaunchIsolated(
   // pinned a port (tests) so this stays deterministic.
   if (opts.port === undefined) {
     const prior = readSessionState(userDataDir);
-    if (prior) {
+    // Only consider reusing/clearing a record we OWN (or a legacy ownerless
+    // one). A record owned by a different LIVE axiomate means selectProfileDir
+    // already routed us to a per-pid profile, so we won't see it here; but if a
+    // different owner is DEAD, its browser is ours to clean up.
+    const reusable =
+      prior &&
+      (prior.ownerPid === undefined ||
+        prior.ownerPid === process.pid ||
+        !isPidAlive(prior.ownerPid));
+    if (prior && reusable) {
       if (isPidAlive(prior.pid) && (await isChromeCdp(prior.port))) {
         return {
           ok: true,
@@ -367,6 +427,7 @@ export async function tryLaunchIsolated(
           kind: prior.kind ?? chosen.kind,
           port: prior.port,
           reused: true,
+          userDataDir,
         };
       }
       // Stale: kill the zombie holding the lock (+ POSIX Singleton symlinks).
@@ -409,11 +470,17 @@ export async function tryLaunchIsolated(
       };
     }
     // Record what we launched so the next attach can reuse it or clear its
-    // stale lock. Only on a confirmed-ready launch with a real pid.
+    // stale lock. Only on a confirmed-ready launch with a real pid. ownerPid is
+    // THIS axiomate so a concurrent instance can tell our profile is taken.
     if (pid !== undefined) {
-      writeSessionState(userDataDir, { pid, port, kind: chosen.kind });
+      writeSessionState(userDataDir, {
+        pid,
+        port,
+        kind: chosen.kind,
+        ownerPid: process.pid,
+      });
     }
-    return { ok: true, pid, binary: chosen.path, kind: chosen.kind, port };
+    return { ok: true, pid, binary: chosen.path, kind: chosen.kind, port, userDataDir };
   } catch (err) {
     return {
       ok: false,

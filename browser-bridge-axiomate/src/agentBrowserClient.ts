@@ -14,8 +14,16 @@
 import { spawn } from "node:child_process";
 import { resolveAgentBrowserPath } from "./agentBrowser.js";
 
-/** Fixed session name so all our calls target the same agent-browser session. */
-export const AGENT_BROWSER_SESSION = "axiomate-bridge";
+/**
+ * Per-PROCESS agent-browser session name. Each axiomate process gets its own
+ * `axiomate-bridge-<pid>` daemon so concurrent axiomate instances never share
+ * (and stomp) one daemon: a fixed name made instance B's `ensure_daemon`
+ * silently reuse instance A's daemon — wrong browser, crossed wires, and a
+ * shutdown in A would tear down B. The pid suffix isolates them. It also lets
+ * shutdown target ONLY our own daemon (`--session <this> close`), never the
+ * `close --all` sledgehammer that would kill every instance's daemon.
+ */
+export const AGENT_BROWSER_SESSION = `axiomate-bridge-${process.pid}`;
 
 export interface AgentBrowserResult {
   ok: boolean;

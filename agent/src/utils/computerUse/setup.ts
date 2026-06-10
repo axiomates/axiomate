@@ -75,9 +75,18 @@ export function setupBrowserBridgeMCP():
   const config: McpInProcessServerConfig = {
     type: 'in-process',
     factory: async () => {
-      const { createBrowserBridgeMcpServer } = await import(
+      const { createBrowserBridgeMcpServer, shutdownBridge } = await import(
         'browser-bridge-axiomate'
       )
+      // The launched browser and the agent-browser daemon are both detached, so
+      // the OS won't reap them when axiomate exits, and agent-browser's
+      // idle-timeout is off by default → the daemon would run forever. Register
+      // a graceful-shutdown hook to take down THIS process's browser + daemon
+      // (scoped to our per-pid session, never other axiomate instances).
+      // Registered here (factory = first connect) so a session that never
+      // touches the browser adds no shutdown work.
+      const { registerCleanup } = await import('../cleanupRegistry.js')
+      registerCleanup(shutdownBridge)
       return createBrowserBridgeMcpServer()
     },
   }
