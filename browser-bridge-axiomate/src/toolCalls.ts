@@ -1,64 +1,33 @@
 /**
  * Tool dispatch for the browser bridge MCP server.
  *
- * One BridgeSession per agent process. State lives in module-level closure
- * because the MCP server is in-process and there's exactly one agent. If we
- * ever need multi-tenant (e.g. SDK with concurrent sessions), this becomes
- * a Map keyed on session id and bound via a wrapper closure analogous to
- * `bindSessionContext` in computer-use-mcp.
+ * Execution layer: every browser_* tool shells out to the bundled agent-browser
+ * CLI (see agentBrowserClient.ts) against the user's LOCAL browser that
+ * launcher.ts starts. We do NOT speak raw CDP ourselves — agent-browser (Vercel
+ * Labs, native Rust CDP daemon) owns snapshot/ref/click/dialog/console/iframe
+ * etc., including cross-origin OOPIF handling that a hand-rolled AX walk can't
+ * easily do.
+ *
+ * One session per agent process: the launched browser's CDP port lives in
+ * module-level state and is passed as `--cdp <port>` to every agent-browser
+ * call. State is a closure because the MCP server is in-process with exactly
+ * one agent.
  */
 
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 
-import { CdpClient } from "./cdpClient.js";
-import { enumeratePageElements, refCenter } from "./enumerate.js";
+import { runAgentBrowser } from "./agentBrowserClient.js";
 import { tryLaunchIsolated } from "./launcher.js";
-import type {
-  BridgeProfile,
-  BridgeState,
-  BridgeStatus,
-  BrowserKind,
-  PageSnapshot,
-  PendingDialog,
-} from "./types.js";
-
-interface ConsoleEntry {
-  type: "log" | "warn" | "error" | "info" | "debug" | "exception";
-  /** Joined text representation. For exceptions, the error message/stack. */
-  text: string;
-  /** Wall-clock time when the event arrived. */
-  timestamp: number;
-  /** Source URL + line/col for exceptions; undefined for plain logs. */
-  source?: string;
-}
-
-const CONSOLE_BUFFER_CAP = 500;
-
-// How long a JS dialog may block the page with no browser_dialog response
-// before the watchdog auto-dismisses it (accept=false). Matches hermes'
-// DEFAULT_DIALOG_TIMEOUT_S — the core fix is surfacing the dialog so the agent
-// responds; this is only the last-resort backstop against an unresponsive agent
-// freezing the page forever.
-const DIALOG_TIMEOUT_MS = 300_000;
+import type { BridgeState, BrowserKind } from "./types.js";
 
 interface BridgeSession {
   state: BridgeState;
-  client?: CdpClient;
   kind?: BrowserKind;
   port?: number;
   pid?: number;
-  profile?: BridgeProfile;
-  /** The most recent snapshot's refs map. Cleared on navigation. */
-  lastSnapshot?: PageSnapshot;
-  /** Ring buffer of console events. Drained / cleared by browser_console. */
-  consoleBuffer: ConsoleEntry[];
-  /** A JS dialog currently blocking the page, awaiting browser_dialog. */
-  pendingDialog?: PendingDialog;
-  /** Watchdog timer that auto-dismisses an unanswered dialog. */
-  dialogWatchdog?: ReturnType<typeof setTimeout>;
 }
 
-const session: BridgeSession = { state: "detached", consoleBuffer: [] };
+const session: BridgeSession = { state: "detached" };
 
 function ok(text: string): CallToolResult {
   return { content: [{ type: "text", text }] };
@@ -68,307 +37,134 @@ function err(text: string): CallToolResult {
   return { content: [{ type: "text", text }], isError: true };
 }
 
-function statusObject(): BridgeStatus {
+/** Require an attached browser; returns the CDP port or an error result. */
+function requirePort(): number | CallToolResult {
+  if (session.state !== "attached" || session.port === undefined) {
+    return err("browser bridge is not attached. Call browser_attach first.");
+  }
+  return session.port;
+}
+
+/** Map an agent-browser failure into an MCP error result. */
+function fail(prefix: string, error?: string): CallToolResult {
+  return err(`${prefix}${error ? `: ${error}` : ""}`);
+}
+
+function statusObject() {
   return {
     state: session.state,
-    profile: session.state === "attached" ? session.profile : undefined,
     browserKind: session.kind,
     cdpPort: session.port,
-    pendingDialog: session.pendingDialog,
   };
 }
 
-/** Clear any pending dialog and cancel its watchdog timer. Idempotent. */
-function clearPendingDialog(): void {
-  if (session.dialogWatchdog) {
-    clearTimeout(session.dialogWatchdog);
-    session.dialogWatchdog = undefined;
-  }
-  session.pendingDialog = undefined;
-}
-
-/** Require attached state; returns the client or an error result. */
-function requireClient(): CdpClient | CallToolResult {
-  if (session.state !== "attached" || !session.client) {
-    return err(
-      "browser bridge is not attached. Call browser_attach first.",
-    );
-  }
-  return session.client;
-}
-
-function pushConsole(entry: ConsoleEntry): void {
-  session.consoleBuffer.push(entry);
-  if (session.consoleBuffer.length > CONSOLE_BUFFER_CAP) {
-    // Drop oldest. Newest events are most relevant for debugging "what
-    // just broke".
-    session.consoleBuffer.splice(
-      0,
-      session.consoleBuffer.length - CONSOLE_BUFFER_CAP,
-    );
-  }
-}
-
-/**
- * Attach to a freshly-spawned isolated-profile Chromium. The user-profile
- * takeover path was attempted (Phase 2b) but removed: Chrome 136+ silently
- * ignores `--remote-debugging-port` when paired with the default
- * user-data-dir as a cookie-theft mitigation (developer.chrome.com/blog/
- * remote-debugging-port, 2025-03-17). Isolated is the only shippable path.
- */
 async function handleAttach(): Promise<CallToolResult> {
-  if (session.state === "attached" && session.client) {
-    return ok(
-      `already attached: ${JSON.stringify(statusObject(), null, 2)}`,
-    );
+  if (session.state === "attached" && session.port !== undefined) {
+    return ok(`already attached: ${JSON.stringify(statusObject(), null, 2)}`);
   }
   if (session.state === "attaching") {
     return err("attach already in progress");
   }
   session.state = "attaching";
   const launch = await tryLaunchIsolated();
-  if (!launch.ok) {
+  if (!launch.ok || launch.port === undefined) {
     session.state = "detached";
-    return err(`attach failed: ${launch.reason}`);
+    return err(`attach failed: ${launch.reason ?? "unknown"}`);
   }
-  try {
-    const client = await CdpClient.connect({
-      host: "127.0.0.1",
-      port: launch.port!,
-    });
-    session.client = client;
-    session.kind = launch.kind;
-    session.port = launch.port;
-    session.pid = launch.pid;
-    session.profile = "isolated";
-    session.state = "attached";
-    session.consoleBuffer = [];
-
-    // Detect the CDP socket dying (user quit Chrome, crash, tab closed). Without
-    // this, session.state is a manual snapshot that stays "attached" forever —
-    // browser_status then lies and requireClient hands out a dead client, so
-    // every later tool call fails confusingly. chrome-remote-interface emits
-    // 'disconnect' when its WebSocket closes; mirror that into our state.
-    // The `session.client === client` guard prevents a stale prior client's
-    // late 'disconnect' (from a detach→reattach cycle) clobbering the new
-    // session.
-    client.on("disconnect", () => {
-      if (session.client !== client) return;
-      clearPendingDialog();
-      session.state = "detached";
-      session.client = undefined;
-      session.kind = undefined;
-      session.port = undefined;
-      session.pid = undefined;
-      session.profile = undefined;
-      session.lastSnapshot = undefined;
-    });
-
-    // Wire CDP events: snapshot invalidation + console buffer.
-    client.on("Page.frameNavigated", () => {
-      session.lastSnapshot = undefined;
-    });
-
-    // Enable the Page domain NOW (not lazily at snapshot time) so dialog events
-    // fire from the moment we attach. CRITICAL CDP semantics: once Page.enable
-    // is sent, Chrome stops showing native dialog UI and freezes the page's JS
-    // thread on alert/confirm/prompt/beforeunload until handleJavaScriptDialog
-    // is called. So we MUST listen for the opening event and surface it to the
-    // agent (browser_status / browser_snapshot) — otherwise the page hangs
-    // invisibly. Mirrors hermes' must-respond dialog policy + watchdog backstop.
-    await client.send("Page.enable").catch(() => {
-      // Already enabled or transient race — non-fatal.
-    });
-
-    client.on("Page.javascriptDialogOpening", (params: any) => {
-      if (session.client !== client) return;
-      // Replace any prior pending dialog (only one can block at a time).
-      if (session.dialogWatchdog) clearTimeout(session.dialogWatchdog);
-      session.pendingDialog = {
-        type: String(params?.type ?? ""),
-        message: String(params?.message ?? ""),
-        defaultPrompt: String(params?.defaultPrompt ?? ""),
-        openedAt: Date.now(),
-      };
-      // Backstop: if the agent never calls browser_dialog, auto-dismiss so the
-      // page can't stay frozen forever. The agent normally sees the dialog via
-      // status/snapshot and responds well before this fires.
-      session.dialogWatchdog = setTimeout(() => {
-        if (session.client !== client || !session.pendingDialog) return;
-        const d = session.pendingDialog;
-        clearPendingDialog();
-        client
-          .send("Page.handleJavaScriptDialog", { accept: false })
-          .catch(() => {
-            // Dialog may have already been closed by the page; non-fatal.
-          });
-        pushConsole({
-          type: "warn",
-          text:
-            `browser-bridge: auto-dismissed unanswered ${d.type} dialog ` +
-            `after ${DIALOG_TIMEOUT_MS / 1000}s ("${d.message.slice(0, 120)}")`,
-          timestamp: Date.now(),
-        });
-      }, DIALOG_TIMEOUT_MS);
-      // Node keeps the event loop alive for pending timers; this backstop
-      // shouldn't hold the process open on its own.
-      session.dialogWatchdog.unref?.();
-    });
-
-    client.on("Page.javascriptDialogClosed", () => {
-      if (session.client !== client) return;
-      clearPendingDialog();
-    });
-
-    // Enable Runtime so consoleAPICalled and exceptionThrown fire.
-    await client.send("Runtime.enable").catch(() => {
-      // Already enabled or transient race — non-fatal.
-    });
-
-    client.on("Runtime.consoleAPICalled", (params: any) => {
-      // params.type ∈ "log","debug","info","error","warning",...
-      // params.args is an array of RemoteObject; we serialize each.
-      const text = (params.args ?? [])
-        .map((a: any) => {
-          if (a == null) return String(a);
-          if ("value" in a && a.value !== undefined) return String(a.value);
-          if (a.description) return a.description;
-          if (a.unserializableValue) return a.unserializableValue;
-          return JSON.stringify(a);
-        })
-        .join(" ");
-      const t = params.type as string;
-      // Normalize: "warning" → "warn"; everything else lowercased.
-      const type: ConsoleEntry["type"] =
-        t === "warning" ? "warn" : (t as ConsoleEntry["type"]);
-      pushConsole({
-        type,
-        text,
-        timestamp: Date.now(),
-      });
-    });
-
-    client.on("Runtime.exceptionThrown", (params: any) => {
-      const d = params.exceptionDetails ?? {};
-      const msg = d.text ?? "uncaught exception";
-      const exc = d.exception?.description ?? d.exception?.value ?? "";
-      const source = [d.url, d.lineNumber, d.columnNumber]
-        .filter((v) => v !== undefined)
-        .join(":");
-      pushConsole({
-        type: "exception",
-        text: exc ? `${msg}: ${exc}` : msg,
-        timestamp: Date.now(),
-        source: source || undefined,
-      });
-    });
-
-    return ok(`attached: ${JSON.stringify(statusObject(), null, 2)}`);
-  } catch (e) {
+  // Attach agent-browser to the launcher's browser over CDP. `connect` persists
+  // the endpoint in agent-browser's session so subsequent --cdp calls target
+  // the same browser.
+  const connect = await runAgentBrowser(["connect", String(launch.port)], {
+    cdpPort: launch.port,
+    timeoutMs: 15_000,
+  });
+  if (!connect.ok) {
+    // Launch succeeded but agent-browser couldn't attach — tear the browser
+    // down so we don't leak it.
+    if (launch.pid) {
+      try {
+        process.kill(launch.pid);
+      } catch {
+        // already gone
+      }
+    }
     session.state = "detached";
-    return err(`CDP connect failed: ${(e as Error).message}`);
+    return fail("attach failed (agent-browser connect)", connect.error);
   }
+  session.kind = launch.kind;
+  session.port = launch.port;
+  session.pid = launch.pid;
+  session.state = "attached";
+  return ok(`attached: ${JSON.stringify(statusObject(), null, 2)}`);
+}
+
+async function handleStatus(): Promise<CallToolResult> {
+  const base = statusObject();
+  // Surface a blocking dialog if one is open — agent-browser tracks this
+  // natively (no hand-rolled javascriptDialogOpening listener needed).
+  let pendingDialog: string | undefined;
+  if (session.state === "attached" && session.port !== undefined) {
+    const d = await runAgentBrowser(["dialog", "status"], {
+      cdpPort: session.port,
+      timeoutMs: 5_000,
+    });
+    if (d.ok && d.stdout && !/no dialog/i.test(d.stdout)) {
+      pendingDialog = d.stdout.trim();
+    }
+  }
+  return ok(
+    JSON.stringify(pendingDialog ? { ...base, pendingDialog } : base, null, 2),
+  );
 }
 
 async function handleDetach(): Promise<CallToolResult> {
   if (session.state === "detached") {
     return ok("already detached");
   }
-  try {
-    await session.client?.close();
-  } catch {
-    // Already closed — ignore.
+  const port = session.port;
+  if (port !== undefined) {
+    await runAgentBrowser(["close"], { cdpPort: port, timeoutMs: 10_000 });
   }
   if (session.pid) {
     try {
       process.kill(session.pid);
     } catch {
-      // Process may have exited or be unkillable from this user — caller
-      // can clean up manually if needed.
+      // Process may have exited or be unkillable — caller can clean up.
     }
   }
-  session.client = undefined;
   session.kind = undefined;
   session.port = undefined;
   session.pid = undefined;
-  session.profile = undefined;
-  session.lastSnapshot = undefined;
-  session.consoleBuffer = [];
-  clearPendingDialog();
-  session.state = "released";
+  session.state = "detached";
   return ok("detached");
 }
 
-// Default cap for waiting on a page load after navigation. Page.navigate
-// resolves on commit (navigation started), NOT on load, so we wait for
-// Page.loadEventFired — but a page may never fire it (SPA hash nav, a blocking
-// dialog, a slow/stalled resource), so the timeout is a hard upper bound, not
-// the expected path.
-const LOAD_EVENT_TIMEOUT_MS = 10_000;
+// ── Page interaction (all attach to session.port via --cdp) ──────────────────
 
-/**
- * Resolve when the page fires its load event, or after timeoutMs — whichever
- * comes first. Replaces a fixed sleep so fast pages return promptly and slow
- * pages aren't truncated. Never rejects: a timeout is a normal "load didn't
- * fire in time" outcome the caller reports as best-effort. Returns true if the
- * load event fired, false on timeout.
- */
-function waitForLoadEvent(
-  client: CdpClient,
-  timeoutMs = LOAD_EVENT_TIMEOUT_MS,
-): Promise<boolean> {
-  return new Promise<boolean>((resolve) => {
-    let done = false;
-    const finish = (loaded: boolean) => {
-      if (done) return;
-      done = true;
-      clearTimeout(timer);
-      client.off("Page.loadEventFired", onLoad);
-      resolve(loaded);
-    };
-    const onLoad = () => finish(true);
-    const timer = setTimeout(() => finish(false), timeoutMs);
-    timer.unref?.();
-    client.on("Page.loadEventFired", onLoad);
+async function handleNavigate(args: { url: string }): Promise<CallToolResult> {
+  const port = requirePort();
+  if (typeof port !== "number") return port;
+  const r = await runAgentBrowser(["open", args.url], {
+    cdpPort: port,
+    timeoutMs: 45_000,
   });
+  return r.ok ? ok(`navigated to ${args.url}`) : fail("navigate failed", r.error);
 }
 
-async function handleNavigate(args: {
-  url: string;
+async function handleSnapshot(args: {
+  interactive?: boolean;
+  urls?: boolean;
 }): Promise<CallToolResult> {
-  const c = requireClient();
-  if (!(c instanceof CdpClient)) return c;
-  // Arm the load listener BEFORE navigate so a fast load can't fire between the
-  // navigate round-trip and our subscription.
-  const loaded = waitForLoadEvent(c);
-  await c.send("Page.navigate", { url: args.url });
-  const didLoad = await loaded;
-  session.lastSnapshot = undefined;
-  return ok(
-    didLoad
-      ? `navigated to ${args.url}`
-      : `navigated to ${args.url} (load event not seen within ` +
-          `${LOAD_EVENT_TIMEOUT_MS / 1000}s; page may still be loading)`,
-  );
-}
-
-async function handleSnapshot(): Promise<CallToolResult> {
-  const c = requireClient();
-  if (!(c instanceof CdpClient)) return c;
-  const snap = await enumeratePageElements(c);
-  session.lastSnapshot = snap;
-  const refCount = Object.keys(snap.refs).length;
-  // If a JS dialog is blocking the page, lead with it: the page's JS thread is
-  // frozen until the agent responds via browser_dialog, so the snapshot below
-  // is stale and most other tools will hang. Make that unmissable.
-  const dialogBanner = session.pendingDialog
-    ? `⚠ A JavaScript ${session.pendingDialog.type} dialog is open and ` +
-      `blocking the page: "${session.pendingDialog.message}". ` +
-      `Respond with browser_dialog (accept/dismiss) before continuing.\n\n`
-    : "";
-  return ok(
-    `${dialogBanner}# ${snap.title || "(untitled)"}\nurl: ${snap.url}\nrefs: ${refCount}\n\n${snap.ariaText}`,
-  );
+  const port = requirePort();
+  if (typeof port !== "number") return port;
+  const flags = ["snapshot", "--compact"];
+  if (args?.interactive) flags.push("--interactive");
+  if (args?.urls) flags.push("--urls");
+  const r = await runAgentBrowser(flags, { cdpPort: port, timeoutMs: 45_000 });
+  if (!r.ok) return fail("snapshot failed", r.error);
+  // agent-browser emits the ref-addressed aria tree (@e1, @e2, ...) directly;
+  // pass it through for the model to address with browser_click etc.
+  return ok(r.stdout || "(empty page)");
 }
 
 async function handleClick(args: {
@@ -376,305 +172,184 @@ async function handleClick(args: {
   button?: "left" | "middle" | "right";
   clickCount?: number;
 }): Promise<CallToolResult> {
-  const c = requireClient();
-  if (!(c instanceof CdpClient)) return c;
-  const ref = session.lastSnapshot?.refs?.[args.ref];
-  if (!ref) {
-    return err(
-      `unknown ref ${args.ref}. Call browser_snapshot first or after navigation.`,
-    );
-  }
-  const { x, y } = await refCenter(c, ref);
-  const button = args.button ?? "left";
-  const clickCount = args.clickCount ?? 1;
-  await c.send("Input.dispatchMouseEvent", {
-    type: "mousePressed",
-    x,
-    y,
-    button,
-    clickCount,
-  });
-  await c.send("Input.dispatchMouseEvent", {
-    type: "mouseReleased",
-    x,
-    y,
-    button,
-    clickCount,
-  });
-  return ok(`clicked ${args.ref} at (${x.toFixed(1)}, ${y.toFixed(1)})`);
+  const port = requirePort();
+  if (typeof port !== "number") return port;
+  const cmd =
+    args.clickCount === 2 ? ["dblclick", args.ref] : ["click", args.ref];
+  if (args.button && args.button !== "left") cmd.push("--button", args.button);
+  const r = await runAgentBrowser(cmd, { cdpPort: port, timeoutMs: 30_000 });
+  return r.ok ? ok(`clicked ${args.ref}`) : fail("click failed", r.error);
 }
 
 async function handleType(args: {
   ref: string;
   text: string;
 }): Promise<CallToolResult> {
-  const c = requireClient();
-  if (!(c instanceof CdpClient)) return c;
-  const ref = session.lastSnapshot?.refs?.[args.ref];
-  if (!ref) {
-    return err(`unknown ref ${args.ref}.`);
-  }
-  // Focus first via DOM.focus by backendNodeId — DOM domain must be enabled
-  // implicitly since we used getBoxModel earlier; safe to call directly.
-  await c.send("DOM.enable");
-  await c.send("DOM.focus", { backendNodeId: ref.backendNodeId });
-  await c.send("Input.insertText", { text: args.text });
-  return ok(`typed ${args.text.length} chars into ${args.ref}`);
+  const port = requirePort();
+  if (typeof port !== "number") return port;
+  const r = await runAgentBrowser(["fill", args.ref, args.text], {
+    cdpPort: port,
+    timeoutMs: 30_000,
+  });
+  return r.ok ? ok(`typed into ${args.ref}`) : fail("type failed", r.error);
 }
 
 async function handlePress(args: { key: string }): Promise<CallToolResult> {
-  const c = requireClient();
-  if (!(c instanceof CdpClient)) return c;
-  await c.send("Input.dispatchKeyEvent", { type: "keyDown", key: args.key });
-  await c.send("Input.dispatchKeyEvent", { type: "keyUp", key: args.key });
-  return ok(`pressed ${args.key}`);
+  const port = requirePort();
+  if (typeof port !== "number") return port;
+  const r = await runAgentBrowser(["press", args.key], {
+    cdpPort: port,
+    timeoutMs: 15_000,
+  });
+  return r.ok ? ok(`pressed ${args.key}`) : fail("press failed", r.error);
 }
 
 async function handleScroll(args: {
-  deltaX?: number;
-  deltaY?: number;
-  ref?: string;
+  direction?: "up" | "down" | "left" | "right";
+  amount?: number;
 }): Promise<CallToolResult> {
-  const c = requireClient();
-  if (!(c instanceof CdpClient)) return c;
-  let x = 400;
-  let y = 300;
-  if (args.ref) {
-    const ref = session.lastSnapshot?.refs?.[args.ref];
-    if (!ref) return err(`unknown ref ${args.ref}.`);
-    const center = await refCenter(c, ref);
-    x = center.x;
-    y = center.y;
-  }
-  await c.send("Input.dispatchMouseEvent", {
-    type: "mouseWheel",
-    x,
-    y,
-    deltaX: args.deltaX ?? 0,
-    deltaY: args.deltaY ?? 200,
-  });
-  return ok(`scrolled (${args.deltaX ?? 0}, ${args.deltaY ?? 200}) at (${x}, ${y})`);
+  const port = requirePort();
+  if (typeof port !== "number") return port;
+  const dir = args.direction ?? "down";
+  const cmd = ["scroll", dir];
+  if (typeof args.amount === "number") cmd.push(String(args.amount));
+  const r = await runAgentBrowser(cmd, { cdpPort: port, timeoutMs: 15_000 });
+  return r.ok ? ok(`scrolled ${dir}`) : fail("scroll failed", r.error);
 }
 
 async function handleHistory(
-  method: "Page.goBack" | "Page.goForward" | "Page.reload",
-  params: any = {},
+  verb: "back" | "forward" | "reload",
 ): Promise<CallToolResult> {
-  const c = requireClient();
-  if (!(c instanceof CdpClient)) return c;
-  // Same as navigate: these trigger a load, so wait for it (bounded) instead of
-  // returning before the new page exists. Arm the listener before the call.
-  const loaded = waitForLoadEvent(c);
-  await c.send(method, params);
-  const didLoad = await loaded;
-  session.lastSnapshot = undefined;
-  return ok(
-    didLoad
-      ? method
-      : `${method} (load event not seen within ` +
-          `${LOAD_EVENT_TIMEOUT_MS / 1000}s; page may still be loading)`,
-  );
+  const port = requirePort();
+  if (typeof port !== "number") return port;
+  const r = await runAgentBrowser([verb], { cdpPort: port, timeoutMs: 45_000 });
+  return r.ok ? ok(verb) : fail(`${verb} failed`, r.error);
 }
 
 async function handleTabList(): Promise<CallToolResult> {
-  const c = requireClient();
-  if (!(c instanceof CdpClient)) return c;
-  const r = await c.send<{ targetInfos: any[] }>("Target.getTargets");
-  const tabs = r.targetInfos
-    .filter((t) => t.type === "page")
-    .map((t) => ({ targetId: t.targetId, url: t.url, title: t.title }));
-  return ok(JSON.stringify(tabs, null, 2));
-}
-
-async function handleTabNew(args: {
-  url?: string;
-}): Promise<CallToolResult> {
-  const c = requireClient();
-  if (!(c instanceof CdpClient)) return c;
-  const r = await c.send<{ targetId: string }>("Target.createTarget", {
-    url: args.url ?? "about:blank",
+  const port = requirePort();
+  if (typeof port !== "number") return port;
+  const r = await runAgentBrowser(["tab", "list"], {
+    cdpPort: port,
+    timeoutMs: 15_000,
   });
-  return ok(`new tab ${r.targetId}`);
+  return r.ok ? ok(r.stdout || "(no tabs)") : fail("tab list failed", r.error);
 }
 
-async function handleTabClose(args: {
-  targetId?: string;
-}): Promise<CallToolResult> {
-  const c = requireClient();
-  if (!(c instanceof CdpClient)) return c;
-  let id = args.targetId;
-  if (!id) {
-    // Default to the active page target.
-    const r = await c.send<{ targetInfos: any[] }>("Target.getTargets");
-    const active = r.targetInfos.find(
-      (t) => t.type === "page" && t.attached,
-    );
-    if (!active) return err("no active tab to close");
-    id = active.targetId;
+async function handleTabNew(args: { url?: string }): Promise<CallToolResult> {
+  const port = requirePort();
+  if (typeof port !== "number") return port;
+  const r = await runAgentBrowser(["tab", "new"], {
+    cdpPort: port,
+    timeoutMs: 15_000,
+  });
+  if (!r.ok) return fail("tab new failed", r.error);
+  if (args?.url) {
+    const nav = await runAgentBrowser(["open", args.url], {
+      cdpPort: port,
+      timeoutMs: 45_000,
+    });
+    if (!nav.ok) return fail("tab new (navigate) failed", nav.error);
   }
-  await c.send("Target.closeTarget", { targetId: id });
-  return ok(`closed ${id}`);
+  return ok(r.stdout || "opened new tab");
+}
+
+async function handleTabClose(): Promise<CallToolResult> {
+  const port = requirePort();
+  if (typeof port !== "number") return port;
+  const r = await runAgentBrowser(["tab", "close"], {
+    cdpPort: port,
+    timeoutMs: 15_000,
+  });
+  return r.ok ? ok("closed tab") : fail("tab close failed", r.error);
 }
 
 async function handleTabSwitch(args: {
   targetId: string;
 }): Promise<CallToolResult> {
-  const c = requireClient();
-  if (!(c instanceof CdpClient)) return c;
-  await c.send("Target.activateTarget", { targetId: args.targetId });
-  session.lastSnapshot = undefined;
-  return ok(`switched to ${args.targetId}`);
-}
-
-async function handleZoom(args: {
-  factor: number;
-}): Promise<CallToolResult> {
-  const c = requireClient();
-  if (!(c instanceof CdpClient)) return c;
-  await c.send("Emulation.setPageScaleFactor", {
-    pageScaleFactor: args.factor,
+  const port = requirePort();
+  if (typeof port !== "number") return port;
+  const r = await runAgentBrowser(["tab", args.targetId], {
+    cdpPort: port,
+    timeoutMs: 15_000,
   });
-  return ok(`zoom ${args.factor}`);
+  return r.ok ? ok(`switched to tab ${args.targetId}`) : fail("tab switch failed", r.error);
 }
 
 async function handleDialog(args: {
   action: "accept" | "dismiss";
   promptText?: string;
 }): Promise<CallToolResult> {
-  const c = requireClient();
-  if (!(c instanceof CdpClient)) return c;
-  await c.send("Page.handleJavaScriptDialog", {
-    accept: args.action === "accept",
-    promptText: args.promptText,
-  });
-  // Clear our tracked dialog immediately (idempotent with the Closed event)
-  // so status/snapshot stop reporting it and the watchdog is cancelled.
-  clearPendingDialog();
-  return ok(`dialog ${args.action}`);
+  const port = requirePort();
+  if (typeof port !== "number") return port;
+  const cmd = ["dialog", args.action];
+  if (args.action === "accept" && args.promptText !== undefined) {
+    cmd.push(args.promptText);
+  }
+  const r = await runAgentBrowser(cmd, { cdpPort: port, timeoutMs: 10_000 });
+  return r.ok ? ok(`dialog ${args.action}`) : fail("dialog failed", r.error);
 }
 
 async function handleConsole(args: {
-  expression?: string;
   clear?: boolean;
 }): Promise<CallToolResult> {
-  const c = requireClient();
-  if (!(c instanceof CdpClient)) return c;
-
-  let evalLine = "";
-  if (args.expression) {
-    try {
-      const r = await c.send<any>("Runtime.evaluate", {
-        expression: args.expression,
-        returnByValue: true,
-        awaitPromise: true,
-      });
-      if (r.exceptionDetails) {
-        const d = r.exceptionDetails;
-        evalLine = `[evaluate] threw: ${d.text}${
-          d.exception?.description ? ` — ${d.exception.description}` : ""
-        }`;
-      } else {
-        const v = r.result?.value;
-        const repr =
-          v === undefined
-            ? r.result?.description ?? "undefined"
-            : typeof v === "string"
-              ? v
-              : JSON.stringify(v);
-        evalLine = `[evaluate] ${repr}`;
-      }
-    } catch (e) {
-      evalLine = `[evaluate failed] ${(e as Error).message}`;
-    }
-  }
-
-  const buf = [...session.consoleBuffer];
-  if (args.clear) session.consoleBuffer = [];
-
-  const lines = buf.map((e) => {
-    const src = e.source ? ` (${e.source})` : "";
-    return `[${e.type}]${src} ${e.text}`;
-  });
-
-  if (evalLine) lines.push(evalLine);
-  if (lines.length === 0) {
-    return ok("(console buffer empty, no expression evaluated)");
-  }
-  return ok(lines.join("\n"));
+  const port = requirePort();
+  if (typeof port !== "number") return port;
+  const cmd = ["console"];
+  if (args?.clear) cmd.push("--clear");
+  const r = await runAgentBrowser(cmd, { cdpPort: port, timeoutMs: 15_000 });
+  return r.ok ? ok(r.stdout || "(no console output)") : fail("console failed", r.error);
 }
 
-async function handleGetImages(args: {
-  limit?: number;
-}): Promise<CallToolResult> {
-  const c = requireClient();
-  if (!(c instanceof CdpClient)) return c;
-  const limit = Math.max(1, Math.min(args.limit ?? 50, 500));
-  // Run in the page; collect img elements. currentSrc resolves srcset; alt
-  // is the accessibility text; naturalWidth/Height are intrinsic px.
-  const expr = `
-    JSON.stringify(
-      Array.from(document.images)
-        .slice(0, ${limit})
-        .map(img => ({
-          src: img.currentSrc || img.src,
-          alt: img.alt || null,
-          naturalWidth: img.naturalWidth,
-          naturalHeight: img.naturalHeight,
-        }))
-    )
-  `;
-  const r = await c.send<any>("Runtime.evaluate", {
-    expression: expr,
-    returnByValue: true,
-  });
-  if (r.exceptionDetails) {
-    return err(
-      `evaluate failed: ${r.exceptionDetails.text}`,
-    );
-  }
-  const json = r.result?.value ?? "[]";
-  return ok(json);
-}
-
-async function handleVision(args: {
-  format?: "png" | "jpeg";
-  quality?: number;
-  fullPage?: boolean;
-}): Promise<CallToolResult> {
-  const c = requireClient();
-  if (!(c instanceof CdpClient)) return c;
-  const format = args.format ?? "png";
-  const params: any = { format };
-  if (format === "jpeg") {
-    params.quality = args.quality ?? 80;
-  }
-  if (args.fullPage) {
-    params.captureBeyondViewport = true;
-  }
-  const r = await c.send<{ data: string }>(
-    "Page.captureScreenshot",
-    params,
+async function handleZoom(args: { factor: number }): Promise<CallToolResult> {
+  const port = requirePort();
+  if (typeof port !== "number") return port;
+  // agent-browser has no first-class zoom verb; set it via the page's own API.
+  const r = await runAgentBrowser(
+    ["eval", `document.body.style.zoom='${Number(args.factor)}'`],
+    { cdpPort: port, timeoutMs: 10_000 },
   );
-  return {
-    content: [
-      {
-        type: "image",
-        data: r.data,
-        mimeType: format === "jpeg" ? "image/jpeg" : "image/png",
-      },
+  return r.ok ? ok(`zoom set to ${args.factor}`) : fail("zoom failed", r.error);
+}
+
+async function handleGetImages(): Promise<CallToolResult> {
+  const port = requirePort();
+  if (typeof port !== "number") return port;
+  const r = await runAgentBrowser(
+    [
+      "eval",
+      "JSON.stringify([...document.images].map(i=>({src:i.currentSrc||i.src,alt:i.alt||null,w:i.naturalWidth,h:i.naturalHeight})))",
     ],
-  };
+    { cdpPort: port, timeoutMs: 15_000 },
+  );
+  return r.ok ? ok(r.stdout || "[]") : fail("get_images failed", r.error);
+}
+
+async function handleVision(): Promise<CallToolResult> {
+  const port = requirePort();
+  if (typeof port !== "number") return port;
+  // Screenshot to stdout as base64 PNG for the model's vision pass.
+  const r = await runAgentBrowser(["screenshot", "--base64"], {
+    cdpPort: port,
+    timeoutMs: 30_000,
+  });
+  if (!r.ok) return fail("vision failed", r.error);
+  return {
+    content: [{ type: "image", data: r.stdout.trim(), mimeType: "image/png" }],
+  } as CallToolResult;
 }
 
 async function handleCdp(args: {
   method: string;
-  params?: any;
+  params?: unknown;
   sessionId?: string;
 }): Promise<CallToolResult> {
-  const c = requireClient();
-  if (!(c instanceof CdpClient)) return c;
-  const result = await c.send(args.method, args.params ?? {}, args.sessionId);
-  return ok(JSON.stringify(result, null, 2));
+  const port = requirePort();
+  if (typeof port !== "number") return port;
+  const cmd = ["cdp", args.method];
+  if (args.params !== undefined) cmd.push(JSON.stringify(args.params));
+  const r = await runAgentBrowser(cmd, { cdpPort: port, timeoutMs: 30_000 });
+  return r.ok ? ok(r.stdout || "{}") : fail("cdp failed", r.error);
 }
 
 export async function dispatchBrowserBridgeTool(
@@ -686,13 +361,13 @@ export async function dispatchBrowserBridgeTool(
       case "browser_attach":
         return await handleAttach();
       case "browser_status":
-        return ok(JSON.stringify(statusObject(), null, 2));
+        return await handleStatus();
       case "browser_detach":
         return await handleDetach();
       case "browser_navigate":
         return await handleNavigate(args);
       case "browser_snapshot":
-        return await handleSnapshot();
+        return await handleSnapshot(args ?? {});
       case "browser_click":
         return await handleClick(args);
       case "browser_type":
@@ -700,19 +375,17 @@ export async function dispatchBrowserBridgeTool(
       case "browser_press":
         return await handlePress(args);
       case "browser_scroll":
-        return await handleScroll(args);
+        return await handleScroll(args ?? {});
       case "browser_back":
-        return await handleHistory("Page.goBack");
+        return await handleHistory("back");
       case "browser_forward":
-        return await handleHistory("Page.goForward");
+        return await handleHistory("forward");
       case "browser_reload":
-        return await handleHistory("Page.reload", {
-          ignoreCache: !!args?.ignoreCache,
-        });
+        return await handleHistory("reload");
       case "browser_tab_new":
-        return await handleTabNew(args);
+        return await handleTabNew(args ?? {});
       case "browser_tab_close":
-        return await handleTabClose(args);
+        return await handleTabClose();
       case "browser_tab_switch":
         return await handleTabSwitch(args);
       case "browser_tab_list":
@@ -724,9 +397,9 @@ export async function dispatchBrowserBridgeTool(
       case "browser_console":
         return await handleConsole(args ?? {});
       case "browser_get_images":
-        return await handleGetImages(args ?? {});
+        return await handleGetImages();
       case "browser_vision":
-        return await handleVision(args ?? {});
+        return await handleVision();
       case "browser_cdp":
         return await handleCdp(args);
       default:
@@ -737,15 +410,11 @@ export async function dispatchBrowserBridgeTool(
   }
 }
 
-/** Test-only: reset module state between vitest cases. */
+/** Test-only: reset module state between cases. */
 export function __resetBridgeForTesting(): void {
   session.state = "detached";
-  session.client = undefined;
   session.kind = undefined;
   session.port = undefined;
   session.pid = undefined;
-  session.profile = undefined;
-  session.lastSnapshot = undefined;
-  session.consoleBuffer = [];
-  clearPendingDialog();
 }
+
