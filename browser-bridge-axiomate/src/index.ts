@@ -4,11 +4,4 @@
  */
 
 export { createBrowserBridgeMcpServer } from "./mcpServer.js";
-export type {
-  BrowserKind,
-  BridgeState,
-  BridgeProfile,
-  BridgeStatus,
-  PageRef,
-  PageSnapshot,
-} from "./types.js";
+export type { BrowserKind, BridgeState } from "./types.js";

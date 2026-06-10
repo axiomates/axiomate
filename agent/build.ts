@@ -115,7 +115,6 @@ const result = await Bun.build({
     'computer-use-win-napi-axiomate',
     'browser-bridge-axiomate',
     'agent-browser-axiomate',
-    'chrome-remote-interface',
     'mcpb-axiomate',
     // rtk-axiomate is external in build.ts (bun-runtime mode reaches it
     // via createRequire from agent/src/utils/rtk.ts → pnpm node_modules

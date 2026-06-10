@@ -1,7 +1,7 @@
 {
   "name": "browser-bridge-axiomate",
   "version": "0.1.0",
-  "description": "CDP-backed browser automation MCP server. Pairs with computer-use-mcp-axiomate's BrowserViewport routing — page-content interaction goes through Accessibility.getFullAXTree and Input.dispatchMouseEvent, never through coordinate clicks on the OS layer.",
+  "description": "Browser automation MCP server. Launches the user's local browser (launcher.ts) and drives page interaction through the bundled agent-browser CLI over CDP — snapshot/ref-based clicks, never OS-layer coordinate clicks.",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -15,14 +15,10 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",
     "agent-browser-axiomate": "workspace:*",
-    "chrome-remote-interface": "^0.33.0",
-    "execa": "^9.0.0",
-    "ws": "^8.0.0"
+    "execa": "^9.0.0"
   },
   "devDependencies": {
-    "@types/chrome-remote-interface": "^0.31.0",
     "@types/node": "^22.0.0",
-    "@types/ws": "^8.0.0",
     "typescript": "^5.5.0",
     "vitest": "^1.0.0"
   }

@@ -174,7 +174,6 @@ const result = await Bun.build({
     'computer-use-mcp-axiomate',           // workspace pkg
     'browser-bridge-axiomate',             // workspace pkg
     'agent-browser-axiomate',              // sidecar binary resolver (createRequire at runtime)
-    'chrome-remote-interface',             // CDP client (deep node-only graph, keep external)
     'rtk-axiomate',                        // see build.ts external list
   ],
 
