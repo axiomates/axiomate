@@ -2,6 +2,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Capture every runAgentBrowser call so we can assert the argv each tool builds.
 const calls = vi.hoisted(() => [] as Array<{ args: string[]; opts: any }>);
+// Capture pids passed to jailProcess (Chrome + daemon) so attach can be asserted
+// to bind both to the kill-on-exit job.
+const jailedPids = vi.hoisted(() => [] as number[]);
 const mockState = vi.hoisted(() => ({
   // Default: every agent-browser call succeeds with empty stdout.
   result: { ok: true, stdout: "", stderr: "" } as any,
@@ -24,6 +27,18 @@ vi.mock("./agentBrowserClient.js", () => ({
     const override = mockState.stdoutByCmd[args[0]!];
     if (override !== undefined) return { ok: true, stdout: override, stderr: "" };
     return mockState.result;
+  }),
+  // attach reads this to jail the daemon; a fixed pid is fine — jailProcess is
+  // mocked to record calls, not signal anything.
+  readDaemonPid: vi.fn(() => 5252),
+}));
+
+// Record jailed pids so a test can assert attach jails BOTH the Chrome pid and
+// the daemon pid. The real module is a Bun/Windows-only FFI no-op under vitest;
+// mocking it keeps the assertion explicit and platform-independent.
+vi.mock("./processJail.js", () => ({
+  jailProcess: vi.fn(async (pid?: number) => {
+    if (pid !== undefined) jailedPids.push(pid);
   }),
 }));
 
@@ -56,6 +71,7 @@ function text(r: any): string {
 
 beforeEach(() => {
   calls.length = 0;
+  jailedPids.length = 0;
   mockState.result = { ok: true, stdout: "", stderr: "" };
   mockState.stdoutByCmd = {};
   mockState.launchOk = true;
@@ -86,6 +102,15 @@ describe("browser-bridge attach/detach lifecycle", () => {
     expect(connect?.args).toEqual(["connect", "9222"]);
     expect(connect?.opts.cdpPort).toBe(9222);
     expect(text(r)).toContain('"state": "attached"');
+  });
+
+  it("jails BOTH the launched Chrome pid and the daemon pid on attach", async () => {
+    await attach();
+    // The kernel-reap safety net (Windows Job Object) only protects pids we
+    // explicitly jail. Chrome (4242 from the launcher mock) must be jailed
+    // before connect; the daemon (5252 from readDaemonPid mock) after connect.
+    expect(jailedPids).toContain(4242);
+    expect(jailedPids).toContain(5252);
   });
 
   it("reports not-attached for tools before attach", async () => {

@@ -20,11 +20,12 @@ import { readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { runAgentBrowser } from "./agentBrowserClient.js";
+import { runAgentBrowser, readDaemonPid } from "./agentBrowserClient.js";
 import {
   probeCdpEndpoint,
   tryLaunchIsolated,
 } from "./launcher.js";
+import { jailProcess } from "./processJail.js";
 import type { BridgeState, BrowserKind } from "./types.js";
 
 interface BridgeSession {
@@ -148,6 +149,10 @@ async function handleAttach(): Promise<CallToolResult> {
     if (!launch.ok || launch.port === undefined) {
       return err(`attach failed: ${launch.reason ?? "unknown"}`);
     }
+    // Jail the Chrome we just launched so the kernel reaps it if axiomate dies
+    // without running cleanup (Windows window-X / crash). Best-effort, no-op
+    // off-Windows. Scoped to OUR pid only — never the user's browser.
+    await jailProcess(launch.pid);
     // Attach agent-browser to the launcher's browser over CDP. `connect`
     // persists the endpoint in agent-browser's session so subsequent --cdp
     // calls target the same browser.
@@ -168,6 +173,11 @@ async function handleAttach(): Promise<CallToolResult> {
       }
       return fail("attach failed (agent-browser connect)", connect.error);
     }
+    // `connect` spawned our per-pid daemon, which has now written its real pid
+    // to <session>.pid. Jail it too: it's detached and never self-exits
+    // (idle-timeout off), so the kernel reaping it on our exit is what
+    // guarantees no orphan daemon. Best-effort, no-op off-Windows.
+    await jailProcess(readDaemonPid());
     session.kind = launch.kind;
     session.port = launch.port;
     session.pid = launch.pid;
@@ -663,5 +673,6 @@ export function __resetBridgeForTesting(): void {
   session.kind = undefined;
   session.port = undefined;
   session.pid = undefined;
+  session.userDataDir = undefined;
 }
 

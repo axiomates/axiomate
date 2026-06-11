@@ -12,6 +12,9 @@
  */
 
 import { spawn } from "node:child_process";
+import { readFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import { resolveAgentBrowserPath } from "./agentBrowser.js";
 
 /**
@@ -24,6 +27,31 @@ import { resolveAgentBrowserPath } from "./agentBrowser.js";
  * `close --all` sledgehammer that would kill every instance's daemon.
  */
 export const AGENT_BROWSER_SESSION = `axiomate-bridge-${process.pid}`;
+
+/**
+ * Read the real PID of OUR daemon from agent-browser's `<session>.pid` file.
+ *
+ * The daemon writes its own process id there at startup (agent-browser
+ * daemon.rs). We need the DAEMON's pid — not the foreground CLI's, which exits
+ * in ~200ms — so we can jail it (processJail.ts) and have the kernel reap it
+ * when axiomate exits. The CLI we spawn is a different, short-lived process, so
+ * its pid is useless for that.
+ *
+ * Socket dir mirrors agent-browser's own resolution (connection.rs get_socket_dir):
+ * AGENT_BROWSER_SOCKET_DIR override, else ~/.agent-browser. Returns undefined if
+ * the file is missing/unreadable/not-a-number (daemon not up yet, or a layout we
+ * don't recognize) — the caller treats jailing as best-effort.
+ */
+export function readDaemonPid(): number | undefined {
+  const dir = process.env.AGENT_BROWSER_SOCKET_DIR || join(homedir(), ".agent-browser");
+  try {
+    const raw = readFileSync(join(dir, `${AGENT_BROWSER_SESSION}.pid`), "utf8").trim();
+    const pid = Number(raw);
+    return Number.isInteger(pid) && pid > 0 ? pid : undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 export interface AgentBrowserResult {
   ok: boolean;
