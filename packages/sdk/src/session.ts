@@ -151,7 +151,7 @@ export async function getSessionMessages(
 
   const messages: SessionMessage[] = []
   const partialAssistants = new Map<string, Record<string, unknown>>()
-  const parentsWithChildren = new Set<string>()
+  const parentsWithRealChildren = new Set<string>()
 
   for (const line of content.split('\n')) {
     if (!line) continue
@@ -172,7 +172,7 @@ export async function getSessionMessages(
           !existing ||
           (typeof ts === 'string' &&
             typeof existingTs === 'string' &&
-            ts > existingTs)
+            ts >= existingTs)
         ) {
           partialAssistants.set(parentUuid, entry)
         }
@@ -181,7 +181,7 @@ export async function getSessionMessages(
     }
     if (typeof type !== 'string' || !allowedTypes.has(type)) continue
     const parentUuid = entry['parentUuid']
-    if (typeof parentUuid === 'string') parentsWithChildren.add(parentUuid)
+    if (typeof parentUuid === 'string') parentsWithRealChildren.add(parentUuid)
 
     let timestamp: number | undefined
     const ts = entry['timestamp']
@@ -203,28 +203,40 @@ export async function getSessionMessages(
 
   if (allowedTypes.has('assistant')) {
     const messageByUuid = new Map(messages.map(message => [message.uuid, message]))
-    for (const [parentUuid, entry] of partialAssistants) {
-      if (parentsWithChildren.has(parentUuid)) continue
-      const parent = messageByUuid.get(parentUuid)
-      if (!parent) continue
-      const ts = entry['timestamp']
-      let timestamp: number | undefined
-      if (typeof ts === 'string') {
-        const parsed = Date.parse(ts)
-        if (!Number.isNaN(parsed)) timestamp = parsed
-      } else if (typeof ts === 'number') {
-        timestamp = ts
+    const pending = new Map(partialAssistants)
+    while (pending.size > 0) {
+      let insertedAny = false
+      for (const [parentUuid, entry] of pending) {
+        if (parentsWithRealChildren.has(parentUuid)) {
+          pending.delete(parentUuid)
+          continue
+        }
+        const parent = messageByUuid.get(parentUuid)
+        if (!parent) continue
+        const ts = entry['timestamp']
+        let timestamp: number | undefined
+        if (typeof ts === 'string') {
+          const parsed = Date.parse(ts)
+          if (!Number.isNaN(parsed)) timestamp = parsed
+        } else if (typeof ts === 'number') {
+          timestamp = ts
+        }
+        const partialMessage: SessionMessage = {
+          uuid: (entry['uuid'] as string) ?? '',
+          parentUuid,
+          type: 'assistant',
+          content: {
+            role: 'assistant',
+            content: [{ type: 'text', text: entry['content'] }],
+          },
+          timestamp,
+        }
+        messages.push(partialMessage)
+        messageByUuid.set(partialMessage.uuid, partialMessage)
+        pending.delete(parentUuid)
+        insertedAny = true
       }
-      messages.push({
-        uuid: (entry['uuid'] as string) ?? '',
-        parentUuid,
-        type: 'assistant',
-        content: {
-          role: 'assistant',
-          content: [{ type: 'text', text: entry['content'] }],
-        },
-        timestamp,
-      })
+      if (!insertedAny) break
     }
   }
 

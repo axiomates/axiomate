@@ -4,7 +4,7 @@ import type { Dirent } from 'fs'
 // Sync fs primitives for readFileTailSync — separate from fs/promises
 // imports above. Named (not wildcard) per AXIOMATE.md style; no collisions
 // with the async-suffixed names.
-import { closeSync, fstatSync, openSync, readSync } from 'fs'
+import { closeSync, fstatSync, openSync, readSync, writeSync } from 'fs'
 import {
   appendFile as fsAppendFile,
   open as fsOpen,
@@ -136,6 +136,52 @@ const partialAssistantWriteState = new Map<
   UUID,
   { parentUuid: UUID; lastWrittenAt: number; lastWrittenLength: number }
 >()
+
+async function ensureJsonlAppendBoundary(filePath: string): Promise<void> {
+  let fh: Awaited<ReturnType<typeof fsOpen>> | undefined
+  try {
+    fh = await fsOpen(filePath, 'a+', 0o600)
+    const { size } = await fh.stat()
+    if (size === 0) return
+    const buf = Buffer.allocUnsafe(1)
+    const { bytesRead } = await fh.read(buf, 0, 1, size - 1)
+    if (bytesRead === 1 && buf[0] !== 0x0a) {
+      // Opened with O_APPEND, so a stale size cannot overwrite a concurrent
+      // append. At worst this adds an extra blank line, which JSONL loading
+      // already skips.
+      await fh.write(Buffer.from('\n'))
+    }
+  } catch {
+    // Directory may not exist yet; appendFile's normal retry path handles it.
+    // Other failures fall through to the normal append error path.
+  } finally {
+    await fh?.close().catch(() => {})
+  }
+}
+
+function ensureJsonlAppendBoundarySync(filePath: string): void {
+  let fd: number | undefined
+  try {
+    fd = openSync(filePath, 'a+', 0o600)
+    const { size } = fstatSync(fd)
+    if (size === 0) return
+    const buf = Buffer.allocUnsafe(1)
+    const bytesRead = readSync(fd, buf, 0, 1, size - 1)
+    if (bytesRead === 1 && buf[0] !== 0x0a) {
+      writeSync(fd, '\n')
+    }
+  } catch {
+    // Directory may not exist yet; appendFileSync's normal retry path handles it.
+  } finally {
+    if (fd !== undefined) {
+      try {
+        closeSync(fd)
+      } catch {
+        // Best-effort boundary guard.
+      }
+    }
+  }
+}
 
 /**
  * Type guard to check if an entry is a transcript message.
@@ -504,11 +550,13 @@ class Project {
 
   private async appendToFile(filePath: string, data: string): Promise<void> {
     try {
+      await ensureJsonlAppendBoundary(filePath)
       await fsAppendFile(filePath, data, { mode: 0o600 })
     } catch {
       // Directory may not exist — some NFS-like filesystems return
       // unexpected error codes, so don't discriminate on code.
       await mkdir(dirname(filePath), { recursive: true, mode: 0o700 })
+      await ensureJsonlAppendBoundary(filePath)
       await fsAppendFile(filePath, data, { mode: 0o600 })
     }
   }
@@ -1305,6 +1353,7 @@ export function recordPartialAssistant(
   content: string | null | undefined,
   options?: {
     requestId?: string
+    uuid?: UUID
     force?: boolean
   },
 ): void {
@@ -1335,7 +1384,7 @@ export function recordPartialAssistant(
     type: 'partial-assistant',
     sessionId,
     parentUuid,
-    uuid: randomUUID(),
+    uuid: options?.uuid ?? randomUUID(),
     timestamp: new Date().toISOString(),
     content,
     ...(options?.requestId ? { requestId: options.requestId } : {}),
@@ -1793,24 +1842,34 @@ function applyPartialAssistantEntries(
   const latestByParent = new Map<UUID, PartialAssistantEntry>()
   for (const entry of partialAssistants) {
     const existing = latestByParent.get(entry.parentUuid)
-    if (!existing || entry.timestamp > existing.timestamp) {
+    if (!existing || entry.timestamp >= existing.timestamp) {
       latestByParent.set(entry.parentUuid, entry)
     }
   }
   if (latestByParent.size === 0) return
 
-  const parentsWithChildren = new Set<UUID>()
+  const parentsWithRealChildren = new Set<UUID>()
   for (const message of messages.values()) {
     if (message.parentUuid) {
-      parentsWithChildren.add(message.parentUuid)
+      parentsWithRealChildren.add(message.parentUuid)
     }
   }
 
-  for (const [parentUuid, entry] of latestByParent) {
-    if (parentsWithChildren.has(parentUuid)) continue
-    const parent = messages.get(parentUuid)
-    if (!parent) continue
-    messages.set(entry.uuid, toPartialAssistantMessage(entry, parent))
+  const pending = new Map(latestByParent)
+  while (pending.size > 0) {
+    let insertedAny = false
+    for (const [parentUuid, entry] of pending) {
+      if (parentsWithRealChildren.has(parentUuid)) {
+        pending.delete(parentUuid)
+        continue
+      }
+      const parent = messages.get(parentUuid)
+      if (!parent) continue
+      messages.set(entry.uuid, toPartialAssistantMessage(entry, parent))
+      pending.delete(parentUuid)
+      insertedAny = true
+    }
+    if (!insertedAny) break
   }
 }
 
@@ -2362,9 +2421,11 @@ function appendEntryToFile(
   const fs = getFsImplementation()
   const line = jsonStringify(entry) + '\n'
   try {
+    ensureJsonlAppendBoundarySync(fullPath)
     fs.appendFileSync(fullPath, line, { mode: 0o600 })
   } catch {
     fs.mkdirSync(dirname(fullPath), { mode: 0o700 })
+    ensureJsonlAppendBoundarySync(fullPath)
     fs.appendFileSync(fullPath, line, { mode: 0o600 })
   }
 }
@@ -3312,7 +3373,7 @@ function walkChainBeforeParse(buf: Buffer): Buffer {
  */
 export async function loadTranscriptFile(
   filePath: string,
-  opts?: { keepAllLeaves?: boolean },
+  opts?: { keepAllLeaves?: boolean; includePartialAssistants?: boolean },
 ): Promise<{
   messages: Map<UUID, TranscriptMessage>
   summaries: Map<UUID, string>
@@ -3599,7 +3660,9 @@ export async function loadTranscriptFile(
 
   applyPreservedSegmentRelinks(messages)
   applySnipRemovals(messages)
-  applyPartialAssistantEntries(messages, partialAssistants)
+  if (opts?.includePartialAssistants !== false) {
+    applyPartialAssistantEntries(messages, partialAssistants)
+  }
 
   // Compute leaf UUIDs once at load time
   // Only user/assistant messages should be considered as leaves for anchoring resume.
@@ -3713,7 +3776,9 @@ export async function loadTranscriptFile(
 /**
  * Loads all messages, summaries, file history snapshots, and attribution snapshots from a specific session file.
  */
-async function loadSessionFile(sessionId: UUID): Promise<{
+async function loadSessionFile(sessionId: UUID, opts?: {
+  includePartialAssistants?: boolean
+}): Promise<{
   messages: Map<UUID, TranscriptMessage>
   summaries: Map<UUID, string>
   customTitles: Map<UUID, string>
@@ -3730,7 +3795,7 @@ async function loadSessionFile(sessionId: UUID): Promise<{
     getSessionProjectDir() ?? getProjectDir(getOriginalCwd()),
     `${sessionId}.jsonl`,
   )
-  return loadTranscriptFile(sessionFile)
+  return loadTranscriptFile(sessionFile, opts)
 }
 
 /**
@@ -3739,7 +3804,9 @@ async function loadSessionFile(sessionId: UUID): Promise<{
  */
 const getSessionMessages = memoize(
   async (sessionId: UUID): Promise<Set<UUID>> => {
-    const { messages } = await loadSessionFile(sessionId)
+    const { messages } = await loadSessionFile(sessionId, {
+      includePartialAssistants: false,
+    })
     return new Set(messages.keys())
   },
   (sessionId: UUID) => sessionId,

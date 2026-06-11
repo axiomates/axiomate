@@ -1001,11 +1001,12 @@ export function REPL({
   const messagesRef = useRef(messages);
   const partialAssistantRef = useRef<{
     parentUuid?: UUID;
-    text: string;
-    textBlockIndexes: Set<number>;
+    textBlocks: Map<number, {
+      parentUuid?: UUID;
+      text: string;
+    }>;
   }>({
-    text: '',
-    textBlockIndexes: new Set()
+    textBlocks: new Map()
   });
   // Stores the willowMode variant that was shown (or false if no hint shown).
   // Captured at hint_shown time so hint_converted telemetry reports the same
@@ -2184,38 +2185,59 @@ export function REPL({
   const onQueryEvent = useCallback((event: Parameters<typeof handleMessageFromStream>[0]) => {
     if (event.type === 'stream_event') {
       if (event.event.type === 'block_start' && event.event.block.type === 'text') {
-        partialAssistantRef.current.textBlockIndexes.add(event.event.index);
+        partialAssistantRef.current.textBlocks.set(event.event.index, {
+          parentUuid: partialAssistantRef.current.parentUuid ?? cleanMessagesForLogging(messagesRef.current).findLast(isChainParticipant)?.uuid as UUID | undefined,
+          text: ''
+        });
       } else if (event.event.type === 'block_delta' && event.event.delta.type === 'text') {
         const current = partialAssistantRef.current;
-        current.text += event.event.delta.text;
-        current.parentUuid ??= cleanMessagesForLogging(messagesRef.current).findLast(isChainParticipant)?.uuid as UUID | undefined;
-        recordPartialAssistant(current.parentUuid, current.text);
+        const block = current.textBlocks.get(event.event.index) ?? {
+          parentUuid: current.parentUuid ?? cleanMessagesForLogging(messagesRef.current).findLast(isChainParticipant)?.uuid as UUID | undefined,
+          text: ''
+        };
+        block.text += event.event.delta.text;
+        current.textBlocks.set(event.event.index, block);
+        recordPartialAssistant(block.parentUuid, block.text);
       } else if (event.event.type === 'block_stop') {
         const current = partialAssistantRef.current;
-        if (current.textBlockIndexes.delete(event.event.index) && current.text) {
-          recordPartialAssistant(current.parentUuid, current.text, {
+        const block = current.textBlocks.get(event.event.index);
+        if (block?.text) {
+          recordPartialAssistant(block.parentUuid, block.text, {
             force: true
           });
         }
+        current.textBlocks.delete(event.event.index);
       } else if (event.event.type === 'response_stop') {
         const current = partialAssistantRef.current;
-        if (current.text) {
-          recordPartialAssistant(current.parentUuid, current.text, {
-            force: true
-          });
+        for (const block of current.textBlocks.values()) {
+          if (block.text) {
+            recordPartialAssistant(block.parentUuid, block.text, {
+              force: true
+            });
+          }
         }
       }
     } else if (event.type === 'assistant') {
-      partialAssistantRef.current = {
-        parentUuid: event.uuid as UUID,
-        text: '',
-        textBlockIndexes: new Set()
-      };
+      const current = partialAssistantRef.current;
+      if (event.message.content.length === 1 && event.message.content[0]?.type === 'text') {
+        const textBlock = event.message.content[0];
+        for (const [blockIndex, block] of current.textBlocks) {
+          if (block.text === textBlock.text) {
+            recordPartialAssistant(block.parentUuid, textBlock.text, {
+              force: true,
+              requestId: event.requestId,
+              uuid: event.uuid as UUID
+            });
+            current.textBlocks.delete(blockIndex);
+            break;
+          }
+        }
+      }
+      current.parentUuid = event.uuid as UUID;
     } else if (event.type === 'user') {
       partialAssistantRef.current = {
         parentUuid: event.uuid as UUID,
-        text: '',
-        textBlockIndexes: new Set()
+        textBlocks: new Map()
       };
     }
     handleMessageFromStream(event, newMessage => {

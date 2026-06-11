@@ -220,6 +220,65 @@ describe('getSessionMessages', () => {
     const withSystem = await getSessionMessages(id, { dir: '/p', includeSystemMessages: true })
     expect(withSystem.map((m) => m.type)).toEqual(['user', 'system', 'assistant'])
   })
+
+  it('preserves chained partial assistant messages', async () => {
+    const id = randomUUID()
+    await writeSessionFile('/p', id, [
+      { type: 'user', text: 'start', uuid: 'u1', parentUuid: null },
+      {
+        type: 'partial-assistant',
+        uuid: 'p1',
+        parentUuid: 'u1',
+        timestamp: '2026-06-10T10:00:01.000Z',
+        content: 'first block',
+      },
+      {
+        type: 'partial-assistant',
+        uuid: 'p2',
+        parentUuid: 'p1',
+        timestamp: '2026-06-10T10:00:02.000Z',
+        content: 'second block',
+      },
+    ])
+
+    const msgs = await getSessionMessages(id, { dir: '/p' })
+
+    expect(msgs.map((m) => m.uuid)).toEqual(['u1', 'p1', 'p2'])
+    expect(msgs.map((m) => m.parentUuid)).toEqual([null, 'u1', 'p1'])
+    expect(msgs.map((m) => m.type)).toEqual(['user', 'assistant', 'assistant'])
+  })
+
+  it('uses the later partial line when timestamps tie', async () => {
+    const id = randomUUID()
+    await writeSessionFile('/p', id, [
+      { type: 'user', text: 'start', uuid: 'u1', parentUuid: null },
+      {
+        type: 'partial-assistant',
+        uuid: 'stale',
+        parentUuid: 'u1',
+        timestamp: '2026-06-10T10:00:01.000Z',
+        content: 'first block',
+      },
+      {
+        type: 'partial-assistant',
+        uuid: 'p1',
+        parentUuid: 'u1',
+        timestamp: '2026-06-10T10:00:01.000Z',
+        content: 'first block',
+      },
+      {
+        type: 'partial-assistant',
+        uuid: 'p2',
+        parentUuid: 'p1',
+        timestamp: '2026-06-10T10:00:02.000Z',
+        content: 'second block',
+      },
+    ])
+
+    const msgs = await getSessionMessages(id, { dir: '/p' })
+
+    expect(msgs.map((m) => m.uuid)).toEqual(['u1', 'p1', 'p2'])
+  })
 })
 
 describe('renameSession', () => {
