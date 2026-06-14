@@ -69,3 +69,7 @@ module.exports.readClipboardImageAsync = async function readClipboardImageAsync(
 module.exports.readClipboardText = async function readClipboardText() {
   return getFallback().readClipboardText()
 }
+
+module.exports.readClipboardFilePaths = async function readClipboardFilePaths() {
+  return getFallback().readClipboardFilePaths()
+}

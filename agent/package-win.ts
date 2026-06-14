@@ -21,6 +21,7 @@ import {
   unlinkSync,
 } from 'fs'
 import { basename, join, dirname, resolve } from 'path'
+import type { BunPlugin } from 'bun'
 import { getBuildDefine, parseFeatures, printBuildFeatures } from './buildConfig.ts'
 import { nativeExeDirPlugin } from './bunPluginNativeExeDir.ts'
 import { makeComputerUseStubPlugin } from './bunPluginComputerUseStub.ts'
@@ -30,6 +31,42 @@ import { locatePlatformSubpackage } from './packageNatives.ts'
 
 const agentDir = dirname(import.meta.path)
 const pkg = JSON.parse(readFileSync(join(agentDir, 'package.json'), 'utf-8'))
+
+// Build-time plugin: replace sharp's native loader (lib/sharp.js) with a
+// minimal version that loads the .node from the exe directory using the same
+// dlopen pattern as scripts/load-napi.js. Mirrors sharpMacRuntimePlugin.
+const sharpWinNodeName = 'sharp-win32-x64.node'
+const sharpWinRuntimePlugin: BunPlugin = {
+  name: 'sharp-win-runtime',
+  setup(build) {
+    build.onLoad({ filter: /sharp(?:[\\/]|-)lib[\\/]sharp\.js$/ }, () => ({
+      contents:
+        "'use strict';\n" +
+        "const { dirname, join, basename } = require('node:path');\n" +
+        "const Module = require('node:module');\n" +
+        "const nodeName = " + JSON.stringify(sharpWinNodeName) + ";\n" +
+        "const execBase = basename(process.execPath).toLowerCase();\n" +
+        "const isExe = !/^(bun|node)(\\.exe)?$/.test(execBase);\n" +
+        "const searchDir = isExe ? dirname(process.execPath) : __dirname;\n" +
+        "const candidate = join(searchDir, nodeName);\n" +
+        "try {\n" +
+        "  module.exports = require(candidate);\n" +
+        "} catch (e) {\n" +
+        "  try {\n" +
+        "    const m = new Module(candidate);\n" +
+        "    process.dlopen(m, candidate);\n" +
+        "    module.exports = m.exports;\n" +
+        "  } catch (e2) {\n" +
+        "    throw new Error(\n" +
+        "      'Could not load the \"sharp\" module (win32-x64)\\n' +\n" +
+        "      candidate + ': ' + (e2.message || e2)\n" +
+        "    );\n" +
+        "  }\n" +
+        "}\n",
+      loader: 'js',
+    }))
+  },
+}
 const root = resolve(agentDir, '..')
 const distDir = join(agentDir, 'dist')
 const agentPackageJson = join(agentDir, 'package.json')
@@ -185,6 +222,7 @@ const result = await Bun.build({
   // is included.
   plugins: [
     nativeExeDirPlugin,
+    sharpWinRuntimePlugin,
     makeComputerUseStubPlugin(
       !features.includes('DARWIN') && !features.includes('WIN32'),
     ),
@@ -245,6 +283,18 @@ copyFromPlatformSubpackage(
   'sharp',
   '@img/sharp-win32-x64',
   'lib/sharp-win32-x64.node',
+)
+// sharp's native addon depends on libvips DLLs at load time.
+// They must be in the same directory as the .node file (exe dir).
+copyFromPlatformSubpackage(
+  'sharp',
+  '@img/sharp-win32-x64',
+  'lib/libvips-42.dll',
+)
+copyFromPlatformSubpackage(
+  'sharp',
+  '@img/sharp-win32-x64',
+  'lib/libvips-cpp.dll',
 )
 copyFromPlatformSubpackage(
   '@nut-tree-fork/nut-js',

@@ -11,8 +11,10 @@ import { type ComputerUseSessionContext, type CuPermissionRequest, type CuPermis
 import * as React from 'react';
 import { getSessionId } from '../../bootstrap/state.js';
 import { ComputerUseApproval } from '../../components/permissions/ComputerUseApproval/ComputerUseApproval.js';
+import type { Base64ImageSource, ContentBlockParam } from '../../services/api/streamTypes.js';
 import type { ToolUseContext } from '../../Tool.js';
 import { logForDebugging } from '../debug.js';
+import { maybeResizeAndDownsampleImageBuffer } from '../imageResizer.js';
 import { checkComputerUseLock, tryAcquireComputerUseLock } from './computerUseLock.js';
 import { registerEscHotkey } from './escHotkey.js';
 
@@ -213,12 +215,23 @@ export function buildSessionContext(): ComputerUseSessionContext {
       const model = getMainLoopModel()
       const provider = getProviderForModel(model)
 
-      type ContentBlockParam = import('../../services/api/streamTypes.js').ContentBlockParam
       const content: ContentBlockParam[] = []
       for (const img of opts.images) {
+        const imageBuffer = Buffer.from(img, 'base64')
+        const resized = await maybeResizeAndDownsampleImageBuffer(
+          imageBuffer,
+          imageBuffer.length,
+          'jpeg',
+          { forceJpeg: true },
+        )
         content.push({
           type: 'image',
-          source: { type: 'base64', media_type: 'image/jpeg', data: img },
+          source: {
+            type: 'base64',
+            media_type:
+              `image/${resized.mediaType}` as Base64ImageSource['media_type'],
+            data: resized.buffer.toString('base64'),
+          },
         })
       }
       content.push({ type: 'text', text: opts.prompt })

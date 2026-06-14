@@ -18,5 +18,6 @@ export {
   readClipboardImage,
   hasClipboardImageAsync,
   readClipboardImageAsync,
+  readClipboardFilePaths,
   getNativeModule,
 } from './clipboard.js'

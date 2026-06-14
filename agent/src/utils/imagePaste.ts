@@ -1,11 +1,9 @@
-import { feature } from 'bun:bundle'
 import { randomBytes } from 'crypto'
 import { execa } from 'execa'
 import { basename, extname, isAbsolute, join } from 'path'
 import {
   IMAGE_MAX_HEIGHT,
   IMAGE_MAX_WIDTH,
-  IMAGE_TARGET_RAW_SIZE,
 } from '../constants/apiLimits.js'
 import { getImageProcessor } from '../tools/FileReadTool/imageProcessor.js'
 import { logForDebugging } from './debug.js'
@@ -18,10 +16,9 @@ import {
 } from './imageResizer.js'
 import { logError } from './log.js'
 
-// Native NSPasteboard reader. config gate ax_collage_kaleidoscope is
-// a kill switch (default on). Falls through to osascript when off.
-// The gate string is inlined at each callsite INSIDE the feature() condition
-// — module-scope helpers are NOT tree-shaken (see docs/feature-gating.md).
+// Clipboard image reads prefer image-processor-axiomate's cross-platform async
+// reader, then fall back to these shell commands when that package is missing
+// or cannot extract the current clipboard image.
 
 type SupportedPlatform = 'darwin' | 'linux' | 'win32'
 
@@ -89,26 +86,101 @@ export type ImageWithDimensions = {
   dimensions?: ImageDimensions
 }
 
+type ClipboardImageResult = {
+  png: Buffer
+  originalWidth?: number
+  originalHeight?: number
+  width?: number
+  height?: number
+}
+
+function dimensionsFromClipboardResult(
+  native: ClipboardImageResult,
+  resizedDimensions?: ImageDimensions,
+): ImageDimensions | undefined {
+  const originalWidth =
+    native.originalWidth && native.originalWidth > 0
+      ? native.originalWidth
+      : resizedDimensions?.originalWidth
+  const originalHeight =
+    native.originalHeight && native.originalHeight > 0
+      ? native.originalHeight
+      : resizedDimensions?.originalHeight
+  const displayWidth =
+    resizedDimensions?.displayWidth ??
+    (native.width && native.width > 0 ? native.width : undefined)
+  const displayHeight =
+    resizedDimensions?.displayHeight ??
+    (native.height && native.height > 0 ? native.height : undefined)
+
+  if (!originalWidth && !originalHeight && !displayWidth && !displayHeight) {
+    return undefined
+  }
+
+  return {
+    originalWidth,
+    originalHeight,
+    displayWidth,
+    displayHeight,
+  }
+}
+
+async function normalizeClipboardImageResult(
+  native: ClipboardImageResult,
+): Promise<ImageWithDimensions> {
+  let buffer: Buffer = native.png
+  if (
+    buffer.length >= 2 &&
+    buffer[0] === 0x42 &&
+    buffer[1] === 0x4d
+  ) {
+    const sharp = await getImageProcessor()
+    buffer = await sharp(buffer).png().toBuffer()
+  }
+
+  const resized = await maybeResizeAndDownsampleImageBuffer(
+    buffer,
+    buffer.length,
+    'png',
+  )
+  const base64 = resized.buffer.toString('base64')
+
+  return {
+    base64,
+    mediaType: detectImageFormatFromBase64(base64),
+    dimensions: dimensionsFromClipboardResult(native, resized.dimensions),
+  }
+}
+
 /**
  * Check if clipboard contains an image without retrieving it.
  */
 export async function hasImageInClipboard(): Promise<boolean> {
-  if (process.platform !== 'darwin') {
-    return false
-  }
-  if (feature('DEV')) {
-    // Native NSPasteboard check (~0.03ms warm). Fall through to osascript
-    // when the module/export is missing. Catch a throw too: it would surface
-    // as an unhandled rejection in useClipboardImageHint's setTimeout.
-    try {
-      const { getNativeModule } = await import('image-processor-axiomate') as any
-      const hasImage = getNativeModule()?.hasClipboardImage
-      if (hasImage) {
-        return hasImage()
-      }
-    } catch (e) {
-      logError(e as Error)
+  // Cross-platform async clipboard check (macOS NAPI when available,
+  // PowerShell on Windows, xclip/wl-paste on Linux). Fall through to the
+  // legacy shell path when the workspace package/export is unavailable.
+  try {
+    const imageProcessor = await import('image-processor-axiomate') as any
+    const hasImage =
+      imageProcessor.hasClipboardImageAsync ??
+      imageProcessor.getNativeModule?.()?.hasClipboardImage
+    if (hasImage) {
+      return await hasImage()
     }
+  } catch (e) {
+    logError(e as Error)
+  }
+
+  const { commands } = getClipboardCommands()
+  if (process.platform !== 'darwin') {
+    const result = await execa(commands.checkImage, {
+      shell: true,
+      reject: false,
+    })
+    if (process.platform === 'win32') {
+      return result.exitCode === 0 && result.stdout.trim() === 'True'
+    }
+    return result.exitCode === 0
   }
   const result = await execFileNoThrowWithCwd('osascript', [
     '-e',
@@ -117,62 +189,42 @@ export async function hasImageInClipboard(): Promise<boolean> {
   return result.code === 0
 }
 
+/**
+ * Check if clipboard contains an image OR image file paths.
+ * Used for the focus-regain hint that prompts the user to paste.
+ */
+export async function hasImageOrImageFileInClipboard(): Promise<boolean> {
+  if (await hasImageInClipboard()) return true
+
+  // Check if clipboard has file paths that are images (CF_HDROP on Windows).
+  try {
+    const paths = await getImagePathsFromClipboard()
+    return paths.some(p => isImageFilePath(p))
+  } catch {
+    return false
+  }
+}
+
 export async function getImageFromClipboard(): Promise<ImageWithDimensions | null> {
-  // Fast path: native NSPasteboard reader (macOS only). Reads PNG bytes
-  // directly in-process and downsamples via CoreGraphics if over the
-  // dimension cap. ~5ms cold, sub-ms warm — vs. ~1.5s for the osascript
-  // path below. Throws if the native module is unavailable, in which case
-  // the catch block falls through to osascript. A `null` return from the
-  // native call is authoritative (clipboard has no image).
-  if (feature('DEV') && process.platform === 'darwin') {
-    try {
-      const { getNativeModule } = await import('image-processor-axiomate') as any
-      const readClipboard = getNativeModule()?.readClipboardImage
-      if (!readClipboard) {
-        throw new Error('native clipboard reader unavailable')
-      }
-      const native = readClipboard(IMAGE_MAX_WIDTH, IMAGE_MAX_HEIGHT)
-      if (!native) {
-        return null
-      }
-      // The native path caps dimensions but not file size. A complex
-      // 2000×2000 PNG can still exceed the 3.75MB raw / 5MB base64 API
-      // limit — for that edge case, run through the same size-cap that
-      // the osascript path uses (degrades to JPEG if needed). Cheap if
-      // already under: just a sharp metadata read.
-      const buffer: Buffer = native.png
-      if (buffer.length > IMAGE_TARGET_RAW_SIZE) {
-        const resized = await maybeResizeAndDownsampleImageBuffer(
-          buffer,
-          buffer.length,
-          'png',
-        )
-        return {
-          base64: resized.buffer.toString('base64'),
-          mediaType: `image/${resized.mediaType}`,
-          // resized.dimensions sees the already-downsampled buffer; native knows the true originals.
-          dimensions: {
-            originalWidth: native.originalWidth,
-            originalHeight: native.originalHeight,
-            displayWidth: resized.dimensions?.displayWidth ?? native.width,
-            displayHeight: resized.dimensions?.displayHeight ?? native.height,
-          },
-        }
-      }
-      return {
-        base64: buffer.toString('base64'),
-        mediaType: 'image/png',
-        dimensions: {
-          originalWidth: native.originalWidth,
-          originalHeight: native.originalHeight,
-          displayWidth: native.width,
-          displayHeight: native.height,
-        },
-      }
-    } catch (e) {
-      logError(e as Error)
-      // Fall through to osascript fallback.
+  // Fast path: cross-platform async clipboard reader. macOS uses the native
+  // NAPI path when available; Windows/Linux use clipboard-axiomate fallbacks.
+  // The fallback returns raw image bytes, so always normalize through the
+  // resize/downsample path before creating the user message attachment.
+  try {
+    const imageProcessor = await import('image-processor-axiomate') as any
+    const readClipboard =
+      imageProcessor.readClipboardImageAsync ??
+      imageProcessor.getNativeModule?.()?.readClipboardImage
+    if (!readClipboard) {
+      throw new Error('clipboard image reader unavailable')
     }
+    const native = await readClipboard(IMAGE_MAX_WIDTH, IMAGE_MAX_HEIGHT)
+    if (native) {
+      return await normalizeClipboardImageResult(native)
+    }
+  } catch (e) {
+    logError(e as Error)
+    // Fall through to shell fallback.
   }
 
   const { commands, screenshotPath } = getClipboardCommands()
@@ -182,7 +234,11 @@ export async function getImageFromClipboard(): Promise<ImageWithDimensions | nul
       shell: true,
       reject: false,
     })
-    if (checkResult.exitCode !== 0) {
+    const hasImage =
+      process.platform === 'win32'
+        ? checkResult.exitCode === 0 && checkResult.stdout.trim() === 'True'
+        : checkResult.exitCode === 0
+    if (!hasImage) {
       return null
     }
 
@@ -231,6 +287,24 @@ export async function getImageFromClipboard(): Promise<ImageWithDimensions | nul
   } catch {
     return null
   }
+}
+
+export async function getImagePathsFromClipboard(): Promise<string[]> {
+  try {
+    const imageProcessor = await import('image-processor-axiomate') as any
+    const readFilePaths = imageProcessor.readClipboardFilePaths
+    if (readFilePaths) {
+      const paths = await readFilePaths()
+      if (Array.isArray(paths)) {
+        return paths.filter((path): path is string => typeof path === 'string')
+      }
+    }
+  } catch (e) {
+    logError(e as Error)
+  }
+
+  const textPath = await getImagePathFromClipboard()
+  return textPath ? [textPath] : []
 }
 
 export async function getImagePathFromClipboard(): Promise<string | null> {
@@ -340,6 +414,7 @@ export async function tryReadImageFromPath(
   const cleanedPath = asImageFilePath(text)
 
   if (!cleanedPath) {
+    logForDebugging(`tryReadImageFromPath: asImageFilePath returned null for: ${JSON.stringify(text.slice(0, 200))}`)
     return null
   }
 
@@ -359,16 +434,20 @@ export async function tryReadImageFromPath(
       }
     }
   } catch (e) {
+    logForDebugging(`tryReadImageFromPath: readFile failed for ${imagePath}: ${(e as Error).message}`)
     logError(e as Error)
     return null
   }
   if (!imageBuffer) {
+    logForDebugging(`tryReadImageFromPath: no buffer for ${imagePath} (isAbsolute=${isAbsolute(imagePath)})`)
     return null
   }
   if (imageBuffer.length === 0) {
     logForDebugging(`Image file is empty: ${imagePath}`, { level: 'warn' })
     return null
   }
+
+  logForDebugging(`tryReadImageFromPath: read ${imagePath}, ${(imageBuffer.length / 1024 / 1024).toFixed(2)} MB`)
 
   // BMP is not supported by the API — convert to PNG via Sharp.
   if (
@@ -383,19 +462,26 @@ export async function tryReadImageFromPath(
   // Resize if needed to stay under 5MB API limit
   // Extract extension from path for format hint
   const ext = extname(imagePath).slice(1).toLowerCase() || 'png'
-  const resized = await maybeResizeAndDownsampleImageBuffer(
-    imageBuffer,
-    imageBuffer.length,
-    ext,
-  )
-  const base64Image = resized.buffer.toString('base64')
+  try {
+    const resized = await maybeResizeAndDownsampleImageBuffer(
+      imageBuffer,
+      imageBuffer.length,
+      ext,
+    )
+    const base64Image = resized.buffer.toString('base64')
 
-  // Detect format from the actual file contents using magic bytes
-  const mediaType = detectImageFormatFromBase64(base64Image)
-  return {
-    path: imagePath,
-    base64: base64Image,
-    mediaType,
-    dimensions: resized.dimensions,
+    // Detect format from the actual file contents using magic bytes
+    const mediaType = detectImageFormatFromBase64(base64Image)
+    logForDebugging(`tryReadImageFromPath: success, ${(base64Image.length / 1024).toFixed(0)} KB base64`)
+    return {
+      path: imagePath,
+      base64: base64Image,
+      mediaType,
+      dimensions: resized.dimensions,
+    }
+  } catch (e) {
+    logForDebugging(`tryReadImageFromPath: resize failed: ${(e as Error).message}`)
+    logError(e as Error)
+    return null
   }
 }

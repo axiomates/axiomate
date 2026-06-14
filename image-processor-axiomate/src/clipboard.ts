@@ -62,6 +62,16 @@ export async function readClipboardImageAsync(
 }
 
 /**
+ * Async clipboard file-path read — cross-platform where supported.
+ */
+export async function readClipboardFilePaths(): Promise<string[]> {
+  const mod = getClipboard()
+  return mod && 'readClipboardFilePaths' in mod
+    ? mod.readClipboardFilePaths()
+    : []
+}
+
+/**
  * Get a NativeModule-compatible object for backward compatibility
  * with axiomate's getNativeModule() pattern.
  */

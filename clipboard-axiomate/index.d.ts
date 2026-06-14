@@ -24,3 +24,6 @@ export function readClipboardImageAsync(maxWidth: number, maxHeight: number): Pr
 
 /** Cross-platform clipboard text read. */
 export function readClipboardText(): Promise<string | null>
+
+/** Cross-platform clipboard file paths read. Windows: FileDropList; Linux: text/URI fallback. */
+export function readClipboardFilePaths(): Promise<string[]>

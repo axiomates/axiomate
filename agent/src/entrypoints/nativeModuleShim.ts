@@ -10,6 +10,12 @@
 // (ENOENT / MODULE_NOT_FOUND / virtual-path miss), retry with
 // <exeDir>/<basename>.node — the layout package-{win,mac}.ts produces.
 //
+// Also registers a Bun virtual module for @img/sharp-<platform> so that
+// sharp's JS wrapper can find the native addon. Sharp does
+// require('@img/sharp-win32-x64') which fails in compiled binaries since
+// the package only lives in the pnpm store. The Bun.plugin intercepts
+// this before normal resolution and loads the .node from the exe dir.
+//
 // No-op in dev mode: process.execPath points at the bun/node runtime,
 // whose directory doesn't contain our .node files; the original dlopen
 // path keeps working via node_modules.
@@ -21,6 +27,8 @@ const isCompiledExe = !/^(bun|node)(\.exe)?$/.test(execBase)
 
 if (isCompiledExe) {
   const exeDir = dirname(process.execPath)
+
+  // --- dlopen shim (for bindings-style dynamic native loading) ---
   const originalDlopen = process.dlopen.bind(process)
   process.dlopen = function dlopenShim(
     module: NodeModule,
@@ -37,5 +45,25 @@ if (isCompiledExe) {
       }
       throw err
     }
+  }
+
+  // --- Bun virtual module for @img/sharp-* platform packages ---
+  // Derive the expected package name from the current platform/arch.
+  const sharpPlatformPkg = `@img/sharp-${process.platform}-${process.arch}`
+  const sharpNodeFile = join(exeDir, `sharp-${process.platform}-${process.arch}.node`)
+
+  try {
+    ;(Bun as any).plugin({
+      name: 'sharp-native-resolver',
+      setup(build: any) {
+        // Register a virtual module that loads the .node from exe dir
+        build.module(sharpPlatformPkg, () => ({
+          exports: require(sharpNodeFile),
+          loader: 'object',
+        }))
+      },
+    })
+  } catch {
+    // Bun.plugin unavailable or failed — sharp will use its own fallback
   }
 }

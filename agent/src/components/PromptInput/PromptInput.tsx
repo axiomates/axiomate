@@ -58,7 +58,7 @@ import { env } from '../../utils/env.js';
 import { errorMessage } from '../../utils/errors.js';
 import { isFullscreenEnvEnabled } from '../../utils/fullscreen.js';
 import type { PromptInputHelpers } from '../../utils/handlePromptSubmit.js';
-import { getImageFromClipboard, PASTE_THRESHOLD } from '../../utils/imagePaste.js';
+import { getImageFromClipboard, getImagePathsFromClipboard, isImageFilePath, tryReadImageFromPath, PASTE_THRESHOLD } from '../../utils/imagePaste.js';
 import type { ImageDimensions } from '../../utils/imageResizer.js';
 import { cacheImagePath, storeImage } from '../../utils/imageStore.js';
 import { isMacosOptionChar, MACOS_OPTION_SPECIAL_CHARS } from '../../utils/keyboardShortcuts.js';
@@ -1340,19 +1340,41 @@ function PromptInput({
 
   // Handler for chat:imagePaste - paste image from clipboard
   const handleImagePaste = useCallback(() => {
-    void getImageFromClipboard().then(imageData => {
+    void getImageFromClipboard().then(async imageData => {
       if (imageData) {
         onImagePaste(imageData.base64, imageData.mediaType);
-      } else {
-        const shortcutDisplay = getShortcutDisplay('chat:imagePaste', 'Chat', 'ctrl+v');
-        const message = env.isSSH() ? "No image found in clipboard. You're SSH'd; try scp?" : `No image found in clipboard. Use ${shortcutDisplay} to paste images.`;
-        addNotification({
-          key: 'no-image-in-clipboard',
-          text: message,
-          priority: 'immediate',
-          timeoutMs: 1000
-        });
+        return;
       }
+
+      // No image data in clipboard — check for copied file paths (CF_HDROP on
+      // Windows). This covers the common "right-click → Copy" workflow in Explorer.
+      const paths = await getImagePathsFromClipboard();
+      const imagePaths = paths.filter(path => isImageFilePath(path));
+      if (imagePaths.length > 0) {
+        const results = await Promise.all(
+          imagePaths.map(imagePath => tryReadImageFromPath(imagePath)),
+        );
+        for (const result of results) {
+          if (!result) continue;
+          onImagePaste(
+            result.base64,
+            result.mediaType,
+            path.basename(result.path),
+            result.dimensions,
+            result.path,
+          );
+        }
+        if (results.some(r => r !== null)) return;
+      }
+
+      const shortcutDisplay = getShortcutDisplay('chat:imagePaste', 'Chat', 'ctrl+v');
+      const message = env.isSSH() ? "No image found in clipboard. You're SSH'd; try scp?" : `No image found in clipboard. Use ${shortcutDisplay} to paste images.`;
+      addNotification({
+        key: 'no-image-in-clipboard',
+        text: message,
+        priority: 'immediate',
+        timeoutMs: 1000
+      });
     });
   }, [addNotification, onImagePaste]);
 

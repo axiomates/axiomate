@@ -107,6 +107,16 @@ async function winReadText(): Promise<string | null> {
   return code === 0 ? stdout.trim() : null
 }
 
+async function winReadFilePaths(): Promise<string[]> {
+  const script = 'Get-Clipboard -Format FileDropList | ForEach-Object { $_.FullName }'
+  const { stdout, code } = await exec('powershell', ['-NoProfile', '-Command', script])
+  if (code !== 0 || !stdout.trim()) return []
+  return stdout
+    .split(/\r?\n/)
+    .map(line => line.trim())
+    .filter(Boolean)
+}
+
 // --- Linux (xclip / wl-paste) ---
 
 async function linuxHasImage(): Promise<boolean> {
@@ -148,6 +158,15 @@ async function linuxReadText(): Promise<string | null> {
   if (wlCode === 0) return wlOut
 
   return null
+}
+
+async function linuxReadFilePaths(): Promise<string[]> {
+  const text = await linuxReadText()
+  if (!text) return []
+  return text
+    .split(/\r?\n/)
+    .map(line => line.trim())
+    .filter(Boolean)
 }
 
 // --- Public API ---
@@ -197,5 +216,13 @@ export async function readClipboardText(): Promise<string | null> {
     case 'win32': return winReadText()
     case 'linux': return linuxReadText()
     default: return null
+  }
+}
+
+export async function readClipboardFilePaths(): Promise<string[]> {
+  switch (process.platform) {
+    case 'win32': return winReadFilePaths()
+    case 'linux': return linuxReadFilePaths()
+    default: return []
   }
 }

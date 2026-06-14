@@ -1,16 +1,17 @@
 import { basename } from 'path'
 import React from 'react'
+import { logForDebugging } from '../utils/debug.js'
 import { logError } from '../utils/log.js'
 import { useDebounceCallback } from 'usehooks-ts'
 import type { InputEvent, Key } from '../ink.js'
 import {
   getImageFromClipboard,
+  getImagePathsFromClipboard,
   isImageFilePath,
   PASTE_THRESHOLD,
   tryReadImageFromPath,
 } from '../utils/imagePaste.js'
 import type { ImageDimensions } from '../utils/imageResizer.js'
-import { getPlatform } from '../utils/platform.js'
 
 const CLIPBOARD_CHECK_DEBOUNCE_MS = 50
 const PASTE_COMPLETION_TIMEOUT_MS = 100
@@ -52,8 +53,6 @@ export function usePasteHandler({
   // that key is Enter, it submits the old input and the paste is lost.
   const pastePendingRef = React.useRef(false)
 
-  const isMacOS = React.useMemo(() => getPlatform() === 'macos', [])
-
   React.useEffect(() => {
     return () => {
       isMountedRef.current = false
@@ -64,13 +63,34 @@ export function usePasteHandler({
     if (!onImagePaste || !isMountedRef.current) return
 
     void getImageFromClipboard()
-      .then(imageData => {
+      .then(async imageData => {
         if (imageData && isMountedRef.current) {
           onImagePaste(
             imageData.base64,
             imageData.mediaType,
             undefined, // no filename for clipboard images
             imageData.dimensions,
+          )
+          return
+        }
+
+        const paths = await getImagePathsFromClipboard()
+        const imagePaths = paths.filter(path => isImageFilePath(path))
+        if (imagePaths.length === 0 || !isMountedRef.current) return
+
+        const results = await Promise.all(
+          imagePaths.map(imagePath => tryReadImageFromPath(imagePath)),
+        )
+        if (!isMountedRef.current) return
+
+        for (const imageData of results) {
+          if (!imageData) continue
+          onImagePaste(
+            imageData.base64,
+            imageData.mediaType,
+            basename(imageData.path),
+            imageData.dimensions,
+            imageData.path,
           )
         }
       })
@@ -103,7 +123,6 @@ export function usePasteHandler({
           onPaste,
           setIsPasting,
           checkClipboardForImage,
-          isMacOS,
           pastePendingRef,
         ) => {
           pastePendingRef.current = false
@@ -129,6 +148,11 @@ export function usePasteHandler({
               .filter(line => line.trim())
             const imagePaths = lines.filter(line => isImageFilePath(line))
 
+            logForDebugging(
+              `paste completion: text=${JSON.stringify(pastedText.slice(0, 200))}, ` +
+              `lines=${lines.length}, imagePaths=${JSON.stringify(imagePaths.slice(0, 3))}`,
+            )
+
             if (onImagePaste && imagePaths.length > 0) {
               const isTempScreenshot =
                 /\/TemporaryItems\/.*screencaptureui.*\/Screenshot/i.test(
@@ -141,6 +165,10 @@ export function usePasteHandler({
               ).then(results => {
                 const validImages = results.filter(
                   (r): r is NonNullable<typeof r> => r !== null,
+                )
+
+                logForDebugging(
+                  `paste image results: ${results.length} attempted, ${validImages.length} valid`,
                 )
 
                 if (validImages.length > 0) {
@@ -163,10 +191,11 @@ export function usePasteHandler({
                     onPaste(nonImageLines.join('\n'))
                   }
                   setIsPasting(false)
-                } else if (isTempScreenshot && isMacOS) {
+                } else if (isTempScreenshot) {
                   // For temporary screenshot files that no longer exist, try clipboard
                   checkClipboardForImage()
                 } else {
+                  logForDebugging('paste image: all results null, falling back to text paste')
                   if (onPaste) {
                     onPaste(pastedText)
                   }
@@ -176,9 +205,10 @@ export function usePasteHandler({
               return { chunks: [], timeoutId: null }
             }
 
-            // If paste is empty (common when trying to paste images with Cmd+V),
-            // check if clipboard has an image (macOS only)
-            if (isMacOS && onImagePaste && pastedText.length === 0) {
+            // If paste is empty, the terminal likely could not serialize the
+            // clipboard image into the pty. Read the OS clipboard directly and
+            // let imagePaste's resize/compression path normalize it.
+            if (onImagePaste && pastedText.length === 0) {
               checkClipboardForImage()
               return { chunks: [], timeoutId: null }
             }
@@ -198,11 +228,10 @@ export function usePasteHandler({
         onPaste,
         setIsPasting,
         checkClipboardForImage,
-        isMacOS,
         pastePendingRef,
       )
     },
-    [checkClipboardForImage, isMacOS, onImagePaste, onPaste],
+    [checkClipboardForImage, onImagePaste, onPaste],
   )
 
   // Paste detection is now done via the InputEvent's keypress.isPasted flag,
@@ -238,11 +267,11 @@ export function usePasteHandler({
       .flatMap(part => part.split('\n'))
       .some(line => isImageFilePath(line.trim()))
 
-    // Handle empty paste (clipboard image on macOS)
-    // When the user pastes an image with Cmd+V, the terminal sends an empty
-    // bracketed paste sequence. The keypress parser emits this as isPasted=true
-    // with empty input.
-    if (isFromPaste && input.length === 0 && isMacOS && onImagePaste) {
+    // Handle empty paste (clipboard image). Many terminals send an empty
+    // bracketed paste sequence when the clipboard contains binary image data.
+    // The keypress parser emits this as isPasted=true with empty input.
+    if (isFromPaste && input.length === 0 && onImagePaste) {
+      logForDebugging('paste: empty bracketed paste, checking clipboard for image')
       checkClipboardForImage()
       // Reset isPasting since there's no text content to process
       setIsPasting(false)

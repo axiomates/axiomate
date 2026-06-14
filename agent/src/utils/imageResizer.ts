@@ -30,6 +30,12 @@ const ERROR_TYPE_TIMEOUT = 6
 const ERROR_TYPE_VIPS = 7
 const ERROR_TYPE_PERMISSION = 8
 
+const DEFAULT_JPEG_QUALITY_STEPS = [80, 60, 40, 20] as const
+const EXTRA_AGGRESSIVE_JPEG_QUALITY_STEPS = [15, 10] as const
+const MAX_JPEG_QUALITY_STEPS = 4
+const MAX_AGGRESSIVE_FALLBACK_ATTEMPTS = 6
+const DEFAULT_FALLBACK_MAX_EDGE = 1000
+
 /**
  * Error thrown when image resizing fails and the image exceeds the API limit.
  */
@@ -171,6 +177,110 @@ interface CompressedImageResult {
   originalSize: number
 }
 
+function base64EncodedLength(byteLength: number): number {
+  return Math.ceil(byteLength / 3) * 4
+}
+
+function targetBase64Limit(targetRawSize: number): number {
+  return Math.min(
+    API_IMAGE_MAX_BASE64_SIZE,
+    base64EncodedLength(Math.floor(targetRawSize)),
+  )
+}
+
+function fitsImageBase64Limit(buffer: Buffer, targetRawSize: number): boolean {
+  return base64EncodedLength(buffer.length) <= targetBase64Limit(targetRawSize)
+}
+
+function imageBase64Size(byteLength: number): number {
+  return base64EncodedLength(byteLength)
+}
+
+function normalizeJpegQualitySteps(steps: readonly number[]): number[] {
+  const normalized: number[] = []
+  for (const quality of steps) {
+    if (!Number.isFinite(quality)) continue
+    const clamped = Math.max(1, Math.min(100, Math.round(quality)))
+    if (normalized.includes(clamped)) continue
+    normalized.push(clamped)
+    if (normalized.length >= MAX_JPEG_QUALITY_STEPS) break
+  }
+  return normalized.length > 0
+    ? normalized
+    : [...DEFAULT_JPEG_QUALITY_STEPS]
+}
+
+function uniquePositiveIntegers(values: readonly number[]): number[] {
+  const result: number[] = []
+  for (const value of values) {
+    if (!Number.isFinite(value)) continue
+    const rounded = Math.round(value)
+    if (rounded <= 0 || result.includes(rounded)) continue
+    result.push(rounded)
+  }
+  return result
+}
+
+type AggressiveJpegAttempt = {
+  edge: number
+  quality: number
+}
+
+function aggressiveJpegAttempts(
+  fallbackMaxEdge: number,
+  jpegQualitySteps: readonly number[],
+): AggressiveJpegAttempt[] {
+  const maxEdge =
+    Number.isFinite(fallbackMaxEdge) && fallbackMaxEdge > 0
+      ? Math.round(fallbackMaxEdge)
+      : DEFAULT_FALLBACK_MAX_EDGE
+  const fallbackQuality =
+    Math.min(
+      jpegQualitySteps.at(-1) ?? DEFAULT_JPEG_QUALITY_STEPS.at(-1) ?? 20,
+      20,
+    )
+  const [extraQuality = 15, finalQuality = 10] =
+    EXTRA_AGGRESSIVE_JPEG_QUALITY_STEPS
+
+  // Deliberately bounded: for interactive paste handling, a small set of
+  // progressively smaller JPEG profiles is preferable to a quality x size grid.
+  const attempts = [
+    { edge: maxEdge, quality: fallbackQuality },
+    { edge: Math.round(maxEdge * 0.75), quality: fallbackQuality },
+    { edge: Math.min(512, maxEdge), quality: fallbackQuality },
+    { edge: Math.round(maxEdge * 0.5), quality: extraQuality },
+    { edge: Math.min(384, maxEdge), quality: extraQuality },
+    { edge: Math.min(384, maxEdge), quality: finalQuality },
+  ].filter((attempt): attempt is AggressiveJpegAttempt => {
+    return (
+      attempt.edge !== undefined &&
+      Number.isFinite(attempt.edge) &&
+      attempt.edge > 0 &&
+      Number.isFinite(attempt.quality) &&
+      attempt.quality > 0
+    )
+  })
+
+  const uniqueAttempts: AggressiveJpegAttempt[] = []
+  for (const attempt of attempts) {
+    if (
+      uniqueAttempts.some(
+        (existing) =>
+          existing.edge === attempt.edge &&
+          existing.quality === attempt.quality,
+      )
+    ) {
+      continue
+    }
+    uniqueAttempts.push(attempt)
+    if (uniqueAttempts.length >= MAX_AGGRESSIVE_FALLBACK_ATTEMPTS) {
+      break
+    }
+  }
+
+  return uniqueAttempts
+}
+
 /**
  * Extracted from FileReadTool's readImage function
  * Resizes image buffer to meet size and dimension constraints
@@ -191,9 +301,10 @@ export async function maybeResizeAndDownsampleImageBuffer(
   const maxWidth = options.maxWidth ?? IMAGE_MAX_WIDTH
   const maxHeight = options.maxHeight ?? IMAGE_MAX_HEIGHT
   const targetRawSize = options.targetRawSize ?? IMAGE_TARGET_RAW_SIZE
-  const jpegQualitySteps = options.jpegQualitySteps ?? [80, 60, 40, 20]
-  const fallbackMaxEdge = options.fallbackMaxEdge ?? 1000
-  const fallbackJpegQuality = jpegQualitySteps.at(-1) ?? 20
+  const jpegQualitySteps = normalizeJpegQualitySteps(
+    options.jpegQualitySteps ?? DEFAULT_JPEG_QUALITY_STEPS,
+  )
+  const fallbackMaxEdge = options.fallbackMaxEdge ?? DEFAULT_FALLBACK_MAX_EDGE
   const forceJpeg = options.forceJpeg ?? false
   const allowRawFallback = options.allowRawFallback ?? true
   try {
@@ -212,10 +323,18 @@ export async function maybeResizeAndDownsampleImageBuffer(
         const compressedBuffer = await sharp(imageBuffer)
           .jpeg({ quality: jpegQualitySteps[0] ?? 80 })
           .toBuffer()
-        return { buffer: compressedBuffer, mediaType: 'jpeg' }
+        if (fitsImageBase64Limit(compressedBuffer, targetRawSize)) {
+          return { buffer: compressedBuffer, mediaType: 'jpeg' }
+        }
       }
       // Return without dimensions if we can't determine them
-      return { buffer: imageBuffer, mediaType: normalizedMediaType }
+      if (fitsImageBase64Limit(imageBuffer, targetRawSize)) {
+        return { buffer: imageBuffer, mediaType: normalizedMediaType }
+      }
+      throw new ImageResizeError(
+        `Unable to resize image (${formatFileSize(originalSize)} raw, ${formatFileSize(imageBase64Size(originalSize))} base64). ` +
+          `The image exceeds the ${formatFileSize(targetBase64Limit(targetRawSize))} base64 limit and dimensions could not be read for resizing.`,
+      )
     }
 
     // Store original dimensions (guaranteed to be defined here)
@@ -229,7 +348,7 @@ export async function maybeResizeAndDownsampleImageBuffer(
     // Check if the original file just works
     if (
       !forceJpeg &&
-      originalSize <= targetRawSize &&
+      fitsImageBase64Limit(imageBuffer, targetRawSize) &&
       width <= maxWidth &&
       height <= maxHeight
     ) {
@@ -245,56 +364,7 @@ export async function maybeResizeAndDownsampleImageBuffer(
       }
     }
 
-    const needsDimensionResize =
-      width > maxWidth || height > maxHeight
     const isPng = normalizedMediaType === 'png'
-
-    // If dimensions are within limits but file is too large, try compression first
-    // This preserves full resolution when possible
-    if (
-      !needsDimensionResize &&
-      (originalSize > targetRawSize || forceJpeg)
-    ) {
-      // For PNGs, try PNG compression first to preserve transparency
-      if (isPng && !forceJpeg) {
-        // Create fresh sharp instance for each compression attempt
-        const pngCompressed = await sharp(imageBuffer)
-          .png({ compressionLevel: 9, palette: true })
-          .toBuffer()
-        if (pngCompressed.length <= targetRawSize) {
-          return {
-            buffer: pngCompressed,
-            mediaType: 'png',
-            dimensions: {
-              originalWidth,
-              originalHeight,
-              displayWidth: width,
-              displayHeight: height,
-            },
-          }
-        }
-      }
-      // Try JPEG compression (lossy but much smaller)
-      for (const quality of jpegQualitySteps) {
-        // Create fresh sharp instance for each attempt
-        const compressedBuffer = await sharp(imageBuffer)
-          .jpeg({ quality })
-          .toBuffer()
-        if (compressedBuffer.length <= targetRawSize) {
-          return {
-            buffer: compressedBuffer,
-            mediaType: 'jpeg',
-            dimensions: {
-              originalWidth,
-              originalHeight,
-              displayWidth: width,
-              displayHeight: height,
-            },
-          }
-        }
-      }
-      // Quality reduction alone wasn't enough, fall through to resize
-    }
 
     // Constrain dimensions if needed
     if (width > maxWidth) {
@@ -312,130 +382,108 @@ export async function maybeResizeAndDownsampleImageBuffer(
     // when reusing a sharp instance after calling toBuffer(). This caused a bug where
     // all compression attempts (PNG, JPEG at various qualities) returned identical sizes.
     logForDebugging(`Resizing to ${width}x${height}`)
-    if (forceJpeg) {
-      for (const quality of jpegQualitySteps) {
-        const compressedBuffer = await sharp(imageBuffer)
-          .resize(width, height, {
-            fit: 'inside',
-            withoutEnlargement: true,
-          })
-          .jpeg({ quality })
-          .toBuffer()
-        if (compressedBuffer.length <= targetRawSize) {
-          return {
-            buffer: compressedBuffer,
-            mediaType: 'jpeg',
-            dimensions: {
-              originalWidth,
-              originalHeight,
-              displayWidth: width,
-              displayHeight: height,
-            },
-          }
-        }
-      }
-    }
 
-    const resizedImageBuffer = forceJpeg
-      ? await sharp(imageBuffer)
-          .resize(width, height, {
-            fit: 'inside',
-            withoutEnlargement: true,
-          })
-          .jpeg({ quality: fallbackJpegQuality })
-          .toBuffer()
-      : await sharp(imageBuffer)
-          .resize(width, height, {
-            fit: 'inside',
-            withoutEnlargement: true,
-          })
-          .toBuffer()
-
-    // If still too large after resize, try compression
-    if (resizedImageBuffer.length > targetRawSize) {
-      // For PNGs, try PNG compression first to preserve transparency
-      if (isPng && !forceJpeg) {
-        const pngCompressed = await sharp(imageBuffer)
-          .resize(width, height, {
-            fit: 'inside',
-            withoutEnlargement: true,
-          })
-          .png({ compressionLevel: 9, palette: true })
-          .toBuffer()
-        if (pngCompressed.length <= targetRawSize) {
-          return {
-            buffer: pngCompressed,
-            mediaType: 'png',
-            dimensions: {
-              originalWidth,
-              originalHeight,
-              displayWidth: width,
-              displayHeight: height,
-            },
-          }
-        }
-      }
-
-      // Try JPEG with progressively lower quality
-      for (const quality of jpegQualitySteps) {
-        const compressedBuffer = await sharp(imageBuffer)
-          .resize(width, height, {
-            fit: 'inside',
-            withoutEnlargement: true,
-          })
-          .jpeg({ quality })
-          .toBuffer()
-        if (compressedBuffer.length <= targetRawSize) {
-          return {
-            buffer: compressedBuffer,
-            mediaType: 'jpeg',
-            dimensions: {
-              originalWidth,
-              originalHeight,
-              displayWidth: width,
-              displayHeight: height,
-            },
-          }
-        }
-      }
-      // If still too large, resize smaller and compress aggressively
-      const fallbackScale = Math.min(
-        1,
-        fallbackMaxEdge / Math.max(width, height, 1),
-      )
-      const smallerWidth = Math.max(1, Math.round(width * fallbackScale))
-      const smallerHeight = Math.max(1, Math.round(height * fallbackScale))
-      logForDebugging('Still too large, compressing with JPEG')
-      const compressedBuffer = await sharp(imageBuffer)
-        .resize(smallerWidth, smallerHeight, {
+    if (!forceJpeg) {
+      const resizedImageBuffer = await sharp(imageBuffer)
+        .resize(width, height, {
           fit: 'inside',
           withoutEnlargement: true,
         })
-        .jpeg({ quality: fallbackJpegQuality })
         .toBuffer()
-      logForDebugging(`JPEG compressed buffer size: ${compressedBuffer.length}`)
-      return {
-        buffer: compressedBuffer,
-        mediaType: 'jpeg',
-        dimensions: {
-          originalWidth,
-          originalHeight,
-          displayWidth: smallerWidth,
-          displayHeight: smallerHeight,
-        },
+      if (fitsImageBase64Limit(resizedImageBuffer, targetRawSize)) {
+        return {
+          buffer: resizedImageBuffer,
+          mediaType: normalizedMediaType,
+          dimensions: {
+            originalWidth,
+            originalHeight,
+            displayWidth: width,
+            displayHeight: height,
+          },
+        }
       }
     }
 
-    return {
-      buffer: resizedImageBuffer,
-      mediaType: normalizedMediaType,
-      dimensions: {
-        originalWidth,
-        originalHeight,
-        displayWidth: width,
-        displayHeight: height,
-      },
+    // If still too large after resize, try compression.
+    // For PNGs, try PNG compression first to preserve transparency.
+    if (isPng && !forceJpeg) {
+      const pngCompressed = await sharp(imageBuffer)
+        .resize(width, height, {
+          fit: 'inside',
+          withoutEnlargement: true,
+        })
+        .png({ compressionLevel: 9, palette: true })
+        .toBuffer()
+      if (fitsImageBase64Limit(pngCompressed, targetRawSize)) {
+        return {
+          buffer: pngCompressed,
+          mediaType: 'png',
+          dimensions: {
+            originalWidth,
+            originalHeight,
+            displayWidth: width,
+            displayHeight: height,
+          },
+        }
+      }
     }
+
+    // Try JPEG with progressively lower quality.
+    for (const quality of jpegQualitySteps) {
+      const compressedBuffer = await sharp(imageBuffer)
+        .resize(width, height, {
+          fit: 'inside',
+          withoutEnlargement: true,
+        })
+        .jpeg({ quality })
+        .toBuffer()
+      if (fitsImageBase64Limit(compressedBuffer, targetRawSize)) {
+        return {
+          buffer: compressedBuffer,
+          mediaType: 'jpeg',
+          dimensions: {
+            originalWidth,
+            originalHeight,
+            displayWidth: width,
+            displayHeight: height,
+          },
+        }
+      }
+    }
+
+    // If still too large, resize smaller and compress aggressively.
+    logForDebugging('Still too large, compressing with JPEG')
+    for (const { edge, quality } of aggressiveJpegAttempts(
+      fallbackMaxEdge,
+      jpegQualitySteps,
+    )) {
+      const edgeScale = Math.min(1, edge / Math.max(width, height, 1))
+      const candidateWidth = Math.max(1, Math.round(width * edgeScale))
+      const candidateHeight = Math.max(1, Math.round(height * edgeScale))
+      const compressedBuffer = await sharp(imageBuffer)
+        .resize(candidateWidth, candidateHeight, {
+          fit: 'inside',
+          withoutEnlargement: true,
+        })
+        .jpeg({ quality })
+        .toBuffer()
+      logForDebugging(`JPEG compressed buffer size: ${compressedBuffer.length}`)
+      if (fitsImageBase64Limit(compressedBuffer, targetRawSize)) {
+        return {
+          buffer: compressedBuffer,
+          mediaType: 'jpeg',
+          dimensions: {
+            originalWidth,
+            originalHeight,
+            displayWidth: candidateWidth,
+            displayHeight: candidateHeight,
+          },
+        }
+      }
+    }
+    throw new ImageResizeError(
+      `Unable to compress image below ${formatFileSize(targetBase64Limit(targetRawSize))} base64 after aggressive resizing.`,
+    )
   } catch (error) {
     // Log the error and emit analytics event
     logError(error as Error)
@@ -447,7 +495,8 @@ export async function maybeResizeAndDownsampleImageBuffer(
     const normalizedExt = detected.slice(6) // Remove 'image/' prefix
 
     // Calculate the base64 size (API limit is on base64-encoded length)
-    const base64Size = Math.ceil((originalSize * 4) / 3)
+    const base64Size = imageBase64Size(originalSize)
+    const base64Limit = targetBase64Limit(targetRawSize)
 
     // Size-under-5MB does not imply dimensions-under-cap. Don't return the
     // raw buffer if the PNG header says it's oversized — fall through to
@@ -462,7 +511,7 @@ export async function maybeResizeAndDownsampleImageBuffer(
         imageBuffer.readUInt32BE(20) > maxHeight)
 
     // If original image's base64 encoding is within API limit, allow it through uncompressed
-    if (allowRawFallback && base64Size <= API_IMAGE_MAX_BASE64_SIZE && !overDim) {
+    if (allowRawFallback && base64Size <= base64Limit && !overDim) {
       return { buffer: imageBuffer, mediaType: normalizedExt }
     }
 
@@ -472,7 +521,7 @@ export async function maybeResizeAndDownsampleImageBuffer(
         ? `Unable to resize image — dimensions exceed the ${maxWidth}x${maxHeight}px limit and image processing failed. ` +
             `Please resize the image to reduce its pixel dimensions.`
         : `Unable to resize image (${formatFileSize(originalSize)} raw, ${formatFileSize(base64Size)} base64). ` +
-            `The image exceeds the 5MB API limit and compression failed. ` +
+            `The image exceeds the ${formatFileSize(base64Limit)} base64 limit and compression failed. ` +
             `Please resize the image manually or use a smaller image.`,
     )
   }
@@ -565,7 +614,7 @@ export async function compressImageBuffer(
     }
 
     // If image is already within size limit, return as-is without processing
-    if (originalSize <= maxBytes) {
+    if (fitsImageBase64Limit(imageBuffer, maxBytes)) {
       return createCompressedImageResult(imageBuffer, format, originalSize)
     }
 
@@ -598,7 +647,7 @@ export async function compressImageBuffer(
     const errorMsg = errorMessage(error)
 
     // If original image is within the requested limit, allow it through
-    if (imageBuffer.length <= maxBytes) {
+    if (fitsImageBase64Limit(imageBuffer, maxBytes)) {
       // Detect actual format from magic bytes instead of trusting the provided media type
       const detected = detectImageFormatFromBuffer(imageBuffer)
       return {
@@ -650,7 +699,7 @@ export async function compressImageBlock(
   const imageBuffer = Buffer.from(imageBlock.source.data, 'base64')
 
   // Check if already within size limit
-  if (imageBuffer.length <= maxBytes) {
+  if (imageBlock.source.data.length <= targetBase64Limit(maxBytes)) {
     return imageBlock
   }
 
@@ -707,7 +756,7 @@ async function tryProgressiveResizing(
 
     const resizedBuffer = await resizedImage.toBuffer()
 
-    if (resizedBuffer.length <= context.maxBytes) {
+    if (fitsImageBase64Limit(resizedBuffer, context.maxBytes)) {
       return createCompressedImageResult(
         resizedBuffer,
         context.format,
@@ -755,7 +804,7 @@ async function tryPalettePNG(
     })
     .toBuffer()
 
-  if (palettePng.length <= context.maxBytes) {
+  if (fitsImageBase64Limit(palettePng, context.maxBytes)) {
     return createCompressedImageResult(palettePng, 'png', context.originalSize)
   }
 
@@ -775,7 +824,7 @@ async function tryJPEGConversion(
     .jpeg({ quality })
     .toBuffer()
 
-  if (jpegBuffer.length <= context.maxBytes) {
+  if (fitsImageBase64Limit(jpegBuffer, context.maxBytes)) {
     return createCompressedImageResult(jpegBuffer, 'jpeg', context.originalSize)
   }
 
@@ -794,10 +843,16 @@ async function createUltraCompressedJPEG(
     .jpeg({ quality: 20 })
     .toBuffer()
 
-  return createCompressedImageResult(
-    ultraCompressedBuffer,
-    'jpeg',
-    context.originalSize,
+  if (fitsImageBase64Limit(ultraCompressedBuffer, context.maxBytes)) {
+    return createCompressedImageResult(
+      ultraCompressedBuffer,
+      'jpeg',
+      context.originalSize,
+    )
+  }
+
+  throw new ImageResizeError(
+    `Unable to compress image (${formatFileSize(context.originalSize)}) below ${formatFileSize(targetBase64Limit(context.maxBytes))} base64.`,
   )
 }
 
