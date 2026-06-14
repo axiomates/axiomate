@@ -82,6 +82,7 @@ function statusObject() {
     state: session.state,
     browserKind: session.kind,
     cdpPort: session.port,
+    userDataDir: session.userDataDir,
   };
 }
 
@@ -295,12 +296,16 @@ async function handleNavigate(args: { url: string }): Promise<CallToolResult> {
 async function handleSnapshot(args: {
   interactive?: boolean;
   urls?: boolean;
+  depth?: number;
+  selector?: string;
 }): Promise<CallToolResult> {
   const port = await requirePort();
   if (typeof port !== "number") return port;
   const flags = ["snapshot", "--compact"];
   if (args?.interactive) flags.push("--interactive");
   if (args?.urls) flags.push("--urls");
+  if (typeof args?.depth === "number") flags.push("--depth", String(args.depth));
+  if (args?.selector) flags.push("--selector", args.selector);
   const r = await runAgentBrowser(flags, { cdpPort: port, timeoutMs: 45_000 });
   if (!r.ok) return fail("snapshot failed", r.error);
   // agent-browser emits the ref-addressed aria tree (@e1, @e2, ...) directly;
@@ -331,7 +336,7 @@ async function handleType(args: {
 }): Promise<CallToolResult> {
   const port = await requirePort();
   if (typeof port !== "number") return port;
-  const r = await runAgentBrowser(["fill", args.ref, args.text], {
+  const r = await runAgentBrowser(["type", args.ref, args.text], {
     cdpPort: port,
     timeoutMs: 30_000,
   });
@@ -385,29 +390,26 @@ async function handleTabList(): Promise<CallToolResult> {
 async function handleTabNew(args: { url?: string }): Promise<CallToolResult> {
   const port = await requirePort();
   if (typeof port !== "number") return port;
-  const r = await runAgentBrowser(["tab", "new"], {
+  const cmd = ["tab", "new"];
+  if (args?.url) cmd.push(args.url);
+  const r = await runAgentBrowser(cmd, {
     cdpPort: port,
     timeoutMs: 15_000,
   });
   if (!r.ok) return fail("tab new failed", r.error);
-  if (args?.url) {
-    const nav = await runAgentBrowser(["open", args.url], {
-      cdpPort: port,
-      timeoutMs: 45_000,
-    });
-    if (!nav.ok) return fail("tab new (navigate) failed", nav.error);
-  }
   return ok(r.stdout || "opened new tab");
 }
 
-async function handleTabClose(): Promise<CallToolResult> {
+async function handleTabClose(args: { targetId?: string }): Promise<CallToolResult> {
   const port = await requirePort();
   if (typeof port !== "number") return port;
-  const r = await runAgentBrowser(["tab", "close"], {
+  const cmd = ["tab", "close"];
+  if (args?.targetId) cmd.push(args.targetId);
+  const r = await runAgentBrowser(cmd, {
     cdpPort: port,
     timeoutMs: 15_000,
   });
-  return r.ok ? ok("closed tab") : fail("tab close failed", r.error);
+  return r.ok ? ok(args?.targetId ? `closed tab ${args.targetId}` : "closed tab") : fail("tab close failed", r.error);
 }
 
 async function handleTabSwitch(args: {
@@ -437,10 +439,25 @@ async function handleDialog(args: {
 }
 
 async function handleConsole(args: {
+  expression?: string;
   clear?: boolean;
 }): Promise<CallToolResult> {
   const port = await requirePort();
   if (typeof port !== "number") return port;
+  if (args?.expression !== undefined) {
+    const r = await runAgentBrowser(["eval", args.expression], {
+      cdpPort: port,
+      timeoutMs: 15_000,
+    });
+    if (!r.ok) return fail("console eval failed", r.error);
+    if (args?.clear) {
+      await runAgentBrowser(["console", "--clear"], {
+        cdpPort: port,
+        timeoutMs: 5_000,
+      });
+    }
+    return ok(r.stdout || "(undefined)");
+  }
   const cmd = ["console"];
   if (args?.clear) cmd.push("--clear");
   const r = await runAgentBrowser(cmd, { cdpPort: port, timeoutMs: 15_000 });
@@ -458,13 +475,16 @@ async function handleZoom(args: { factor: number }): Promise<CallToolResult> {
   return r.ok ? ok(`zoom set to ${args.factor}`) : fail("zoom failed", r.error);
 }
 
-async function handleGetImages(): Promise<CallToolResult> {
+async function handleGetImages(args: { limit?: number } = {}): Promise<CallToolResult> {
   const port = await requirePort();
   if (typeof port !== "number") return port;
+  const limit = Number.isInteger(args.limit)
+    ? Math.max(1, Math.min(args.limit!, 500))
+    : 50;
   const r = await runAgentBrowser(
     [
       "eval",
-      "JSON.stringify([...document.images].map(i=>({src:i.currentSrc||i.src,alt:i.alt||null,w:i.naturalWidth,h:i.naturalHeight})))",
+      `JSON.stringify([...document.images].slice(0,${limit}).map(i=>({src:i.currentSrc||i.src,alt:i.alt||null,w:i.naturalWidth,h:i.naturalHeight})))`,
     ],
     { cdpPort: port, timeoutMs: 15_000 },
   );
@@ -634,7 +654,7 @@ export async function dispatchBrowserBridgeTool(
       case "browser_tab_new":
         return await handleTabNew(args ?? {});
       case "browser_tab_close":
-        return await handleTabClose();
+        return await handleTabClose(args ?? {});
       case "browser_tab_switch":
         return await handleTabSwitch(args);
       case "browser_tab_list":
@@ -646,7 +666,7 @@ export async function dispatchBrowserBridgeTool(
       case "browser_console":
         return await handleConsole(args ?? {});
       case "browser_get_images":
-        return await handleGetImages();
+        return await handleGetImages(args ?? {});
       case "browser_vision":
         return await handleVision(args ?? {});
       case "browser_find":
@@ -675,4 +695,3 @@ export function __resetBridgeForTesting(): void {
   session.pid = undefined;
   session.userDataDir = undefined;
 }
-

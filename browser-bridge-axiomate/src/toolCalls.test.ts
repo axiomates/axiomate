@@ -264,9 +264,9 @@ describe("browser-bridge tool → agent-browser subcommand mapping", () => {
     expect(lastCall().args).not.toContain("--button");
   });
 
-  it("type → fill @ref text", async () => {
+  it("type → type @ref text (does not clear existing content)", async () => {
     await dispatchBrowserBridgeTool("browser_type", { ref: "@e2", text: "hi" });
-    expect(lastCall().args).toEqual(["fill", "@e2", "hi"]);
+    expect(lastCall().args).toEqual(["type", "@e2", "hi"]);
   });
 
   it("press → press key", async () => {
@@ -307,6 +307,16 @@ describe("browser-bridge tool → agent-browser subcommand mapping", () => {
     expect(lastCall().args).toEqual(["tab", "3"]);
   });
 
+  it("tab_new with url → tab new <url>", async () => {
+    await dispatchBrowserBridgeTool("browser_tab_new", { url: "https://x.test" });
+    expect(lastCall().args).toEqual(["tab", "new", "https://x.test"]);
+  });
+
+  it("tab_close with targetId → tab close <id>", async () => {
+    await dispatchBrowserBridgeTool("browser_tab_close", { targetId: "t2" });
+    expect(lastCall().args).toEqual(["tab", "close", "t2"]);
+  });
+
   it("dialog accept with prompt text", async () => {
     await dispatchBrowserBridgeTool("browser_dialog", { action: "accept", promptText: "yes" });
     expect(lastCall().args).toEqual(["dialog", "accept", "yes"]);
@@ -319,11 +329,48 @@ describe("browser-bridge tool → agent-browser subcommand mapping", () => {
     expect(text(r)).toContain("log: hello");
   });
 
+  it("console with expression → eval <expression>, returns eval stdout", async () => {
+    mockState.stdoutByCmd["eval"] = "42";
+    const r = await dispatchBrowserBridgeTool("browser_console", {
+      expression: "document.querySelectorAll('button').length",
+    });
+    expect(lastCall().args).toEqual([
+      "eval",
+      "document.querySelectorAll('button').length",
+    ]);
+    expect(text(r)).toBe("42");
+  });
+
+  it("get_images applies the schema limit in page eval", async () => {
+    await dispatchBrowserBridgeTool("browser_get_images", { limit: 3 });
+    expect(lastCall().args[0]).toBe("eval");
+    expect(lastCall().args[1]).toContain(".slice(0,3)");
+  });
+
   it("maps a failed agent-browser call to an MCP error", async () => {
     mockState.result = { ok: false, stdout: "", stderr: "", error: "boom" };
     const r = await dispatchBrowserBridgeTool("browser_navigate", { url: "https://x.test" });
     expect(r.isError).toBe(true);
     expect(text(r)).toMatch(/navigate failed: boom/);
+  });
+
+  it("snapshot passes optional schema fields through", async () => {
+    await dispatchBrowserBridgeTool("browser_snapshot", {
+      interactive: true,
+      urls: true,
+      depth: 4,
+      selector: "#main",
+    });
+    expect(lastCall().args).toEqual([
+      "snapshot",
+      "--compact",
+      "--interactive",
+      "--urls",
+      "--depth",
+      "4",
+      "--selector",
+      "#main",
+    ]);
   });
 });
 

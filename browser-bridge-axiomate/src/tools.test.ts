@@ -56,4 +56,18 @@ describe("buildBrowserBridgeTools", () => {
       expect(t.inputSchema, t.name).toBeDefined();
     }
   });
+
+  it("does not expose schema fields that the bridge cannot pass through", () => {
+    const reload = tools.find((t) => t.name === "browser_reload");
+    expect((reload?.inputSchema as any).properties).not.toHaveProperty("ignoreCache");
+  });
+
+  it("exposes implemented optional snapshot controls", () => {
+    const snapshot = tools.find((t) => t.name === "browser_snapshot");
+    const props = (snapshot?.inputSchema as any).properties;
+    expect(props).toHaveProperty("interactive");
+    expect(props).toHaveProperty("urls");
+    expect(props).toHaveProperty("depth");
+    expect(props).toHaveProperty("selector");
+  });
 });

@@ -15,7 +15,7 @@ export function buildBrowserBridgeTools(): Tool[] {
     {
       name: "browser_attach",
       description:
-        "Attach to a freshly-spawned isolated-profile Chromium via Chrome DevTools Protocol. Profile lives at ~/.axiomate/browser-bridge/profile (no user logins, no extensions) so this never interferes with the user's running browser. Idempotent — calling again returns the current state. Note: taking over the user's real browser profile (with their logins) is not supported because Chrome 136+ silently disables --remote-debugging-port on the default user-data-dir.",
+        "Attach to a freshly-spawned isolated-profile Chromium via Chrome DevTools Protocol. Profile lives under ~/.axiomate/browser-bridge/profile-<pid> (no user logins, no extensions) so this never interferes with the user's running browser. Idempotent — calling again returns the current state. Note: taking over the user's real browser profile (with their logins) is not supported because Chrome 136+ silently disables --remote-debugging-port on the default user-data-dir.",
       inputSchema: {
         type: "object",
         properties: {},
@@ -25,7 +25,7 @@ export function buildBrowserBridgeTools(): Tool[] {
     {
       name: "browser_status",
       description:
-        "Inspect the current bridge state without changing it. Returns attached/detached, profile, browser kind, CDP port.",
+        "Inspect the current bridge state without changing it. Returns attached/detached, profile directory, browser kind, CDP port, and pending dialog details when present.",
       inputSchema: {
         type: "object",
         properties: {},
@@ -64,7 +64,27 @@ export function buildBrowserBridgeTools(): Tool[] {
         "Snapshot the current page's accessibility tree. Returns an indented text view with refs (e1, e2, ...) plus a refs map. Refs stay valid until the next snapshot or a navigation event.",
       inputSchema: {
         type: "object",
-        properties: {},
+        properties: {
+          interactive: {
+            type: "boolean",
+            default: false,
+            description: "Only include interactive elements.",
+          },
+          urls: {
+            type: "boolean",
+            default: false,
+            description: "Include href URLs for link elements.",
+          },
+          depth: {
+            type: "integer",
+            minimum: 1,
+            description: "Limit accessibility tree depth.",
+          },
+          selector: {
+            type: "string",
+            description: "Optional CSS selector to scope the snapshot.",
+          },
+        },
         additionalProperties: false,
       },
     },
@@ -164,9 +184,7 @@ export function buildBrowserBridgeTools(): Tool[] {
       description: "Reload the active page.",
       inputSchema: {
         type: "object",
-        properties: {
-          ignoreCache: { type: "boolean", default: false },
-        },
+        properties: {},
         additionalProperties: false,
       },
     },
