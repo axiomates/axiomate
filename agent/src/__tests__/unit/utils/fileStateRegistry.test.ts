@@ -13,6 +13,8 @@ import {
   getFileStatePathLockDepthForTests,
   getKnownReadFilePaths,
   getPathsWrittenByOtherContextsSince,
+  canonicalizeTextForReadState,
+  recordObservedTextReadState,
   setObservedFileState,
   setObservedFileStateIfNewer,
   noteFileWrite,
@@ -556,5 +558,76 @@ describe('fileStateRegistry path locks', () => {
       expect(events).toEqual(['first:start', 'first:end', 'second:start'])
       expect(getFileStatePathLockDepthForTests(linkPath)).toBe(0)
     })
+  })
+})
+
+describe('recordObservedTextReadState (consolidation boundary)', () => {
+  beforeEach(() => {
+    clearFileStateRegistryForTests()
+  })
+
+  test('canonicalizes content (BOM strip + CRLF→LF) on store', () => {
+    expect(canonicalizeTextForReadState('﻿a\r\nb\r\n')).toBe('a\nb\n')
+
+    const context = makeContext()
+    const path = normalize('/tmp/canon.md')
+    recordObservedTextReadState(context, path, {
+      content: '﻿# H\r\n\r\nx\r\n',
+      timestamp: 1,
+      offset: undefined,
+      limit: undefined,
+    })
+    const stored = context.readFileState.get(path)
+    expect(stored?.content).toBe('# H\n\nx\n')
+    expect(stored?.content).not.toContain('\r')
+  })
+
+  test("stamp 'live' (default) assigns a registrySequence", () => {
+    const context = makeContext()
+    const path = normalize('/tmp/live.md')
+    recordObservedTextReadState(context, path, {
+      content: 'a\n',
+      timestamp: 1,
+      offset: undefined,
+      limit: undefined,
+    })
+    expect(context.readFileState.get(path)?.registrySequence).toBeDefined()
+  })
+
+  test("stamp 'reconstructed' leaves the read unstamped so the registry abstains", () => {
+    const context = makeContext()
+    const child = makeContext(asAgentId('achild000000000901'))
+    const path = normalize('/tmp/reconstructed.md')
+
+    // A sibling wrote the path; a reconstructed (unstamped) read must NOT claim
+    // to be ordered after that write — the registry abstains and defers to the
+    // content gate.
+    noteFileWrite(child, path)
+    recordObservedTextReadState(
+      context,
+      path,
+      { content: 'a\n', timestamp: 1, offset: undefined, limit: undefined },
+      { stamp: 'reconstructed' },
+    )
+    expect(context.readFileState.get(path)?.registrySequence).toBeUndefined()
+    expect(wasFileModifiedAfterReadByAnotherContext(context, path)).toBe(false)
+  })
+
+  test('passes the VIEW axis (isPartialView/limit/totalLines) through untouched', () => {
+    const context = makeContext()
+    const path = normalize('/tmp/partial.md')
+    recordObservedTextReadState(context, path, {
+      content: 'a\r\nb\n',
+      timestamp: 1,
+      offset: 1,
+      limit: 10,
+      totalLines: 42,
+      isPartialView: true,
+    })
+    const stored = context.readFileState.get(path)
+    expect(stored?.content).toBe('a\nb\n')
+    expect(stored?.limit).toBe(10)
+    expect(stored?.totalLines).toBe(42)
+    expect(stored?.isPartialView).toBe(true)
   })
 })

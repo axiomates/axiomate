@@ -13,13 +13,10 @@ import {
 } from '../../Tool.js'
 import { formatAgentId, generateRequestId } from '../../utils/agentId.js'
 import { isAgentSwarmsEnabled } from '../../utils/agentSwarmsEnabled.js'
-import {
-  getFileModificationTime,
-  normalizeContentToLf,
-} from '../../utils/file.js'
+import { getFileModificationTime } from '../../utils/file.js'
 import {
   noteFileWrite,
-  setObservedFileState,
+  recordObservedTextReadState,
 } from '../../utils/fileStateRegistry.js'
 import {
   findInProcessTeammateTaskId,
@@ -271,15 +268,15 @@ export const ExitPlanModeV2Tool: Tool<InputSchema, Output> = buildTool({
     if (inputPlan !== undefined && filePath) {
       await writeFile(filePath, inputPlan, 'utf-8').catch(e => logError(e))
       // This write bypasses FileWriteTool, so the file-harness read-state would
-      // otherwise be stale (or absent) for this path. Record the new state and
-      // register the write so the implementation phase can Edit the plan without
-      // a false not_read / stale_content rejection. The read-state content must
-      // be LF-normalized to match what the Write/Edit gate compares against
-      // (normalizeContentToLf of the disk read); the disk file keeps inputPlan's
-      // original line endings to preserve the plan's text envelope.
+      // otherwise be stale (or absent) for this path. Record the new state via
+      // the read-state boundary (which canonicalizes content to match the gate)
+      // and register the write so the implementation phase can Edit the plan
+      // without a false not_read / stale_content rejection. The disk file keeps
+      // inputPlan's original line endings to preserve the plan's text envelope;
+      // only the gate coordinate is canonicalized. 'live' = observed read.
       try {
-        setObservedFileState(context, filePath, {
-          content: normalizeContentToLf(inputPlan),
+        recordObservedTextReadState(context, filePath, {
+          content: inputPlan,
           timestamp: getFileModificationTime(filePath),
           offset: undefined,
           limit: undefined,

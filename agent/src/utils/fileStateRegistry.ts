@@ -2,6 +2,7 @@ import { AsyncLocalStorage } from 'node:async_hooks'
 import { dirname, isAbsolute, join, normalize, resolve } from 'node:path'
 import type { ToolUseContext } from '../Tool.js'
 import type { FileState } from './fileStateCache.js'
+import { normalizeContentToLf } from './file.js'
 import {
   getFsImplementation,
   resolveDeepestExistingAncestorSync,
@@ -242,6 +243,69 @@ export function setObservedFileStateIfNewer(
     )
   }
   return true
+}
+
+/**
+ * Canonicalize a TEXT file's content to the read-state form the text
+ * Write/Edit gates compare against: normalizeContentToLf (strip leading BOM,
+ * CRLF/CR → LF). This is the single text arm of the read-state
+ * canonicalization invariant.
+ *
+ * The invariant (see docs/file/read-state-write-consolidation-plan.md): content
+ * stored into read-state MUST be canonicalized with the SAME function the
+ * matching gate uses on the current disk content before comparing. For text
+ * that is normalizeContentToLf. NOTEBOOKS use getNotebookReadStateContent
+ * (cell-JSON) instead and MUST NOT pass through here — routing a notebook
+ * through this text canonicalizer corrupts its read-state coordinate.
+ *
+ * Exposed under this name (rather than callers reaching for normalizeContentToLf
+ * directly) so the read-side gate and the write-side store share one greppable
+ * pairing, and a future line-ending policy change is one edit.
+ */
+export function canonicalizeTextForReadState(content: string): string {
+  return normalizeContentToLf(content)
+}
+
+/**
+ * Record an observed TEXT read into read-state with canonical content. This is
+ * the single boundary every TEXT side-channel injection (plan attachment,
+ * memory injection, ExitPlanMode write, seed) must use so no caller can forget
+ * to normalize — the false-rejection bug class fixed point-wise on 2026-06-17.
+ *
+ * Three orthogonal axes, kept separate by design:
+ *  - CANONICALIZATION: fileState.content is run through
+ *    canonicalizeTextForReadState here. (This is what the boundary centralizes.)
+ *  - STAMPING (ordering): `stamp` selects it explicitly.
+ *      'live'          → setObservedFileState semantics: recordFileRead assigns
+ *                        a registrySequence (a fresh observed read that counts
+ *                        for sibling-write ordering).
+ *      'reconstructed' → raw set, left UNSTAMPED so
+ *                        wasFileModifiedAfterReadByAnotherContext abstains and
+ *                        defers to the content/mtime gate (the registry
+ *                        abstention contract for rebuilt/seeded reads).
+ *    Default 'live'.
+ *  - VIEW (completeness): offset/limit/totalLines/isPartialView/toolNormalization
+ *    pass through verbatim — the caller owns the partial-vs-full decision.
+ *
+ * NOT for notebooks (use getNotebookReadStateContent + the existing stores) and
+ * NOT a replacement for noteFileWrite (writer registration is a separate concern
+ * that the write tools still call themselves).
+ */
+export function recordObservedTextReadState(
+  context: FileStateContext,
+  filePath: string,
+  fileState: FileState,
+  opts?: { stamp?: 'live' | 'reconstructed' },
+): void {
+  const canonical: FileState = {
+    ...fileState,
+    content: canonicalizeTextForReadState(fileState.content),
+  }
+  if ((opts?.stamp ?? 'live') === 'live') {
+    setObservedFileState(context, filePath, canonical)
+  } else {
+    context.readFileState.set(normalize(filePath), canonical)
+  }
 }
 
 export function noteFileWrite(

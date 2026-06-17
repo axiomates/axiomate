@@ -519,6 +519,15 @@ export const NotebookEditTool = buildTool({
         // FileWriteTool). offset:undefined breaks FileReadTool's dedup match —
         // without this, Read→NotebookEdit→Read in the same millisecond would
         // return the file_unchanged stub against stale in-context content.
+        //
+        // NOTEBOOK ARM of the read-state canonicalization invariant (see
+        // docs/file/read-state-write-consolidation-plan.md): notebooks store the
+        // cell-JSON read-state shape (getNotebookReadStateContent), NOT the text
+        // canonicalizeTextForReadState form. The matching gate above compares
+        // against getNotebookReadStateContent too, so this pairing is correct.
+        // Do NOT route this through recordObservedTextReadState — that would
+        // corrupt the notebook coordinate (anchored by notebookEdit.behavior
+        // "stores notebook read-state as cell content" test).
         readFileState.set(fullPath, {
           content: getNotebookReadStateContent(fullPath),
           timestamp: getFileModificationTime(fullPath),

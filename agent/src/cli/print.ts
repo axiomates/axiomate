@@ -73,7 +73,7 @@ import { readFileSyncWithMetadata } from '../utils/fileRead.js'
 import { expandPath } from '../utils/path.js'
 import { reconstructFileStateFromTranscriptMessages } from '../utils/queryHelpers.js'
 import {
-  setObservedFileState,
+  recordObservedTextReadState,
   setObservedFileStateIfNewer,
 } from '../utils/fileStateRegistry.js'
 import { registerHookEventHandler } from '../utils/hooks/hookEvents.js'
@@ -2639,9 +2639,13 @@ function runHeadlessStreaming(
               // Use the same encoding-detecting reader as Edit/Write so a
               // UTF-16LE (or BOM) file seeds the SAME normalized content the
               // write tools will later compare against. A hardcoded utf-8 read
-              // here would garble UTF-16LE and cause false stale_content.
+              // here would garble UTF-16LE and cause false stale_content. The
+              // content is already canonical from the reader; routing through
+              // the read-state boundary keeps the seed consistent with every
+              // other text injection. 'live' preserves the current stamped
+              // semantics (the seed is a current-disk re-confirmation).
               const { content } = readFileSyncWithMetadata(normalizedPath)
-              setObservedFileState(pendingSeedsContext, normalizedPath, {
+              recordObservedTextReadState(pendingSeedsContext, normalizedPath, {
                 content,
                 timestamp: diskMtime,
                 offset: undefined,

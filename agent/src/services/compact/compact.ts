@@ -41,7 +41,6 @@ import {
 import { getCwd } from '../../utils/cwd.js'
 import { logForDebugging } from '../../utils/debug.js'
 import { AbortError, hasExactErrorMessage } from '../../utils/errors.js'
-import { normalizeContentToLf } from '../../utils/file.js'
 import {
   cacheToObject,
   cloneFileStateCache,
@@ -51,7 +50,7 @@ import {
   type CacheSafeParams,
   runForkedAgent,
 } from '../../utils/forkedAgent.js'
-import { setObservedFileState } from '../../utils/fileStateRegistry.js'
+import { recordObservedTextReadState } from '../../utils/fileStateRegistry.js'
 import {
   executePostCompactHooks,
   executePreCompactHooks,
@@ -1026,16 +1025,14 @@ function addPlanAttachmentIfNeeded(
 
   const { attachment } = planAttachment
   if (attachment.type === 'plan_file_reference') {
-    // The read-state content must match what the Write/Edit staleness gate
-    // compares against: LF-normalized, BOM-stripped disk content
-    // (normalizeContentToLf). getPlan() returns raw utf-8 bytes, so a CRLF or
-    // BOM plan would mismatch the gate's normalized disk read and be falsely
-    // rejected as stale_content once the plan file's mtime advances (e.g. after
-    // ExitPlanMode rewrites it, or an external editor/linter touches it). The
+    // Route through the read-state boundary so the gate coordinate is
+    // canonicalized (BOM strip + CRLF→LF) to match normalizeContentToLf(disk).
+    // getPlan() returns raw utf-8 bytes, so a CRLF/BOM plan would otherwise be
+    // falsely rejected as stale_content once the plan's mtime advances. The
     // attachment text shown to the model stays raw; only the gate coordinate is
-    // normalized.
-    setObservedFileState(context, attachment.planFilePath, {
-      content: normalizeContentToLf(attachment.planContent),
+    // canonicalized. 'live' = a fresh observed read (stamped).
+    recordObservedTextReadState(context, attachment.planFilePath, {
+      content: attachment.planContent,
       timestamp: Date.now(),
       offset: undefined,
       limit: undefined,

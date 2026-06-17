@@ -135,16 +135,23 @@ unstamped), `attachmentsFileStateRegistry.test.ts` (CRLF relevant-memory).
 
 - Phase 0 (this doc): design + coverage decided. ✅
 - Phase 1 — Anchor: add B1, B2, B3, B5 real-path tests; confirm green on current
-  HEAD. No production change. This is the safety net.
+  HEAD. No production change. ✅ DONE 2026-06-17 (commit 33434ea9): B1 (notebook
+  stored-content) + B5 (nested-memory CRLF) with break-and-reproduce; B3
+  sessionMemory switched to CRLF; B2 + preserved-tail verified-not-needed and
+  documented (no fake-pass).
 - Phase 2 — Introduce boundary: add the named text canonicalizer entry; migrate
   text side-channel write points (plan ×2, nested-memory ×2, relevant-memory,
-  ExitPlanMode, print seed) to call it. Each migration is content-equivalent to
-  today (they already call `normalizeContentToLf`), so Phase 1 tests must stay
-  green with zero diff in behavior.
-- Phase 3 — Document the notebook arm + reconstruction unstamped contract inline
-  at each site, linking the single invariant statement. Optionally fold
-  BashTool sed's inline `.replaceAll` and the manual normalizations into the
-  boundary for uniformity (purely mechanical, guarded by behavior suite).
+  ExitPlanMode, print seed) to call it. ✅ DONE 2026-06-17: added
+  `canonicalizeTextForReadState` + `recordObservedTextReadState` (4 boundary unit
+  tests: canonicalization, stamp 'live', stamp 'reconstructed' abstention, VIEW
+  pass-through). Migrated all 7 sites (all stamp:'live' per NOTE A).
+  `setObservedFileState` now has no production caller outside the boundary. 173
+  affected tests green; types clean.
+- Phase 3 — Document the notebook arm + reconstruction unstamped contract inline.
+  ✅ DONE 2026-06-17: notebook arm comment + explicit "do NOT route through
+  recordObservedTextReadState" warning naming the anchor test. Reconstruction
+  sites already carry unstamped-contract comments — left as-is. Optional cosmetic
+  folds (BashTool sed; stamp:'reconstructed' adoption) SKIPPED as pure churn.
 - Phase 4 — Full suite (`pnpm run test`), `build:types`, and a real-app smoke
   (`--print --permission-mode plan` editing a CRLF plan + a notebook) before
   pushing to main.
