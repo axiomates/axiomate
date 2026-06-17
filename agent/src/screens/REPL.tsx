@@ -151,6 +151,7 @@ import type { LogOption } from '../types/logs.js';
 import type { AgentColorName } from '../tools/AgentTool/agentColorManager.js';
 import { type FileHistoryState, fileHistoryRewind, type FileHistorySnapshot, fileHistoryHasDiffVsDisk } from '../utils/fileHistory.js';
 import { setObservedFileState } from '../utils/fileStateRegistry.js';
+import { normalizeContentToLf } from '../utils/file.js';
 import { listCodeAnchors } from '../utils/checkpoints/listCodeAnchors.js';
 import { parseCommitBody } from '../utils/checkpoints/reason.js';
 import { computeResumeRewindHint } from '../utils/checkpoints/resumeRewindHint.js';
@@ -3425,8 +3426,14 @@ export function REPL({
       // stripped frontmatter, MEMORY.md truncation), cache the RAW disk bytes
       // with isPartialView so Write requires a real full Read before overwrite
       // while getChangedFiles + nested_memory dedup still work.
+      //
+      // LF-normalized to match the Write/Edit gate (normalizeContentToLf of the
+      // disk read) and getChangedFiles' diff against FileRead's normalized
+      // output — see the parallel injection in attachments.ts. Without this a
+      // CRLF memory file is falsely rejected as stale on edit/overwrite once its
+      // mtime advances.
       setObservedFileState({ readFileState: readFileState.current }, file.path, {
-        content: file.contentDiffersFromDisk ? file.rawContent ?? file.content : file.content,
+        content: normalizeContentToLf(file.contentDiffersFromDisk ? file.rawContent ?? file.content : file.content),
         timestamp: Date.now(),
         offset: undefined,
         limit: undefined,

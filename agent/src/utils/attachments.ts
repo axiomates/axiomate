@@ -98,6 +98,7 @@ import { isAbortError } from './errors.js'
 import {
   getFileModificationTimeAsync,
   isFileWithinReadSizeLimit,
+  normalizeContentToLf,
 } from './file.js'
 import type { AgentDefinition } from '../tools/AgentTool/loadAgentsDir.js'
 import { filterAgentsByMcpRequirements } from '../tools/AgentTool/loadAgentsDir.js'
@@ -1459,10 +1460,20 @@ export function memoryFilesToAttachments(
       // with `isPartialView: true`. Write requires a real full Read before
       // overwriting; getChangedFiles sees real content + undefined offset/limit
       // so mid-session change detection still works.
+      //
+      // Content is LF-normalized (BOM-stripped, CRLF→LF) to match what the
+      // Write/Edit staleness gate compares against (normalizeContentToLf of the
+      // disk read) AND what getChangedFiles diffs against (FileRead's normalized
+      // output). Without this, a CRLF memory file (common on Windows) whose
+      // finalContent === rawContent stores raw CRLF as a full read, then once
+      // its mtime advances the gate falsely rejects edits/overwrites as
+      // stale_content and getChangedFiles falsely reports it as modified.
       setObservedFileState(toolUseContext, memoryFile.path, {
-        content: memoryFile.contentDiffersFromDisk
-          ? (memoryFile.rawContent ?? memoryFile.content)
-          : memoryFile.content,
+        content: normalizeContentToLf(
+          memoryFile.contentDiffersFromDisk
+            ? (memoryFile.rawContent ?? memoryFile.content)
+            : memoryFile.content,
+        ),
         timestamp: Date.now(),
         offset: undefined,
         limit: undefined,
@@ -2226,8 +2237,12 @@ export function filterDuplicateMemoryAttachments(
         m => !toolUseContext.readFileState.has(m.path),
       )
       for (const m of filtered) {
+        // LF-normalize so a full-content (limit === undefined) memory read
+        // matches the Write/Edit gate's normalizeContentToLf(disk) comparison
+        // and getChangedFiles' diff. A CRLF memory surfaced here would
+        // otherwise be falsely rejected as stale once its mtime advances.
         setObservedFileState(toolUseContext, m.path, {
-          content: m.content,
+          content: normalizeContentToLf(m.content),
           timestamp: m.mtimeMs,
           offset: undefined,
           limit: m.limit,

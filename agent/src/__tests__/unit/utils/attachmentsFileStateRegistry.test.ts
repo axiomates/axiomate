@@ -21,13 +21,17 @@ function makeContext(agentId?: ReturnType<typeof asAgentId>) {
   }
 }
 
-function makeRelevantMemory(path: string, limit?: number): Attachment {
+function makeRelevantMemory(
+  path: string,
+  limit?: number,
+  content = 'memory content',
+): Attachment {
   return {
     type: 'relevant_memories',
     memories: [
       {
         path,
-        content: 'memory content',
+        content,
         mtimeMs: 1,
         ...(limit === undefined ? {} : { limit }),
       },
@@ -69,5 +73,22 @@ describe('attachment file state registry integration', () => {
       limit: 25,
       isPartialView: true,
     })
+  })
+
+  test('LF-normalizes surfaced memory content so a CRLF memory is not falsely stale', () => {
+    // A CRLF memory must be stored LF-normalized: the Write/Edit staleness gate
+    // compares normalizeContentToLf(disk), so a raw-CRLF full-read coordinate
+    // would falsely reject edits/overwrites once the file's mtime advances.
+    const path = normalize('/tmp/crlf-memory.md')
+    const parent = makeContext()
+
+    filterDuplicateMemoryAttachments(
+      [makeRelevantMemory(path, undefined, '# Mem\r\n\r\nline\r\n')],
+      parent,
+    )
+
+    const stored = parent.readFileState.get(path)
+    expect(stored?.content).toBe('# Mem\n\nline\n')
+    expect(stored?.content).not.toContain('\r')
   })
 })
