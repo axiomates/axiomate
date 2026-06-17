@@ -5,7 +5,12 @@ import type { Message, UserMessage } from '../../../../types/message.js'
 import { createFileStateCacheWithSizeLimit } from '../../../../utils/fileStateCache.js'
 
 const planFilePath = 'C:\\workspace\\.plans\\session-memory-plan.md'
-const planContent = '# Plan\n\n- keep working'
+// CRLF fixture (Windows plan) — the stored read-state content must be
+// LF-normalized to match the Write/Edit gate. An LF-only fixture here would
+// not catch a normalization regression on this injection path (blind spot B3,
+// see docs/file/read-state-write-consolidation-plan.md).
+const planContent = '# Plan\r\n\r\n- keep working\r\n'
+const planContentNormalized = '# Plan\n\n- keep working\n'
 const sessionMemoryContent = '# Current State\n\nContinue the task.'
 
 vi.mock('../../../../utils/plans.js', async importOriginal => {
@@ -114,7 +119,10 @@ describe('session-memory compact plan read state', () => {
         attachment => attachment.attachment.type === 'plan_file_reference',
       ),
     ).toBe(true)
-    expect(context.readFileState.get(planFilePath)?.content).toBe(planContent)
+    expect(context.readFileState.get(planFilePath)?.content).toBe(
+      planContentNormalized,
+    )
+    expect(context.readFileState.get(planFilePath)?.content).not.toContain('\r')
     expect(
       context.readFileState.get(planFilePath)?.registrySequence,
     ).toBeDefined()

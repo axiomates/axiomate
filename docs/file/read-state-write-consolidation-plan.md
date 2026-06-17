@@ -341,6 +341,19 @@ B2 — print.ts seed path (guards R3; covers untested #7/#8).
 - If the handler is not unit-callable without a full print harness, fall back to
   asserting at the smallest extracted function and note the integration gap
   explicitly (do not fake-pass).
+- VERIFIED 2026-06-17 during Phase 1: the `seed_read_state` handler is deeply
+  nested in print.ts's control-request message loop with no exported seam, and
+  it has NO normalization logic of its own — it is literally
+  `setObservedFileState(ctx, p, {content: readFileSyncWithMetadata(p).content, ...})`.
+  The normalization risk lives entirely in `readFileSyncWithMetadata`, which is
+  already fully anchored by `fileRead.metadata.test.ts` (CRLF→LF line 34, BOM
+  strip line 45, UTF-16LE decode line 77). Decision: do NOT build a heavy,
+  brittle print-stream integration test to re-prove an already-anchored helper;
+  the seed path's only Phase-2 migration concern is the STAMP axis (NOTE A:
+  keep 'live'), which is a one-line behavior-preserving change reviewable by
+  reading. Integration-level coverage of the full seed control-request remains
+  an acknowledged gap (no fake-pass added). If #7 ever grows its own
+  normalization/transform, add the seam + test then.
 
 B3 — CRLF/BOM through compact preserved-tail + sessionMemory plan.
 - Files: `__tests__/unit/services/compact/preservedTailReadState.test.ts` and
@@ -348,6 +361,13 @@ B3 — CRLF/BOM through compact preserved-tail + sessionMemory plan.
 - Setup: feed a CRLF plan/transcript fixture through the existing real paths.
 - Assert: restored `FileState.content` has no `\r`; offset/limit/stamp semantics
   unchanged (preserved-tail stamped-vs-unstamped pair still holds).
+- VERIFIED 2026-06-17 during Phase 1: only the sessionMemory plan half is a real
+  risk (its content comes from `getPlan()` raw disk read) — done, CRLF fixture
+  added. The preserved-tail / resume reconstruction half is NOT a CRLF risk: its
+  content source is the transcript tool_result text (already model-visible LF,
+  line-number-prefixed and stripped during reconstruction), never raw disk
+  bytes — a CRLF can't occur on that input, so no CRLF fixture is meaningful
+  there. Left as-is (LF). Documented so a future reader doesn't "fix" a non-bug.
 
 B5 — nested-memory injection CRLF (guards #3/#5).
 - File: `__tests__/unit/utils/attachmentsFileStateRegistry.test.ts` (extend; it

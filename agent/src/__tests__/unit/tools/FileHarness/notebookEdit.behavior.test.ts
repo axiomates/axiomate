@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { beforeAll, describe, expect, test } from 'vitest'
 import { FILE_UNEXPECTEDLY_MODIFIED_ERROR } from '../../../../tools/FileEditTool/constants.js'
 import { asAgentId } from '../../../../types/ids.js'
+import { normalizeContentToLf } from '../../../../utils/file.js'
 import { cloneFileStateCache } from '../../../../utils/fileStateCache.js'
 import { withFileStatePathLock } from '../../../../utils/fileStateRegistry.js'
 import {
@@ -387,5 +388,44 @@ describe('NotebookEditTool file harness behavior', () => {
     expect(raw[1]).toBe(0xbb)
     expect(raw[2]).toBe(0xbf)
     expect(await readNotebookSource(path)).toBe('print("two")')
+  })
+
+  // B1 (read-state write consolidation anchor): the stored FileState.content
+  // for a notebook is the notebook read-state shape (cell-derived), NOT
+  // normalizeContentToLf(raw .ipynb JSON bytes). This is the guardrail that
+  // makes a refactor routing notebooks through the TEXT canonicalizer fail
+  // loudly instead of silently corrupting notebook read-state.
+  // See docs/file/read-state-write-consolidation-plan.md (R1, blind spot B1).
+  test('stores notebook read-state as cell content, not LF-normalized raw JSON', async () => {
+    const path = join(getHarnessCwd(), 'readstate-shape.ipynb')
+    await writeNotebook(path, 'print("one")')
+    const context = await readNotebookIntoContext(path)
+
+    await editNotebookCell(path, 'print("two")', context)
+
+    const stored = context.readFileState.get(path)
+    expect(stored).toBeDefined()
+    const storedContent = stored!.content
+
+    // (a) The stored content is the notebook read-state shape: a JSON array of
+    // processed cells (jsonStringify(cells)), surfacing the edited cell source.
+    // It parses as an array (NOT a raw notebook object with nbformat), and the
+    // edited source is recoverable from it.
+    const parsed = JSON.parse(storedContent)
+    expect(Array.isArray(parsed)).toBe(true)
+    expect(JSON.stringify(parsed)).toContain('print(')
+    expect(storedContent).toContain('two')
+
+    // (b) It is explicitly NOT the raw .ipynb JSON normalized as text. If a
+    // refactor pushed notebooks through canonicalizeTextForReadState, the
+    // stored content WOULD equal this value \u2014 so this inequality must hold.
+    const rawDiskBytes = await readFile(path, 'utf8')
+    const asIfTextCanonicalized = normalizeContentToLf(rawDiskBytes)
+    expect(storedContent).not.toBe(asIfTextCanonicalized)
+    // Sanity: the raw form is a notebook object (has nbformat); the read-state
+    // form is a cell array without it. Guards against both representations
+    // accidentally collapsing to equal.
+    expect(asIfTextCanonicalized).toContain('"nbformat"')
+    expect(storedContent).not.toContain('"nbformat"')
   })
 })
