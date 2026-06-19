@@ -11,6 +11,7 @@
  */
 
 import {
+  chmodSync,
   copyFileSync,
   existsSync,
   readdirSync,
@@ -18,6 +19,7 @@ import {
   rmSync,
   statSync,
   unlinkSync,
+  writeFileSync,
 } from 'fs'
 import { arch, platform } from 'os'
 import { basename, dirname, join, resolve } from 'path'
@@ -379,6 +381,24 @@ copyWorkspaceNativeFiles('audio-capture-axiomate')
 copyWorkspaceNativeFiles('modifiers-mac-napi-axiomate')
 copyWorkspaceNativeFiles('url-handler-mac-napi-axiomate')
 copyWorkspaceNativeFiles('computer-use-mac-napi-axiomate')
+
+// Bundle the macOS install helper beside the binaries. Since the release is not
+// notarized (no Apple Developer cert), copies on other Macs get blocked by
+// Gatekeeper / fail with "killed: 9". install.command un-quarantines, chmods,
+// and ad-hoc re-signs every binary so it runs locally. Normalize to LF (the repo
+// copy may carry CRLF on Windows checkouts) and mark it executable.
+{
+  const installScriptSrc = join(agentDir, 'resources', 'install.command')
+  if (existsSync(installScriptSrc)) {
+    const installScriptDest = join(distDir, 'install.command')
+    const normalized = readFileSync(installScriptSrc, 'utf-8').replace(/\r\n/g, '\n')
+    writeFileSync(installScriptDest, normalized)
+    chmodSync(installScriptDest, 0o755)
+    console.log('  OK install.command')
+  } else {
+    console.log('  SKIP install.command (resources/install.command not found)')
+  }
+}
 
 const bundledCliPath = join(distDir, 'cli.js')
 if (existsSync(bundledCliPath)) {
