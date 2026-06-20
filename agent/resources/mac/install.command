@@ -100,15 +100,29 @@ fi
 
 # -- 5. PATH -------------------------------------------------------------------
 echo "[5/6] Configuring PATH ..."
-case "${SHELL##*/}" in
-  (bash) SHELL_RC="$HOME/.bashrc" ;;
-  (*)    SHELL_RC="$HOME/.zshrc" ;;
-esac
-if [ -f "$SHELL_RC" ] && grep -Fq "$DIR" "$SHELL_RC" 2>/dev/null; then
-  echo "      Already in $SHELL_RC, skipping"
+add_path() {
+  local rc="$1"
+  if [ -f "$rc" ] && grep -Fq "$DIR" "$rc" 2>/dev/null; then
+    echo "      Already in $rc, skipping"
+  else
+    printf '\n# Added by Axiomate installer\nexport PATH="%s:$PATH"\n' "$DIR" >> "$rc"
+    echo "      Written to $rc (effective in a new terminal)"
+  fi
+}
+
+# zsh (macOS default): both login and interactive shells read .zshrc.
+add_path "$HOME/.zshrc"
+
+# bash: write PATH once to .bashrc, then make sure .bash_profile sources it.
+# On macOS, Terminal starts login shells, which read .bash_profile (not .bashrc),
+# so without this link the PATH in .bashrc would never load.
+add_path "$HOME/.bashrc"
+BASH_PROFILE="$HOME/.bash_profile"
+if [ -f "$BASH_PROFILE" ] && grep -Fq '.bashrc' "$BASH_PROFILE" 2>/dev/null; then
+  echo "      $BASH_PROFILE already sources .bashrc, skipping"
 else
-  printf '\n# Added by Axiomate installer\nexport PATH="%s:$PATH"\n' "$DIR" >> "$SHELL_RC"
-  echo "      Written to $SHELL_RC (effective in a new terminal)"
+  printf '\n# Added by Axiomate installer: load .bashrc for login shells\n[ -r "$HOME/.bashrc" ] && . "$HOME/.bashrc"\n' >> "$BASH_PROFILE"
+  echo "      Linked $BASH_PROFILE -> .bashrc"
 fi
 
 # -- 6. System permissions guidance (TCC, cannot be granted by a script) -------
