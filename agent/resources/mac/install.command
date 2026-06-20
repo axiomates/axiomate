@@ -118,7 +118,10 @@ add_path "$HOME/.zshrc"
 # so without this link the PATH in .bashrc would never load.
 add_path "$HOME/.bashrc"
 BASH_PROFILE="$HOME/.bash_profile"
-if [ -f "$BASH_PROFILE" ] && grep -Fq '.bashrc' "$BASH_PROFILE" 2>/dev/null; then
+# Match a real source statement (a `.` or `source` command referencing .bashrc),
+# skipping comment lines and unrelated paths like ".bashrc_backup".
+if [ -f "$BASH_PROFILE" ] && grep -vE '^[[:space:]]*#' "$BASH_PROFILE" 2>/dev/null \
+     | grep -Eq '(^|[^[:alnum:]_./])(source|\.)[[:space:]]+[^#]*\.bashrc([^[:alnum:]_]|$)'; then
   echo "      $BASH_PROFILE already sources .bashrc, skipping"
 else
   printf '\n# Added by Axiomate installer: load .bashrc for login shells\n[ -r "$HOME/.bashrc" ] && . "$HOME/.bashrc"\n' >> "$BASH_PROFILE"
