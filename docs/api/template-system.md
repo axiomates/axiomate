@@ -54,8 +54,8 @@ protocols; the three are fixed.
 | Protocol | What lives here |
 |---|---|
 | `anthropic` | `output_config.effort` patch + `low/medium/high` valueMap + `thinking.budget_tokens` patch + `anthropicThinkingField` (SDK-side default) |
-| `openai-chat` | `reasoning_effort` patch + OpenAI's standard 4-tier valueMap (`low→minimal, medium→low, high→medium, max→high`) |
-| `openai-responses` | `reasoning.effort` patch + same 4-tier valueMap + `reasoning.summary: 'auto'` enabledPatch |
+| `openai-chat` | `reasoning_effort` patch + modern GPT-5.x valueMap (`low→low, medium→medium, high→high, max→xhigh`). `minimal` dropped; o-series caps `max→high` via the `openai-chat-oseries` model template; third-party gateways (deepseek/aliyun/siliconflow) override with `null` to delete tiers they reject. |
+| `openai-responses` | `reasoning.effort` patch + modern GPT-5.x valueMap (`low→low, medium→medium, high→high, max→xhigh`) + `reasoning.summary: 'auto'` enabledPatch. `minimal` is intentionally dropped (it 400s on models that don't support it); o-series caps `max→high` via the `openai-responses-oseries` model template. |
 
 ### Vendor layer
 
@@ -120,6 +120,8 @@ Built-in:
 | Model template | Protocol gate | Recommendation match | Quirks |
 |---|---|---|---|
 | `openai-chat-deepseek-v4p` | `openai-chat` | `\bdeepseek[\s\-_]*v?[\s\-_]*\d+` (with version >= 4) | `autoRoundTripReasoningContent: true`, `reasoningRoundTripFormat: reasoning_content` |
+| `openai-responses-oseries` | `openai-responses` | `(?:^\|[-_/:\s])o[1-9](?:-\|$)` (o1 / o3 / o4-mini, etc.) | `effort.valueMap: { max: 'high' }` — caps `max` back to `high` since o-series predates `xhigh` |
+| `openai-chat-oseries` | `openai-chat` | `(?:^\|[-_/:\s])o[1-9](?:-\|$)` (o1 / o3 / o4-mini, etc.) | `effort.valueMap: { max: 'high' }` — same o-series cap on the Chat Completions wire |
 
 User-defined model templates live under `~/.axiomate.json`'s top-level
 `modelTemplates` field.
@@ -581,7 +583,7 @@ applies, so the SiliconFlow gateway sees the same round-trip behavior
 DeepSeek's V4 needs. Cross-gateway portability of the model quirk is
 the whole point of separating the model layer from the vendor layer.
 
-### Example 3: OpenAI o-series via the Responses API
+### Example 3: GPT-5.x via the Responses API
 
 ```jsonc
 {
@@ -595,17 +597,38 @@ the whole point of separating the model layer from the vendor layer.
 
 Resolution:
 
-1. Protocol: `openai-responses` → `reasoning.effort` patch + 4-tier
-   valueMap + `reasoning.summary: 'auto'` enabledPatch
+1. Protocol: `openai-responses` → `reasoning.effort` patch + modern GPT-5.x
+   valueMap (`low→low, medium→medium, high→high, max→xhigh`) +
+   `reasoning.summary: 'auto'` enabledPatch
 2. Vendor: no gateway-specific template; protocol layer only
 3. Model: no `modelTemplate`; nothing applied
 
 Wire body:
 ```json
-{ "reasoning": { "effort": "high", "summary": "auto" } }
+{ "reasoning": { "effort": "xhigh", "summary": "auto" } }
 ```
 
-(`max → high` per the standard valueMap remap.)
+(`max → xhigh` reaches OpenAI's real top tier per the modern valueMap.)
+
+For an **o-series** model (o1 / o3 / o4-mini, etc.) that predates `xhigh`, pin
+the `openai-responses-oseries` model template — the wizard recommends it
+automatically for matching model names:
+
+```jsonc
+{
+  "model": "o3-mini",
+  "protocol": "openai-responses",
+  "baseUrl": "https://api.openai.com/v1",
+  "apiKey": "sk-...",
+  "modelTemplate": "openai-responses-oseries",
+  "thinking": { "enabled": true, "effort": "max" }
+}
+```
+
+Wire body — the model layer caps `max` back to the o-series top tier:
+```json
+{ "reasoning": { "effort": "high", "summary": "auto" } }
+```
 
 ### Example 4: Custom vendor for a third-party gateway
 

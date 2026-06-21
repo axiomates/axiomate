@@ -273,16 +273,21 @@ const builtinProtocolTemplates: Record<Protocol, ProtocolTemplate> = {
   'openai-chat': {
     effort: {
       patch: { reasoning_effort: '<value>' },
-      // OpenAI Chat Completions reasoning extension accepts
-      // 'minimal'|'low'|'medium'|'high'. Map axiomate's 4 tiers onto
-      // OpenAI's 4 tiers so each ModelPicker level sends a distinct wire
-      // value rather than collapsing onto 'high'. Third-party gateways
-      // override with null entries to delete tiers they don't accept.
+      // OpenAI's reasoning_effort domain grew to the same modern set as the
+      // Responses API: none/minimal/low/medium/high/xhigh, model-dependent.
+      // axiomate's picker is a fixed 4 tiers, so we map them onto the modern
+      // GPT-5.x domain — names aligned for low/medium/high, 'max' reaching the
+      // real top tier 'xhigh'. 'minimal' is intentionally dropped (it 400s on
+      // models that don't support it). Models that predate 'xhigh'
+      // (o1/o3/o4-mini) pin the openai-chat-oseries model template, which caps
+      // 'max' back to 'high'. Third-party gateways (deepseek/aliyun/
+      // siliconflow) override this valueMap with null entries to delete tiers
+      // they don't accept.
       valueMap: {
-        low: 'minimal',
-        medium: 'low',
-        high: 'medium',
-        max: 'high',
+        low: 'low',
+        medium: 'medium',
+        high: 'high',
+        max: 'xhigh',
       },
     },
   },
@@ -290,11 +295,22 @@ const builtinProtocolTemplates: Record<Protocol, ProtocolTemplate> = {
     enabledPatch: { reasoning: { summary: 'auto' } },
     effort: {
       patch: { reasoning: { effort: '<value>' } },
+      // OpenAI's Responses API effort domain grew past the original four. It
+      // now accepts none/minimal/low/medium/high/xhigh, but support is
+      // model-dependent: o-series accepts only low/medium/high, GPT-5.x adds
+      // the high-end 'xhigh', and (per OpenAI docs) GPT-5.4 omits 'minimal'.
+      // axiomate's picker is a fixed 4 tiers, so we map them onto the *modern*
+      // GPT-5.x domain — names aligned for the middle, with 'max' reaching the
+      // real top tier 'xhigh'. We intentionally drop 'minimal': it 400s on the
+      // models that don't support it, and 'low' is the more universally
+      // accepted floor. Models that predate 'xhigh' (o1/o3/o4-mini) pin the
+      // openai-responses-oseries model template, which caps 'max' back to
+      // 'high' — see builtinModelTemplates below.
       valueMap: {
-        low: 'minimal',
-        medium: 'low',
-        high: 'medium',
-        max: 'high',
+        low: 'low',
+        medium: 'medium',
+        high: 'high',
+        max: 'xhigh',
       },
     },
   },
@@ -405,6 +421,39 @@ const builtinModelTemplates: Record<string, ModelTemplate> = {
     // their behavior is confirmed and the adapter grows explicit support.
     autoRoundTripReasoningContent: true,
     reasoningRoundTripFormat: 'reasoning_content',
+  },
+  'openai-responses-oseries': {
+    // OpenAI's o-series reasoning models (o1 / o3 / o4-mini, etc.) on the
+    // Responses API. Their effort domain is the original low/medium/high —
+    // they predate 'xhigh', which the protocol layer now maps 'max' onto for
+    // GPT-5.x. Pin this template to cap 'max' back to 'high' so the picker's
+    // top tier stays valid instead of 400ing on an unsupported 'xhigh'.
+    //
+    // Regex: an 'o' followed by a single version digit, anchored at the start
+    // or after a separator (handles bare `o3-mini` and prefixed
+    // `openai/o4-mini`). The leading boundary keeps it from matching `gpt-4o`
+    // (its trailing 'o' is not followed by a digit) or other families.
+    matchModelRegex: '(?:^|[-_/:\\s])o[1-9](?:-|$)',
+    protocol: 'openai-responses',
+    effort: {
+      // Remap (not delete) so ModelPicker still shows the 'max' tier; it just
+      // resolves to 'high' on the wire. low/medium/high inherit from the
+      // protocol layer unchanged.
+      valueMap: { max: 'high' },
+    },
+  },
+  'openai-chat-oseries': {
+    // Same o-series cap as openai-responses-oseries, but for the Chat
+    // Completions wire. The openai-chat protocol layer also maps 'max' →
+    // 'xhigh' now; o-series predates xhigh, so cap it back to 'high'. Kept as
+    // a separate protocol-gated template (mirroring the openai-chat- /
+    // openai-responses- naming convention) rather than one protocol-neutral
+    // template, so it never leaks into anthropic recommendations.
+    matchModelRegex: '(?:^|[-_/:\\s])o[1-9](?:-|$)',
+    protocol: 'openai-chat',
+    effort: {
+      valueMap: { max: 'high' },
+    },
   },
 }
 

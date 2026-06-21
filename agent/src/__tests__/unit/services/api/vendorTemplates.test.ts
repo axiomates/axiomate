@@ -565,22 +565,24 @@ describe('applyThinkingTemplate — built-in: openai-default', () => {
     expect(applyThinkingTemplate(undefined, template)).toEqual({})
   })
 
-  it('thinking enabled maps each axiomate level to a distinct OpenAI level', () => {
-    // axiomate's 4 levels (low/medium/high/max) cover OpenAI's 4 levels
-    // (minimal/low/medium/high) so each ModelPicker tier has a distinct
-    // wire effort rather than collapsing onto 'high'.
+  it('thinking enabled maps each axiomate tier to the modern GPT-5.x domain', () => {
+    // axiomate's 4 tiers map onto OpenAI's modern reasoning_effort domain with
+    // names aligned for low/medium/high and 'max' reaching the real top tier
+    // 'xhigh'. 'minimal' is intentionally dropped (it 400s on models that
+    // don't support it). o-series caps 'max' back to 'high' via the
+    // openai-chat-oseries model template (covered separately).
     expect(
       applyThinkingTemplate({ enabled: true, effort: 'low' }, template),
-    ).toEqual({ reasoning_effort: 'minimal' })
-    expect(
-      applyThinkingTemplate({ enabled: true, effort: 'medium' }, template),
     ).toEqual({ reasoning_effort: 'low' })
     expect(
-      applyThinkingTemplate({ enabled: true, effort: 'high' }, template),
+      applyThinkingTemplate({ enabled: true, effort: 'medium' }, template),
     ).toEqual({ reasoning_effort: 'medium' })
     expect(
-      applyThinkingTemplate({ enabled: true, effort: 'max' }, template),
+      applyThinkingTemplate({ enabled: true, effort: 'high' }, template),
     ).toEqual({ reasoning_effort: 'high' })
+    expect(
+      applyThinkingTemplate({ enabled: true, effort: 'max' }, template),
+    ).toEqual({ reasoning_effort: 'xhigh' })
   })
 
   it('thinking enabled without effort → empty (no patch fires)', () => {
@@ -602,26 +604,117 @@ describe('applyThinkingTemplate — built-in: openai-responses (protocol+vendor 
     model: 'gpt-5.4',
   })
 
-  it('thinking enabled maps each axiomate level to a distinct OpenAI Responses level', () => {
-    // Same axiomate→OpenAI mapping as the openai-chat protocol layer; effort lives under reasoning.effort.
+  it('thinking enabled maps each axiomate level to the modern GPT-5.x Responses domain', () => {
+    // axiomate's 4 tiers map onto OpenAI's modern effort domain with names
+    // aligned for low/medium/high and 'max' reaching the real top tier
+    // 'xhigh'. 'minimal' is intentionally dropped (it 400s on models that
+    // don't support it). o-series models cap 'max' back to 'high' via the
+    // openai-responses-oseries model template (covered separately).
     expect(
       applyThinkingTemplate({ enabled: true, effort: 'low' }, template),
-    ).toEqual({ reasoning: { effort: 'minimal', summary: 'auto' } })
-    expect(
-      applyThinkingTemplate({ enabled: true, effort: 'medium' }, template),
     ).toEqual({ reasoning: { effort: 'low', summary: 'auto' } })
     expect(
-      applyThinkingTemplate({ enabled: true, effort: 'high' }, template),
+      applyThinkingTemplate({ enabled: true, effort: 'medium' }, template),
     ).toEqual({ reasoning: { effort: 'medium', summary: 'auto' } })
     expect(
-      applyThinkingTemplate({ enabled: true, effort: 'max' }, template),
+      applyThinkingTemplate({ enabled: true, effort: 'high' }, template),
     ).toEqual({ reasoning: { effort: 'high', summary: 'auto' } })
+    expect(
+      applyThinkingTemplate({ enabled: true, effort: 'max' }, template),
+    ).toEqual({ reasoning: { effort: 'xhigh', summary: 'auto' } })
   })
 
   it('thinking enabled without effort → reasoning: { summary: auto } only', () => {
     expect(applyThinkingTemplate({ enabled: true }, template)).toEqual({
       reasoning: { summary: 'auto' },
     })
+  })
+})
+
+describe('applyThinkingTemplate — built-in: openai-responses-oseries (max capped to high)', () => {
+  // o-series predates 'xhigh'; the model template caps 'max' back to 'high'
+  // while inheriting low/medium/high from the protocol layer.
+  const template = resolveStack({
+    protocol: 'openai-responses',
+    modelTemplate: 'openai-responses-oseries',
+    model: 'o3-mini',
+  })
+
+  it("'max' is capped to 'high' (xhigh unsupported on o-series)", () => {
+    expect(
+      applyThinkingTemplate({ enabled: true, effort: 'max' }, template),
+    ).toEqual({ reasoning: { effort: 'high', summary: 'auto' } })
+  })
+
+  it('low/medium/high inherit the protocol mapping unchanged', () => {
+    expect(
+      applyThinkingTemplate({ enabled: true, effort: 'low' }, template),
+    ).toEqual({ reasoning: { effort: 'low', summary: 'auto' } })
+    expect(
+      applyThinkingTemplate({ enabled: true, effort: 'medium' }, template),
+    ).toEqual({ reasoning: { effort: 'medium', summary: 'auto' } })
+    expect(
+      applyThinkingTemplate({ enabled: true, effort: 'high' }, template),
+    ).toEqual({ reasoning: { effort: 'high', summary: 'auto' } })
+  })
+})
+
+describe('inferModelTemplate — openai-responses-oseries recommendation', () => {
+  it('recommends openai-responses-oseries for o-series on openai-responses', () => {
+    for (const m of ['o1', 'o1-pro', 'o3', 'o3-mini', 'o4-mini', 'openai/o4-mini']) {
+      expect(inferModelTemplate(m, undefined, 'openai-responses')).toBe(
+        'openai-responses-oseries',
+      )
+    }
+  })
+
+  it('does not recommend it for GPT-5.x or gpt-4o (they keep the protocol default)', () => {
+    for (const m of ['gpt-5.4', 'gpt-5.5', 'gpt-4o', 'gpt-4o-mini']) {
+      expect(inferModelTemplate(m, undefined, 'openai-responses')).toBeUndefined()
+    }
+  })
+
+  it('does not recommend it outside the openai-responses protocol', () => {
+    // openai-chat has its own o-series template (openai-chat-oseries);
+    // anthropic has none.
+    expect(inferModelTemplate('o3-mini', undefined, 'anthropic')).toBeUndefined()
+  })
+})
+
+describe('applyThinkingTemplate — built-in: openai-chat-oseries (max capped to high)', () => {
+  const template = resolveStack({
+    protocol: 'openai-chat',
+    modelTemplate: 'openai-chat-oseries',
+    model: 'o3-mini',
+  })
+
+  it("'max' is capped to 'high' (xhigh unsupported on o-series)", () => {
+    expect(
+      applyThinkingTemplate({ enabled: true, effort: 'max' }, template),
+    ).toEqual({ reasoning_effort: 'high' })
+  })
+
+  it('low/medium/high inherit the protocol mapping unchanged', () => {
+    expect(
+      applyThinkingTemplate({ enabled: true, effort: 'low' }, template),
+    ).toEqual({ reasoning_effort: 'low' })
+    expect(
+      applyThinkingTemplate({ enabled: true, effort: 'medium' }, template),
+    ).toEqual({ reasoning_effort: 'medium' })
+    expect(
+      applyThinkingTemplate({ enabled: true, effort: 'high' }, template),
+    ).toEqual({ reasoning_effort: 'high' })
+  })
+
+  it('recommends openai-chat-oseries for o-series on openai-chat, not for GPT-5.x', () => {
+    expect(inferModelTemplate('o3-mini', undefined, 'openai-chat')).toBe(
+      'openai-chat-oseries',
+    )
+    expect(inferModelTemplate('o4-mini', undefined, 'openai-chat')).toBe(
+      'openai-chat-oseries',
+    )
+    expect(inferModelTemplate('gpt-5.5', undefined, 'openai-chat')).toBeUndefined()
+    expect(inferModelTemplate('gpt-4o', undefined, 'openai-chat')).toBeUndefined()
   })
 })
 
