@@ -148,6 +148,9 @@ describe('fuzzyMatchContextWindow — DeepSeek', () => {
     ['deepseek-v3',                    163_840],
     ['deepseek-v3.1',                  163_840],
     ['deepseek-v3.2-exp',              163_840],
+    ['deepseek-v4-pro',                1_000_000],  // V4+ → 1M
+    ['deepseek-v4-flash',              1_000_000],
+    ['deepseek-v5',                    1_000_000],
     ['deepseek-r1',                    163_840],
     ['deepseek-r1-distill-qwen-32b',   131_072],   // distill inherits Qwen2.5 backbone (128K)
     ['deepseek-coder-v2-instruct',     163_840],

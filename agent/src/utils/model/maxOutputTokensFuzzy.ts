@@ -74,7 +74,7 @@ const TABLE: ReadonlyArray<TableEntry> = [
   // ---------- DeepSeek ----------
   // V4+ Pro — vendor advertises 384K output (verified against DeepSeek docs)
   { source: 'deepseek-v4-pro', out: 384_000,
-    match: p => p.family === 'deepseek' && /v?[4-9]/.test(p.version ?? '') },
+    match: p => p.family === 'deepseek' && /^v?[4-9]/.test(p.version ?? '') },
   // R1 / R1-distill — long CoT
   { source: 'deepseek-r1', out: 32_768,
     match: p => p.family === 'deepseek' &&

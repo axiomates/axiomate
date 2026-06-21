@@ -351,6 +351,9 @@ const TABLE: ReadonlyArray<TableEntry> = [
   // Coder-V2 / V3 → 160K (modern MoE)
   { source: 'deepseek-coder-v2', ctx: 163_840,
     match: p => p.family === 'deepseek' && /coder/.test(p.variant ?? '') },
+  // V4+ (Pro/Flash) → 1M (vendor docs; mirrors maxOutputTokens deepseek-v4-pro)
+  { source: 'deepseek-v4-pro', ctx: 1_000_000,
+    match: p => p.family === 'deepseek' && /^v?[4-9]/.test(p.version ?? '') },
   // Modern MoE V2-V3 / R1 → 160K
   { source: 'deepseek-moe', ctx: 163_840,
     match: p => p.family === 'deepseek' &&
