@@ -242,7 +242,7 @@ export type OnboardingProviderState = {
   modelId: string
   contextWindow?: number
   maxOutputTokens?: number
-  /** Whether this model accepts image input. Default: true. */
+  /** Whether this model accepts image input. Default: false. */
   supportsImages: boolean
   /**
    * Vendor template, three-valued: 'auto' (default — inferVendor by baseUrl,
@@ -336,7 +336,7 @@ export const initialOnboardingProviderState: OnboardingProviderState = {
   modelId: '',
   contextWindow: undefined,
   maxOutputTokens: undefined,
-  supportsImages: true,
+  supportsImages: false,
   vendor: 'auto',
   modelTemplate: 'auto',
   thinking: 'off',

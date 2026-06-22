@@ -782,14 +782,14 @@ function SupportsImagesStep({
       <Text bold>Image input support</Text>
       <Text dimColor>
         Does this model accept images? Set No for text-only models (DeepSeek,
-        most Qwen variants, etc.) — sending an image to a text-only model
-        produces an API error.
+        GLM series, etc.) — sending an image to a text-only model produces an
+        API error.
       </Text>
       <Select
         defaultValue={initial ? 'yes' : 'no'}
         options={[
-          { label: 'Yes — accepts images (default)', value: 'yes' },
-          { label: 'No — text-only model', value: 'no' },
+          { label: 'No — text-only model (default)', value: 'no' },
+          { label: 'Yes — accepts images', value: 'yes' },
         ]}
         onChange={v => onSubmit(v === 'yes')}
         onCancel={onBack}

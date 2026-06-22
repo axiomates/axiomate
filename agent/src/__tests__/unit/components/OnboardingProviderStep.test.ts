@@ -25,9 +25,10 @@ describe('onboardingProviderReducer', () => {
     expect(parseMaxOutputTokensInput('4.5')).toBeNull()
   })
 
-  it('starts on the protocol step with an openai default', () => {
+  it('starts on the protocol step with openai and text-only defaults', () => {
     expect(initialOnboardingProviderState.stage).toBe('protocol')
     expect(initialOnboardingProviderState.protocol).toBe('openai-chat')
+    expect(initialOnboardingProviderState.supportsImages).toBe(false)
   })
 
   it('advances protocol → baseUrl without auto-filling the default baseUrl', () => {
