@@ -72,13 +72,21 @@ export function getProviderForModel(model: string): LLMProvider {
   const cacheKey = `${model}\0${JSON.stringify(modelConfig)}`
   if (!validatedKeys.has(cacheKey)) {
     validateModelProviderConfig(model, modelConfig)
-    if (modelConfig.vendor && !isBuiltinVendor(modelConfig.vendor)) {
+    // 'auto' (infer by baseUrl) and 'none' (bare protocol layer) are reserved
+    // sentinels, not template names — resolveStack interprets them natively, so
+    // skip the name-existence guard for them (mirrors modelEditorValidation).
+    if (
+      modelConfig.vendor &&
+      modelConfig.vendor !== 'auto' &&
+      modelConfig.vendor !== 'none' &&
+      !isBuiltinVendor(modelConfig.vendor)
+    ) {
       const customTemplate = config.templates?.[modelConfig.vendor]
       if (!customTemplate) {
         throw new Error(
           `Model '${model}' references vendor '${modelConfig.vendor}', which is neither a built-in template nor defined in config.templates. ` +
           `Built-in templates: ${builtinVendorList}. ` +
-          `For vanilla protocols (no gateway override) leave 'vendor' unset, or use the protocol name itself: 'openai-chat', 'openai-responses', 'anthropic'.`,
+          `For vanilla protocols use 'none', or use the protocol name itself: 'openai-chat', 'openai-responses', 'anthropic'.`,
         )
       }
     }
@@ -89,7 +97,11 @@ export function getProviderForModel(model: string): LLMProvider {
     // (anthropic-shaped vendor under openai-chat) emit wire bodies the
     // server rejects, so we refuse at config-load time when the vendor
     // gave us enough info to know.
-    if (modelConfig.vendor) {
+    if (
+      modelConfig.vendor &&
+      modelConfig.vendor !== 'auto' &&
+      modelConfig.vendor !== 'none'
+    ) {
       try {
         const tpl = resolveTemplate(modelConfig.vendor, config.templates)
         if (
@@ -110,7 +122,14 @@ export function getProviderForModel(model: string): LLMProvider {
         )
       }
     }
-    if (modelConfig.modelTemplate) {
+    // 'auto' (smart-match) and 'none' (no model layer) are reserved sentinels,
+    // not template names — skip the name-existence guard for them. resolveStack
+    // handles both natively and auto matches never throw.
+    if (
+      modelConfig.modelTemplate &&
+      modelConfig.modelTemplate !== 'auto' &&
+      modelConfig.modelTemplate !== 'none'
+    ) {
       if (
         !isBuiltinModelTemplate(modelConfig.modelTemplate) &&
         !config.modelTemplates?.[modelConfig.modelTemplate]
@@ -118,7 +137,7 @@ export function getProviderForModel(model: string): LLMProvider {
         throw new Error(
           `Model '${model}' references modelTemplate '${modelConfig.modelTemplate}', which is neither a built-in template nor defined in config.modelTemplates. ` +
           `Built-in model templates: ${builtinModelTemplateList || '(none)'}. ` +
-          `Leave 'modelTemplate' unset to apply no model-layer template.`,
+          `Use 'auto' to smart-match or 'none' to apply no model-layer template.`,
         )
       }
       try {

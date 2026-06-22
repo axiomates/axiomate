@@ -200,6 +200,75 @@ describe('providerRegistry', () => {
     expect(provider.name).toBe('openai-chat')
   })
 
+  // Trichotomy sentinels: 'auto'/'none' are reserved values, not template
+  // names. buildModelConfig persists 'none' (wizard "None — no model template"),
+  // so the runtime guard must accept them instead of treating them as a missing
+  // template and throwing at first resolution. Regression guard for the
+  // providerRegistry guards that were not exempted alongside modelEditorValidation.
+  it('accepts modelTemplate: "none" (wizard opt-out) without throwing', () => {
+    mockGlobalConfig.mockReturnValue({
+      models: {
+        'deepseek-v4-pro': {
+          model: 'deepseek-v4-pro',
+          protocol: 'openai-chat',
+          baseUrl: 'https://api.deepseek.com',
+          apiKey: 'sk-test',
+          modelTemplate: 'none',
+        },
+      },
+    })
+    const provider = getProviderForModel('deepseek-v4-pro')
+    expect(provider.name).toBe('openai-chat')
+  })
+
+  it('accepts modelTemplate: "auto" (explicit smart-match) without throwing', () => {
+    mockGlobalConfig.mockReturnValue({
+      models: {
+        'deepseek-v4-pro': {
+          model: 'deepseek-v4-pro',
+          protocol: 'openai-chat',
+          baseUrl: 'https://api.deepseek.com',
+          apiKey: 'sk-test',
+          modelTemplate: 'auto',
+        },
+      },
+    })
+    const provider = getProviderForModel('deepseek-v4-pro')
+    expect(provider.name).toBe('openai-chat')
+  })
+
+  it('accepts vendor: "none" (bare protocol layer) without throwing', () => {
+    mockGlobalConfig.mockReturnValue({
+      models: {
+        'vanilla-openai': {
+          model: 'gpt-4o',
+          protocol: 'openai-chat',
+          baseUrl: 'https://api.deepseek.com',
+          apiKey: 'sk-test',
+          vendor: 'none',
+        },
+      },
+    })
+    const provider = getProviderForModel('vanilla-openai')
+    expect(provider.name).toBe('openai-chat')
+  })
+
+  it('accepts vendor: "auto" (explicit infer) without throwing', () => {
+    mockGlobalConfig.mockReturnValue({
+      models: {
+        'auto-vendor': {
+          model: 'deepseek-v4-pro',
+          protocol: 'openai-chat',
+          baseUrl: 'https://api.deepseek.com',
+          apiKey: 'sk-test',
+          vendor: 'auto',
+        },
+      },
+    })
+    const provider = getProviderForModel('auto-vendor')
+    expect(provider.name).toBe('openai-chat')
+  })
+
   it('rejects unsupported protocol at config validation', () => {
     mockGlobalConfig.mockReturnValue({
       models: {
