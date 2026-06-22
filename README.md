@@ -302,13 +302,13 @@ The `o4-mini` entry uses the OpenAI Responses API (`/v1/responses`), which prese
 | `model` | yes | Model ID sent to the provider API |
 | `name` | no | Display name in the model picker |
 | `protocol` | yes | `"openai-chat"`, `"openai-responses"`, or `"anthropic"` — determines wire format. See [Protocol](#protocol) below |
-| `vendor` | no | Vendor template name. Built-in gateway vendors include `openai-chat-deepseek-official`, `openai-chat-aliyun`, and `openai-chat-siliconflow`; protocol names such as `openai-chat`, `openai-responses`, and `anthropic` are also valid. When omitted, axiomate infers from `protocol` + `baseUrl`. Override when the inference picks the wrong gateway shape. |
-| `modelTemplate` | no | Explicit model-template overlay. Built-ins include the OpenAI Chat DeepSeek V4+ templates `openai-chat-deepseek-v4p` and `openai-chat-micu-deepseek`. The `/model add` wizard may recommend one from the model ID/baseUrl/vendor, but runtime applies no model template unless this field is set. |
+| `vendor` | no | Vendor template selection: `auto`/omitted infers from `protocol` + `baseUrl`, `none` uses the bare protocol layer, and any other value pins a custom or built-in vendor template. |
+| `modelTemplate` | no | Model-template overlay selection: `auto`/omitted smart-matches by model name + resolved vendor + protocol, `none` disables the model layer, and any other value pins a compatible custom or built-in model template. |
 | `baseUrl` | yes | API endpoint URL |
 | `apiKey` | yes | API key for authentication |
 | `contextWindow` | no | Context window size in tokens |
 | `maxOutputTokens` | no | Max output tokens per response |
-| `supportsImages` | no | Whether the model supports image/vision input. Defaults to `true`. Set to `false` for text-only models to avoid API errors |
+| `supportsImages` | no | Whether the model supports image/vision input. Defaults to `false`; set to `true` for vision-capable models |
 | `thinking` | no | Reasoning declaration: `{ enabled: bool, effort?: "low"\|"medium"\|"high"\|"max", budget?: number }`. Presence acts as the opt-in switch. axiomate translates to the vendor's wire format automatically. Omit the field on models that don't support thinking |
 | `extraParams` | no | Extra params merged verbatim into every API request body. Escape hatch for vendor-specific knobs not covered by `thinking` |
 | `usageMapping` | no | OpenAI Chat Completions response paths for cache hit/miss/write token fields. Not needed for `openai-responses` or `anthropic` |

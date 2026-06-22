@@ -500,7 +500,7 @@ describe('full happy-path transition', () => {
 })
 
 describe('buildModelConfig', () => {
-  it('shapes the models[modelId] entry per ModelProviderConfig', () => {
+  it('shapes the models[modelId] entry per ModelProviderConfig and persists image support', () => {
     const state: OnboardingProviderState = {
       stage: 'verifying',
       protocol: 'openai-chat',
@@ -524,6 +524,7 @@ describe('buildModelConfig', () => {
       apiKey: 'sk-or-v1-abc',
       contextWindow: 128_000,
       maxOutputTokens: 32_768,
+      supportsImages: true,
     })
   })
 

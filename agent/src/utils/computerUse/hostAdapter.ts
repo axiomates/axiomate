@@ -72,9 +72,9 @@ export function getComputerUseHostAdapter(): ComputerUseHostAdapter {
     currentModelSupportsImages: () => {
       try {
         const model = getMainLoopModel()
-        return getGlobalConfig().models?.[model]?.supportsImages !== false
+        return getGlobalConfig().models?.[model]?.supportsImages === true
       } catch {
-        return true
+        return false
       }
     },
     getSubGates: getChicagoSubGates,

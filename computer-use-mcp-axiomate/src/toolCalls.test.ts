@@ -48,7 +48,7 @@ function makeAdapter(opts?: {
     ensureOsPermissions: async () => ({ platform: 'win32', granted: true }),
     isDisabled: () => false,
     isVisionLocateEnabled: () => opts?.visionLocateEnabled ?? false,
-    currentModelSupportsImages: () => opts?.supportsImages ?? true,
+    currentModelSupportsImages: () => opts?.supportsImages ?? false,
     getAutoUnhideEnabled: () => true,
     getSubGates: () => ({
       clipboardPasteMultiline: true,

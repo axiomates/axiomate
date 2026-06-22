@@ -720,12 +720,12 @@
           <tr>
             <td><code>vendor</code></td>
             <td>No</td>
-            <td>Vendor template name, used to translate the neutral <code>thinking</code> configuration into provider-specific fields and handle gateway-level compatibility differences. Can usually be omitted; Axiomate infers it from the protocol and <code>baseUrl</code>. Set explicitly if the model is exposed through a special relay gateway.</td>
+            <td>Vendor template selection, used to translate the neutral <code>thinking</code> configuration into provider-specific fields and handle gateway-level compatibility differences. <code>auto</code> or omitted infers a gateway from <code>protocol</code> + <code>baseUrl</code>; known hosts include DeepSeek, Aliyun, SiliconFlow, and GLM / BigModel. <code>none</code> disables vendor inference and uses only the bare protocol layer. Any other value pins a custom or built-in vendor template.</td>
           </tr>
           <tr>
             <td><code>modelTemplate</code></td>
             <td>No</td>
-            <td>Explicit model-layer template name, used to overlay model / relay-specific behaviors. The onboarding wizard recommends a value based on model name, vendor, and <code>baseUrl</code>, but at runtime a model template is only applied if this field is configured; leaving it unset means no model-layer overrides are applied. The built-in DeepSeek V4+ model template targets the <code>openai-chat</code> protocol.</td>
+            <td>Model-template overlay selection. <code>auto</code> or omitted smart-matches by model name + resolved vendor + protocol; matching built-ins can apply automatically for model-specific behavior such as DeepSeek V4+ reasoning replay or GLM-5.2 reasoning effort. <code>none</code> disables the model layer when an auto match would be wrong. Any other value pins a custom or built-in model template, and explicit pins are validated for compatibility.</td>
           </tr>
           <tr>
             <td><code>baseUrl</code></td>
@@ -750,7 +750,7 @@
           <tr>
             <td><code>supportsImages</code></td>
             <td>No</td>
-            <td>Whether the model supports image input. Defaults to <code>true</code>; set to <code>false</code> for text-only models.</td>
+            <td>Whether the model supports image input. Defaults to <code>false</code> when omitted, and the onboarding / <code>/model add</code> wizard also defaults to No. Set <code>true</code> for vision-capable models; leave omitted or set <code>false</code> for text-only models.</td>
           </tr>
           <tr>
             <td><code>thinking</code></td>
@@ -811,7 +811,7 @@
           </tr>
         </tbody>
       </table>
-      <p>Model templates are not applied automatically at runtime based on the model name; you must explicitly set <code>modelTemplate</code> in the model entry. The built-in <code>openai-chat-deepseek-v4p</code> is for the official / default DeepSeek V4+ replay shape (<code>reasoning_content</code>) under the <code>openai-chat</code> protocol. The current adapter only supports this one reasoning replay shape; relay-specific shapes require behavior verification and adapter extension first, and cannot be expressed solely through custom <code>modelTemplates</code>.</p>
+      <p><code>vendor</code> and <code>modelTemplate</code> both use the same trichotomy: <code>auto</code> / omitted lets Axiomate infer or smart-match, <code>none</code> explicitly opts out of that layer, and any other value pins a named template. Auto-matched model templates are gated by model name, resolved vendor, and protocol, so built-ins such as <code>openai-chat-deepseek-v4p</code> and GLM-5.2 overlays can apply without manual pinning. Use <code>none</code> only when an automatic match is known to be wrong; use an explicit template name when you want a stable pin. Explicit pins are validated for compatibility, while <code>auto</code> and <code>none</code> are reserved sentinels rather than template names. The current adapter only supports the <code>reasoning_content</code> replay shape for reasoning round-trips; relay-specific shapes require behavior verification and adapter extension first, and cannot be expressed solely through custom <code>modelTemplates</code>.</p>
       <pre><code>{
   "models": {
     "deepseek-v4-pro": {
@@ -1432,8 +1432,11 @@
       "baseUrl": "https://api.siliconflow.cn/v1",
       "apiKey": "sk-...",
 
-      // Optional: vendor template. Can usually be omitted; specify explicitly when the provider's reasoning/thinking fields have a special format.
-      "vendor": "openai-chat-siliconflow",
+      // Optional: vendor template. Omit or use "auto" to infer from protocol + baseUrl; use "none" for the bare protocol layer; specify a name to pin a template.
+      "vendor": "auto",
+
+      // Optional: model-template overlay. Omit or use "auto" to smart-match; use "none" to disable the model layer; specify a name to pin a template.
+      "modelTemplate": "auto",
 
       // Optional: override HTTP User-Agent. Only fill when a specific compatible gateway requires it.
       "userAgent": "axiomate",
@@ -1442,7 +1445,7 @@
       "contextWindow": 262144,
       "maxOutputTokens": 64000,
 
-      // Optional: whether image input is supported. Must be set to false for text-only models.
+      // Optional: whether image input is supported. The wizard defaults this to false; set true only for vision-capable models.
       "supportsImages": false,
 
       // Optional: neutral thinking configuration. Axiomate translates this into provider parameters based on protocol/vendor.

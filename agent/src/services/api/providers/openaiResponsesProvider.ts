@@ -445,7 +445,7 @@ export class OpenAIResponsesProvider implements LLMProvider {
     let body: Record<string, unknown> = {
       model: this.config.modelConfig!.model,
       input: messagesToOpenAIResponsesInput(request.messages, {
-        supportsImages: this.config.modelConfig?.supportsImages ?? true,
+        supportsImages: this.config.modelConfig?.supportsImages ?? false,
       }),
       max_output_tokens: request.maxTokens ?? 4096,
     }
@@ -615,7 +615,7 @@ export class OpenAIResponsesProvider implements LLMProvider {
 
     const rawMessages = (intent.messages as Array<{ message: import('../streamTypes.js').MessageParam }>).map(m => m.message)
     const input = messagesToOpenAIResponsesInput(rawMessages, {
-      supportsImages: this.config.modelConfig?.supportsImages ?? true,
+      supportsImages: this.config.modelConfig?.supportsImages ?? false,
     })
 
     const body: Record<string, unknown> = {

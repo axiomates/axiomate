@@ -52,7 +52,7 @@ export function messagesToOpenAIResponsesInput(
   messages: MessageParam[],
   options?: { supportsImages?: boolean },
 ): InputItem[] {
-  const supportsImages = options?.supportsImages ?? true
+  const supportsImages = options?.supportsImages ?? false
   const result: InputItem[] = []
 
   for (const msg of messages) {

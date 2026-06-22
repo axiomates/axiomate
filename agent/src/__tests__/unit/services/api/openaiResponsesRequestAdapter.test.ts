@@ -33,7 +33,7 @@ describe('messagesToOpenAIResponsesInput', () => {
         ],
       },
     ]
-    const out = messagesToOpenAIResponsesInput(messages) as any[]
+    const out = messagesToOpenAIResponsesInput(messages, { supportsImages: true }) as any[]
     expect(out).toHaveLength(1)
     expect(out[0].role).toBe('user')
     expect(out[0].content).toHaveLength(2)
@@ -43,6 +43,30 @@ describe('messagesToOpenAIResponsesInput', () => {
       image_url: 'data:image/png;base64,iVBORw0KGgo',
       detail: 'auto',
     })
+  })
+
+  it('defaults to text-only when supportsImages is omitted', () => {
+    const messages: MessageParam[] = [
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: 'Look at this' },
+          {
+            type: 'image',
+            source: {
+              type: 'base64',
+              media_type: 'image/png',
+              data: 'iVBORw0KGgo',
+            },
+          },
+        ],
+      },
+    ]
+    const out = messagesToOpenAIResponsesInput(messages) as any[]
+    expect(out[0].content).toEqual([
+      { type: 'input_text', text: 'Look at this' },
+      { type: 'input_text', text: '[Image omitted: model does not support image input]' },
+    ])
   })
 
   it('tool_result with text → function_call_output item', () => {
@@ -107,7 +131,7 @@ describe('messagesToOpenAIResponsesInput', () => {
         ],
       },
     ]
-    const out = messagesToOpenAIResponsesInput(messages) as any[]
+    const out = messagesToOpenAIResponsesInput(messages, { supportsImages: true }) as any[]
     expect(out).toHaveLength(2)
     expect(out[0]).toEqual({
       type: 'function_call_output',

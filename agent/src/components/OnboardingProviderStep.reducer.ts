@@ -557,7 +557,7 @@ function previousStage(stage: Stage, skipVendor?: boolean): Stage {
 
 /** Shape of the `models[modelId]` entry persisted to ~/.axiomate.json. */
 export function buildModelConfig(state: OnboardingProviderState) {
-  // Only emit non-default fields so the persisted JSON stays minimal.
+  // Omit auto-derived template fields while preserving explicit wizard choices.
   const ua = state.userAgent.trim()
   const thinking =
     state.thinking === 'off'
@@ -579,7 +579,7 @@ export function buildModelConfig(state: OnboardingProviderState) {
     apiKey: state.apiKey,
     ...(state.contextWindow !== undefined ? { contextWindow: state.contextWindow } : {}),
     ...(state.maxOutputTokens !== undefined ? { maxOutputTokens: state.maxOutputTokens } : {}),
-    ...(state.supportsImages ? {} : { supportsImages: false }),
+    supportsImages: state.supportsImages,
     ...vendorField,
     ...modelTemplateField,
     ...(thinking ? { thinking } : {}),

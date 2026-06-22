@@ -30,7 +30,7 @@ describe('messagesToOpenAI — user-pasted image (regression)', () => {
         ],
       },
     ]
-    const out = messagesToOpenAI(messages)
+    const out = messagesToOpenAI(messages, undefined, { supportsImages: true })
     expect(out).toHaveLength(1)
     expect(out[0]!.role).toBe('user')
     expect(Array.isArray(out[0]!.content)).toBe(true)
@@ -39,6 +39,30 @@ describe('messagesToOpenAI — user-pasted image (regression)', () => {
     expect(parts[0]!.type).toBe('text')
     expect(parts[1]!.type).toBe('image_url')
     expect(parts[1]!.image_url!.url).toBe(`data:image/png;base64,${TINY_BASE64}`)
+  })
+
+  it('defaults to text-only when supportsImages is omitted', () => {
+    const messages: MessageParam[] = [
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: 'what is this' },
+          {
+            type: 'image',
+            source: { type: 'base64', media_type: 'image/png', data: TINY_BASE64 },
+          },
+        ],
+      },
+    ]
+    const out = messagesToOpenAI(messages)
+    const parts = out[0]!.content as Array<{ type: string; text?: string }>
+    expect(parts).toEqual([
+      { type: 'text', text: 'what is this' },
+      {
+        type: 'text',
+        text: '[Image omitted: this model does not support image input. Set "supportsImages": true in ~/.axiomate.json if it does.]',
+      },
+    ])
   })
 })
 
@@ -108,7 +132,7 @@ describe('messagesToOpenAI — tool_result with image (the fix)', () => {
         ],
       },
     ]
-    const out = messagesToOpenAI(messages)
+    const out = messagesToOpenAI(messages, undefined, { supportsImages: true })
     expect(out).toHaveLength(3)
     expect(out[0]!.role).toBe('assistant')
     expect(out[1]!.role).toBe('tool')
@@ -144,7 +168,7 @@ describe('messagesToOpenAI — tool_result with image (the fix)', () => {
         ],
       },
     ]
-    const out = messagesToOpenAI(messages)
+    const out = messagesToOpenAI(messages, undefined, { supportsImages: true })
     expect(out).toHaveLength(3)
     expect(out[1]!.role).toBe('tool')
     expect(out[1]!.content).toBe('screenshot dimensions: 1920x1080')
@@ -206,7 +230,7 @@ describe('messagesToOpenAI — tool_result with image (the fix)', () => {
         ],
       },
     ]
-    const out = messagesToOpenAI(messages)
+    const out = messagesToOpenAI(messages, undefined, { supportsImages: true })
     expect(out).toHaveLength(3)
     expect(out[0]!.role).toBe('assistant')
     expect(out[0]!.tool_calls).toHaveLength(1)
@@ -238,7 +262,7 @@ describe('messagesToOpenAI — tool_result with image (the fix)', () => {
         ],
       },
     ]
-    const out = messagesToOpenAI(messages)
+    const out = messagesToOpenAI(messages, undefined, { supportsImages: true })
     expect(out).toHaveLength(2)
     expect(out[0]!.role).toBe('tool')
     expect(out[0]!.content).toBe('Error: [Image returned in following message]')

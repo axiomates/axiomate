@@ -288,7 +288,7 @@ export class AnthropicProvider implements LLMProvider {
 
         const params = await buildParams(context)
         // Strip image blocks if model doesn't support vision
-        if (this.config.modelConfig?.supportsImages === false && Array.isArray(params.messages)) {
+        if (this.config.modelConfig?.supportsImages !== true && Array.isArray(params.messages)) {
           params.messages = stripImageBlocks(params.messages as any[])
         }
         // Apply config-driven overrides
@@ -486,7 +486,7 @@ export class AnthropicProvider implements LLMProvider {
         const start = Date.now()
         const params = await buildParams(context)
         // Strip image blocks if model doesn't support vision
-        if (this.config.modelConfig?.supportsImages === false && Array.isArray(params.messages)) {
+        if (this.config.modelConfig?.supportsImages !== true && Array.isArray(params.messages)) {
           params.messages = stripImageBlocks(params.messages as any[])
         }
         // Apply config-driven overrides (same as streaming path)
@@ -681,7 +681,7 @@ export class AnthropicProvider implements LLMProvider {
     const params: Record<string, unknown> = {
       model: normalizedModel,
       max_tokens: request.maxTokens ?? 1024,
-      messages: this.config.modelConfig?.supportsImages === false
+      messages: this.config.modelConfig?.supportsImages !== true
         ? stripImageBlocks(request.messages as any[])
         : request.messages,
       ...(request.system && { system: request.system }),

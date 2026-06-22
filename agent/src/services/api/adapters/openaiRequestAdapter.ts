@@ -64,7 +64,7 @@ export function messagesToOpenAI(
     reasoningRoundTripFormat?: OpenAIReasoningRoundTripFormat
   },
 ): OpenAIMessage[] {
-  const supportsImages = options?.supportsImages ?? true
+  const supportsImages = options?.supportsImages ?? false
   const roundTripReasoning = options?.roundTripReasoningContent ?? false
   const reasoningRoundTripFormat =
     options?.reasoningRoundTripFormat ?? 'reasoning_content'

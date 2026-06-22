@@ -306,7 +306,7 @@ export type ModelProviderConfig = {
   contextWindow?: number
   /** Max output tokens per response. If omitted, inferred from model name, then context window. */
   maxOutputTokens?: number
-  /** Whether this model supports image/vision input. Defaults to true. Set to false for text-only models. */
+  /** Whether this model supports image/vision input. Defaults to false; set true for vision-capable models. */
   supportsImages?: boolean
   /** Reasoning / thinking declaration (see {@link ThinkingDecl}). */
   thinking?: ThinkingDecl
