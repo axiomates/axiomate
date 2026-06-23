@@ -30,6 +30,13 @@ describe('fuzzyMatchMaxOutputTokens', () => {
     ['Qwen/Qwen3.6-Plus',                 65_536, 'qwen-plus'],
     ['qwen3-coder-30b-a3b-instruct',      65_536, 'qwen3-coder'],
     ['Qwen/Qwen3-Coder-Plus',             65_536, 'qwen-plus'], // plus wins (specific-first, listed before coder)
+    // Qwen3.5+ Max / Flash tiers — DashScope 64K output cap.
+    ['qwen3.7-max',                       65_536, 'qwen3.5+-max'],
+    ['qwen3.6-flash',                     65_536, 'qwen3.5+-flash'],
+    ['qwen3.5-max',                       65_536, 'qwen3.5+-max'],
+    // Predates 3.5 → max/flash fall through to qwen3-base (32K).
+    ['qwen3.4-max',                       32_768, 'qwen3-base'],
+    ['qwen3-flash',                       32_768, 'qwen3-base'],
     ['qwen2.5-7b-instruct-1m',            32_768, 'qwen-1m-build'],
     ['Qwen/Qwen3-8B',                     32_768, 'qwen3-base'],
     ['Qwen/Qwen3.5-9B',                   32_768, 'qwen3-base'],

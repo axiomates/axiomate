@@ -24,6 +24,8 @@ describe('parseModelName', () => {
     ['qwen3:8b',                      { family: 'qwen', version: '3', sizeB: 8 }],
     ['qwen3.5-8b',                    { family: 'qwen', version: '3.5', sizeB: 8 }],
     ['qwen3.6-plus',                  { family: 'qwen', version: '3.6', variant: 'plus' }],
+    ['qwen3.7-max',                   { family: 'qwen', version: '3.7', variant: 'max' }],
+    ['qwen3.6-flash',                 { family: 'qwen', version: '3.6', variant: 'flash' }],
     ['qwen2.5-24b-int4',              { family: 'qwen', version: '2.5', sizeB: 24, quant: 'int4' }],
     ['qwen3-coder-30b-a3b-instruct-q4_K_M', { family: 'qwen', version: '3', sizeB: 30, variant: 'coder', quant: 'q4_k_m' }],
     ['qwen3-coder-plus',              { family: 'qwen', version: '3', variant: 'coder-plus' }],
@@ -134,6 +136,15 @@ describe('fuzzyMatchContextWindow — Qwen', () => {
     ['qwen2.5-14b-instruct-1m',        1_010_000],
     ['qwen3-coder-480b-a35b-instruct', 262_144],   // Qwen3-Coder native 256K
     ['qwen3-coder-plus',               1_000_000], // coder + plus → 1M
+    // Qwen3.5+ commercial tiers — DashScope 1M context.
+    ['qwen3.6-plus',                   1_000_000],
+    ['qwen3.7-plus',                   1_000_000],
+    ['qwen3.7-max',                    1_000_000],
+    ['qwen3.6-flash',                  1_000_000],
+    // Predates 3.5 → fall through to qwen3-base (40K) since the 1M expansion
+    // didn't apply at that generation.
+    ['qwen3-plus',                     40_960],
+    ['qwen3.4-max',                    40_960],
     ['qwen2-vl-72b-instruct',          32_768],
     ['qwen1.5-72b-chat',               32_768],
     ['qwq-32b',                        40_960],

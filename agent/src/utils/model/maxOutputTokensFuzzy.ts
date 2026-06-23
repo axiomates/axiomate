@@ -55,6 +55,13 @@ const TABLE: ReadonlyArray<TableEntry> = [
   // Plus (Qwen3.x-Plus thinking-mode max — DashScope docs)
   { source: 'qwen-plus', out: 65_536,
     match: p => p.family === 'qwen' && /plus/.test(p.variant ?? '') },
+  // Qwen3.5+ Max / Flash thinking-mode max — DashScope docs.
+  // version >= 3.5 covers the 3.6 / 3.7 generation; older max/flash lines
+  // had smaller caps and fall through to qwen3-base / qwen2-base below.
+  { source: 'qwen3.5+-max', out: 65_536,
+    match: p => p.family === 'qwen' && /max/.test(p.variant ?? '') && parseFloat(p.version ?? '0') >= 3.5 },
+  { source: 'qwen3.5+-flash', out: 65_536,
+    match: p => p.family === 'qwen' && /flash/.test(p.variant ?? '') && parseFloat(p.version ?? '0') >= 3.5 },
   // Coder ≥ 3 (Qwen3-Coder docs)
   { source: 'qwen3-coder', out: 65_536,
     match: p => p.family === 'qwen' && /coder/.test(p.variant ?? '') && parseFloat(p.version ?? '0') >= 3 },

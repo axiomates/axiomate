@@ -147,6 +147,8 @@ export function parseModelName(raw: string): ParsedModel {
       if (/qwq/.test(s)) variants.push('qwq')
       if (/coder/.test(s)) variants.push('coder')
       if (/plus/.test(s)) variants.push('plus')
+      if (/(?:^|-)max(?:-|$)/.test(s)) variants.push('max')
+      if (/flash/.test(s)) variants.push('flash')
       if (/(?:^|-)1m(?:-|$)/.test(s)) variants.push('1m')
       if (/(?:^|-)vl(?![a-z])/.test(s)) variants.push('vl')
       const v = s.match(/qwen-?(\d+(?:\.\d+)?)/)?.[1]
@@ -333,6 +335,17 @@ const TABLE: ReadonlyArray<TableEntry> = [
   // QwQ → 40K
   { source: 'qwq', ctx: 40_960,
     match: p => p.family === 'qwen' && /qwq/.test(p.variant ?? '') },
+  // Qwen3.5+ commercial tiers (Plus / Max / Flash) → 1M (DashScope docs).
+  // Three separate entries (vs one combined regex) so debugLookupSource
+  // identifies which tier matched. version >= 3.5 covers the 3.6 / 3.7
+  // generation while leaving older v3.0–3.4 plus/max/flash to qwen3-base —
+  // those predate the 1M context expansion.
+  { source: 'qwen3.5+-plus', ctx: 1_000_000,
+    match: p => p.family === 'qwen' && /plus/.test(p.variant ?? '') && parseFloat(p.version ?? '0') >= 3.5 },
+  { source: 'qwen3.5+-max', ctx: 1_000_000,
+    match: p => p.family === 'qwen' && /max/.test(p.variant ?? '') && parseFloat(p.version ?? '0') >= 3.5 },
+  { source: 'qwen3.5+-flash', ctx: 1_000_000,
+    match: p => p.family === 'qwen' && /flash/.test(p.variant ?? '') && parseFloat(p.version ?? '0') >= 3.5 },
   // Qwen 3.x base → 40K (model card promotes 128K via runtime YARN)
   { source: 'qwen3-base', ctx: 40_960,
     match: p => p.family === 'qwen' && parseFloat(p.version ?? '0') >= 3 },
