@@ -220,6 +220,25 @@ describe('getCyclableEffortLevels', () => {
     expect(getCyclableEffortLevels('m')).toEqual(['none', 'high', 'max'])
   })
 
+  test('Moonshot (Kimi) gateway → only none/max', () => {
+    // Kimi models don't support reasoning_effort at all; the picker exposes
+    // only None/Max via the openai-chat-moonshot vendor's effort.valueMap
+    // (everything except 'max' is null-deleted from the inherited protocol
+    // valueMap). The thinking on/off semantic comes from each model
+    // template's enabled/disabledPatch, not from the effort tier.
+    mockGetGlobalConfig.mockReturnValue({
+      models: {
+        m: {
+          protocol: 'openai-chat',
+          model: 'kimi-k2.7-code',
+          baseUrl: 'https://api.moonshot.cn/v1',
+          thinking: { enabled: true, effort: 'max' },
+        },
+      },
+    })
+    expect(getCyclableEffortLevels('m')).toEqual(['none', 'max'])
+  })
+
   test('openai-default fallback (unknown gateway, plain model) → all 5 tiers', () => {
     mockGetGlobalConfig.mockReturnValue({
       models: {

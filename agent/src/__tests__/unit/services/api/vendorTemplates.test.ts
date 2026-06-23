@@ -1055,6 +1055,7 @@ describe('built-in templates structural sanity', () => {
       'openai-chat-aliyun',
       'openai-chat-deepseek-official',
       'openai-chat-glm',
+      'openai-chat-moonshot',
       'openai-chat-siliconflow',
     ])
   })
@@ -1320,5 +1321,191 @@ describe('applyThinkingTemplate — silent-drop warnings', () => {
     const tpl = resolveTemplate('openai-chat-aliyun')
     applyThinkingTemplate({ enabled: false }, tpl)
     expect(mockedLog).not.toHaveBeenCalled()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Moonshot (Kimi) — vendor + per-model wire shapes
+//
+// Validates the per-model wire encoding documented in vendorTemplates.ts:
+//   - vendor `openai-chat-moonshot` provides default {type:'enabled'} /
+//     {type:'disabled'} patches plus picker collapsed to None / Max only and
+//     no reasoning_effort.
+//   - k2.7 forces keep:'all' on enable and null-deletes disabledPatch.
+//   - k2.6 forces keep:'all' on enable and inherits disabledPatch.
+//   - k2.5 inherits both vendor patches verbatim (no `keep`, no auto round-
+//     trip).
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('Moonshot vendor — picker tier collapse + no reasoning_effort', () => {
+  it('auto-vendor by api.moonshot.cn baseUrl', () => {
+    expect(
+      inferVendor({
+        protocol: 'openai-chat',
+        model: 'kimi-k2.7-code',
+        baseUrl: 'https://api.moonshot.cn/v1',
+      }),
+    ).toBe('openai-chat-moonshot')
+  })
+
+  it('auto-vendor by api.moonshot.ai baseUrl', () => {
+    expect(
+      inferVendor({
+        protocol: 'openai-chat',
+        model: 'kimi-k2.6',
+        baseUrl: 'https://api.moonshot.ai/v1',
+      }),
+    ).toBe('openai-chat-moonshot')
+  })
+
+  it('Moonshot picker exposes only None + Max (no Low/Medium/High)', () => {
+    // The vendor's effort.valueMap collapses everything except 'max' to null,
+    // and resolveTemplate's deepMerge applies RFC 7396 deletion: low/medium/
+    // high keys (inherited from the protocol layer) get removed entirely,
+    // leaving only 'max' in the merged map. getCyclableEffortLevels therefore
+    // reduces to ['none', 'max'].
+    const tpl = resolveTemplate('openai-chat-moonshot')
+    const valueMap = tpl.effort?.valueMap as Record<string, string | null>
+    expect(valueMap).toEqual({ max: 'max' })
+  })
+
+  it('Moonshot deletes the inherited reasoning_effort patch', () => {
+    // resolveTemplate merges protocol layer ({reasoning_effort:'<value>'})
+    // with vendor (effort.patch=null). RFC 7396 null deletes the inherited
+    // patch so Kimi requests never carry reasoning_effort.
+    const tpl = resolveTemplate('openai-chat-moonshot')
+    expect(tpl.effort?.patch).toBeUndefined()
+  })
+})
+
+describe('kimi-k2.7 — strict enabled+keep, no disabled', () => {
+  const tpl = resolveStack({
+    protocol: 'openai-chat',
+    vendor: 'openai-chat-moonshot',
+    modelTemplate: 'openai-chat-kimi-k2.7',
+    model: 'kimi-k2.7-code',
+    baseUrl: 'https://api.moonshot.cn/v1',
+  })
+
+  it('Max (effort=max) → {thinking:{type:enabled, keep:all}}, no reasoning_effort', () => {
+    const out = applyThinkingTemplate({ enabled: true, effort: 'max' }, tpl)
+    expect(out).toEqual({ thinking: { type: 'enabled', keep: 'all' } })
+  })
+
+  it('None (effort=none) → empty patch (k2.7 always-on; never send type=disabled)', () => {
+    // disabledPatch is RFC 7396 null-deleted in the model template, so the
+    // 'none' branch in applyThinkingTemplate emits no patches at all.
+    const out = applyThinkingTemplate({ enabled: true, effort: 'none' }, tpl)
+    expect(out).toEqual({})
+  })
+
+  it('autoRoundTripReasoningContent is true (mandatory for k2.7)', () => {
+    expect(tpl.autoRoundTripReasoningContent).toBe(true)
+  })
+
+  it('matchModelRegex covers both -code and -code-highspeed variants', () => {
+    expect(
+      getMatchingModelTemplates(
+        'kimi-k2.7-code',
+        'openai-chat-moonshot',
+        'openai-chat',
+        undefined,
+        'https://api.moonshot.cn/v1',
+      ),
+    ).toContain('openai-chat-kimi-k2.7')
+    expect(
+      getMatchingModelTemplates(
+        'kimi-k2.7-code-highspeed',
+        'openai-chat-moonshot',
+        'openai-chat',
+        undefined,
+        'https://api.moonshot.cn/v1',
+      ),
+    ).toContain('openai-chat-kimi-k2.7')
+  })
+})
+
+describe('kimi-k2.6 — enabled+keep on Max, inherited disabled on None', () => {
+  const tpl = resolveStack({
+    protocol: 'openai-chat',
+    vendor: 'openai-chat-moonshot',
+    modelTemplate: 'openai-chat-kimi-k2.6',
+    model: 'kimi-k2.6',
+    baseUrl: 'https://api.moonshot.cn/v1',
+  })
+
+  it('Max → {thinking:{type:enabled, keep:all}} (eager Preserved Thinking)', () => {
+    const out = applyThinkingTemplate({ enabled: true, effort: 'max' }, tpl)
+    expect(out).toEqual({ thinking: { type: 'enabled', keep: 'all' } })
+  })
+
+  it('None → {thinking:{type:disabled}} (inherited from vendor)', () => {
+    const out = applyThinkingTemplate({ enabled: true, effort: 'none' }, tpl)
+    expect(out).toEqual({ thinking: { type: 'disabled' } })
+  })
+
+  it('autoRoundTripReasoningContent is true (recommended whenever keep:all)', () => {
+    expect(tpl.autoRoundTripReasoningContent).toBe(true)
+  })
+})
+
+describe('kimi-k2.5 — inherits vendor verbatim, no keep, no roundtrip', () => {
+  const tpl = resolveStack({
+    protocol: 'openai-chat',
+    vendor: 'openai-chat-moonshot',
+    modelTemplate: 'openai-chat-kimi-k2.5',
+    model: 'kimi-k2.5',
+    baseUrl: 'https://api.moonshot.cn/v1',
+  })
+
+  it('Max → {thinking:{type:enabled}} (no keep field; k2.5 errors on keep)', () => {
+    const out = applyThinkingTemplate({ enabled: true, effort: 'max' }, tpl)
+    expect(out).toEqual({ thinking: { type: 'enabled' } })
+  })
+
+  it('None → {thinking:{type:disabled}} (inherited from vendor)', () => {
+    const out = applyThinkingTemplate({ enabled: true, effort: 'none' }, tpl)
+    expect(out).toEqual({ thinking: { type: 'disabled' } })
+  })
+
+  it('autoRoundTripReasoningContent defaults false (no Preserved Thinking)', () => {
+    // Per docs k2.5 has no Preserved Thinking; the model template intentionally
+    // omits the field so the openai-chat default (false) wins.
+    expect(tpl.autoRoundTripReasoningContent ?? false).toBe(false)
+  })
+})
+
+describe('Kimi model templates are gated to the Moonshot vendor', () => {
+  // matchVendorRegex='^openai-chat-moonshot$' on every Kimi model template
+  // ensures that the same model name reached via OpenRouter / aliyun /
+  // SiliconFlow does NOT auto-apply Moonshot-specific quirks (keep, strict
+  // enabled-only, etc.). Those gateways have their own thinking shapes.
+  it.each([
+    ['kimi-k2.7-code', 'openai-chat-aliyun'],
+    ['kimi-k2.7-code-highspeed', 'openai-chat-siliconflow'],
+    ['kimi-k2.6', 'openai-chat-aliyun'],
+    ['kimi-k2.5', 'openai-chat-siliconflow'],
+  ])(
+    '%s on %s does NOT auto-match a Moonshot model template',
+    (model, vendor) => {
+      const matches = getMatchingModelTemplates(
+        model,
+        vendor,
+        'openai-chat',
+        undefined,
+        'https://example.invalid/v1',
+      )
+      expect(matches.filter(name => name.startsWith('openai-chat-kimi-'))).toEqual([])
+    },
+  )
+
+  it('Kimi templates are recognized as built-ins', () => {
+    expect(isBuiltinModelTemplate('openai-chat-kimi-k2.7')).toBe(true)
+    expect(isBuiltinModelTemplate('openai-chat-kimi-k2.6')).toBe(true)
+    expect(isBuiltinModelTemplate('openai-chat-kimi-k2.5')).toBe(true)
+  })
+
+  it('Moonshot vendor is recognized as built-in', () => {
+    expect(isBuiltinVendor('openai-chat-moonshot')).toBe(true)
   })
 })

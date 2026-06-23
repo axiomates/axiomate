@@ -961,6 +961,7 @@ describe('getVendorChoicesForProtocol', () => {
       'openai-chat-aliyun',
       'openai-chat-deepseek-official',
       'openai-chat-glm',
+      'openai-chat-moonshot',
       'openai-chat-siliconflow',
     ])
   })

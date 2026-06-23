@@ -414,6 +414,44 @@ const builtinVendorTemplates: Record<string, VendorTemplate> = {
     disabledPatch: { thinking: { type: 'disabled' } },
     effort: { patch: null },
   },
+  'openai-chat-moonshot': {
+    // Moonshot (Kimi) OpenAI-compatible gateway. Default thinking wire shape
+    // mirrors DeepSeek/GLM ({type:'enabled'|'disabled'}) so k2.5/k2.6 inherit
+    // it without re-declaring. Per-model deviations live in the corresponding
+    // model templates:
+    //   - kimi-k2.7-code / -highspeed: override enabledPatch to add keep:'all'
+    //     and set disabledPatch=null (server errors on type=disabled).
+    //   - kimi-k2.6: override enabledPatch to add keep:'all' (we expose only
+    //     None/Max in the picker, so Max eagerly opts into Preserved Thinking).
+    //   - kimi-k2.5: inherit as-is (no keep field is correct — k2.5 has no
+    //     keep support).
+    //
+    // moonshot-v1-* (the older non-thinking family) is safe even though the
+    // vendor presets enabledPatch: those models only reach
+    // applyThinkingTemplate when the user explicitly configured
+    // models[id].thinking in ~/.axiomate.json. Without that opt-in,
+    // applyThinkingParams early-returns and no thinking field is sent.
+    //
+    // What stays vendor-specific:
+    //   - matchBaseUrlRegex: pins auto-vendor inference to Moonshot's
+    //     official endpoints. Kimi reached via OpenRouter / aliyun /
+    //     SiliconFlow uses those gateways' own vendor templates — their
+    //     enable_thinking + thinking_budget mechanics replace Moonshot's
+    //     thinking field.
+    //   - effort.patch = null: no reasoning_effort on any Kimi model. Delete
+    //     the patch inherited from the openai-chat protocol layer.
+    //   - effort.valueMap: collapse to a single 'max' tier so ModelPicker
+    //     cycles only None / Max. The thinking on/off split is then driven
+    //     by enabled/disabledPatch, not by effort.
+    protocol: 'openai-chat',
+    matchBaseUrlRegex: 'api\\.moonshot\\.(cn|ai)',
+    enabledPatch: { thinking: { type: 'enabled' } },
+    disabledPatch: { thinking: { type: 'disabled' } },
+    effort: {
+      patch: null,
+      valueMap: { low: null, medium: null, high: null, max: 'max' },
+    },
+  },
 }
 
 // ---------------------------------------------------------------------------
@@ -499,6 +537,71 @@ const builtinModelTemplates: Record<string, ModelTemplate> = {
         max: 'max',
       },
     },
+  },
+  'openai-chat-kimi-k2.7': {
+    // kimi-k2.7-code and kimi-k2.7-code-highspeed share the same wire rules
+    // (the latter is just a faster-output variant of the same model). Per
+    // platform.kimi.com docs the thinking field accepts ONLY:
+    //   { type: 'enabled', keep: 'all' }
+    // — passing 'disabled' errors, and any keep value other than 'all' errors.
+    // Preserved Thinking is mandatory: every historical assistant turn in
+    // `messages` must carry its `reasoning_content` as-is.
+    //
+    // Wire encoding:
+    //   - enabledPatch overrides the vendor's inherited shape ({type:'enabled'})
+    //     with the strict {type, keep} pair so Max always sends both fields.
+    //   - disabledPatch is RFC 7396 null-deleted from the vendor's inherited
+    //     {type:'disabled'} (server errors on type=disabled for k2.7). With
+    //     no disabledPatch the request body simply omits the thinking field
+    //     when picker is None, and k2.7 falls back to its own always-on
+    //     default.
+    //   - autoRoundTripReasoningContent: required because k2.7 mandates it;
+    //     reuses the existing OpenAI Chat reasoning_content replay path.
+    //
+    // matchVendorRegex pins these quirks to the official Moonshot gateway.
+    // Kimi reached via OpenRouter / aliyun / SiliconFlow uses those vendors'
+    // own thinking shapes (e.g. enable_thinking + thinking_budget) and must
+    // NOT inherit Moonshot-only fields like `keep`.
+    matchModelRegex: '\\bkimi[\\s\\-_]*k?2\\.7',
+    matchVendorRegex: '^openai-chat-moonshot$',
+    protocol: 'openai-chat',
+    enabledPatch: { thinking: { type: 'enabled', keep: 'all' } },
+    disabledPatch: null,
+    autoRoundTripReasoningContent: true,
+  },
+  'openai-chat-kimi-k2.6': {
+    // kimi-k2.6 supports type=enabled / type=disabled and keep is optional
+    // (server-side default = null, i.e. no preserved thinking). The
+    // ModelPicker for Moonshot exposes only None / Max, so Max eagerly opts
+    // into Preserved Thinking by overriding the vendor enabledPatch with
+    // keep:'all'. disabledPatch is inherited from the vendor unchanged.
+    //
+    // matchVendorRegex pins these quirks to the official Moonshot gateway.
+    // Kimi reached via OpenRouter / aliyun / SiliconFlow uses those vendors'
+    // own thinking shapes (enable_thinking + thinking_budget) and must NOT
+    // inherit Moonshot-only fields like `keep`.
+    matchModelRegex: '\\bkimi[\\s\\-_]*k?2\\.6\\b',
+    matchVendorRegex: '^openai-chat-moonshot$',
+    protocol: 'openai-chat',
+    enabledPatch: { thinking: { type: 'enabled', keep: 'all' } },
+    autoRoundTripReasoningContent: true,
+  },
+  'openai-chat-kimi-k2.5': {
+    // kimi-k2.5 inherits the vendor's enabledPatch ({type:'enabled'}) and
+    // disabledPatch ({type:'disabled'}) verbatim — the only Kimi-version
+    // difference for k2.5 is that it has no `keep` field (passing it would
+    // error), which the inherited shape already satisfies.
+    //
+    // Per docs k2.5 does not support Preserved Thinking. autoRoundTrip is
+    // false (the openai-chat default). Community bug reports suggest the
+    // server may still 400 on missing reasoning_content during tool calls —
+    // at odds with the docs. Following the docs here; flip to true if real-
+    // world testing confirms the bug-report shape.
+    //
+    // matchVendorRegex: see openai-chat-kimi-k2.6 — Moonshot-only.
+    matchModelRegex: '\\bkimi[\\s\\-_]*k?2\\.5\\b',
+    matchVendorRegex: '^openai-chat-moonshot$',
+    protocol: 'openai-chat',
   },
 }
 
