@@ -152,6 +152,12 @@ function makeProvider() {
       protocol: 'openai-chat',
       baseUrl: 'https://example.invalid/v1',
       apiKey: 'test-key',
+      // 089bd28c made supportsImages opt-in (default false). The image-recovery
+      // contract test sends a multimodal user message and asserts the rewritten
+      // image_url block reaches the wire — that requires opting the test
+      // provider into image support. Text-only fixtures elsewhere in this file
+      // are unaffected because no image blocks are present to keep.
+      supportsImages: true,
     },
   })
 }

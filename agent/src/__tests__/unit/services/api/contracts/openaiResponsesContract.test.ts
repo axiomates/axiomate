@@ -68,6 +68,11 @@ function makeProvider(
       protocol: 'openai-responses',
       baseUrl: 'https://example.invalid/v1',
       apiKey: 'test-key',
+      // See openaiChatContract.test.ts makeProvider() — 089bd28c made
+      // supportsImages opt-in (default false). The image-recovery contract
+      // test needs it true so the rewritten payload reaches the wire.
+      // configOverrides can still flip it off for non-image tests.
+      supportsImages: true,
       extraParams,
       ...configOverrides,
     },
