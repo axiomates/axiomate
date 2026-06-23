@@ -10,7 +10,9 @@
  * AGENT_BROWSER_VERSION below is the version we've actually tested
  * (connectOverCDP to the launcher's local Chrome verified on 2026-06-10 for
  * v0.27.1; re-verified the same path + the 26-tool subcommand contract on
- * 2026-06-19 when bumping to v0.28.0).
+ * 2026-06-19 when bumping to v0.28.0; bumped to v0.29.0 on 2026-06-23 — the
+ * v0.28.0..v0.29.0 range touched NO CLI contract file we depend on (only a
+ * new, unused Vercel Sandbox package), re-verified by real Chrome smoke).
  * Bump it deliberately after re-testing.
  *
  * Release assets are bare binaries (e.g. `agent-browser-win32-x64.exe`),
@@ -47,7 +49,7 @@ import { fileURLToPath } from 'node:url'
 
 const AGENT_BROWSER_REPO = 'vercel-labs/agent-browser'
 // Pinned, tested version. See header comment before bumping.
-const AGENT_BROWSER_VERSION = 'v0.28.0'
+const AGENT_BROWSER_VERSION = 'v0.29.0'
 
 const packageDir = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 
@@ -135,8 +137,9 @@ function findAnyCachedBinary() {
 
 /**
  * Map host platform/arch to the release ASSET FILENAME published by
- * vercel-labs/agent-browser (verified against v0.28.0 release assets; names
- * unchanged from v0.27.1 — v0.28.0 only ADDED linux-musl variants we don't use).
+ * vercel-labs/agent-browser (verified against v0.29.0 release assets; names
+ * unchanged since v0.27.1 — v0.28.0 added linux-musl variants we don't use,
+ * v0.29.0 added no new platform assets).
  */
 function assetForHost() {
   const { platform, arch } = process
