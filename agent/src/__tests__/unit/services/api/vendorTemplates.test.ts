@@ -457,8 +457,11 @@ describe('resolveStack — vendor trichotomy (auto / none / pin)', () => {
       model: 'glm-4.7',
       baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
     })
-    // openai-chat-glm enabledPatch is the GLM thinking switch.
-    expect(t.enabledPatch).toEqual({ thinking: { type: 'enabled' } })
+    // openai-chat-glm enabledPatch is the GLM thinking switch + Preserved
+    // Thinking flag (clear_thinking:false enables coding-agent recommended mode).
+    expect(t.enabledPatch).toEqual({
+      thinking: { type: 'enabled', clear_thinking: false },
+    })
   })
 
   it("'auto' explicitly infers the same gateway", () => {
@@ -468,7 +471,9 @@ describe('resolveStack — vendor trichotomy (auto / none / pin)', () => {
       model: 'glm-4.7',
       baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
     })
-    expect(t.enabledPatch).toEqual({ thinking: { type: 'enabled' } })
+    expect(t.enabledPatch).toEqual({
+      thinking: { type: 'enabled', clear_thinking: false },
+    })
   })
 
   it("'none' skips inference even on a known gateway baseUrl (bare protocol layer)", () => {
@@ -919,10 +924,10 @@ describe('applyThinkingTemplate — built-in: openai-chat-glm (vendor layer only
 
   it('enabled emits thinking switch, but no reasoning_effort even with effort set', () => {
     expect(applyThinkingTemplate({ enabled: true, effort: 'high' }, template)).toEqual({
-      thinking: { type: 'enabled' },
+      thinking: { type: 'enabled', clear_thinking: false },
     })
     expect(applyThinkingTemplate({ enabled: true, effort: 'max' }, template)).toEqual({
-      thinking: { type: 'enabled' },
+      thinking: { type: 'enabled', clear_thinking: false },
     })
   })
 
@@ -930,6 +935,11 @@ describe('applyThinkingTemplate — built-in: openai-chat-glm (vendor layer only
     expect(applyThinkingTemplate({ enabled: false }, template)).toEqual({
       thinking: { type: 'disabled' },
     })
+  })
+
+  it('vendor sets coding-agent-recommended fields: do_sample:false, autoRoundTrip', () => {
+    expect(template.extraBodyParams).toEqual({ do_sample: false })
+    expect(template.autoRoundTripReasoningContent).toBe(true)
   })
 })
 
@@ -944,26 +954,26 @@ describe('applyThinkingTemplate — built-in: openai-chat-glm-5.2 (model layer r
 
   it('low/medium/high all collapse to high; max stays max', () => {
     expect(applyThinkingTemplate({ enabled: true, effort: 'low' }, template)).toEqual({
-      thinking: { type: 'enabled' },
+      thinking: { type: 'enabled', clear_thinking: false },
       reasoning_effort: 'high',
     })
     expect(applyThinkingTemplate({ enabled: true, effort: 'medium' }, template)).toEqual({
-      thinking: { type: 'enabled' },
+      thinking: { type: 'enabled', clear_thinking: false },
       reasoning_effort: 'high',
     })
     expect(applyThinkingTemplate({ enabled: true, effort: 'high' }, template)).toEqual({
-      thinking: { type: 'enabled' },
+      thinking: { type: 'enabled', clear_thinking: false },
       reasoning_effort: 'high',
     })
     expect(applyThinkingTemplate({ enabled: true, effort: 'max' }, template)).toEqual({
-      thinking: { type: 'enabled' },
+      thinking: { type: 'enabled', clear_thinking: false },
       reasoning_effort: 'max',
     })
   })
 
   it('enabled without effort still emits thinking switch only', () => {
     expect(applyThinkingTemplate({ enabled: true }, template)).toEqual({
-      thinking: { type: 'enabled' },
+      thinking: { type: 'enabled', clear_thinking: false },
     })
   })
 

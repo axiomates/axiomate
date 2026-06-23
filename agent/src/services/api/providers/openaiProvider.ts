@@ -572,6 +572,12 @@ export class OpenAIProvider implements LLMProvider {
     // Thinking params passthrough
     this.applyThinkingParams(body, request.thinking)
 
+    // Vendor-level extra body fields (e.g. GLM's `do_sample: false`). Applied
+    // before modelConfig.extraParams so per-model overrides win.
+    const vendorTemplateForExtra = this.getResolvedTemplate()
+    if (vendorTemplateForExtra.extraBodyParams) {
+      Object.assign(body, vendorTemplateForExtra.extraBodyParams)
+    }
     // Extra params passthrough
     if (this.config.modelConfig?.extraParams) {
       Object.assign(body, this.config.modelConfig.extraParams)
@@ -705,6 +711,12 @@ export class OpenAIProvider implements LLMProvider {
     // Thinking params passthrough
     this.applyThinkingParams(body, intent.thinking)
 
+    // Vendor-level extra body fields (e.g. GLM's `do_sample: false`). Applied
+    // before modelConfig.extraParams so per-model overrides win. Reuses the
+    // vendorTemplate already resolved above.
+    if (vendorTemplate.extraBodyParams) {
+      Object.assign(body, vendorTemplate.extraBodyParams)
+    }
     // Extra params passthrough
     if (this.config.modelConfig?.extraParams) {
       Object.assign(body, this.config.modelConfig.extraParams)

@@ -710,3 +710,82 @@ describe('OpenAIProvider max output tokens field name', () => {
     expect(body).not.toHaveProperty('max_completion_tokens')
   })
 })
+
+describe('OpenAIProvider vendor extraBodyParams passthrough', () => {
+  // VendorTemplate.extraBodyParams lets vendor templates inject body fields
+  // that aren't tied to thinking on/off — for vendor-wide quirks like GLM's
+  // recommended `do_sample: false` for coding/translation tasks.
+
+  function makeProviderWithBaseUrl(baseUrl: string, model = 'gpt-4o', extraParams?: Record<string, unknown>) {
+    return new OpenAIProvider({
+      baseUrl,
+      apiKey: 'test-key',
+      modelConfig: {
+        model,
+        protocol: 'openai-chat',
+        baseUrl,
+        apiKey: 'test-key',
+        ...(extraParams ? { extraParams } : {}),
+      },
+    })
+  }
+
+  function captureCreateCall(provider: OpenAIProvider) {
+    const create = vi.fn().mockResolvedValue({
+      id: 'resp_x',
+      model: 'm',
+      choices: [{ finish_reason: 'stop', message: { content: 'ok' } }],
+      usage: { prompt_tokens: 1, completion_tokens: 1 },
+    })
+    ;(provider as any).client = {
+      chat: { completions: { create } },
+    }
+    return create
+  }
+
+  it('vendor extraBodyParams flow into the wire body (GLM do_sample: false)', async () => {
+    const provider = makeProviderWithBaseUrl(
+      'https://open.bigmodel.cn/api/paas/v4',
+      'glm-4.7',
+    )
+    const create = captureCreateCall(provider)
+    await provider.inference({
+      model: 'glm-4.7',
+      messages: [{ role: 'user', content: 'hi' }],
+    })
+    const body = create.mock.calls[0]![0]
+    expect(body).toMatchObject({ do_sample: false })
+  })
+
+  it('no extra fields for vendors without extraBodyParams (DeepSeek)', async () => {
+    const provider = makeProviderWithBaseUrl(
+      'https://api.deepseek.com/v1',
+      'deepseek-chat',
+    )
+    const create = captureCreateCall(provider)
+    await provider.inference({
+      model: 'deepseek-chat',
+      messages: [{ role: 'user', content: 'hi' }],
+    })
+    const body = create.mock.calls[0]![0]
+    expect(body).not.toHaveProperty('do_sample')
+  })
+
+  it('modelConfig.extraParams overrides vendor extraBodyParams (last write wins)', async () => {
+    // User opts back into sampling on a GLM model by setting
+    // models[id].extraParams.do_sample = true. Per-model wins because
+    // it's applied after the vendor layer.
+    const provider = makeProviderWithBaseUrl(
+      'https://open.bigmodel.cn/api/paas/v4',
+      'glm-4.7',
+      { do_sample: true },
+    )
+    const create = captureCreateCall(provider)
+    await provider.inference({
+      model: 'glm-4.7',
+      messages: [{ role: 'user', content: 'hi' }],
+    })
+    const body = create.mock.calls[0]![0]
+    expect(body).toMatchObject({ do_sample: true })
+  })
+})

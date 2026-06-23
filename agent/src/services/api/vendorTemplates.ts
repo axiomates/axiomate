@@ -143,6 +143,24 @@ export type TemplatePatches = {
    * vendor's choice on a private relay that still accepts only `max_tokens`.
    */
   maxOutputTokensField?: 'max_tokens' | 'max_completion_tokens' | null
+
+  /**
+   * Extra body fields appended unconditionally to every request — for vendor
+   * quirks that aren't tied to thinking on/off, effort, or budget. The shape
+   * mirrors the per-model `modelConfig.extraParams` field and applies via the
+   * same `Object.assign` passthrough in the provider, just at the vendor
+   * layer. Layer order is vendor → model, so a per-model `extraParams` entry
+   * with the same key overrides the vendor default (or sets it to `null` /
+   * `undefined` to drop the value entirely).
+   *
+   * Example: GLM advises `do_sample: false` for coding/translation tasks to
+   * disable random sampling. That's a vendor-wide preference, not a thinking
+   * setting, so it lives here.
+   *
+   * Setting the whole field to `null` deletes the inherited value (RFC 7396)
+   * when a custom template extends a built-in vendor.
+   */
+  extraBodyParams?: Record<string, unknown> | null
 }
 
 /**
@@ -444,6 +462,25 @@ const builtinVendorTemplates: Record<string, VendorTemplate> = {
     // It applies across the whole GLM thinking family (5.2/5.1/5/Turbo/4.7…),
     // so it lives here at the vendor layer.
     //
+    // Three coding-agent-specific quirks beyond the basic switch:
+    //
+    //   1. `do_sample: false` (extraBodyParams). GLM's official docs recommend
+    //      disabling random sampling for code generation / translation tasks
+    //      so output is deterministic. Lives in extraBodyParams because it
+    //      isn't tied to thinking on/off — every request should have it.
+    //
+    //   2. `thinking.clear_thinking: false` (enabledPatch). GLM's standard API
+    //      endpoints default to clearing prior-turn reasoning_content. Setting
+    //      this to false enables Preserved Thinking, which the vendor docs
+    //      explicitly recommend for Coding/Agent scenarios — improves cache
+    //      hit rate and saves tokens on real tasks. Coding Plan endpoints
+    //      have this on by default; standard endpoints need the explicit flag.
+    //
+    //   3. `autoRoundTripReasoningContent: true`. GLM's interleaved-thinking
+    //      docs state: "when using interleaved thinking + tools, you MUST
+    //      explicitly preserve reasoning content and return it alongside tool
+    //      results." Same hard requirement as DeepSeek's tool-call rule.
+    //
     // reasoning_effort, however, is GLM-5.2-only. We delete the effort *patch*
     // inherited from the openai-chat protocol layer so non-5.2 GLM models don't
     // transmit an unsupported field; the openai-chat-glm-5.2 model template
@@ -455,9 +492,13 @@ const builtinVendorTemplates: Record<string, VendorTemplate> = {
     // inherited patch once merged over the protocol layer in resolveStack.
     protocol: 'openai-chat',
     matchBaseUrlRegex: '(?:bigmodel\\.cn|z\\.ai)',
-    enabledPatch: { thinking: { type: 'enabled' } },
+    enabledPatch: {
+      thinking: { type: 'enabled', clear_thinking: false },
+    },
     disabledPatch: { thinking: { type: 'disabled' } },
     effort: { patch: null },
+    extraBodyParams: { do_sample: false },
+    autoRoundTripReasoningContent: true,
   },
   'openai-chat-moonshot': {
     // Moonshot (Kimi) OpenAI-compatible gateway. Default thinking wire shape
