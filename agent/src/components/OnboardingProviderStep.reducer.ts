@@ -319,7 +319,7 @@ export const MODEL_ID_HINT: Record<Protocol, string> = {
   'openai-chat':
     'e.g., gpt-4o  or  qwen/qwen3-235b (OpenRouter)  or  Qwen/Qwen3-235B (SiliconFlow)',
   'openai-responses':
-    'e.g., gpt-5, o4-mini, o3 (OpenAI Responses API — preferred for reasoning models)',
+    'e.g., gpt-5 (OpenAI Responses API — preferred for reasoning models)',
   anthropic: 'e.g., Qwen/Qwen3.6-Plus',
 }
 

@@ -37,7 +37,7 @@ const EXTENDS_OPTIONS = [
     value: 'openai-chat',
   },
   {
-    label: 'openai-responses — OpenAI Responses API (o-series, GPT-5)',
+    label: 'openai-responses — OpenAI Responses API (GPT-5)',
     value: 'openai-responses',
   },
   {

@@ -355,7 +355,7 @@ function ProtocolStep({
         hideSelectedIndicator
         options={[
           { label: 'OpenAI Chat Completions (compatible: OpenRouter, SiliconFlow, vLLM, ollama, ...)', value: 'openai-chat' },
-          { label: 'OpenAI Responses API (preferred for reasoning models: o4-mini, o3, gpt-5)', value: 'openai-responses' },
+          { label: 'OpenAI Responses API (preferred for reasoning models: gpt-5)', value: 'openai-responses' },
           { label: 'Anthropic-compatible', value: 'anthropic' },
         ]}
         onChange={v => onPick(v as Protocol)}
