@@ -352,6 +352,7 @@ function ProtocolStep({
         <Text dimColor>OpenAI-compatible covers OpenRouter, SiliconFlow, vLLM, ollama, most hosted providers.</Text>
       </Text>
       <Select
+        hideSelectedIndicator
         options={[
           { label: 'OpenAI Chat Completions (compatible: OpenRouter, SiliconFlow, vLLM, ollama, ...)', value: 'openai-chat' },
           { label: 'OpenAI Responses API (preferred for reasoning models: o4-mini, o3, gpt-5)', value: 'openai-responses' },
@@ -688,6 +689,7 @@ function VendorStep({
         protocol '{protocol}' are shown.
       </Text>
       <Select
+        hideSelectedIndicator
         defaultValue={initial}
         options={options}
         onChange={v => {
@@ -775,6 +777,7 @@ function ModelTemplateStep({
       <Text bold>Model template</Text>
       <Text dimColor>{MODEL_TEMPLATE_HINT}</Text>
       <Select
+        hideSelectedIndicator
         defaultValue={options.some(o => o.value === defaultValue) ? defaultValue : 'auto'}
         options={options}
         onChange={onSubmit}
@@ -820,6 +823,7 @@ function SupportsImagesStep({
         doesn't recognise yet, or a text-only fine-tune of a multimodal base).
       </Text>
       <Select
+        hideSelectedIndicator
         defaultValue={initial}
         options={[
           { label: autoLabel, value: 'auto' },
@@ -884,6 +888,7 @@ function ThinkingStep({
       <Text bold>Reasoning depth</Text>
       <Text dimColor>{THINKING_HINT}</Text>
       <Select
+        hideSelectedIndicator
         defaultValue={defaultValue}
         options={options}
         onChange={v => onSubmit(v as ThinkingChoice)}
@@ -945,6 +950,7 @@ function RouteUsageStep({
       <Text bold>Model route</Text>
       <Text dimColor>{ROUTE_USAGE_HINT}</Text>
       <Select
+        hideSelectedIndicator
         defaultValue={initial}
         options={[
           { label: 'Use as main model', value: 'main_primary' },
@@ -977,6 +983,7 @@ function VerifyFailedStep({
         skip verification (useful for local ollama / offline endpoints).
       </Text>
       <Select
+        hideSelectedIndicator
         options={[
           { label: 'Retry — back to API key entry', value: 'retry' },
           { label: 'Skip verification and continue', value: 'skip' },

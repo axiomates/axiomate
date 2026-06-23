@@ -92,6 +92,21 @@ export type SelectProps<T> = {
   readonly hideIndexes?: boolean
 
   /**
+   * When true, suppresses the green text + trailing ✓ figure on the option
+   * that currently matches `defaultValue` (or the most recent selection).
+   *
+   * Useful in step-style wizards where `defaultValue` is the prefilled
+   * wizard default rather than a meaningful "currently chosen" state — in
+   * that context the green ✓ blurs "what you've decided" against "what the
+   * wizard pre-picked". Leave unset (default) for pickers where the
+   * indicator does carry meaning (e.g. ModelPicker marking the active
+   * main-loop model).
+   *
+   * @default false
+   */
+  readonly hideSelectedIndicator?: boolean
+
+  /**
    * Number of visible options.
    *
    * @default 5
@@ -212,6 +227,7 @@ export type SelectProps<T> = {
 export function Select<T>({
   isDisabled = false,
   hideIndexes = false,
+  hideSelectedIndicator = false,
   visibleOptionCount = 5,
   highlightText,
   options,
@@ -339,7 +355,8 @@ export function Select<T>({
           const i = state.visibleFromIndex + index + 1
 
           const isFocused = !isDisabled && state.focusedValue === option.value
-          const isSelected = state.value === option.value
+          const isSelected =
+            !hideSelectedIndicator && state.value === option.value
 
           // Handle input type options
           if (option.type === 'input') {
@@ -477,7 +494,8 @@ export function Select<T>({
           const i = state.visibleFromIndex + index + 1
 
           const isFocused = !isDisabled && state.focusedValue === option.value
-          const isSelected = state.value === option.value
+          const isSelected =
+            !hideSelectedIndicator && state.value === option.value
 
           // Handle input type options
           if (option.type === 'input') {
@@ -634,7 +652,7 @@ export function Select<T>({
     const areMoreOptionsAbove = state.visibleFromIndex > 0
     const i = state.visibleFromIndex + index + 1
     const isFocused = !isDisabled && state.focusedValue === option.value
-    const isSelected = state.value === option.value
+    const isSelected = !hideSelectedIndicator && state.value === option.value
     const isOptionDisabled = option.disabled === true
 
     let label: ReactNode = option.label
@@ -780,7 +798,8 @@ export function Select<T>({
           const i = state.visibleFromIndex + index + 1
 
           const isFocused = !isDisabled && state.focusedValue === option.value
-          const isSelected = state.value === option.value
+          const isSelected =
+            !hideSelectedIndicator && state.value === option.value
 
           return (
             <SelectInputOption
