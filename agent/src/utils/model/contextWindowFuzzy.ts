@@ -414,7 +414,12 @@ const TABLE: ReadonlyArray<TableEntry> = [
     match: p => p.family === 'kimi' },
 
   // ---------- MiniMax ----------
-  // M2 → 192K (post-reset)
+  // M3 → 1M (vendor docs; multimodal, 1M ctx). Specific-before-fallback so
+  // version 'm3' doesn't fall through to the minimax-m2 entry below.
+  { source: 'minimax-m3', ctx: 1_000_000,
+    match: p => p.family === 'minimax' && /m3/.test(p.version ?? '') },
+  // M2 / M2.x (incl. -highspeed) → 192K. Existing entry, retained as the
+  // M2 family default. M2.7 / M2.5 / M2.1 all match `/m2/` and inherit this.
   { source: 'minimax-m2', ctx: 196_608,
     match: p => p.family === 'minimax' && /m2/.test(p.version ?? '') },
   // M1 / Text-01 → 10.24M (lightning attention)

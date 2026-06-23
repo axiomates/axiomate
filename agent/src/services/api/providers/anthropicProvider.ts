@@ -728,6 +728,27 @@ export class AnthropicProvider implements LLMProvider {
       }
     }
 
+    // Vendor template overlay — same pattern as createStream / non-streaming
+    // fallback paths so vendor-specific wire shapes (e.g. MiniMax 强制 adaptive
+    // and null-deletes budget_tokens via its enabledPatch) reach inference()
+    // queries too. Without this, side queries / classifiers using vendor
+    // templates would 400 against gateways whose thinking shape diverges from
+    // Anthropic 1P. Gate matches the streaming-path gate at line 299-303:
+    // only run when user-configured thinking is enabled and the SDK actually
+    // built a thinking field.
+    if (
+      this.config.modelConfig?.thinking &&
+      params.thinking &&
+      (params.thinking as { type?: string }).type !== 'disabled'
+    ) {
+      const template = this.getResolvedTemplate()
+      const patch = applyThinkingTemplate(
+        this.config.modelConfig.thinking,
+        template,
+      )
+      deepMerge(params as Record<string, unknown>, patch)
+    }
+
     let response: unknown
     try {
       const timeoutPolicy = resolveApiTimeoutPolicy({
@@ -805,6 +826,25 @@ export class AnthropicProvider implements LLMProvider {
         })) }),
         ...(request.thinking && { thinking: { type: 'enabled', budget_tokens: 1024 } }),
         ...(betas.length > 0 && { betas }),
+      }
+
+      // Vendor template overlay for countTokens. Mirrors createStream /
+      // non-streaming-fallback / inference paths so vendor wire shapes (e.g.
+      // MiniMax 强制 adaptive、null-deletes budget_tokens) reach the count
+      // endpoint too. Without this, countTokens calls 400 against gateways
+      // whose thinking shape diverges from Anthropic 1P. Same gate as the
+      // other paths: only run when user-configured thinking is on.
+      if (
+        this.config.modelConfig?.thinking &&
+        params.thinking &&
+        (params.thinking as { type?: string }).type !== 'disabled'
+      ) {
+        const template = this.getResolvedTemplate()
+        const patch = applyThinkingTemplate(
+          this.config.modelConfig.thinking,
+          template,
+        )
+        deepMerge(params, patch)
       }
 
       const timeoutPolicy = resolveApiTimeoutPolicy({

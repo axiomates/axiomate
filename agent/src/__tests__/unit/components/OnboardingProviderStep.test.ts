@@ -975,8 +975,10 @@ describe('isThinkingChoiceSupported', () => {
 })
 
 describe('getVendorChoicesForProtocol', () => {
-  it('anthropic protocol → no built-in vendors (vanilla protocol layer used directly)', () => {
-    expect(getVendorChoicesForProtocol('anthropic')).toEqual([])
+  it('anthropic protocol → only gateway-specific built-ins (currently anthropic-minimax)', () => {
+    expect(getVendorChoicesForProtocol('anthropic')).toEqual([
+      'anthropic-minimax',
+    ])
   })
 
   it('openai-responses protocol → no built-in vendors (vanilla protocol layer used directly)', () => {
@@ -994,11 +996,12 @@ describe('getVendorChoicesForProtocol', () => {
     ])
   })
 
-  it('custom template extending anthropic shows up under anthropic protocol', () => {
+  it('custom template extending anthropic shows up under anthropic protocol alongside built-ins', () => {
     const customs = {
       'my-claude-mod': { extends: 'anthropic' as const },
     }
     expect(getVendorChoicesForProtocol('anthropic', customs).sort()).toEqual([
+      'anthropic-minimax',
       'my-claude-mod',
     ])
   })
@@ -1050,8 +1053,8 @@ describe('getRecommendedModelTemplate', () => {
 })
 
 describe('shouldSkipVendorStage', () => {
-  it('anthropic protocol — skips (no built-in vendors fit)', () => {
-    expect(shouldSkipVendorStage('anthropic')).toBe(true)
+  it('anthropic protocol — does not skip (anthropic-minimax built-in fits)', () => {
+    expect(shouldSkipVendorStage('anthropic')).toBe(false)
   })
 
   it('openai-responses protocol — skips (no built-in vendors fit)', () => {

@@ -1113,6 +1113,7 @@ describe('built-in templates structural sanity', () => {
   it('only gateway-specific built-ins remain (vanilla protocols are not vendor entries)', () => {
     const builtins = getBuiltinTemplates()
     expect(Object.keys(builtins).sort()).toEqual([
+      'anthropic-minimax',
       'openai-chat-aliyun',
       'openai-chat-deepseek-official',
       'openai-chat-glm',
@@ -1398,6 +1399,105 @@ describe('applyThinkingTemplate — silent-drop warnings', () => {
 //   - k2.5 inherits both vendor patches verbatim (no `keep`, no auto round-
 //     trip).
 // ─────────────────────────────────────────────────────────────────────────────
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MiniMax (anthropic-minimax) — wire shape on the Anthropic protocol family
+//
+// MiniMax exposes /anthropic/v1/messages with two diverging quirks:
+//   - thinking.type only accepts 'disabled' / 'adaptive' (no 'enabled', no
+//     budget_tokens)
+//   - no output_config.effort, no anthropicThinkingField default budget
+// The vendor template encodes both via existing patch fields; verifying
+// here that the merged shape sent to the SDK actually contains
+// type:'adaptive' regardless of what paramsFromContext started with.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('MiniMax vendor — anthropic protocol with adaptive-only thinking', () => {
+  it('auto-vendor by api.minimaxi.com baseUrl', () => {
+    expect(
+      inferVendor({
+        protocol: 'anthropic',
+        model: 'MiniMax-M3',
+        baseUrl: 'https://api.minimaxi.com/anthropic/v1',
+      }),
+    ).toBe('anthropic-minimax')
+  })
+
+  it('does NOT auto-match against api.anthropic.com (vanilla 1P endpoint)', () => {
+    expect(
+      inferVendor({
+        protocol: 'anthropic',
+        model: 'anthropic-flagship-4',
+        baseUrl: 'https://api.anthropic.com/v1',
+      }),
+    ).toBeUndefined()
+  })
+
+  it('protocol resolves to anthropic with effort/budget/anthropicThinkingField nulled', () => {
+    const tpl = resolveTemplate('anthropic-minimax')
+    expect(tpl.protocol).toBe('anthropic')
+    // RFC 7396 deletion against the protocol layer:
+    expect(tpl.effort?.patch).toBeUndefined()
+    const valueMap =
+      (tpl.effort?.valueMap as Record<string, string | null> | undefined) ?? {}
+    expect(
+      Object.values(valueMap).filter(v => typeof v === 'string'),
+    ).toEqual([])
+    expect(tpl.budget?.patch).toBeUndefined()
+    // anthropicThinkingField uses child-null pattern (see vendor template
+    // comment): the field stays as an empty object after merge so callers
+    // checking `template.anthropicThinkingField?.defaultBudgetTokens` get
+    // undefined.
+    expect(tpl.anthropicThinkingField?.defaultBudgetTokens).toBeUndefined()
+  })
+
+  it('enabled overlay rewrites params.thinking from {type:enabled, budget_tokens:N} to {type:adaptive}', () => {
+    const tpl = resolveStack({
+      protocol: 'anthropic',
+      vendor: 'anthropic-minimax',
+      model: 'MiniMax-M3',
+      baseUrl: 'https://api.minimaxi.com/anthropic/v1',
+    })
+    // Simulate the params shape paramsFromContext produces for any
+    // config-driven anthropic model:
+    const params: Record<string, unknown> = {
+      thinking: { type: 'enabled', budget_tokens: 4096 },
+    }
+    const patch = applyThinkingTemplate({ enabled: true, effort: 'high' }, tpl)
+    deepMerge(params, patch)
+    // After overlay: type swapped, budget_tokens null-deleted by RFC 7396.
+    expect(params.thinking).toEqual({ type: 'adaptive' })
+  })
+
+  it('disabled overlay produces {type:disabled} (M2.x server still ignores; client honours)', () => {
+    const tpl = resolveStack({
+      protocol: 'anthropic',
+      vendor: 'anthropic-minimax',
+      model: 'MiniMax-M2.7',
+      baseUrl: 'https://api.minimaxi.com/anthropic/v1',
+    })
+    const out = applyThinkingTemplate({ enabled: false }, tpl)
+    expect(out).toEqual({ thinking: { type: 'disabled' } })
+  })
+
+  it('effort=max never emits reasoning_effort or output_config.effort (deleted at vendor layer)', () => {
+    const tpl = resolveStack({
+      protocol: 'anthropic',
+      vendor: 'anthropic-minimax',
+      model: 'MiniMax-M3',
+      baseUrl: 'https://api.minimaxi.com/anthropic/v1',
+    })
+    const out = applyThinkingTemplate({ enabled: true, effort: 'max' }, tpl)
+    expect(out).toEqual({ thinking: { type: 'adaptive', budget_tokens: null } })
+    // budget_tokens: null inside the patch carries the RFC 7396 delete-marker
+    // that strips a caller-pre-populated budget. After deepMerge this drops
+    // out — see the 'enabled overlay rewrites' test for the post-merge shape.
+  })
+
+  it('MiniMax vendor is recognized as built-in', () => {
+    expect(isBuiltinVendor('anthropic-minimax')).toBe(true)
+  })
+})
 
 describe('Moonshot vendor — picker tier collapse + no reasoning_effort', () => {
   it('auto-vendor by api.moonshot.cn baseUrl', () => {

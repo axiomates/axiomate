@@ -203,6 +203,15 @@ describe('fuzzyMatchContextWindow — MiniMax', () => {
   it.each([
     ['minimax-text-01',                10_240_000],
     ['minimax-m1-80k',                 10_240_000], // M1 still 10.24M; "80k" in name = output limit
+    ['MiniMax-M3',                     1_000_000],   // 1M ctx (vendor docs)
+    ['minimax-m3',                     1_000_000],   // case-insensitive
+    ['MiniMax-M2.7',                   196_608],     // inherits M2 family
+    ['MiniMax-M2.7-highspeed',         196_608],     // -highspeed shares wire
+    ['MiniMax-M2.5',                   196_608],
+    ['MiniMax-M2.5-highspeed',         196_608],
+    ['MiniMax-M2.1',                   196_608],
+    ['MiniMax-M2.1-highspeed',         196_608],
+    ['MiniMax-M2',                     196_608],
     ['minimax-m2',                     196_608],
     ['abab6',                          32_768],
     ['abab6.5',                        200_000],

@@ -109,6 +109,10 @@ const TABLE: ReadonlyArray<TableEntry> = [
     match: p => p.family === 'kimi' },
 
   // ---------- MiniMax ----------
+  // M3 → 128K (vendor docs: "MiniMax-M3 推荐值为 131072（128K）"). Specific
+  // before family fallback so 'm3' doesn't catch the M2 entry below.
+  { source: 'minimax-m3', out: 131_072,
+    match: p => p.family === 'minimax' && /m3/.test(p.version ?? '') },
   // M2 (post-reset)
   { source: 'minimax-m2', out: 65_536,
     match: p => p.family === 'minimax' && /m2/.test(p.version ?? '') },

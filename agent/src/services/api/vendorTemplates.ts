@@ -356,6 +356,65 @@ const builtinProtocolTemplates: Record<Protocol, ProtocolTemplate> = {
 // ---------------------------------------------------------------------------
 
 const builtinVendorTemplates: Record<string, VendorTemplate> = {
+  // ── anthropic protocol family ───────────────────────────────────────────
+  // Anthropic-compatible third-party gateways. The bare protocol layer
+  // already covers Anthropic 1P (api.anthropic.com) — vendors here exist
+  // only when a non-Anthropic gateway exposes a /v1/messages endpoint with
+  // its own quirks.
+  'anthropic-minimax': {
+    // MiniMax (https://api.minimaxi.com/anthropic/v1/messages) Anthropic
+    // compatible endpoint. Models: MiniMax-M3 / M2.7 / M2.7-highspeed /
+    // M2.5 / M2.5-highspeed / M2.1 / M2.1-highspeed / M2. The -highspeed
+    // variants are a faster SLA tier with the same wire shape.
+    //
+    // Documented divergences from stock Anthropic:
+    //   - thinking.type accepts only 'disabled' / 'adaptive'. NOT 'enabled'.
+    //     Default 'disabled'. M2.x ignores client value; thinking is always
+    //     on server-side.
+    //   - No `budget_tokens` field — schema doesn't include it.
+    //   - No `output_config.effort` — schema doesn't include it.
+    //   - tool_choice only accepts {type:'auto'} / {type:'none'}; no `any`
+    //     or specific-tool. (Not handled here yet — see P3 in
+    //     protocol-vendor-template-parity-plan.md.)
+    //   - service_tier: 'standard' | 'priority' is MiniMax-specific
+    //     (priority costs 1.5x). We don't surface it; users override via
+    //     modelConfig.extraParams if needed.
+    //
+    // The wire-shape transform that gets the type from 'enabled' to
+    // 'adaptive' rides on the existing applyThinkingTemplate overlay:
+    //   1. llm.ts:paramsFromContext produces {type:'enabled', budget_tokens:N}
+    //      because modelSupportsAdaptiveThinking returns false for any
+    //      config-driven model.
+    //   2. anthropicProvider's overlay (createStream / non-streaming-fallback
+    //      / inference / countTokens) deepMerges this vendor's enabledPatch
+    //      over params.thinking — replacing type and null-deleting budget_tokens.
+    //   3. Final wire body: { thinking: { type: 'adaptive' } }.
+    //
+    // Hard requirement: inference() and countTokens() must run the overlay
+    // (gap A and gap B in the parity plan, fixed in this same commit).
+    protocol: 'anthropic',
+    matchBaseUrlRegex: '(?:^|//)api\\.minimaxi\\.com',
+    // RFC 7396 null-deletes against the anthropic protocol layer. MiniMax
+    // doesn't accept output_config.effort, thinking.budget_tokens, or the
+    // SDK-side anthropicThinkingField default-budget hint — every effort
+    // tier is null'd in valueMap so ModelPicker collapses to thinking on/off.
+    effort: {
+      patch: null,
+      valueMap: { low: null, medium: null, high: null, max: null },
+    },
+    budget: { patch: null },
+    // Top-level `null` would be swallowed by resolveVendorChain (see the
+    // openai-chat-aliyun comment for the chain-merge no-op rationale). Use
+    // child-null instead so deepMerge against the protocol layer in
+    // resolveTemplate actually deletes defaultBudgetTokens.
+    anthropicThinkingField: { defaultBudgetTokens: null as unknown as number },
+    // Both patches replace the inherited (none from anthropic protocol layer)
+    // thinking shape entirely. enabledPatch swaps type→adaptive and
+    // null-deletes any budget_tokens the caller pre-populated.
+    disabledPatch: { thinking: { type: 'disabled' } },
+    enabledPatch: { thinking: { type: 'adaptive', budget_tokens: null } },
+  },
+
   // ── openai-chat protocol family ─────────────────────────────────────────
   // The openai-chat protocol layer carries reasoning_effort + OpenAI's
   // standard valueMap (minimal/low/medium/high). Vendors here exist only

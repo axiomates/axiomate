@@ -77,6 +77,14 @@ describe('fuzzyMatchMaxOutputTokens', () => {
 
   it.each([
     // MiniMax
+    ['MiniMax-M3',                         131_072, 'minimax-m3'],
+    ['minimax-m3',                         131_072, 'minimax-m3'],   // case-insensitive
+    ['MiniMax-M2.7',                        65_536, 'minimax-m2'],
+    ['MiniMax-M2.7-highspeed',              65_536, 'minimax-m2'],   // -highspeed inherits
+    ['MiniMax-M2.5',                        65_536, 'minimax-m2'],
+    ['MiniMax-M2.5-highspeed',              65_536, 'minimax-m2'],
+    ['MiniMax-M2.1-highspeed',              65_536, 'minimax-m2'],
+    ['MiniMax-M2',                          65_536, 'minimax-m2'],
     ['Pro/MiniMaxAI/MiniMax-M2.5',         65_536, 'minimax-m2'],
     ['minimax-m1-80k',                     32_768, 'minimax-m1'],
     ['minimax-text-01',                    32_768, 'minimax-m1'],

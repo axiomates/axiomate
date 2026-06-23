@@ -15,6 +15,7 @@ GLM / Aliyun），以及怎么把它们落到三层模板系统里。
 | `openai-chat-glm` | GLM-5.2/5.1/5/4.7/4.6/4.5 系列 | `(?:bigmodel\.cn\|z\.ai)` |
 | `openai-chat-aliyun` | qwen3.6-plus / 3.7-plus / 3.7-max / 3.6-flash | `(?:dashscope(?:-[\w]+)?\.aliyun(?:cs)?\.com\|maas\.aliyuncs\.com)` |
 | `openai-chat-mimo` | mimo-v2.5 / mimo-v2.5-pro | `xiaomimimo\.com` |
+| `anthropic-minimax` | MiniMax-M3 / M2.7(-highspeed) / M2.5(-highspeed) / M2.1(-highspeed) / M2 | `(?:^\|//)api\.minimaxi\.com` |
 
 ## 跨家怪癖矩阵
 
@@ -142,6 +143,34 @@ GLM / Aliyun），以及怎么把它们落到三层模板系统里。
 - 多轮工具调用必须回传 `reasoning_content`——和 DeepSeek/GLM 的硬要求等价
 - 思考模式下 `mimo-v2.5/v2.5-pro/v2-pro/v2-omni` 不支持自定义 `temperature/top_p`，服务端强制 1.0/0.95（**客户端无需配合**，传了静默忽略）
 - 图片支持是模型级（v2.5 多模态，v2.5-pro 纯文本）→ 走 `supportsImagesFuzzy` 而不是 vendor 模板（vendor 不能表达"同一网关，部分模型多模态"）
+
+### MiniMax（anthropic-minimax）
+
+文档：<https://platform.minimaxi.com/docs/api-reference/text-chat-anthropic>
+
+这是**首个 anthropic 协议**的第三方 vendor。endpoint：`POST /anthropic/v1/messages` on `api.minimaxi.com`。
+
+**vendor 层**：
+- `enabledPatch: { thinking: { type: 'adaptive', budget_tokens: null } }`——把上层 `paramsFromContext` 产生的 `{type:'enabled', budget_tokens:N}` 改写为 `{type:'adaptive'}`，靠 RFC 7396 null-delete 把 budget 字段拿掉
+- `disabledPatch: { thinking: { type: 'disabled' } }`——M2.x 服务端忽略但客户端仍合规
+- `effort: { patch: null, valueMap: { low/medium/high/max: null } }`——MiniMax schema 无 `output_config.effort`，删干净，picker 也只剩 None/On
+- `budget: { patch: null }`——schema 无 `budget_tokens`
+- `anthropicThinkingField: { defaultBudgetTokens: null }`——child-null 把协议层默认 budget 灭掉
+
+**模型**（8 个 enum）：
+- `MiniMax-M3`——多模态（文本/图片/视频），1M 上下文，128K 输出
+- `MiniMax-M{2.7,2.5,2.1}(-highspeed)?`、`MiniMax-M2`——纯文本，192K 上下文，64K 输出
+- `-highspeed` 是 SLA 变体，wire shape 完全相同
+
+**关键约束**：
+- `thinking.type` 只接受 `disabled` / `adaptive`——**不接受标准 Anthropic 的 `enabled`**
+- 完全没有 `budget_tokens` / `output_config.effort` 概念
+- M2.x 服务端强制思考开启，客户端发什么都无视——所以 disabled 是合规的"软关闭"，到端再开
+- `tool_choice` 只支持 `auto`/`none`（不支持 `any`/specific tool）——目前未在 vendor 层处理，见 parity plan 的 P3
+- service_tier: standard/priority（priority 1.5x 价）——未暴露，需要时用户在 `modelConfig.extraParams` 透传
+
+**架构关联**：MiniMax 适配触发了 anthropic 协议的 vendor template 派发对等性整理，
+见 [protocol-vendor-template-parity-plan.md](./protocol-vendor-template-parity-plan.md)。`inference()` / `countTokens()` 路径补回了 `applyThinkingTemplate` overlay 是 P1 阶段成果。
 
 ## 设计原则
 

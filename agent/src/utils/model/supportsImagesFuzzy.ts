@@ -141,6 +141,11 @@ const TABLE: ReadonlyArray<TableEntry> = [
     match: p => p.family === 'phi' },
   { source: 'yi-text', out: false,
     match: p => p.family === 'yi' },
+  // MiniMax-M3: native multimodal (text/image/video → text per official
+  // docs). M2.x and below remain text-only. Specific before family
+  // fallback so M3 wins.
+  { source: 'minimax-m3-multimodal', out: true,
+    match: p => p.family === 'minimax' && /m3/.test(p.version ?? '') },
   { source: 'minimax-text', out: false,
     match: p => p.family === 'minimax' },
 

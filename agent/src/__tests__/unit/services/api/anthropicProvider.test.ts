@@ -393,27 +393,158 @@ describe('AnthropicProvider', () => {
     })
   })
 
-  describe('countTokens', () => {
-    it('resolves configured model keys before sending count requests', async () => {
+  describe('vendor template overlay on inference / countTokens', () => {
+    // Regression for gap A / gap B from
+    // docs/api/protocol-vendor-template-parity-plan.md: inference() and
+    // countTokens() must run the same applyThinkingTemplate overlay as
+    // createStream so vendor wire shapes reach side queries and token-count
+    // calls too. anthropic-minimax is the canonical case — its enabledPatch
+    // rewrites the SDK-prepared thinking shape from
+    //   { type: 'enabled', budget_tokens: N }
+    // to
+    //   { type: 'adaptive' }
+    // and null-deletes budget_tokens.
+
+    it('inference() applies vendor enabledPatch (MiniMax: enabled+budget → adaptive)', async () => {
       const mockClient = {
         messages: {
-          countTokens: vi.fn().mockResolvedValue({ input_tokens: 7 }),
+          create: vi.fn().mockResolvedValue({
+            id: 'msg_1',
+            content: [{ type: 'text', text: 'ok' }],
+            model: 'MiniMax-M3',
+            stop_reason: 'end_turn',
+            usage: { input_tokens: 1, output_tokens: 1 },
+          }),
         },
       }
       const provider = new AnthropicProvider({
         getClient: vi.fn().mockResolvedValue(mockClient),
+        modelConfig: {
+          model: 'MiniMax-M3',
+          protocol: 'anthropic',
+          vendor: 'anthropic-minimax',
+          baseUrl: 'https://api.minimaxi.com/anthropic/v1',
+          apiKey: 'test-key',
+          thinking: { enabled: true, effort: 'high' },
+        },
       })
 
-      const result = await provider.countTokens({
-        model: 'alias-model',
+      await provider.inference({
+        model: 'MiniMax-M3',
         messages: [{ role: 'user', content: 'hi' }],
+        thinking: { type: 'enabled', budgetTokens: 4096 },
+        maxTokens: 8192,
       })
 
-      expect(result).toBe(7)
-      expect(mockClient.messages.countTokens).toHaveBeenCalledTimes(1)
-      expect(mockClient.messages.countTokens.mock.calls[0][0].model).toBe(
-        'provider-main-model',
-      )
+      const params = mockClient.messages.create.mock.calls[0][0]
+      // Vendor enabledPatch replaced type and null-deleted budget_tokens.
+      expect(params.thinking).toEqual({ type: 'adaptive' })
+    })
+
+    it('inference() leaves disabled thinking alone (gate honours disabled)', async () => {
+      const mockClient = {
+        messages: {
+          create: vi.fn().mockResolvedValue({
+            id: 'msg_1',
+            content: [{ type: 'text', text: 'ok' }],
+            model: 'MiniMax-M3',
+            stop_reason: 'end_turn',
+            usage: { input_tokens: 1, output_tokens: 1 },
+          }),
+        },
+      }
+      const provider = new AnthropicProvider({
+        getClient: vi.fn().mockResolvedValue(mockClient),
+        modelConfig: {
+          model: 'MiniMax-M3',
+          protocol: 'anthropic',
+          vendor: 'anthropic-minimax',
+          baseUrl: 'https://api.minimaxi.com/anthropic/v1',
+          apiKey: 'test-key',
+          thinking: { enabled: false },
+        },
+      })
+
+      await provider.inference({
+        model: 'MiniMax-M3',
+        messages: [{ role: 'user', content: 'hi' }],
+        thinking: { type: 'disabled' },
+      })
+
+      const params = mockClient.messages.create.mock.calls[0][0]
+      // Gate skips overlay when type === 'disabled'; SDK shape preserved.
+      expect(params.thinking).toEqual({ type: 'disabled' })
+    })
+
+    it('countTokens() applies vendor enabledPatch (MiniMax: enabled+budget → adaptive)', async () => {
+      const mockClient = {
+        messages: {
+          countTokens: vi.fn().mockResolvedValue({ input_tokens: 42 }),
+        },
+      }
+      const provider = new AnthropicProvider({
+        getClient: vi.fn().mockResolvedValue(mockClient),
+        modelConfig: {
+          model: 'MiniMax-M3',
+          protocol: 'anthropic',
+          vendor: 'anthropic-minimax',
+          baseUrl: 'https://api.minimaxi.com/anthropic/v1',
+          apiKey: 'test-key',
+          thinking: { enabled: true, effort: 'high' },
+        },
+      })
+
+      await provider.countTokens({
+        model: 'MiniMax-M3',
+        messages: [{ role: 'user', content: 'hi' }],
+        thinking: true,
+      })
+
+      const params = mockClient.messages.countTokens.mock.calls[0][0]
+      expect(params.thinking).toEqual({ type: 'adaptive' })
+    })
+
+    it('inference() preserves Anthropic 1P shape when no vendor configured', async () => {
+      // Regression: Anthropic 1P path must not change — config-driven vendor
+      // overlay is gated on modelConfig.thinking being set (i.e., user
+      // explicitly opted into vendor-driven thinking). When the modelConfig
+      // doesn't declare thinking, the SDK-built shape is sent verbatim.
+      const mockClient = {
+        messages: {
+          create: vi.fn().mockResolvedValue({
+            id: 'msg_1',
+            content: [{ type: 'text', text: 'ok' }],
+            model: 'provider-main-model',
+            stop_reason: 'end_turn',
+            usage: { input_tokens: 1, output_tokens: 1 },
+          }),
+        },
+      }
+      const provider = new AnthropicProvider({
+        getClient: vi.fn().mockResolvedValue(mockClient),
+        modelConfig: {
+          model: 'provider-main-model',
+          protocol: 'anthropic',
+          baseUrl: 'https://example.invalid',
+          apiKey: 'test-key',
+          // NB: no thinking field — 1P models declare thinking via
+          // model-level capability detection, not modelConfig. Overlay gate
+          // therefore skips and the SDK-prepared shape is preserved.
+        },
+      })
+
+      await provider.inference({
+        model: 'provider-main-model',
+        messages: [{ role: 'user', content: 'hi' }],
+        thinking: { type: 'enabled', budgetTokens: 4096 },
+        maxTokens: 8192,
+      })
+
+      const params = mockClient.messages.create.mock.calls[0][0]
+      expect(params.thinking).toEqual({
+        type: 'enabled',
+        budget_tokens: expect.any(Number),
+      })
     })
   })
 })

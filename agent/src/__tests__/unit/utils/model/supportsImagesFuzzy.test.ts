@@ -94,6 +94,14 @@ describe('fuzzyMatchSupportsImages', () => {
     ['phi-4',                              false, 'phi-text'],
     ['yi-1.5-34b',                         false, 'yi-text'],
     ['minimax-m2',                         false, 'minimax-text'],
+    // MiniMax-M3 is multimodal per official docs (text/image/video → text);
+    // M2.x and below are text-only.
+    ['MiniMax-M3',                         true,  'minimax-m3-multimodal'],
+    ['minimax-m3',                         true,  'minimax-m3-multimodal'],
+    ['MiniMax-M2.7',                       false, 'minimax-text'],
+    ['MiniMax-M2.7-highspeed',             false, 'minimax-text'],
+    ['MiniMax-M2.5',                       false, 'minimax-text'],
+    ['MiniMax-M2',                         false, 'minimax-text'],
 
     // ───── MiMo (Xiaomi) ─────
     // mimo-v2.5: multimodal (text/image/video/audio in → text out)
