@@ -138,7 +138,14 @@ export function useSelectState<T>({
   const navigation = useSelectNavigation<T>({
     visibleOptionCount,
     options,
-    initialFocusValue: undefined,
+    // Park the cursor on `defaultValue` when one was provided. Without this
+    // the cursor falls through to optionMap.first regardless of what the
+    // caller meant by `defaultValue` — in a wizard/picker that's a
+    // confusing split between "the highlighted row" and "the row that gets
+    // submitted on Enter". An explicit `focusValue` (mapped from
+    // Select.defaultFocusValue) still wins in useSelectNavigation
+    // (`focusValue || initialFocusValue`).
+    initialFocusValue: defaultValue,
     onFocus,
     focusValue,
   })
