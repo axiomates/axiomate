@@ -58,8 +58,10 @@ describe('fuzzyMatchMaxOutputTokens', () => {
     // Kimi
     ['kimi-k2-instruct',                   16_384, 'kimi-k2'],
     ['kimi-k2.5',                          16_384, 'kimi-k2'],
-    ['kimi-k2.7-code',                     16_384, 'kimi-k2'],
-    ['Pro/moonshotai/Kimi-K2.6',           16_384, 'kimi-k2'],
+    ['kimi-k2.6',                          32_768, 'kimi-k2.6+'],
+    ['kimi-k2.7-code',                     32_768, 'kimi-k2.6+'],
+    ['kimi-k2.7-code-highspeed',           32_768, 'kimi-k2.6+'],
+    ['Pro/moonshotai/Kimi-K2.6',           32_768, 'kimi-k2.6+'],
     ['moonshot-v1-32k',                    16_384, 'kimi-fallback'], // no k-version match
   ])('Kimi: %s → %i (%s)', (name, expectedTokens, expectedSource) => {
     expect(fuzzyMatchMaxOutputTokens(name)).toBe(expectedTokens)
