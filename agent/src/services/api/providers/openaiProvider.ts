@@ -127,12 +127,24 @@ function summarizeOpenAIRequestBody(body: Record<string, unknown>): string {
     .filter(key => key !== 'messages')
     .sort()
     .join(',')
+  // Expose the values of thinking-related fields (not just their presence in
+  // `keys`) so debug logs can confirm exactly what reasoning_effort / thinking
+  // shape reached the wire. Helpful when diagnosing whether picker effort
+  // changes propagate to the request body.
+  const reasoningEffort =
+    body.reasoning_effort === undefined
+      ? 'absent'
+      : JSON.stringify(body.reasoning_effort)
+  const thinkingField =
+    body.thinking === undefined ? 'absent' : JSON.stringify(body.thinking)
   return [
     `providerModel=${String(body.model ?? 'unknown')}`,
     `messages=${messages}`,
     `tools=${tools}`,
     `maxTokens=${String(body.max_tokens ?? 'none')}`,
     `toolChoice=${body.tool_choice === undefined ? 'none' : 'set'}`,
+    `reasoning_effort=${reasoningEffort}`,
+    `thinking=${thinkingField}`,
     `keys=${keys || 'none'}`,
   ].join(' ')
 }
@@ -639,7 +651,11 @@ export class OpenAIProvider implements LLMProvider {
       toolChoice?: import('../streamTypes.js').ToolChoice
       maxOutputTokens: number
       temperature?: number
-      thinking?: { type: string; budgetTokens?: number }
+      thinking?: {
+        type: string
+        budgetTokens?: number
+        effort?: import('../../../utils/effort.js').EffortLevel
+      }
     },
   ): Record<string, unknown> {
     // Extract system prompt text from the intent's systemPrompt blocks
@@ -712,7 +728,17 @@ export class OpenAIProvider implements LLMProvider {
         : intent.tools,
       maxOutputTokens:
         retryContext.maxTokensOverride ?? intent.maxOutputTokens,
-      thinking: retryContext.thinkingConfig,
+      // retryContext.thinkingConfig carries the env / global thinking-on/off
+      // gate (set by llm.ts from QueryEngine), but it does NOT carry the
+      // picker's per-request effort — that travels on intent.thinking.effort.
+      // Preserve the effort field across the rebuild so applyThinkingParams
+      // can merge it over the static decl.
+      thinking: {
+        ...retryContext.thinkingConfig,
+        ...(intent.thinking?.effort !== undefined
+          ? { effort: intent.thinking.effort }
+          : {}),
+      },
     }
     const body = this.buildRequestBody(model, retryIntent)
     if (options.stream) {
@@ -733,13 +759,33 @@ export class OpenAIProvider implements LLMProvider {
 
   private applyThinkingParams(
     body: Record<string, unknown>,
-    thinking?: { type: string; budgetTokens?: number } | null,
+    thinking?: {
+      type: string
+      budgetTokens?: number
+      effort?: import('../../../utils/effort.js').EffortLevel
+    } | null,
   ): void {
+    // Runtime intent.thinking.type==='disabled' represents env / global
+    // thinking-off (AXIOMATE_CODE_DISABLE_THINKING, settings.alwaysThinkingEnabled,
+    // etc.). Preserve the historical "omit thinking field entirely" behavior
+    // for that path so existing setups are unchanged. Per-request opt-out via
+    // picker None goes through `thinking.effort==='none'` instead and DOES
+    // route through the vendor template's disabledPatch below.
     if (!thinking || thinking.type === 'disabled') return
     const decl = this.config.modelConfig?.thinking
     if (!decl) return
+    // Merge the runtime picker effort over the static decl.effort. Without
+    // this, picker switches in ModelPicker (e.g. High → Max, or any tier →
+    // None) silently lose to the wizard-written default in `~/.axiomate.json`
+    // — see the openai-chat / openai-responses path which has no other route
+    // for runtime effort to reach the vendor template (Anthropic 1P uses
+    // configureEffortParams instead, gated off for user-configured models).
+    const effectiveDecl =
+      thinking.effort !== undefined
+        ? { ...decl, effort: thinking.effort }
+        : decl
     const template = this.getResolvedTemplate()
-    const patch = applyThinkingTemplate(decl, template)
+    const patch = applyThinkingTemplate(effectiveDecl, template)
     deepMerge(body, patch)
   }
 

@@ -18,6 +18,7 @@ import type {
   NeutralToolSchema,
   StreamIntent,
 } from '../../../../../services/api/streamTypes.js'
+import type { ThinkingConfig } from '../../../../../utils/thinking.js'
 import {
   CannotRetryError,
   type RetryContext,
@@ -597,5 +598,104 @@ describe('OpenAI Chat retry trace golden fixtures', () => {
     expect(traces.map(projectTrace)).toEqual(
       readFixture('openai-chat/retry-traces.json'),
     )
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Picker→wire effort plumbing
+//
+// Regression guard for the bug where ModelPicker's per-request effort never
+// reached openai-chat / openai-responses providers — they only read the
+// wizard-written `models[].thinking.effort` from disk, so cycling the picker
+// silently lost to the static decl. The fix threads the runtime effort
+// through StreamIntent.thinking.effort; providers merge it over the static
+// decl before applying the vendor template, so picker selections actually
+// land on the wire.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('OpenAI Chat picker→wire effort plumbing (StreamIntent.thinking.effort)', () => {
+  async function bodyFromIntent(
+    intent: StreamIntent,
+    thinkingConfig: ThinkingConfig = {
+      type: 'enabled',
+      budgetTokens: 4096,
+    },
+  ) {
+    const provider = makeRelayDeepSeekProvider()
+    return (provider as unknown as {
+      buildRequestBodyForRetry(
+        model: string,
+        intent: StreamIntent,
+        retryContext: RetryContext,
+        options: { stream: boolean },
+      ): Promise<Record<string, unknown>>
+    }).buildRequestBodyForRetry(
+      'deepseek-v4-pro',
+      intent,
+      { model: 'deepseek-v4-pro', thinkingConfig },
+      { stream: true },
+    )
+  }
+
+  it('picker effort=max overrides static decl effort=high → wire reasoning_effort=max', async () => {
+    // The provider's modelConfig has static `effort: 'high'` (see
+    // makeRelayDeepSeekProvider); the picker now sends effort=max via the
+    // intent. Without the fix, the wire would still show 'high'.
+    const intent: StreamIntent = {
+      ...makeRelayDeepSeekIntent(baseMessages),
+      thinking: { type: 'enabled', budgetTokens: 4096, effort: 'max' },
+    }
+    const body = await bodyFromIntent(intent)
+    expect(body.reasoning_effort).toBe('max')
+    expect(body.thinking).toEqual({ type: 'enabled' })
+  })
+
+  it('picker effort=high produces reasoning_effort=high (matches static decl, harmless)', async () => {
+    const intent: StreamIntent = {
+      ...makeRelayDeepSeekIntent(baseMessages),
+      thinking: { type: 'enabled', budgetTokens: 4096, effort: 'high' },
+    }
+    const body = await bodyFromIntent(intent)
+    expect(body.reasoning_effort).toBe('high')
+  })
+
+  it('picker effort=none fires disabledPatch — wire shows {thinking:{type:"disabled"}}, no reasoning_effort', async () => {
+    // The contract-relay-deepseek vendor template defines disabledPatch:
+    //   { thinking: { type: 'disabled' } }
+    // applyThinkingTemplate's effort==='none' branch routes through this
+    // patch and skips effort.patch. Result: thinking is explicitly disabled
+    // on the wire, and reasoning_effort is absent.
+    const intent: StreamIntent = {
+      ...makeRelayDeepSeekIntent(baseMessages),
+      thinking: { type: 'enabled', budgetTokens: 4096, effort: 'none' },
+    }
+    const body = await bodyFromIntent(intent)
+    expect(body.thinking).toEqual({ type: 'disabled' })
+    expect('reasoning_effort' in body).toBe(false)
+  })
+
+  it('no picker effort + static decl effort=high → falls back to static (no regression)', async () => {
+    // The intent omits effort (as it would when the user never touches the
+    // picker). Provider must still honor the static decl from .axiomate.json.
+    const intent: StreamIntent = {
+      ...makeRelayDeepSeekIntent(baseMessages),
+      thinking: { type: 'enabled', budgetTokens: 4096 },
+    }
+    const body = await bodyFromIntent(intent)
+    expect(body.reasoning_effort).toBe('high')
+  })
+
+  it('runtime intent.type=disabled (env / global thinking-off) → omits all thinking fields, even with effort set', async () => {
+    // type==='disabled' represents the env / settings.alwaysThinkingEnabled
+    // global off-switch. Preserve historical behavior: omit thinking
+    // patches entirely, regardless of any effort that may have been
+    // resolved before the disabled gate fired.
+    const intent: StreamIntent = {
+      ...makeRelayDeepSeekIntent(baseMessages),
+      thinking: { type: 'disabled', effort: 'max' },
+    }
+    const body = await bodyFromIntent(intent, { type: 'disabled' })
+    expect('thinking' in body).toBe(false)
+    expect('reasoning_effort' in body).toBe(false)
   })
 })

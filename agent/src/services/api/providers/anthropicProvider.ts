@@ -301,7 +301,16 @@ export class AnthropicProvider implements LLMProvider {
           (params.thinking as { type?: string }).type !== 'disabled'
         ) {
           const template = this.getResolvedTemplate()
-          const patch = applyThinkingTemplate(this.config.modelConfig.thinking, template)
+          // Merge runtime picker effort over the static decl so ModelPicker
+          // changes reach the wire (mirrors openai-chat / openai-responses
+          // providers). configureEffortParams already handles non-user-
+          // configured Anthropic 1P; this branch covers the user-configured
+          // path where that helper early-returns.
+          const decl =
+            context.runtimeEffort !== undefined
+              ? { ...this.config.modelConfig.thinking, effort: context.runtimeEffort }
+              : this.config.modelConfig.thinking
+          const patch = applyThinkingTemplate(decl, template)
           deepMerge(params as Record<string, unknown>, patch)
         }
         maxOutputTokens = typeof params.max_tokens === 'number' ? params.max_tokens : 0
@@ -499,7 +508,16 @@ export class AnthropicProvider implements LLMProvider {
           (params.thinking as { type?: string }).type !== 'disabled'
         ) {
           const template = this.getResolvedTemplate()
-          const patch = applyThinkingTemplate(this.config.modelConfig.thinking, template)
+          // Merge runtime picker effort over the static decl so ModelPicker
+          // changes reach the wire (mirrors openai-chat / openai-responses
+          // providers). configureEffortParams already handles non-user-
+          // configured Anthropic 1P; this branch covers the user-configured
+          // path where that helper early-returns.
+          const decl =
+            context.runtimeEffort !== undefined
+              ? { ...this.config.modelConfig.thinking, effort: context.runtimeEffort }
+              : this.config.modelConfig.thinking
+          const patch = applyThinkingTemplate(decl, template)
           deepMerge(params as Record<string, unknown>, patch)
         }
         captureRequest?.(params)

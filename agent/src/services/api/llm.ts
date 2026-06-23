@@ -57,7 +57,7 @@ import {
 } from '../../utils/betas.js'
 import { getGlobalConfig } from '../../utils/config.js'
 import { getModelMaxOutputTokens } from '../../utils/context.js'
-import { resolveAppliedEffort } from '../../utils/effort.js'
+import { convertEffortValueToLevel, resolveAppliedEffort } from '../../utils/effort.js'
 import { isEnvTruthy } from '../../utils/envUtils.js'
 import { errorMessage } from '../../utils/errors.js'
 import { captureAPIRequest, logError } from '../../utils/log.js'
@@ -1576,12 +1576,23 @@ async function* queryModel(
   const hasThinkingForIntent =
     thinkingConfig.type !== 'disabled' &&
     !isEnvTruthy(process.env.AXIOMATE_CODE_DISABLE_THINKING)
+  // Picker effort already resolved at line 1350 above. Pass it through the
+  // neutral intent so providers (openai-chat / openai-responses / anthropic)
+  // can merge it over the static decl.thinking.effort before applying the
+  // vendor template — the wizard-written default no longer silently wins
+  // over the user's runtime choice.
+  const intentEffort =
+    effort !== undefined ? convertEffortValueToLevel(effort) : undefined
   const neutralThinking: import('./streamTypes.js').StreamIntent['thinking'] =
     hasThinkingForIntent && modelSupportsThinking(options.model)
       ? modelSupportsAdaptiveThinking(options.model) &&
           !isEnvTruthy(process.env.AXIOMATE_CODE_DISABLE_ADAPTIVE_THINKING)
-        ? { type: 'adaptive' }
-        : { type: 'enabled', budgetTokens: getMaxThinkingTokensForModel(options.model) }
+        ? { type: 'adaptive', ...(intentEffort ? { effort: intentEffort } : {}) }
+        : {
+            type: 'enabled',
+            budgetTokens: getMaxThinkingTokensForModel(options.model),
+            ...(intentEffort ? { effort: intentEffort } : {}),
+          }
       : { type: 'disabled' }
 
   const streamIntent: import('./streamTypes.js').StreamIntent = {
@@ -1646,6 +1657,12 @@ async function* queryModel(
       model: options.model,
       fallbackModel: options.fallbackModel,
       thinkingConfig,
+      // Anthropic provider reads context.runtimeEffort to merge the picker's
+      // current effort over the static decl before applyThinkingTemplate.
+      // openai-chat / openai-responses use StreamIntent.thinking.effort
+      // instead — both surfaces are kept in sync so picker changes always
+      // reach the wire.
+      ...(intentEffort !== undefined ? { runtimeEffort: intentEffort } : {}),
       signal,
       querySource: options.querySource,
       recoveryForegroundSource: options.recoveryForegroundSource,

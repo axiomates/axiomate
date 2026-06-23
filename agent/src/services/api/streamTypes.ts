@@ -11,6 +11,7 @@ import type {
 } from '@anthropic-ai/sdk/resources/messages/messages'
 import type { UUID } from 'crypto'
 import type { RecoveryTraceSink } from './recoveryTrace.js'
+import type { EffortLevel } from '../../utils/effort.js'
 
 // Re-export so consumers don't need a direct SDK dependency
 export type { CitationsConfigParam, TextCitation, TextCitationParam }
@@ -428,6 +429,16 @@ export type StreamIntent = {
   thinking?: {
     type: 'disabled' | 'enabled' | 'adaptive'
     budgetTokens?: number
+    /**
+     * Runtime effort override resolved at call time (env →
+     * appState.effortValueByModel → static decl default). When set, providers
+     * merge this over the static `modelConfig.thinking.effort` before applying
+     * the vendor template — so picker changes (Max ↔ None ↔ tier) actually
+     * land on the wire instead of being silently dropped in favor of the
+     * wizard-written default. Absent when the model isn't in the effort system
+     * or no override is active.
+     */
+    effort?: EffortLevel
   }
 }
 
@@ -449,7 +460,12 @@ export type InferenceRequest = {
   outputFormat?: NeutralOutputFormat
   maxTokens?: number
   temperature?: number
-  thinking?: { type: 'enabled' | 'disabled' | 'adaptive'; budgetTokens?: number }
+  thinking?: {
+    type: 'enabled' | 'disabled' | 'adaptive'
+    budgetTokens?: number
+    /** Runtime effort override; see StreamIntent.thinking.effort for semantics. */
+    effort?: EffortLevel
+  }
   stopSequences?: string[]
   signal?: AbortSignal
   onRecoveryTrace?: RecoveryTraceSink

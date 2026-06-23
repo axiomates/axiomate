@@ -154,6 +154,15 @@ export interface RetryContext {
   signal?: AbortSignal
   model: string
   thinkingConfig: ThinkingConfig
+  /**
+   * Runtime effort override resolved at request time (env →
+   * appState.effortValueByModel → static decl default). Anthropic provider
+   * merges this over `modelConfig.thinking.effort` before calling
+   * applyThinkingTemplate, so picker selections actually reach the wire for
+   * user-configured Anthropic models. Openai-chat / openai-responses providers
+   * receive the same value through `StreamIntent.thinking.effort` instead.
+   */
+  runtimeEffort?: import('../../utils/effort.js').EffortLevel
 }
 
 export interface RetryOptions {
@@ -162,6 +171,8 @@ export interface RetryOptions {
   protocol?: RecoveryProtocol | string
   fallbackModel?: string
   thinkingConfig: ThinkingConfig
+  /** Same semantics as RetryContext.runtimeEffort. */
+  runtimeEffort?: import('../../utils/effort.js').EffortLevel
   signal?: AbortSignal
   querySource?: QuerySource
   /**
@@ -240,6 +251,9 @@ export async function* withRetry<C, T>(
   const retryContext: RetryContext = {
     model: options.model,
     thinkingConfig: options.thinkingConfig,
+    ...(options.runtimeEffort !== undefined
+      ? { runtimeEffort: options.runtimeEffort }
+      : {}),
   }
   const session = new RecoverySession({
     protocol: options.protocol ?? 'axiomate-generic',

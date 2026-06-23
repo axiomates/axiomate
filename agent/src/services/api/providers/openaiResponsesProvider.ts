@@ -603,7 +603,11 @@ export class OpenAIResponsesProvider implements LLMProvider {
       toolChoice?: import('../streamTypes.js').ToolChoice
       maxOutputTokens: number
       temperature?: number
-      thinking?: { type: string; budgetTokens?: number }
+      thinking?: {
+        type: string
+        budgetTokens?: number
+        effort?: import('../../../utils/effort.js').EffortLevel
+      }
     },
   ): Record<string, unknown> {
     const systemText = Array.isArray(intent.systemPrompt)
@@ -669,7 +673,12 @@ export class OpenAIResponsesProvider implements LLMProvider {
         : intent.tools,
       maxOutputTokens:
         retryContext.maxTokensOverride ?? intent.maxOutputTokens,
-      thinking: retryContext.thinkingConfig,
+      thinking: {
+        ...retryContext.thinkingConfig,
+        ...(intent.thinking?.effort !== undefined
+          ? { effort: intent.thinking.effort }
+          : {}),
+      },
     }
     const body = this.buildRequestBody(model, retryIntent)
     if (retryContext.stripSlashEnums && Array.isArray(body.tools)) {
@@ -696,13 +705,23 @@ export class OpenAIResponsesProvider implements LLMProvider {
 
   private applyThinkingParams(
     body: Record<string, unknown>,
-    thinking?: { type: string; budgetTokens?: number } | null,
+    thinking?: {
+      type: string
+      budgetTokens?: number
+      effort?: import('../../../utils/effort.js').EffortLevel
+    } | null,
   ): void {
+    // See OpenAIProvider.applyThinkingParams for the runtime-effort merge
+    // rationale; mirror the same logic here for the Responses wire path.
     if (!thinking || thinking.type === 'disabled') return
     const decl = this.config.modelConfig?.thinking
     if (!decl) return
+    const effectiveDecl =
+      thinking.effort !== undefined
+        ? { ...decl, effort: thinking.effort }
+        : decl
     const template = this.getResolvedTemplate()
-    const patch = applyThinkingTemplate(decl, template)
+    const patch = applyThinkingTemplate(effectiveDecl, template)
     deepMerge(body, patch)
   }
 
