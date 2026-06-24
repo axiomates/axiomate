@@ -103,8 +103,14 @@ export function getCyclableEffortLevels(model: string): EffortLevel[] {
   if (!modelSupportsEffort(model)) return []
 
   const config = getGlobalConfig().models?.[model]
-  // No ModelProviderConfig (env override / capability override path):
-  // fall back to the legacy 4-or-5 tier set based on max_effort capability.
+  // No ModelProviderConfig — only reachable via AXIOMATE_MODEL_CAPABILITY_OVERRIDES
+  // env injection (the model isn't in config.models but env marks it
+  // effort-capable). Picker never hits this branch because getModelOptions
+  // only lists config.models entries; remaining callers are CLI-side
+  // (--effort validation, print.ts) where the legacy 4-or-5 tier set is fine.
+  // TODO: unify with the vendor template path (resolveStack) once env
+  // override gains real users — needs a model-name → protocol inference helper
+  // similar to the hardcoding that ac688d0e removed.
   if (!config) {
     return getModelCapabilityOverride(model, 'max_effort')
       ? ['none', 'low', 'medium', 'high', 'max']

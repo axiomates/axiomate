@@ -23,7 +23,7 @@ GLM / Aliyun），以及怎么把它们落到三层模板系统里。
 |---|---|---|---|---|---|
 | thinking 开关字段 | `thinking.type: enabled/disabled` | `thinking.type: enabled/disabled`* | `thinking.type: enabled/disabled` | `enable_thinking: bool` | `thinking.type: enabled/disabled` |
 | thinking 预算 | — | — | — | `thinking_budget: int` | — |
-| thinking 强度 | `reasoning_effort: high/max` | — | `reasoning_effort` (仅 GLM-5.2) | `reasoning_effort` (仅 DeepSeek-V4，Qwen 不支持) | — |
+| thinking 强度 | `reasoning_effort: high/max` | — | `reasoning_effort` (仅 GLM-5.2) | 全部 null-delete（见下注 †） | — |
 | 思考连续性 | tool call 时**必须回传** `reasoning_content`，否则 400 | k2.6/k2.7 用 `thinking.keep: 'all'` | `thinking.clear_thinking: false` | `preserve_thinking: bool` | tool call 时**必须回传** `reasoning_content`（同 DeepSeek/GLM） |
 | 输出 token 字段 | `max_tokens`（未迁移） | `max_completion_tokens`（旧字段已弃用） | `max_tokens`（未迁移，1 ≤ x ≤ 131072） | `max_completion_tokens`（Plus≥3.5/Max≥3.7/Flash≥3.5） | `max_completion_tokens`（文档示例全用） |
 | 工具流式 | — | — | — | `tool_stream: bool`（complex tool args 流式） | — |
@@ -31,6 +31,8 @@ GLM / Aliyun），以及怎么把它们落到三层模板系统里。
 | 不支持的字段 | thinking 模式拒 `temperature/top_p/presence_penalty/frequency_penalty`（写了静默忽略） | — | — | — | thinking 模式下 `temperature/top_p` 服务端强制 1.0/0.95（静默忽略） |
 
 \* k2.7-code 仅接受 `type: enabled`，传 disabled 会报错。
+
+† Aliyun 上 `reasoning_effort` 在协议文档里仅 DeepSeek-V4 支持，Qwen 不支持。`openai-chat-aliyun` vendor 模板把 effort patch + valueMap 全 null 掉，picker 也不暴露 effort 档位 —— 所以**当前实现下 Aliyun 路径上没有任何模型会发 `reasoning_effort`**，包括 DeepSeek-on-Aliyun。如果未来真要支持 DeepSeek-V4 落 Aliyun，加一条 model template 重塞 patch + valueMap 即可。
 
 ## 每家详述
 
@@ -131,7 +133,7 @@ GLM / Aliyun），以及怎么把它们落到三层模板系统里。
 - `effort: { patch: null, valueMap: { low/medium/high/max: null } }`——文档全程没出现过 `reasoning_effort`，删干净；picker 也只剩 None/On
 - `maxOutputTokensField: 'max_completion_tokens'`——文档所有 cURL/Python 示例都用这个名字
 - `autoRoundTripReasoningContent: true`——文档原话："在思考模式下的多轮工具调用过程中，模型会在返回 `tool_calls` 字段的同时返回 `reasoning_content` 字段。若要继续对话，建议在后续每次请求的 `messages` 数组中保留所有历史 `reasoning_content`，以获得最佳表现。"
-- 不需要 model 层模板：mimo-v2.5（多模态）和 mimo-v2.5-pro（纯文本）的 wire 行为完全一致
+- 不需要 model 层模板：mimo-v2.5（多模态）/ mimo-v2.5-pro（纯文本）/ mimo-v2-pro / mimo-v2-omni 的 wire 行为完全一致，vendor 模板对全家族覆盖。
 
 **matchBaseUrlRegex** 一条覆盖 4 个端点（substring 匹配）：
 - `api.xiaomimimo.com/v1`（通用站点）
@@ -201,11 +203,13 @@ xAI 走 openai-responses 协议（直连 `api.x.ai`，OpenRouter 上是 `x-ai/gr
 
 ### 1. enabledPatch / disabledPatch / extraBodyParams 三个槽位的取舍
 
-| 槽位 | 何时合并 | 用法 |
-|---|---|---|
-| `enabledPatch` | 仅 picker thinking enabled | thinking 子字段（`thinking.type`、`thinking.keep`、`clear_thinking`、`preserve_thinking`） |
-| `disabledPatch` | 仅 picker thinking disabled | thinking 关闭时的等价表达。null 表示"不发任何 thinking 字段，让服务端走默认" |
-| `extraBodyParams` | **每次请求**（无条件） | 和 thinking 解耦的 vendor-wide 偏好（`do_sample`、`tool_stream`） |
+| 槽位 | 何时合并 | 合并语义 | 用法 |
+|---|---|---|---|
+| `enabledPatch` | 仅 picker thinking enabled | **deepMerge**（RFC 7396） | thinking 子字段（`thinking.type`、`thinking.keep`、`clear_thinking`、`preserve_thinking`） |
+| `disabledPatch` | 仅 picker thinking disabled | **deepMerge**（RFC 7396） | thinking 关闭时的等价表达。null 表示"不发任何 thinking 字段，让服务端走默认" |
+| `extraBodyParams` | **每次请求**（无条件） | **`Object.assign` 浅合并**（vendor → modelConfig.extraParams） | 和 thinking 解耦的 vendor-wide 偏好（`do_sample`、`tool_stream`） |
+
+`extraBodyParams` 浅合并的含义：如果 vendor 设 `extraBodyParams: { advanced: { foo: 1 } }`，per-model `extraParams: { advanced: { bar: 2 } }`，结果是 `advanced: { bar: 2 }` —— vendor 的 `foo: 1` 被整体替换。要保留嵌套字段就得在 model 层显式重写 `{ advanced: { foo: 1, bar: 2 } }`。enabledPatch/disabledPatch 的 deepMerge 不一样，子字段会保留。
 
 错误用法：
 - 把 `do_sample` 塞 enabledPatch → 用户没开 thinking 就不发了，但 GLM 文档要求 coding agent 任何时候都关采样。
@@ -300,4 +304,5 @@ OpenAI Responses 是另一种字段名 `max_output_tokens`，仍 hardcoded 在 `
 9. `autoRoundTripReasoningContent`：vendor 文档要求 tool call 必传 reasoning_content / 启用 Preserved Thinking → true
 10. anthropic 协议 vendor：必填 `anthropicSdkThinkingType`（`'enabled'` 或 `'adaptive'`）；视情况设 `toolChoiceMap` / `thinkingPreservesTemperature`
 11. 加 vendor / model 模板测试：检查 wire body 里**该有什么没有什么**，picker `getCyclableEffortLevels` 的预期档位
-12. 如果 vendor 在 `getThinkingChoicesForVendor` 测试有断言，记得同步更新
+12. 同步 onboarding wizard 测试：`getThinkingChoicesForVendor` + `isThinkingChoiceSupported` 在 `OnboardingProviderStep.test.ts` 都对每个 vendor 列出来允许的 thinking 档位。改 protocol 层 valueMap（比如给 anthropic 加 max）会一并影响这两条断言，加新 vendor 也要补对应 case。
+13. 改协议层 valueMap → 顺手检查 `effort.test.ts` 里 `getCyclableEffortLevels(<protocol model>)` 的预期数组是否需要更新。

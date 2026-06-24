@@ -19,6 +19,7 @@ import type {
   BetaRawMessageStreamEvent,
 } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
 import { anthropicStreamAdapter } from '../adapters/anthropicStreamAdapter.js'
+import { toolChoiceToAnthropic } from '../adapters/anthropicRequestAdapter.js'
 import type {
   BoundProvider,
   ErrorClassification,
@@ -46,6 +47,7 @@ import {
 } from '../../../services/analytics/index.js'
 import { logForDiagnosticsNoPII } from '../../../utils/diagLogs.js'
 import { resolveSupportsImages } from '../../../utils/model/supportsImagesFuzzy.js'
+import { modelSupportsAdaptiveThinking } from '../../../utils/thinking.js'
 import {
   applyThinkingTemplate,
   deepMerge,
@@ -200,6 +202,66 @@ async function createBetaStream(
 // AnthropicProvider
 // ---------------------------------------------------------------------------
 
+/**
+ * SDK-shape thinking field. inference() and countTokens() construct one of
+ * these and pass it as `params.thinking`; applyThinkingTemplate then deepMerges
+ * vendor-declared overlays on top (e.g. RFC 7396 null-deletes for vendors that
+ * don't accept budget_tokens).
+ */
+type AnthropicThinkingShape =
+  | { type: 'disabled' }
+  | { type: 'adaptive' }
+  | { type: 'enabled'; budget_tokens: number }
+
+/**
+ * Build the initial SDK-shape `thinking` field for non-streaming Anthropic
+ * calls (inference / countTokens). Mirrors the streaming-path decision tree
+ * in llm.ts:paramsFromContext (line ~1485-1517) so all three callsites pick
+ * the same wire shape for the same (model, vendor template, request) tuple.
+ *
+ * Decision order:
+ *   1. input.type === 'disabled'           → { type: 'disabled' }
+ *   2. vendor forces adaptive              → { type: 'adaptive' }
+ *      (template.anthropicSdkThinkingType === 'adaptive')
+ *   3. vendor doesn't take a position AND
+ *      model is 1P-style adaptive-capable  → { type: 'adaptive' }
+ *      (modelSupportsAdaptiveThinking(model); covers Anthropic 1P claude)
+ *   4. caller explicitly asked adaptive    → { type: 'adaptive' }
+ *   5. otherwise                           → { type: 'enabled', budget_tokens: N }
+ *
+ * The returned shape is then handed to applyThinkingTemplate, which can null-
+ * delete budget_tokens or rewrite type via the vendor's enabledPatch.
+ */
+function buildAnthropicThinkingShape(
+  input:
+    | { type: 'enabled' | 'adaptive' | 'disabled'; budgetTokens?: number }
+    | undefined,
+  template: ResolvedTemplate,
+  model: string,
+  opts: {
+    /** Hard cap from request.maxTokens; budget_tokens stays strictly below this. */
+    maxOutputTokens: number
+    /** Fallback when caller didn't supply budgetTokens. */
+    defaultBudgetTokens: number
+  },
+): AnthropicThinkingShape | undefined {
+  if (!input) return undefined
+  if (input.type === 'disabled') return { type: 'disabled' }
+
+  const vendorType = template.anthropicSdkThinkingType
+  const useAdaptive =
+    vendorType === 'adaptive' ||
+    (vendorType === undefined && modelSupportsAdaptiveThinking(model)) ||
+    input.type === 'adaptive'
+
+  if (useAdaptive) return { type: 'adaptive' }
+
+  const requested = input.budgetTokens ?? opts.defaultBudgetTokens
+  // Anthropic requires budget_tokens < max_tokens; clamp to maxOutputTokens-1.
+  const budget = Math.max(1, Math.min(requested, opts.maxOutputTokens - 1))
+  return { type: 'enabled', budget_tokens: budget }
+}
+
 export class AnthropicProvider implements LLMProvider {
   readonly name = 'anthropic'
   private config: AnthropicProviderConfig
@@ -288,6 +350,11 @@ export class AnthropicProvider implements LLMProvider {
     let maxOutputTokens = 0
     let lastAttemptStart = Date.now()
 
+    // Resolve template once per stream — vendor chain resolution + deepMerge
+    // is not free, and modelConfig doesn't change across retries. Each retry
+    // reuses this same resolved view.
+    const streamTemplate = this.getResolvedTemplate()
+
     // --- withRetry: handles retries, yields error messages ---
     const generator = withRetry(
       () =>
@@ -312,9 +379,8 @@ export class AnthropicProvider implements LLMProvider {
         // Apply vendor-level extra body fields, then per-model overrides.
         // Mirrors openai-chat / openai-responses precedence: vendor → model
         // so per-model extraParams win on the same key.
-        const vendorTemplateForExtra = this.getResolvedTemplate()
-        if (vendorTemplateForExtra.extraBodyParams) {
-          Object.assign(params, vendorTemplateForExtra.extraBodyParams)
+        if (streamTemplate.extraBodyParams) {
+          Object.assign(params, streamTemplate.extraBodyParams)
         }
         if (this.config.modelConfig?.extraParams) {
           Object.assign(params, this.config.modelConfig.extraParams)
@@ -324,7 +390,6 @@ export class AnthropicProvider implements LLMProvider {
           params.thinking &&
           (params.thinking as { type?: string }).type !== 'disabled'
         ) {
-          const template = this.getResolvedTemplate()
           // Merge runtime picker effort over the static decl so ModelPicker
           // changes reach the wire (mirrors openai-chat / openai-responses
           // providers). configureEffortParams already handles non-user-
@@ -334,14 +399,14 @@ export class AnthropicProvider implements LLMProvider {
             context.runtimeEffort !== undefined
               ? { ...this.config.modelConfig.thinking, effort: context.runtimeEffort }
               : this.config.modelConfig.thinking
-          const patch = applyThinkingTemplate(decl, template)
+          const patch = applyThinkingTemplate(decl, streamTemplate)
           deepMerge(params as Record<string, unknown>, patch)
         }
         // Strip vendor-declared dropFields (e.g. MiniMax: stop_sequences).
         // Run after all overlays so it sees the final body shape.
         this.applyDropFields(
           params as Record<string, unknown>,
-          this.getResolvedTemplate(),
+          streamTemplate,
         )
         maxOutputTokens = typeof params.max_tokens === 'number' ? params.max_tokens : 0
 
@@ -513,6 +578,9 @@ export class AnthropicProvider implements LLMProvider {
       operation: 'non_streaming_fallback',
     })
 
+    // Resolve once per fallback session (same rationale as createStream).
+    const fallbackTemplate = this.getResolvedTemplate()
+
     const generator = withRetry(
       () =>
         getClient({
@@ -530,9 +598,8 @@ export class AnthropicProvider implements LLMProvider {
         }
         // Apply vendor-level extra body fields, then per-model overrides
         // (same precedence as streaming path: vendor → model).
-        const vendorTemplateForExtra = this.getResolvedTemplate()
-        if (vendorTemplateForExtra.extraBodyParams) {
-          Object.assign(params, vendorTemplateForExtra.extraBodyParams)
+        if (fallbackTemplate.extraBodyParams) {
+          Object.assign(params, fallbackTemplate.extraBodyParams)
         }
         if (this.config.modelConfig?.extraParams) {
           Object.assign(params, this.config.modelConfig.extraParams)
@@ -542,7 +609,6 @@ export class AnthropicProvider implements LLMProvider {
           params.thinking &&
           (params.thinking as { type?: string }).type !== 'disabled'
         ) {
-          const template = this.getResolvedTemplate()
           // Merge runtime picker effort over the static decl so ModelPicker
           // changes reach the wire (mirrors openai-chat / openai-responses
           // providers). configureEffortParams already handles non-user-
@@ -552,7 +618,7 @@ export class AnthropicProvider implements LLMProvider {
             context.runtimeEffort !== undefined
               ? { ...this.config.modelConfig.thinking, effort: context.runtimeEffort }
               : this.config.modelConfig.thinking
-          const patch = applyThinkingTemplate(decl, template)
+          const patch = applyThinkingTemplate(decl, fallbackTemplate)
           deepMerge(params as Record<string, unknown>, patch)
         }
         // Strip vendor-declared dropFields (e.g. MiniMax: stop_sequences).
@@ -560,7 +626,7 @@ export class AnthropicProvider implements LLMProvider {
         // already-pruned shape and never reintroduces dropped fields.
         this.applyDropFields(
           params as Record<string, unknown>,
-          this.getResolvedTemplate(),
+          fallbackTemplate,
         )
         captureRequest?.(params)
         onNonStreamingAttempt?.(attempt, start, (params as Record<string, unknown>).max_tokens as number ?? 0)
@@ -718,57 +784,40 @@ export class AnthropicProvider implements LLMProvider {
       source: (hints.source as string) ?? 'inference',
     })
 
-    // Resolve template upfront so we can consult vendor declarations like
-    // anthropicSdkThinkingType when building the initial thinking shape.
+    // Resolve template upfront and reuse across this entire request — vendor
+    // chain resolution + deepMerge is non-trivial work; once per inference()
+    // is enough.
     const inferenceTemplate = this.getResolvedTemplate()
-    const toolChoiceMap = inferenceTemplate.toolChoiceMap
     const maxTokensField = inferenceTemplate.maxOutputTokensField ?? 'max_tokens'
 
-    // Build thinking config. Vendor's anthropicSdkThinkingType wins when set:
-    // 'adaptive' forces { type: 'adaptive' } even if caller asked for enabled
-    // (MiniMax doesn't accept type=enabled). Falls back to caller-driven
-    // shape when vendor doesn't take a position.
-    let thinking: { type: string; budget_tokens?: number } | undefined
-    if (request.thinking) {
-      if (request.thinking.type === 'disabled') {
-        thinking = { type: 'disabled' }
-      } else if (inferenceTemplate.anthropicSdkThinkingType === 'adaptive') {
-        thinking = { type: 'adaptive' }
-      } else if (request.thinking.type === 'enabled' && request.thinking.budgetTokens) {
-        thinking = {
-          type: 'enabled',
-          budget_tokens: Math.min(request.thinking.budgetTokens, (request.maxTokens ?? 1024) - 1),
-        }
-      } else if (request.thinking.type === 'adaptive') {
-        thinking = { type: 'adaptive' }
-      }
-    }
+    // Build initial thinking shape via the shared helper so inference() picks
+    // the same adaptive-vs-enabled branch as streaming/non-streaming-fallback
+    // (which go through llm.ts:paramsFromContext). Without this, 1P claude
+    // could land on { type:'enabled', budget_tokens } in side queries while
+    // streaming on the same model uses { type:'adaptive' }.
+    const maxTokensForThinking = request.maxTokens ?? 1024
+    const thinking = buildAnthropicThinkingShape(
+      request.thinking,
+      inferenceTemplate,
+      request.model,
+      {
+        maxOutputTokens: maxTokensForThinking,
+        defaultBudgetTokens: 1024,
+      },
+    )
 
     const normalizedModel = normalizeModelStringForAPI(
       this.config.modelConfig!.model,
     )
 
-    // tool_choice mapping uses the inferenceTemplate resolved at the top of
-    // this method (above the thinking block).
-    const mappedToolChoice = (() => {
-      if (!request.toolChoice) return undefined
-      const defaultMap: Record<
-        'auto' | 'none' | 'required' | 'specific',
-        string
-      > = {
-        auto: 'auto',
-        none: 'none',
-        required: 'any',
-        specific: 'tool',
-      }
-      const remapped = toolChoiceMap?.[request.toolChoice.type]
-      const finalType =
-        remapped == null ? defaultMap[request.toolChoice.type] : remapped
-      if (finalType === 'tool' && request.toolChoice.type === 'specific') {
-        return { type: 'tool', name: request.toolChoice.name }
-      }
-      return { type: finalType }
-    })()
+    // Single source of truth for tool_choice mapping — same helper streaming
+    // path uses (llm.ts:paramsFromContext). It already handles vendor
+    // toolChoiceMap remaps + RFC 7396 null-deletes + the inline-name carry
+    // for the `specific` → `tool` case.
+    const mappedToolChoice = toolChoiceToAnthropic(
+      request.toolChoice,
+      inferenceTemplate.toolChoiceMap,
+    )
 
     // Build SDK params
     const params: Record<string, unknown> = {
@@ -801,9 +850,8 @@ export class AnthropicProvider implements LLMProvider {
     // (and per-model overrides) reach inference() queries too. Applied
     // before the thinking overlay so deepMerge of thinking patches still
     // wins over any extraBodyParams that happen to set `thinking` keys.
-    const vendorTemplateForExtra = this.getResolvedTemplate()
-    if (vendorTemplateForExtra.extraBodyParams) {
-      Object.assign(params, vendorTemplateForExtra.extraBodyParams)
+    if (inferenceTemplate.extraBodyParams) {
+      Object.assign(params, inferenceTemplate.extraBodyParams)
     }
     if (this.config.modelConfig?.extraParams) {
       Object.assign(params, this.config.modelConfig.extraParams)
@@ -822,16 +870,15 @@ export class AnthropicProvider implements LLMProvider {
       params.thinking &&
       (params.thinking as { type?: string }).type !== 'disabled'
     ) {
-      const template = this.getResolvedTemplate()
       const patch = applyThinkingTemplate(
         this.config.modelConfig.thinking,
-        template,
+        inferenceTemplate,
       )
       deepMerge(params as Record<string, unknown>, patch)
     }
 
-    // Strip vendor-declared dropFields. Reuse the template already resolved
-    // at the top of the method (inferenceTemplate) to avoid recomputation.
+    // Strip vendor-declared dropFields. Reuse inferenceTemplate resolved at
+    // the top of the method.
     this.applyDropFields(params as Record<string, unknown>, inferenceTemplate)
 
     let response: unknown
@@ -901,16 +948,23 @@ export class AnthropicProvider implements LLMProvider {
       })
 
       const betas = getModelBetas(request.model)
-      // Resolve template once for countTokens too. Vendor's
-      // anthropicSdkThinkingType picks the right initial shape — so MiniMax
-      // sends { type:'adaptive' } instead of the hardcoded
-      // { type:'enabled', budget_tokens:1024 } that 400s.
+      // Resolve template once for countTokens. Reused by the thinking shape
+      // helper, the post-build vendor overlay, and dropFields stripping below.
       const countTemplate = this.getResolvedTemplate()
-      const initialThinking: Record<string, unknown> | undefined = request.thinking
-        ? countTemplate.anthropicSdkThinkingType === 'adaptive'
-          ? { type: 'adaptive' }
-          : { type: 'enabled', budget_tokens: 1024 }
-        : undefined
+
+      // CountTokensRequest.thinking is a boolean; convert to the InferenceRequest
+      // shape the shared helper expects so countTokens picks the same adaptive-
+      // vs-enabled branch as the other three paths. budget_tokens defaults to
+      // 1024 (countTokens is a sizing call, not a real generation), and gets
+      // null-deleted later by applyThinkingTemplate for vendors that don't
+      // accept it (MiniMax via adaptive shape, etc.).
+      const initialThinking = buildAnthropicThinkingShape(
+        request.thinking ? { type: 'enabled' } : undefined,
+        countTemplate,
+        request.model,
+        { maxOutputTokens: 1025, defaultBudgetTokens: 1024 },
+      )
+
       const params: Record<string, unknown> = {
         model: resolveModelStringForAPI(request.model),
         messages: request.messages,
@@ -934,10 +988,9 @@ export class AnthropicProvider implements LLMProvider {
         params.thinking &&
         (params.thinking as { type?: string }).type !== 'disabled'
       ) {
-        const template = this.getResolvedTemplate()
         const patch = applyThinkingTemplate(
           this.config.modelConfig.thinking,
-          template,
+          countTemplate,
         )
         deepMerge(params, patch)
       }
@@ -945,7 +998,7 @@ export class AnthropicProvider implements LLMProvider {
       // Strip vendor-declared dropFields for countTokens too. Anthropic's
       // count_tokens endpoint shares the messages-API schema, so vendor
       // restrictions like MiniMax stripping stop_sequences apply here as well.
-      this.applyDropFields(params, this.getResolvedTemplate())
+      this.applyDropFields(params, countTemplate)
 
       const timeoutPolicy = resolveApiTimeoutPolicy({
         protocol: 'anthropic',

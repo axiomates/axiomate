@@ -371,6 +371,9 @@ R1/R2 是"对称性强迫症"陷阱：openai-chat 路径有 `maxOutputTokensFiel
 | streaming / non-streaming-fallback / inference | 三处加 vendor `extraBodyParams` 应用 | P2 (F6) |
 | 三处构造 SDK params | `tool_choice` 用 `toolChoiceMap` 派发，`max_tokens` 用 `maxOutputTokensField` 字段名，`thinking` 形状直接由 `anthropicSdkThinkingType` 决定 | P3 (F1/F7/F8) |
 | 三处构造 SDK params | 应用 `dropFields`（删 `stop_sequences` 等 schema 不含字段） | P3 (dropFields) |
+| `inference()` / `countTokens()` thinking 形状构造 | 抽出模块级 `buildAnthropicThinkingShape` helper，与 `paramsFromContext` 的 streaming 路径决策树对齐（vendor `anthropicSdkThinkingType` → `modelSupportsAdaptiveThinking()` 1P fallback → caller 类型）；删除 `inference()` 自写的硬编码分支与 `countTokens()` 的 `budget_tokens: 1024` 硬编码 | post-R |
+| `inference()` toolChoice 映射 | 用 `toolChoiceToAnthropic(choice, template.toolChoiceMap)` 适配器替代自写 `defaultMap`（streaming 路径已经在用），消除两处定义漂移 | post-R |
+| createStream / non-streaming / inference / countTokens | `getResolvedTemplate()` 在每条路径**只 resolve 一次**（之前每条路径调用 3-4 次），把 streamTemplate / fallbackTemplate / inferenceTemplate / countTemplate 复用给 extraBodyParams、enabledPatch overlay、dropFields 三个消费点 | post-R |
 
 ### `agent/src/services/api/providers/openaiResponsesProvider.ts`
 
