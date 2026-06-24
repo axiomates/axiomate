@@ -1117,6 +1117,7 @@ describe('built-in templates structural sanity', () => {
       'openai-chat-mimo',
       'openai-chat-moonshot',
       'openai-chat-siliconflow',
+      'openai-responses-doubao',
     ])
   })
 
@@ -1511,6 +1512,95 @@ describe('MiniMax vendor — anthropic protocol with adaptive-only thinking', ()
 
   it('MiniMax vendor is recognized as built-in', () => {
     expect(isBuiltinVendor('anthropic-minimax')).toBe(true)
+  })
+})
+
+describe('Doubao vendor — openai-responses (Volcengine Ark / BytePlus)', () => {
+  it('auto-vendor by ark.cn-beijing.volces.com baseUrl (domestic)', () => {
+    expect(
+      inferVendor({
+        protocol: 'openai-responses',
+        model: 'doubao-seed-2-1-pro-260628',
+        baseUrl: 'https://ark.cn-beijing.volces.com/api/v3',
+      }),
+    ).toBe('openai-responses-doubao')
+  })
+
+  it('auto-vendor by ark.ap-southeast.bytepluses.com baseUrl (overseas)', () => {
+    expect(
+      inferVendor({
+        protocol: 'openai-responses',
+        model: 'doubao-seed-2-1-pro-260628',
+        baseUrl: 'https://ark.ap-southeast.bytepluses.com/api/v3',
+      }),
+    ).toBe('openai-responses-doubao')
+  })
+
+  it('does NOT auto-match against api.openai.com (vanilla 1P endpoint)', () => {
+    expect(
+      inferVendor({
+        protocol: 'openai-responses',
+        model: 'gpt-5.5',
+        baseUrl: 'https://api.openai.com/v1',
+      }),
+    ).toBeUndefined()
+  })
+
+  it('effort valueMap collapses max → high (Ark has no xhigh)', () => {
+    const tpl = resolveStack({
+      protocol: 'openai-responses',
+      vendor: 'openai-responses-doubao',
+      model: 'doubao-seed-2-1-pro-260628',
+      baseUrl: 'https://ark.cn-beijing.volces.com/api/v3',
+    })
+    const valueMap = tpl.effort?.valueMap as Record<string, string> | undefined
+    expect(valueMap).toMatchObject({
+      low: 'low',
+      medium: 'medium',
+      high: 'high',
+      max: 'high',
+    })
+  })
+
+  it('thinking enabled → thinking.type:enabled + reasoning.effort, no summary', () => {
+    const tpl = resolveStack({
+      protocol: 'openai-responses',
+      vendor: 'openai-responses-doubao',
+      model: 'doubao-seed-2-1-pro-260628',
+      baseUrl: 'https://ark.cn-beijing.volces.com/api/v3',
+    })
+    // max collapses to high; protocol-layer reasoning.summary:'auto' is
+    // null-deleted by the vendor enabledPatch.
+    const out = applyThinkingTemplate({ enabled: true, effort: 'max' }, tpl)
+    expect(out).toEqual({
+      thinking: { type: 'enabled' },
+      reasoning: { effort: 'high' },
+    })
+  })
+
+  it('thinking off (effort:none) → thinking.type:disabled, no reasoning', () => {
+    const tpl = resolveStack({
+      protocol: 'openai-responses',
+      vendor: 'openai-responses-doubao',
+      model: 'doubao-seed-2-1-pro-260628',
+      baseUrl: 'https://ark.cn-beijing.volces.com/api/v3',
+    })
+    const out = applyThinkingTemplate({ enabled: true, effort: 'none' }, tpl)
+    expect(out).toEqual({ thinking: { type: 'disabled' } })
+  })
+
+  it('forces store:false via extraBodyParams', () => {
+    const tpl = resolveStack({
+      protocol: 'openai-responses',
+      vendor: 'openai-responses-doubao',
+      model: 'doubao-seed-2-1-pro-260628',
+      baseUrl: 'https://ark.cn-beijing.volces.com/api/v3',
+    })
+    expect(tpl.extraBodyParams).toMatchObject({ store: false })
+  })
+
+  it('Doubao vendor is recognized as built-in', () => {
+    expect(isBuiltinVendor('openai-responses-doubao')).toBe(true)
   })
 })
 

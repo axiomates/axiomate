@@ -982,8 +982,10 @@ describe('getVendorChoicesForProtocol', () => {
     ])
   })
 
-  it('openai-responses protocol → no built-in vendors (vanilla protocol layer used directly)', () => {
-    expect(getVendorChoicesForProtocol('openai-responses')).toEqual([])
+  it('openai-responses protocol → only gateway-specific built-ins (currently openai-responses-doubao)', () => {
+    expect(getVendorChoicesForProtocol('openai-responses')).toEqual([
+      'openai-responses-doubao',
+    ])
   })
 
   it('openai-chat protocol → only gateway-specific built-ins', () => {
@@ -1016,6 +1018,7 @@ describe('getVendorChoicesForProtocol', () => {
     }
     expect(getVendorChoicesForProtocol('openai-responses', customs).sort()).toEqual([
       'my-resp-vendor',
+      'openai-responses-doubao',
     ])
   })
 })
@@ -1058,8 +1061,8 @@ describe('shouldSkipVendorStage', () => {
     expect(shouldSkipVendorStage('anthropic')).toBe(false)
   })
 
-  it('openai-responses protocol — skips (no built-in vendors fit)', () => {
-    expect(shouldSkipVendorStage('openai-responses')).toBe(true)
+  it('openai-responses protocol — does not skip (openai-responses-doubao built-in fits)', () => {
+    expect(shouldSkipVendorStage('openai-responses')).toBe(false)
   })
 
   it('openai-chat protocol — does not skip (gateway-specific vendors fit)', () => {

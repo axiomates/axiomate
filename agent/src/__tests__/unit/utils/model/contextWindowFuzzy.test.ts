@@ -97,6 +97,15 @@ describe('parseModelName', () => {
     expect(parseModelName(name)).toMatchObject(expected)
   })
 
+  it.each([
+    ['doubao-seed-2-1-pro-260628',     { family: 'doubao', version: '2.1', variant: 'pro' }],
+    ['doubao-seed-2-1-turbo-260628',   { family: 'doubao', version: '2.1', variant: 'turbo' }],
+    ['doubao-seed-2-0-lite-260428',    { family: 'doubao', version: '2.0', variant: 'lite' }],
+    ['doubao-seed-evolving',           { family: 'doubao', variant: 'evolving' }],
+  ])('Doubao: %s', (name, expected) => {
+    expect(parseModelName(name)).toMatchObject(expected)
+  })
+
   it('strips local server prefix', () => {
     expect(parseModelName('local:qwen3:8b').family).toBe('qwen')
     expect(parseModelName('ollama:llama-3.1-70b').family).toBe('llama')
@@ -262,6 +271,17 @@ describe('fuzzyMatchContextWindow — MiMo (Xiaomi)', () => {
     ['mimo-v2.5-pro',                  1_000_000],   // text-only, same 1M ctx
     ['mimo-v2-pro',                    131_072],     // older family → fallback
     ['mimo-v2-omni',                   131_072],     // older family → fallback
+  ])('%s → %d', (name, expected) => {
+    expect(fuzzyMatchContextWindow(name)).toBe(expected)
+  })
+})
+
+describe('fuzzyMatchContextWindow — Doubao (Volcengine Ark)', () => {
+  it.each([
+    ['doubao-seed-2-1-pro-260628',     262_144],
+    ['doubao-seed-2-1-turbo-260628',   262_144],
+    ['doubao-seed-2-0-lite-260428',    262_144],
+    ['doubao-seed-evolving',           262_144],
   ])('%s → %d', (name, expected) => {
     expect(fuzzyMatchContextWindow(name)).toBe(expected)
   })

@@ -28,7 +28,7 @@ export type Quant =
 export type Family =
   | 'qwen' | 'deepseek' | 'kimi' | 'minimax'
   | 'gemma' | 'glm' | 'llama' | 'mistral' | 'phi' | 'yi'
-  | 'openai' | 'claude' | 'mimo'
+  | 'openai' | 'claude' | 'mimo' | 'doubao'
 
 export interface ParsedModel {
   family?: Family
@@ -243,6 +243,27 @@ export function parseModelName(raw: string): ParsedModel {
       if (variants.length) result.variant = variants.join('-')
       break
     }
+    case 'doubao': {
+      // Volcengine Ark Doubao — names use dash-separated version digits and a
+      // tier word, e.g.:
+      //   "doubao-seed-2-1-pro-260628"   → version='2.1', variant='pro'
+      //   "doubao-seed-2-1-turbo-260628" → version='2.1', variant='turbo'
+      //   "doubao-seed-2-0-lite-260428"  → version='2.0', variant='lite'
+      //   "doubao-seed-evolving"         → variant='evolving' (no numeric version)
+      // Capability tables key off the tier word (lite is text-only; pro/turbo/
+      // evolving are multimodal); context/output are uniform across the family.
+      const variants: string[] = []
+      if (/(?:^|-)pro(?:-|$)/.test(s)) variants.push('pro')
+      if (/(?:^|-)turbo(?:-|$)/.test(s)) variants.push('turbo')
+      if (/(?:^|-)lite(?:-|$)/.test(s)) variants.push('lite')
+      if (/(?:^|-)mini(?:-|$)/.test(s)) variants.push('mini')
+      if (/(?:^|-)evolving(?:-|$)/.test(s)) variants.push('evolving')
+      // "seed-2-1" / "seed-2-0" → join the two digits as major.minor.
+      const v = s.match(/doubao-(?:seed-)?(\d+)-(\d+)/)
+      if (v) result.version = `${v[1]}.${v[2]}`
+      if (variants.length) result.variant = variants.join('-')
+      break
+    }
     case 'claude': {
       const variants: string[] = []
       if (/mythos/.test(s)) variants.push('mythos')
@@ -287,6 +308,7 @@ const FAMILY_MARKERS: ReadonlyArray<{ family: Family; pattern: RegExp }> = [
   { family: 'openai',   pattern: /(?:^|[-:.])gpt(?=[-:.]|$)|openai/ },
   { family: 'claude',   pattern: /(claude|anthropic)/ },
   { family: 'mimo',     pattern: /mimo/ },
+  { family: 'doubao',   pattern: /doubao/ },
 ]
 
 // ---------------------------------------------------------------------------
@@ -528,6 +550,13 @@ const TABLE: ReadonlyArray<TableEntry> = [
   // override via contextWindow in ~/.axiomate.json.
   { source: 'mimo-fallback', ctx: 131_072, fallback: true,
     match: p => p.family === 'mimo' },
+
+  // ---------- Doubao (Volcengine Ark) ----------
+  // doubao-seed-2.x (pro/turbo/lite) and doubao-seed-evolving all advertise a
+  // 256K context window (Volcengine Ark model list). Uniform across the line,
+  // so a single family fallback covers every variant/version.
+  { source: 'doubao-fallback', ctx: 262_144, fallback: true,
+    match: p => p.family === 'doubao' },
 ]
 
 // ---------------------------------------------------------------------------

@@ -188,6 +188,12 @@ const TABLE: ReadonlyArray<TableEntry> = [
   // 128K output tier; conservative 32K matches their docs.
   { source: 'mimo-fallback', out: 32_768, fallback: true,
     match: p => p.family === 'mimo' },
+
+  // ---------- Doubao (Volcengine Ark) ----------
+  // doubao-seed-2.x / evolving all cap output at 32K (Volcengine Ark docs,
+  // streaming examples show max_output_tokens 32768). Uniform across the line.
+  { source: 'doubao-fallback', out: 32_768, fallback: true,
+    match: p => p.family === 'doubao' },
 ]
 
 // ---------------------------------------------------------------------------

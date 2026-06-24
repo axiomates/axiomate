@@ -111,6 +111,13 @@ describe('fuzzyMatchSupportsImages', () => {
     // Older MiMo lines fall back to text-only
     ['mimo-v2-pro',                        false, 'mimo-text'],
 
+    // ───── Doubao (Volcengine Ark) ─────
+    // pro / turbo / evolving accept image/video/file input; lite is text-only.
+    ['doubao-seed-2-1-pro-260628',         true,  'doubao-multimodal'],
+    ['doubao-seed-2-1-turbo-260628',       true,  'doubao-multimodal'],
+    ['doubao-seed-evolving',               true,  'doubao-multimodal'],
+    ['doubao-seed-2-0-lite-260428',        false, 'doubao-lite-text'],
+
     // ───── Unknown — falls through ─────
     // No family marker → returns undefined; caller defaults to false.
   ])('%s → %s (%s)', (name, expected, expectedSource) => {

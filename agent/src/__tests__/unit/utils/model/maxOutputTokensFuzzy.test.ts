@@ -152,6 +152,17 @@ describe('fuzzyMatchMaxOutputTokens', () => {
     expect(debugMaxOutputSource(name)).toBe(expectedSource)
   })
 
+  it.each([
+    // Doubao (Volcengine Ark) — uniform 32K output across the seed line.
+    ['doubao-seed-2-1-pro-260628',         32_768, 'doubao-fallback'],
+    ['doubao-seed-2-1-turbo-260628',       32_768, 'doubao-fallback'],
+    ['doubao-seed-2-0-lite-260428',        32_768, 'doubao-fallback'],
+    ['doubao-seed-evolving',               32_768, 'doubao-fallback'],
+  ])('Doubao: %s → %i (%s)', (name, expectedTokens, expectedSource) => {
+    expect(fuzzyMatchMaxOutputTokens(name)).toBe(expectedTokens)
+    expect(debugMaxOutputSource(name)).toBe(expectedSource)
+  })
+
   it('returns undefined for unrecognized models', () => {
     expect(fuzzyMatchMaxOutputTokens('totally-unknown-model')).toBeUndefined()
     expect(fuzzyMatchMaxOutputTokens('')).toBeUndefined()

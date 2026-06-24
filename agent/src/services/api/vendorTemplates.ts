@@ -791,6 +791,52 @@ const builtinVendorTemplates: Record<string, VendorTemplate> = {
     // (k2.5/k2.6/k2.7) inherits it without re-declaring per model template.
     maxOutputTokensField: 'max_completion_tokens',
   },
+
+  // ── openai-responses protocol family ────────────────────────────────────
+  // Responses-API-compatible gateways. The bare protocol layer covers OpenAI
+  // 1P; vendors here exist only when a non-OpenAI gateway exposes /responses
+  // with its own quirks.
+  'openai-responses-doubao': {
+    // Volcengine Ark Doubao (https://ark.cn-beijing.volces.com/api/v3/responses
+    // domestic, https://ark.ap-southeast.bytepluses.com/api/v3/responses
+    // overseas BytePlus). Models: doubao-seed-2.1-pro / 2.1-turbo / 2.0-lite /
+    // evolving. Same wire shape across the line — per-model differences
+    // (context/output/images) live in the *Fuzzy capability tables, not here.
+    //
+    // Documented divergences from stock OpenAI Responses:
+    //
+    //   1. reasoning.effort enum tops out at 'high' (minimal/low/medium/high) —
+    //      there is no 'xhigh'. The openai-responses protocol layer maps
+    //      max → 'xhigh', which Ark would reject. Override the valueMap so
+    //      max collapses to 'high' (the real top tier here).
+    //   2. Thinking is a separate `thinking.type` switch (enabled/disabled/
+    //      auto), defaulting to ON. Stock Responses has no thinking.type — it
+    //      implies reasoning by presence of reasoning.effort. So:
+    //        - enabled: send thinking.type:'enabled' so the wire is explicit.
+    //        - disabled (picker 'none'): send thinking.type:'disabled', else
+    //          Ark keeps thinking on by default. Reaches the wire via the
+    //          effort='none' → disabledPatch branch in applyThinkingTemplate.
+    //      Note the thinking.type × reasoning.effort coupling (Ark docs):
+    //      type=enabled accepts any effort (minimal there == off); type=
+    //      disabled accepts ONLY minimal. We never send both type=disabled and
+    //      a non-minimal effort: the disabled branch emits only disabledPatch
+    //      (no effort), so the coupling constraint is never violated.
+    //   3. reasoning.summary:'auto' (protocol-layer enabledPatch) is not a
+    //      documented Ark request field — summary is returned by default and
+    //      controlled response-side via `include`. Null-delete it so we only
+    //      send documented request fields.
+    //   4. store defaults to true (server keeps the response 3 days). axiomate
+    //      sends full history each turn and never uses previous_response_id, so
+    //      store:true is wasted spend + retention. Force store:false.
+    protocol: 'openai-responses',
+    matchBaseUrlRegex: 'ark\\.[\\w-]+\\.(?:volces\\.com|bytepluses\\.com)',
+    enabledPatch: { thinking: { type: 'enabled' }, reasoning: { summary: null } },
+    disabledPatch: { thinking: { type: 'disabled' } },
+    effort: {
+      valueMap: { low: 'low', medium: 'medium', high: 'high', max: 'high' },
+    },
+    extraBodyParams: { store: false },
+  },
 }
 
 // ---------------------------------------------------------------------------

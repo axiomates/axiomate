@@ -162,6 +162,16 @@ const TABLE: ReadonlyArray<TableEntry> = [
   // mimo-v2.5-pro and any other MiMo not caught above → text-only.
   { source: 'mimo-text', out: false,
     match: p => p.family === 'mimo' },
+
+  // ─────────────── Doubao (Volcengine Ark) ───────────────
+  // The flagship seed line (pro / turbo) and doubao-seed-evolving accept
+  // image/video/file input per the Ark Responses docs; only the lite tier is
+  // text-only. Gate lite explicitly, then bias the family fallback to true
+  // (the multimodal flagships are the common case).
+  { source: 'doubao-lite-text', out: false,
+    match: p => p.family === 'doubao' && /lite/.test(p.variant ?? '') },
+  { source: 'doubao-multimodal', out: true, fallback: true,
+    match: p => p.family === 'doubao' },
 ]
 
 // ─────────────── Public API ───────────────

@@ -16,6 +16,7 @@ GLM / Aliyun），以及怎么把它们落到三层模板系统里。
 | `openai-chat-aliyun` | qwen3.6-plus / 3.7-plus / 3.7-max / 3.6-flash | `(?:dashscope(?:-[\w]+)?\.aliyun(?:cs)?\.com\|maas\.aliyuncs\.com)` |
 | `openai-chat-mimo` | mimo-v2.5 / mimo-v2.5-pro | `xiaomimimo\.com` |
 | `anthropic-minimax` | MiniMax-M3 / M2.7(-highspeed) / M2.5(-highspeed) / M2.1(-highspeed) / M2 | `(?:^\|//)api\.minimax(?:i\.com\|\.io)` |
+| `openai-responses-doubao` | doubao-seed-2.1-pro / 2.1-turbo / 2.0-lite / evolving | `ark\.[\w-]+\.(?:volces\.com\|bytepluses\.com)` |
 
 ## 跨家怪癖矩阵
 
@@ -174,6 +175,32 @@ GLM / Aliyun），以及怎么把它们落到三层模板系统里。
 - service_tier: standard/priority（priority 1.5x 价）——未暴露，需要时用户在 `modelConfig.extraParams` 透传
 
 **架构关联**：MiniMax 适配触发了 anthropic 协议的完整 vendor template 派发对等性整理（P1+P2+P3），见 [protocol-vendor-template-parity-plan.md](./protocol-vendor-template-parity-plan.md)。当前 anthropic 协议的 vendor 表达能力与 openai-chat 完全对等。
+
+### Doubao / 字节火山方舟（openai-responses 协议）
+
+文档：<https://www.volcengine.com/docs/82379/1569618>（Responses API）+ <https://www.volcengine.com/docs/82379/1956279>（深度思考）
+
+**首个 openai-responses 协议的第三方 vendor**（此前 Responses 端只有 Grok 走 model template）。两个端点（wire 形状一致，仅 host 不同）：
+- `ark.cn-beijing.volces.com/api/v3/responses` — 国内
+- `ark.ap-southeast.bytepluses.com/api/v3/responses` — 海外 BytePlus
+
+模型：doubao-seed-2.1-pro-260628 / 2.1-turbo-260628 / 2.0-lite-260428 / evolving（能力降序）。OpenAI SDK 直接 `base_url` 指过去即可（官方示例验证）。
+
+**vendor 层**（`openai-responses-doubao`）：
+- `enabledPatch: { thinking: { type: 'enabled' }, reasoning: { summary: null } }`
+- `disabledPatch: { thinking: { type: 'disabled' } }`
+- `effort.valueMap: { low, medium, high, max → 'high' }`（Ark 无 xhigh，max collapse 到 high）
+- `extraBodyParams: { store: false }`
+
+**关键约束 / 设计要点**：
+- **`reasoning.effort` 无 xhigh**：Ark 只接受 `minimal/low/medium/high`。openai-responses 协议层把 `max → 'xhigh'`，不覆盖会 400。vendor 层 valueMap 把 max 收敛到 high（和 anthropic 同款 collapse）。
+- **thinking 默认开，靠 `thinking.type` 显式关**：Ark 有独立的 `thinking.type`（enabled 默认 / disabled / auto），标准 Responses 没有这个字段。picker 选 None 时必须发 `thinking:{type:'disabled'}`，否则 Ark 继续思考。这条经 `effort='none' → disabledPatch` 分支落到 wire——而 `openaiResponsesProvider.applyThinkingParams` 的 `thinking.type==='disabled'` 早返回**不会**触发（picker None 时 neutral `thinking.type` 仍是 enabled，只是 `effort='none'`）。
+- **`thinking.type` × `reasoning.effort` 耦合**（文档原文）：`type=enabled` 接受任意 effort（其中 minimal 等于关思考）；`type=disabled` 只接受 minimal，传 low/medium/high 报错。我们的 disabledPatch 分支只发 `thinking:{type:'disabled'}`、**不带 effort**，所以永远不触发这个冲突。
+- **`reasoning.summary:'auto'` 删掉**：协议层 enabledPatch 带 `reasoning:{summary:'auto'}`，但 Ark 文档没有这个请求侧字段（summary 默认返回，靠 `include` 控制响应侧）。vendor enabledPatch 用 `reasoning:{summary:null}` RFC 7396 删掉它，只发文档列出的字段。
+- **`store: false`**：Ark 默认 `store:true`（服务端存 3 天）。axiomate 每轮发完整 history、不用 `previous_response_id`，store=true 是纯浪费+留存风险，强制关。
+- **温度强制**：仅 `260215` 老快照把 temperature/top_p 固定为 1/0.95；本次四个模型（260628/260428/evolving）不在列表，用户温度正常透传。
+- **多模态**：pro/turbo/evolving 支持图片/视频/文件，lite 纯文本——model 级能力，走 `supportsImagesFuzzy`（`doubao-lite-text` → false，`doubao-multimodal` fallback → true），不是 vendor 模板能表达的。
+- **不需要 model 层模板**：四个模型 wire shape 完全一致，差异只在能力（context 256K / output 32K 全家族统一；图片支持走 fuzzy）。和 MiMo 同款判断。
 
 ### xAI Grok（openai-responses 协议）
 
