@@ -3097,11 +3097,42 @@ const METADATA_TYPE_MARKERS = [
   '"type":"partial-assistant"',
 ]
 const METADATA_MARKER_BUFS = METADATA_TYPE_MARKERS.map(m => Buffer.from(m))
-// Longest marker is 22 bytes; +1 for leading `{` = 23.
-const METADATA_PREFIX_BOUND = 25
+// Smallest `carry` length for which resolveMetadataBuf's marker comparison is
+// in-bounds for EVERY marker. Each comparison reads carry bytes [1, 1+m.length)
+// (offset 1 skips the leading `{`), so it needs `carry.length >= 1 + m.length`
+// for the longest marker, or `carry.compare(..., 1, 1 + m.length)` throws
+// RangeError (sourceEnd > carry.length).
+//
+// DERIVED, NOT HARDCODED — on purpose. This used to be a literal `25` with the
+// comment "Longest marker is 22 bytes; +1 for leading `{` = 23". That bound was
+// correct when written (2673a378) but went stale on 2026-06-11 (c2464dbb) when
+// `"type":"partial-assistant"` — 26 bytes, the new longest marker — was appended
+// to METADATA_TYPE_MARKERS without bumping the bound. A `carry` of length 25 or
+// 26 that started with `{` then slipped past the `< 25` short-circuit and hit
+// `carry.compare(partialAssistantMarker, 0, 26, 1, 27)`, whose sourceEnd 27
+// exceeded carry.length → RangeError. That throw bubbled to loadTranscriptFile's
+// outer try/catch, which swallows it and returns empty maps, surfacing to the
+// user as "No conversation found" — an UNRESUMABLE session. It only bit
+// sessions that (a) are >5MB so the streaming load path runs, (b) have a
+// non-preservedSegment compact_boundary so scanPreBoundaryMetadata runs at all,
+// and (c) happen to land a 25/26-byte `{`-leading line fragment exactly on a
+// read-chunk seam — a rare byte-alignment coincidence, which is why it lay
+// dormant. Deriving the bound from the marker list makes any future marker
+// addition self-correcting; do not replace this with a literal.
+const METADATA_PREFIX_BOUND =
+  1 + Math.max(...METADATA_MARKER_BUFS.map(b => b.length))
 
 // null = carry spans whole chunk. Skips concat when carry provably isn't
 // a metadata line (markers sit at byte 1 after `{`).
+//
+// INVARIANT: by the time the marker loop runs, carry.length >=
+// METADATA_PREFIX_BOUND >= 1 + max(marker length), so every
+// `carry.compare(m, 0, m.length, 1, 1 + m.length)` reads in-bounds. The
+// per-marker `1 + m.length <= carry.length` re-check below is defense in depth:
+// it keeps this function self-protecting even if METADATA_PREFIX_BOUND is ever
+// decoupled from the marker list again (see the bound's comment for the
+// 2026-06 RangeError incident this guards against). Mirrors the safe
+// length-guard-before-compare pattern in sessionStoragePortable.ts:hasPrefix.
 function resolveMetadataBuf(
   carry: Buffer | null,
   chunkBuf: Buffer,
@@ -3112,7 +3143,10 @@ function resolveMetadataBuf(
   }
   if (carry[0] === 0x7b /* { */) {
     for (const m of METADATA_MARKER_BUFS) {
-      if (carry.compare(m, 0, m.length, 1, 1 + m.length) === 0) {
+      if (
+        1 + m.length <= carry.length &&
+        carry.compare(m, 0, m.length, 1, 1 + m.length) === 0
+      ) {
         return Buffer.concat([carry, chunkBuf])
       }
     }
@@ -3728,7 +3762,20 @@ export async function loadTranscriptFile(
       }
     }
   } catch {
-    // File doesn't exist or can't be read
+    // Intentionally swallowed: the common, expected failure here is a missing
+    // or unreadable transcript file (ENOENT/EACCES), for which returning empty
+    // maps is correct — callers treat "no messages" as "no resumable session".
+    //
+    // HAZARD: this also swallows *programming* errors thrown deeper in the parse
+    // pipeline. In 2026-06 a RangeError from resolveMetadataBuf (stale
+    // METADATA_PREFIX_BOUND — see that constant's comment) was caught here,
+    // collapsing a fully-valid 21MB transcript to empty and surfacing as the
+    // misleading "No conversation found with session ID: …". If you are
+    // debugging a session that won't resume but whose .jsonl clearly parses,
+    // temporarily log this error (or run with the throw un-swallowed) — the real
+    // exception is almost certainly here. Kept as a blanket catch deliberately:
+    // resume must degrade gracefully rather than crash the REPL, and narrowing
+    // it to only fs errors risks a future deep throw crashing startup instead.
   }
 
   applyPreservedSegmentRelinks(messages)

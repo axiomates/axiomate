@@ -549,4 +549,110 @@ describe('loadTranscriptFile — large file streaming path', () => {
     expect(goal!.status).toBe('paused')
     expect(goal!.subgoals).toEqual(['keep state across compact'])
   }, 30_000)
+
+  // Regression: scanPreBoundaryMetadata's resolveMetadataBuf used a stale
+  // hardcoded bound (METADATA_PREFIX_BOUND = 25) that was correct until the
+  // 26-byte `"type":"partial-assistant"` marker was added (commit c2464dbb,
+  // 2026-06-11) without bumping the bound. When a `{`-leading line fragment of
+  // length 25 or 26 lands on a read-stream chunk seam inside the pre-boundary
+  // region, `carry.compare(marker, 0, 26, 1, 27)` reads past carry.length and
+  // throws RangeError. loadTranscriptFile's outer catch swallows it and returns
+  // empty maps — the session becomes unresumable with the misleading
+  // "No conversation found". This reproduces the exact byte alignment.
+  //
+  // The fs read stream's default highWaterMark is 65536, so the first chunk is
+  // bytes [0, 65536). We position the LAST newline before that seam at offset
+  // 65509 and start a long (no-newline-yet) JSON line right after, so the
+  // trailing carry is exactly bytes [65510, 65536) = 26 bytes beginning with
+  // `{` — the adversarial input. Pre-fix this throws; post-fix it loads.
+  test('survives 26-byte {-leading carry on a chunk seam in pre-boundary scan', async () => {
+    const CHUNK = 65536 // fs.createReadStream default highWaterMark
+    const SEAM_CARRY = 26 // longest marker `"type":"partial-assistant"` length
+    // We want the final newline within [0, CHUNK) at offset (CHUNK-SEAM_CARRY-1)
+    // = 65509, so the next line begins at 65510 and its first 26 bytes
+    // [65510, 65536) form the carry. The first line therefore needs its newline
+    // at offset 65509 → 65509 bytes of content before it.
+    const FIRST_NEWLINE_OFFSET = CHUNK - SEAM_CARRY - 1 // 65509
+
+    const filePath = join(tempDir, `${SESSION_A}.jsonl`)
+
+    // Build line 1 (a valid user entry) padded to EXACTLY FIRST_NEWLINE_OFFSET
+    // bytes so its trailing '\n' sits at that offset.
+    const baseFirst = makeUserEntry({
+      uuid: '00000000-0000-4000-8000-000000000000',
+      parentUuid: null,
+      text: 'X', // placeholder, replaced below
+      sessionId: SESSION_A,
+    })
+    // Pad the text field so the serialized line hits the target length. The
+    // overhead is everything except the text payload, so payload length =
+    // target - (baseLength - 1) where the -1 accounts for the single 'X'.
+    const overhead = Buffer.byteLength(baseFirst) - 1
+    const padLen = FIRST_NEWLINE_OFFSET - overhead
+    expect(padLen).toBeGreaterThan(0) // sanity: target is reachable
+    const firstLine = makeUserEntry({
+      uuid: '00000000-0000-4000-8000-000000000000',
+      parentUuid: null,
+      text: 'X'.repeat(padLen),
+      sessionId: SESSION_A,
+    })
+    expect(Buffer.byteLength(firstLine)).toBe(FIRST_NEWLINE_OFFSET)
+
+    // Line 2: a long JSON line (starts with `{`) with no newline until well
+    // past the chunk seam, so [65510, 65536) is its prefix — the 26-byte carry.
+    const longLine = makeUserEntry({
+      uuid: '00000001-0000-4000-8000-000000000000',
+      parentUuid: '00000000-0000-4000-8000-000000000000',
+      text: 'Y'.repeat(200_000), // >> CHUNK so the line spans many chunks
+      sessionId: SESSION_A,
+    })
+
+    const lines: string[] = [firstLine, longLine]
+
+    // Pad past the 5MB SKIP_PRECOMPACT_THRESHOLD so the streaming path + the
+    // separate pre-boundary metadata scan both run.
+    for (let i = 2; i < 35_000; i++) {
+      const uuid = `${i.toString(16).padStart(8, '0')}-0000-4000-8000-000000000000`
+      const parentUuid = `${(i - 1).toString(16).padStart(8, '0')}-0000-4000-8000-000000000000`
+      lines.push(
+        makeUserEntry({
+          uuid,
+          parentUuid,
+          text: `pre-compact-${i}`,
+          sessionId: SESSION_A,
+        }),
+      )
+    }
+
+    // Non-preservedSegment compact boundary → boundaryStartOffset > 0 → the
+    // pre-boundary metadata scan (the buggy code path) actually runs.
+    const lastPreUuid = `${(35_000 - 1).toString(16).padStart(8, '0')}-0000-4000-8000-000000000000`
+    const boundaryUuid = 'eeeeeeee-0000-4eee-8eee-eeeeeeeeeeee'
+    const postUuid = 'ffffffff-0000-4fff-8fff-ffffffffffff'
+    lines.push(
+      makeUserEntry({
+        uuid: lastPreUuid, // ensure boundary's logical parent exists
+        parentUuid: `${(35_000 - 2).toString(16).padStart(8, '0')}-0000-4000-8000-000000000000`,
+        text: 'last pre-compact message',
+        sessionId: SESSION_A,
+      }),
+      makeCompactBoundaryEntry({ uuid: boundaryUuid, sessionId: SESSION_A }),
+      makeUserEntry({
+        uuid: postUuid,
+        parentUuid: boundaryUuid,
+        text: 'post compact prompt',
+        sessionId: SESSION_A,
+      }),
+    )
+
+    await writeFile(filePath, lines.join('\n') + '\n', 'utf8')
+    const fileStat = await stat(filePath)
+    expect(fileStat.size).toBeGreaterThan(5 * 1024 * 1024)
+
+    // Pre-fix: resolveMetadataBuf throws RangeError → caught → empty maps.
+    // Post-fix: loads normally and the post-boundary message survives.
+    const result = await loadTranscriptFile(filePath)
+    expect(result.messages.size).toBeGreaterThan(0)
+    expect(result.messages.has(postUuid as any)).toBe(true)
+  }, 30_000)
 })
