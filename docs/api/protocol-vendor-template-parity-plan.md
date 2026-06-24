@@ -183,25 +183,98 @@ P3 同时清掉了 plan 调研里发现的几条债：
 - **message role 扩展（user_system 等）** —— axiomate 中性 message 设计上只有 user/assistant/tool，新需求触发再说。
 - **anthropic SDK 校验风险** —— SDK 升级带来的新字段需要逐一检查是否经过客户端校验。每次升级附带一次 wire body smoke test 即可。
 
-### R3 / R4：openai-responses 对等性清理（已完成）
+### R 系列：openai-responses 对等性 audit（P3 之后启动）
 
-R 系列是 openai-responses 协议端的对等性盘点。R1/R2/R6/R7 判定为
-"预防式/不算债"。落地的是 R3（bug）+ R4（架构债）：
+P3 把 anthropic 协议的 vendor template 表达能力补齐之后，我们做了一次反向
+盘点：**openai-responses 协议路径上有没有同类未下放的硬编码？** 这是一次
+预防性 audit，不是某个具体 vendor 故障驱动的。结果是 7 项发现，标记 R1-R7。
 
-| ID | 改动 | 文件 |
-|---|---|---|
-| **R3** ✓ | 删 `body.stop = request.stopSequences` —— OpenAI Responses API schema 里没有 stop 字段。早期代码靠 SDK 宽松转发流过去，要么被服务端忽略要么 400。stopSequences 是 Chat Completions 概念，未来 Responses-protocol vendor 真有需要再走 `extraBodyParams` 或新 TemplatePatches 字段 | `openaiResponsesProvider.ts` |
-| **R4-A** ✓ | `TemplatePatches.toolJsonSchemaFilter: 'strip-slash-enums' \| null` —— 命名 filter 而不开放任意字符串，避免配置漏洞，扩展时按需加 enum 值即可 | `vendorTemplates.ts` |
-| **R4-B** ✓ | 内置 model template `openai-responses-grok`（matchModelRegex `^(grok-\|x-ai/grok-)`，protocol `openai-responses`，dropFields `['service_tier']` + toolJsonSchemaFilter `'strip-slash-enums'`）。覆盖直连 xAI 和 OpenRouter 命名空间 | `vendorTemplates.ts` |
-| **R4-C** ✓ | `openaiResponsesProvider` 加 `applyTemplatePostprocess` helper，inference / countTokens 两条 build 路径末尾都跑 dropFields + toolJsonSchemaFilter。替换 `applyApiRequestPreflight()` 调用 | `openaiResponsesProvider.ts` |
-| **R4-D** ✓ | 删 `apiRequestPreflight.ts` + 同名测试。`hasGrokResponsesModelName` 只服务这条规则，一并删 | `apiRequestPreflight.ts`, `requestRecoveryMutations.ts` |
+#### R1-R7 矩阵
 
-R4 把 xAI Grok 的两条 quirk（拒绝 `service_tier`、拒绝含 `/` 的 enum 值）
-从硬编码 substring 规则搬进 vendor template 系统。未来再来一个 Responses
+| ID | 类别 | 项 | 判定 | 理由 |
+|---|---|---|---|---|
+| **R1** | 预防式 | `max_output_tokens` 字段名硬编码（`openaiResponsesProvider.ts:451 / 636`），openai-chat 路径用 `maxOutputTokensField` 派发 | **不动** | Responses API 出生就叫 `max_output_tokens`，没有 chat 那种 `max_tokens` → `max_completion_tokens` 的迁移历史。**Selection bias 论证**：vendor 主动实现 openai-responses 而不是继续暴露 chat，本身就是接受 1P 形状的信号——否则没动机做新协议。已知 vendor（xAI、OpenRouter）都原样接受。0 个真实 vendor 触发，加字段就是空转 |
+| **R2** | 预防式 | `tool_choice` 三分支硬编码（`toolChoiceToOpenAIResponses` 不读 `toolChoiceMap`） | **不动** | 同 R1 的 selection bias 论证。MiniMax 收敛 tool_choice 是 anthropic 协议怪癖；Responses 端语义高度对齐 OpenAI，没有已知 vendor 改这个 |
+| **R3** | bug | `body.stop = request.stopSequences`（`openaiResponsesProvider.ts:475-476`），但 OpenAI Responses API schema 无 `stop` 字段 | **删** | 翻 SDK `responses.d.ts:3642-3820` 的 `ResponseCreateParamsBase`，确认无 stop / stop_sequences。早期代码靠 SDK 宽松转发流过去，要么被服务端忽略要么 400。stopSequences 是 Chat Completions 概念误植 |
+| **R4** | 架构债 | `apiRequestPreflight.ts` 用模型名 substring 识别 grok，硬编码 `delete service_tier` + 工具 schema slash-enum strip——绕过 vendor template 系统 | **重构** | 这条规则的存在本身违反 P3 的设计原则（"vendor template 是 wire shape 的唯一真理源"）。搬进 model template `openai-responses-grok`，删 preflight 注册表 |
+| **R5** | 看似耦合 | `OpenAIResponsesPromptCacheCompat` 用 `promptCacheKey: true` + `codexTransportCompat: true` 两个 flag 联动伪造 codex 标头 | **不动** | 见下方 R5 深度决策记录 |
+| **R6** | 极低 | 没有 anthropic 那种 thinking 提前解构（`paramsFromContext` 1P 耦合） | **不算债，是优势** | Responses 协议层一开始就把 reasoning 设计成 `reasoning.effort`，没有 enabled/adaptive 两形状切换的历史包袱 |
+| **R7** | 极低 | openai-responses 协议没任何内置 vendor template，只有 R4 加的 model template | **不动** | 既清爽又留口子。Responses 协议下 vendor 极少（直连 1P + xAI + OpenRouter），把 Grok 落 model 而不是 vendor 是因为 quirk 跨多家 host（直连 + OpenRouter 都触发） |
+
+#### R3 实施
+
+| 改动 | 文件 |
+|---|---|
+| 删 `body.stop = request.stopSequences`，加注释说明 Responses API schema 无 stop 字段 | `openaiResponsesProvider.ts` |
+
+#### R4 实施
+
+| 改动 | 文件 |
+|---|---|
+| `TemplatePatches.toolJsonSchemaFilter: 'strip-slash-enums' \| null`——命名 filter 而不开放任意字符串，避免配置漏洞，扩展时按需加 enum 值即可 | `vendorTemplates.ts` |
+| 内置 model template `openai-responses-grok`：`matchModelRegex: '^(grok-\|x-ai/grok-)'`，`protocol: 'openai-responses'`，`dropFields: ['service_tier']` + `toolJsonSchemaFilter: 'strip-slash-enums'`。覆盖直连 xAI 和 OpenRouter 命名空间 | `vendorTemplates.ts` |
+| `openaiResponsesProvider` 加 `applyTemplatePostprocess(body, template)` 模块级 helper，在 inference / countTokens 两条 build 路径末尾跑 dropFields + toolJsonSchemaFilter（位置：vendor `extraBodyParams` 之后、`omittedRequestFields` providerHints 之前）。替换 `applyApiRequestPreflight()` 调用 | `openaiResponsesProvider.ts` |
+| 删 `apiRequestPreflight.ts` + 同名测试。`hasGrokResponsesModelName` 只服务这条规则，一并删 | `apiRequestPreflight.ts`, `requestRecoveryMutations.ts` |
+
+效果：xAI Grok 的两条 schema quirk（拒绝 `service_tier`、拒绝含 `/` 的 enum
+值）从硬编码 substring 规则搬进 vendor template 系统。未来再来一个 Responses
 端有类似 schema quirk 的 vendor，加一条 model template 即可，不用扩 preflight
 注册表。
 
-### MiniMax 落地最终形态（声明式）
+#### R5 深度决策记录：codex 标头伪造为什么不动
+
+调研触发于一句话疑问：右侧 `right.codes` 配置用 `promptCacheKey: true` +
+`codexTransportCompat: true` 两个 flag 联动来发 codex 系列 header，看上去像
+两个本不相关的功能被强行耦合。
+
+读完 `openaiResponsesPromptCacheCompat.ts` 之后结论是**这不是耦合，是两个
+真实需求恰好都需要 stable identity**：
+
+| Flag | 单独承担 | 双开时多出的行为 |
+|---|---|---|
+| `promptCacheKey: true \| string` | body 加 `prompt_cache_key` 字段（合法 OpenAI 字段，提高 prompt cache 命中率），从 `a:{projectHash}:{providerHash}:{sessionHash}` 模板派生稳定 token | 给 `codexTransportCompat` header 提供稳定的 session id 来源 |
+| `codexTransportCompat: true` | 发 6 个 codex header（`User-Agent`、`originator: 'codex_exec'`、`session_id`、`x-client-request-id`、`x-codex-window-id`、`x-codex-turn-metadata`） | 单独开时 header session id 来自 `getSessionId()`，进程级，跨 session 会变 |
+
+`buildHeaders()` line 75 第一行 `if (cfg?.codexTransportCompat !== true)
+return undefined`——两个 flag 独立 gate。`promptCacheKey` 关闭时 `selection`
+为 null，header 自动 fallback 到 `getSessionId()`，依然能发 codex header
+（只是跨 session 不稳定）。
+
+**为什么不拆成 `codexTransportSessionId: 'cache' | 'session' | string`**：拆出来
+覆盖的只有"想发 codex header 但又不想要稳定 cache key"这个非常窄的场景，配置
+长度增加却没有真实用户。当前组合"两个 flag 都开 = 完整 codex 仿真"读起来反而
+比拆出来清楚。
+
+**真正担心的是合规层面**——伪装成 codex CLI 是不是违反 OpenAI ToS / right.codes
+自家 ToS。这是业务决策不是架构问题，不进 R 系列范围。
+
+#### R1/R2 selection bias 论证
+
+R1/R2 是"对称性强迫症"陷阱：openai-chat 路径有 `maxOutputTokensField` /
+（未来的）`toolChoiceMap`，看到 openai-responses 没有就觉得不对等。但
+**Responses 协议的 vendor selection bias 决定了这两个 patch 字段大概率
+永远没有真实 vendor**：
+
+- Chat Completions 是被市场卷过来的——MiniMax/Kimi/Aliyun/MiMo 实现 chat 是
+  因为客户端生态全是 chat 客户端，不实现就没人用。但他们自家 schema 想怎么
+  改怎么改（`max_completion_tokens` 改名、tool_choice 收敛都是这个心态的产物）。
+- Responses 不一样：自愿实现 = 自愿接受 1P 形状，否则继续暴露 openai-chat
+  就行了，没人逼你做新协议。chat 端能列出 4 家 vendor 在某个点上偏，Responses
+  端目前 0 家。
+
+所以 R1/R2 不只是"暂时不做"，而是**做了也没东西可挂**——加了字段进 Responses
+协议层默认值需要一直配着 0 个 vendor 在用，纯空转。等真有第一个 Responses 端
+怪 vendor 触发了再补，开发成本一样。
+
+#### 仍未动的债（R 系列范围内）
+
+- **R1/R2 的 patch 字段** —— Responses selection bias 决定基本不会触发。等触发再做
+- **R5 的合规层面** —— 业务决策范围，超出架构 audit
+- **R6 的 1P 耦合** —— 不算债，是 Responses 协议设计上的优势
+
+---
+
+## MiniMax 落地最终形态（声明式）
 
 ```ts
 'anthropic-minimax': {
@@ -231,93 +304,9 @@ R4 把 xAI Grok 的两条 quirk（拒绝 `service_tier`、拒绝含 `/` 的 enum
 
 ---
 
-## MiniMax 具体落地
-
-### vendor template
-
-```ts
-'anthropic-minimax': {
-  protocol: 'anthropic',
-  matchBaseUrlRegex: '(?:^|//)api\\.minimaxi\\.com',
-
-  // F1 路径不做：直接靠 enabledPatch override 把 caller 产生的
-  //   {type:'enabled', budget_tokens:N}
-  // 改成
-  //   {type:'adaptive'}
-  // 替换 type，null-delete budget_tokens
-
-  // 协议层的 effort/budget/anthropicThinkingField 全删
-  effort: {
-    patch: null,
-    valueMap: { low: null, medium: null, high: null, max: null },
-  },
-  budget: { patch: null },
-  anthropicThinkingField: null,
-
-  // disabledPatch 仍然合法（MiniMax 接受 'disabled'，M2.x 服务端忽略）
-  disabledPatch: { thinking: { type: 'disabled' } },
-
-  // enabledPatch override：替换 type 并 null-delete budget_tokens
-  enabledPatch: { thinking: { type: 'adaptive', budget_tokens: null } },
-},
-```
-
-### parser 现状确认
-
-`parseModelName('MiniMax-M3')` 当前命中 `minimax` family marker（pattern
-`/(minimax|abab)/`），版本提取通过 `minimax-?m?(\d+(?:\.\d+)?)` 拿到
-`'m3'`。`MiniMax-M2.7-highspeed` 同理。**不需要改 parser**。
-
-### fuzzy 表
-
-| 模型 | context | maxOutput | supportsImages |
-|---|---|---|---|
-| MiniMax-M3 | 1M (1_000_000) | 128K (131_072) 推荐 | true |
-| MiniMax-M2.7 / -highspeed | 待确认（推测 200K，文档主页未给但推荐 64K 输出与上限 200K 暗示） | 64K (65_536) 推荐 | false |
-| MiniMax-M2.5 / -highspeed | 同上 | 64K | false |
-| MiniMax-M2.1 / -highspeed | 同上 | 64K | false |
-| MiniMax-M2 | 同上 | 64K | false |
-
-**M2.x context 数字需要确认**：从模型详情页或问用户。先按 200K 落，文档明
-确给数字后再调整。
-
-### highspeed 变体
-
-`MiniMax-M2.7` 和 `MiniMax-M2.7-highspeed` wire shape 完全相同（用户判断
-"估计和普通版没有任何区别"，文档也未给出区别）。parser 把 `-highspeed`
-作为 variant 后缀，但 fuzzy 表 match 时只看 family + version，所以两个都
-命中同一行。
-
----
-
-## 风险与权衡
-
-### F2 caller 改动的风险
-
-`llm.ts:1443-1468` 是 Anthropic 1P 流量的核心路径。改动需要：
-- 保留 `modelSupportsAdaptiveThinking` 兜底（vendor undefined 或 vendor template
-  没声明 `anthropicSdkThinkingType` 时走原逻辑）
-- 不破坏 claude-opus-4 等内置模型行为
-- 测试覆盖：(1) Anthropic 1P claude → 走老逻辑；(2) MiniMax → 走 adaptive；
-  (3) config-driven anthropic 但 vendor 没 override → 走 enabled+budget
-
-### Anthropic SDK 客户端校验
-
-确认 SDK 对 `type: 'adaptive'` 不会客户端校验失败。`anthropicProvider.ts:690`
-已经在 `inference()` 里写了 adaptive 分支说明 SDK 接受。但 streaming 路径
-是否经过 SDK 校验需要在测试中验证 wire 真的发出去 adaptive。
-
-### Gate 条件保留
-
-`anthropicProvider.ts:299-303` 的 gate（`params.thinking && type !== 'disabled'`）
-继续保留——只在 thinking 启用时跑 vendor template 是合理的，避免对
-disabled 请求做无意义合并。F1 改动不影响这个 gate。
-
----
-
 ## 测试矩阵
 
-### P1 必须覆盖
+### P1 已覆盖
 
 - **vendor template 单元测试**
   - `anthropic-minimax` 自动匹配 `api.minimaxi.com`
@@ -337,23 +326,107 @@ disabled 请求做无意义合并。F1 改动不影响这个 gate。
   - `MiniMax-M2.7` / `MiniMax-M2.7-highspeed` → context 200K（占位） / output 64K / supportsImages false
   - 大小写：`minimax-m3` 和 `MiniMax-M3` 同结果
 
-### P2 必须覆盖
+### P2 已覆盖
 
 - openai-responses extraBodyParams 透传
 - anthropic extraBodyParams 透传 × 3 路径
 
+### P3 已覆盖
+
+- `paramsFromContext` 三个决策点（thinking type、temperature 省略、tool_choice 映射、max_tokens 字段名）查模板字段
+- `adjustParamsForNonStreaming` 不反向写回 vendor 字段 / 删除字段
+- claude-opus-4 走 `enabled+budget`、MiniMax 走 `adaptive` 的 wire body 断言
+
+### R 系列已覆盖
+
+- **R3**: 没有专门的"不发 stop"测试——SDK 类型本身排除了，加测试也只是 tautology
+- **R4-A**: `TemplatePatches.toolJsonSchemaFilter` 类型检查（`tsc --noEmit`）
+- **R4-B**: 6 条 vendor template 测试（`vendorTemplates.test.ts` "Grok on Responses — model template parity (R4)"）
+  - `openai-responses-grok` 是 built-in model template
+  - matchModelRegex 命中 `grok-*` / `x-ai/grok-*`
+  - 不命中 `gpt-*` / `o3-*` / 其他协议的 grok-*
+  - resolved template 携带 `dropFields: ['service_tier']` + `toolJsonSchemaFilter: 'strip-slash-enums'`
+- **R4-C**: 5 条已存在的 `openaiResponsesContract.test.ts` "OpenAI Responses xAI/Grok request sanitization" 测试继续通过 vendor template 路径——确认 helper 替换没破坏行为
+- **R4-D**: `privateProtocolResidue.test.ts` 兜底——`apiRequestPreflight.ts` 不在 trackedFiles 里
+
 ---
 
-## 推进顺序
+## API 路径改动总览（按 provider）
 
-1. **P1 当前提交**：F1 → F2 → F3 → F4 → MiniMax vendor + fuzzy + cookbook + tests → 单次提交推送
-2. **P2 独立提交**：F5 + F6 + tests → 单次提交推送
-3. **P3 后续按需**：F7 / F8 不在本计划提交范围
+文档化总结：哪些 provider 的哪些函数被改了，对应到哪个阶段。便于回头追踪。
+
+### `agent/src/services/api/llm.ts`（caller / paramsFromContext）
+
+| 函数 | 改动 | 阶段 |
+|---|---|---|
+| `paramsFromContext` | 入口加 `resolveStack` 一行；thinking type、temperature 省略、tool_choice 映射、max_tokens 字段名四处查模板字段 | P3 |
+| `paramsFromContext` | `extraBodyParams` 取自 vendor template + modelConfig 合并 | P2 |
+
+### `agent/src/services/api/providers/anthropicProvider.ts`
+
+| 路径 | 改动 | 阶段 |
+|---|---|---|
+| `inference()` | 接入 `applyThinkingTemplate + deepMerge`（之前漏跑） | P1 (F3) |
+| `countTokens()` | 接入 `applyThinkingTemplate + deepMerge`（之前硬编码 enabled+1024） | P1 (F4) |
+| streaming / non-streaming-fallback / inference | 三处加 vendor `extraBodyParams` 应用 | P2 (F6) |
+| 三处构造 SDK params | `tool_choice` 用 `toolChoiceMap` 派发，`max_tokens` 用 `maxOutputTokensField` 字段名，`thinking` 形状直接由 `anthropicSdkThinkingType` 决定 | P3 (F1/F7/F8) |
+| 三处构造 SDK params | 应用 `dropFields`（删 `stop_sequences` 等 schema 不含字段） | P3 (dropFields) |
+
+### `agent/src/services/api/providers/openaiResponsesProvider.ts`
+
+| 路径 | 改动 | 阶段 |
+|---|---|---|
+| `inference()` build 路径（line ~488） | 加 vendor `extraBodyParams` 应用 | P2 (F5) |
+| `buildSDKBody()` retry 路径 | 同上 | P2 (F5) |
+| `inference()` build 路径 | 删 `body.stop = request.stopSequences` | R3 |
+| 两条 build 路径末尾 | 调用模块级 `applyTemplatePostprocess(body, template)` —— 跑 `dropFields` + `toolJsonSchemaFilter`。替换 `applyApiRequestPreflight()` | R4-C |
+| 模块顶层 | 加 `applyTemplatePostprocess` helper（dropFields 通用 + 名 filter dispatch） | R4-C |
+| imports | 删 `applyApiRequestPreflight` import | R4-D |
+
+### `agent/src/services/api/providers/openaiProvider.ts`（openai-chat）
+
+| 路径 | 改动 | 阶段 |
+|---|---|---|
+| `inference()` / `buildSDKBody()` | `max_tokens` / `max_completion_tokens` 字段名走 `maxOutputTokensField` 派发 | PR4a |
+| 同上 | 已有的 vendor `extraBodyParams` 应用（基线，未改动） | — |
+
+### `agent/src/services/api/vendorTemplates.ts`
+
+| 改动 | 阶段 |
+|---|---|
+| 加 `extraBodyParams` 字段 + 协议层默认 | PR4a 基础 / P2 |
+| 加 `maxOutputTokensField` + openai-chat 协议层默认 `'max_tokens'` | PR4a |
+| 加 `anthropicSdkThinkingType` / `toolChoiceMap` / `dropFields` / `thinkingPreservesTemperature` | P3 |
+| 加 `toolJsonSchemaFilter: 'strip-slash-enums' \| null` | R4-A |
+| 加 `'anthropic-minimax'` 内置 vendor template | P1 |
+| 重写 `'anthropic-minimax'` 用 P3 声明式字段 | P3 (F-vendor) |
+| 加 `'openai-responses-grok'` 内置 model template | R4-B |
+| openai-chat vendor 模板（moonshot / aliyun / mimo）设 `maxOutputTokensField: 'max_completion_tokens'` | PR4a |
+
+### `agent/src/services/api/requestRecoveryMutations.ts`
+
+| 改动 | 阶段 |
+|---|---|
+| 删 `hasGrokResponsesModelName` helper（只服务 preflight 规则） | R4-D |
+
+### 新增 / 删除文件
+
+| 文件 | 操作 | 阶段 |
+|---|---|---|
+| `agent/src/__tests__/unit/services/api/adjustParamsForNonStreaming.test.ts` | 新增 | P3 |
+| `agent/src/services/api/apiRequestPreflight.ts` | 删除 | R4-D |
+| `agent/src/__tests__/unit/services/api/apiRequestPreflight.test.ts` | 删除 | R4-D |
 
 ---
 
-## 后续回顾点
+## 推进顺序（已完成）
 
-- 追到一个支持 `tool_choice: any` 的 vendor 不存在的实例时，决定 F7 是否做
-- anthropic 协议下 max_tokens 改名（如 max_completion_tokens 派生）出现时，决定 F8
-- anthropic SDK 升级带来新 wire 字段时，按 P1 模式增量加 patch 字段
+1. **P1**：F3 + F4 + MiniMax vendor + fuzzy + cookbook + tests → ✓
+2. **P2**：F5 + F6 + tests → ✓
+3. **P3**：F1 + F7 + F8 + dropFields + thinkingPreservesTemperature + 重写 minimax + tests → ✓
+4. **R3 + R4**：删 stop / 加 toolJsonSchemaFilter / openai-responses-grok model template / 删 preflight + tests → ✓
+
+剩余按 trigger 触发：
+- R1/R2：第一个 openai-responses 端有真实 schema quirk 的 vendor 出现
+- F8（anthropic max_tokens 改名）：第一个 anthropic 兼容 vendor 改字段名
+- 其他 P3 仍未动的债见 P3 章节末尾
